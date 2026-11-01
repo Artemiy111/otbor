@@ -1,0 +1,22 @@
+{
+  "name": "@otbor/hh",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@otbor/contract": "workspace:*",
+    "@otbor/domain": "workspace:*",
+    "effect": "4.1.0"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3"
+  }
+}

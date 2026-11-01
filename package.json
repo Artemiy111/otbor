@@ -1,0 +1,30 @@
+{
+  "name": "otbor",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "server": "bun packages/cloud/src/server.ts",
+    "worker": "bun packages/cloud/src/worker.ts",
+    "cli": "bun packages/cli/src/main.ts",
+    "mcp": "bun packages/cloud/src/mcp.ts",
+    "dev": "bun run --parallel server worker",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:migrate": "bun run cli db migrate",
+    "db:reset": "bun run cli db reset",
+    "db:seed": "bun run cli db seed",
+    "test": "bun test",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.4",
+    "@types/node": "^24.0.0",
+    "effect": "4.1.0",
+    "typescript": "6.0.3"
+  }
+}

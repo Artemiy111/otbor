@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@otbor/contract": ["packages/contract/src/index.ts"],
+      "@otbor/domain": ["packages/domain/src/index.ts"],
+      "@otbor/hh": ["packages/hh/src/index.ts"],
+      "@otbor/cloud": ["packages/cloud/src/index.ts"]
+    }
+  },
+  "include": [
+    "packages/**/*.ts",
+    "apps/**/*.ts",
+    "apps/**/*.vue"
+  ],
+  "exclude": ["node_modules", "dist"]
+}
