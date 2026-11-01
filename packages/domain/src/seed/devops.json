@@ -1,0 +1,5127 @@
+[
+  {
+    "term": "Kubernetes",
+    "aliases": [
+      "k8s",
+      "кубернетес",
+      "кубер"
+    ]
+  },
+  {
+    "term": "Docker",
+    "aliases": [
+      "докер",
+      "docker engine"
+    ]
+  },
+  {
+    "term": "containerd",
+    "aliases": []
+  },
+  {
+    "term": "CRI-O",
+    "aliases": [
+      "cri-o"
+    ]
+  },
+  {
+    "term": "Helm",
+    "aliases": [
+      "хелм",
+      "helm charts"
+    ]
+  },
+  {
+    "term": "Argo CD",
+    "aliases": [
+      "argo cd",
+      "argocd",
+      "argo-cd"
+    ]
+  },
+  {
+    "term": "Argo Workflows",
+    "aliases": [
+      "argo workflows",
+      "argo workflow"
+    ]
+  },
+  {
+    "term": "GitOps",
+    "aliases": [
+      "gitops",
+      "гитопс",
+      "git ops"
+    ]
+  },
+  {
+    "term": "IaC",
+    "aliases": [
+      "iac",
+      "infrastructure as code",
+      "инфраструктура как код"
+    ]
+  },
+  {
+    "term": "Terraform",
+    "aliases": [
+      "терраформ"
+    ]
+  },
+  {
+    "term": "OpenTofu",
+    "aliases": [
+      "opentofu"
+    ]
+  },
+  {
+    "term": "Ansible",
+    "aliases": [
+      "ансибл",
+      "ansible playbook"
+    ]
+  },
+  {
+    "term": "Pulumi",
+    "aliases": [
+      "пулуми"
+    ]
+  },
+  {
+    "term": "CI/CD",
+    "aliases": [
+      "ci/cd",
+      "cicd",
+      "ci cd",
+      "непрерывная интеграция",
+      "continuous integration",
+      "continuous delivery"
+    ]
+  },
+  {
+    "term": "Jenkins",
+    "aliases": [
+      "дженкинс"
+    ]
+  },
+  {
+    "term": "GitLab CI",
+    "aliases": [
+      "gitlab ci",
+      "gitlab-ci",
+      "gitlab pipelines"
+    ]
+  },
+  {
+    "term": "GitHub Actions",
+    "aliases": [
+      "github actions",
+      "gh actions"
+    ]
+  },
+  {
+    "term": "TeamCity",
+    "aliases": [
+      "team city"
+    ]
+  },
+  {
+    "term": "Prometheus",
+    "aliases": [
+      "прометеус"
+    ]
+  },
+  {
+    "term": "Grafana",
+    "aliases": [
+      "графана"
+    ]
+  },
+  {
+    "term": "VictoriaMetrics",
+    "aliases": [
+      "victoria metrics"
+    ]
+  },
+  {
+    "term": "Loki",
+    "aliases": [
+      "grafana loki"
+    ]
+  },
+  {
+    "term": "ELK",
+    "aliases": [
+      "elk",
+      "elasticsearch",
+      "logstash",
+      "kibana"
+    ]
+  },
+  {
+    "term": "OpenTelemetry",
+    "aliases": [
+      "opentelemetry",
+      "otel"
+    ]
+  },
+  {
+    "term": "Jaeger",
+    "aliases": [
+      "йегер"
+    ]
+  },
+  {
+    "term": "Alertmanager",
+    "aliases": [
+      "alert manager"
+    ]
+  },
+  {
+    "term": "Zabbix",
+    "aliases": [
+      "забикс"
+    ]
+  },
+  {
+    "term": "Linux",
+    "aliases": [
+      "линукс"
+    ]
+  },
+  {
+    "term": "Bash",
+    "aliases": [
+      "bash scripting",
+      "баш"
+    ]
+  },
+  {
+    "term": "Python",
+    "aliases": [
+      "питон"
+    ]
+  },
+  {
+    "term": "Golang",
+    "aliases": [
+      "go lang",
+      "golang",
+      "go-разработка"
+    ]
+  },
+  {
+    "term": "Nginx",
+    "aliases": [
+      "нгинкс",
+      "nginx ingress"
+    ]
+  },
+  {
+    "term": "HAProxy",
+    "aliases": [
+      "haproxy"
+    ]
+  },
+  {
+    "term": "Envoy",
+    "aliases": [
+      "envoy proxy"
+    ]
+  },
+  {
+    "term": "Istio",
+    "aliases": [
+      "истио"
+    ]
+  },
+  {
+    "term": "Linkerd",
+    "aliases": [
+      "линкерд"
+    ]
+  },
+  {
+    "term": "Service mesh",
+    "aliases": [
+      "service mesh",
+      "сервисная сетка"
+    ]
+  },
+  {
+    "term": "Kafka",
+    "aliases": [
+      "apache kafka",
+      "кафка"
+    ]
+  },
+  {
+    "term": "RabbitMQ",
+    "aliases": [
+      "rabbit mq",
+      "раббит"
+    ]
+  },
+  {
+    "term": "PostgreSQL",
+    "aliases": [
+      "postgres",
+      "постгрес",
+      "постгре"
+    ]
+  },
+  {
+    "term": "MySQL",
+    "aliases": [
+      "майскл"
+    ]
+  },
+  {
+    "term": "MongoDB",
+    "aliases": [
+      "монго"
+    ]
+  },
+  {
+    "term": "Redis",
+    "aliases": [
+      "редис"
+    ]
+  },
+  {
+    "term": "ClickHouse",
+    "aliases": [
+      "click house",
+      "кликхаус"
+    ]
+  },
+  {
+    "term": "S3",
+    "aliases": [
+      "s3",
+      "object storage",
+      "объектное хранилище"
+    ]
+  },
+  {
+    "term": "MinIO",
+    "aliases": [
+      "minio"
+    ]
+  },
+  {
+    "term": "Vault",
+    "aliases": [
+      "hashicorp vault",
+      "волт"
+    ]
+  },
+  {
+    "term": "Consul",
+    "aliases": [
+      "консул"
+    ]
+  },
+  {
+    "term": "etcd",
+    "aliases": [
+      "etcd"
+    ]
+  },
+  {
+    "term": "Ceph",
+    "aliases": [
+      "цеф"
+    ]
+  },
+  {
+    "term": "Proxmox",
+    "aliases": [
+      "проксмокс"
+    ]
+  },
+  {
+    "term": "VMware",
+    "aliases": [
+      "vmware vsphere",
+      "vsphere"
+    ]
+  },
+  {
+    "term": "Bare metal",
+    "aliases": [
+      "bare metal",
+      "bare-metal",
+      "железо"
+    ]
+  },
+  {
+    "term": "Virtualization",
+    "aliases": [
+      "virtualization",
+      "виртуализация",
+      "виртуализации",
+      "виртуализацией"
+    ]
+  },
+  {
+    "term": "Networking",
+    "aliases": [
+      "networking",
+      "сетевая инфраструктура",
+      "computer networks"
+    ]
+  },
+  {
+    "term": "TCP/IP",
+    "aliases": [
+      "tcp/ip",
+      "tcp ip"
+    ]
+  },
+  {
+    "term": "DNS",
+    "aliases": [
+      "dns",
+      "днс"
+    ]
+  },
+  {
+    "term": "VPN",
+    "aliases": [
+      "vpn",
+      "впн"
+    ]
+  },
+  {
+    "term": "Load balancing",
+    "aliases": [
+      "load balancing",
+      "load balancer",
+      "балансировка нагрузки",
+      "балансировщик",
+      "балансировки нагрузки",
+      "балансировщика"
+    ]
+  },
+  {
+    "term": "TLS",
+    "aliases": [
+      "tls",
+      "ssl",
+      "сертификаты"
+    ]
+  },
+  {
+    "term": "Observability",
+    "aliases": [
+      "observability",
+      "наблюдаемость",
+      "наблюдаемости",
+      "наблюдаемостью"
+    ]
+  },
+  {
+    "term": "Monitoring",
+    "aliases": [
+      "monitoring",
+      "мониторинг",
+      "мониторинга",
+      "мониторингом"
+    ]
+  },
+  {
+    "term": "Logging",
+    "aliases": [
+      "logging",
+      "логирование",
+      "логи",
+      "логирования",
+      "логированием"
+    ]
+  },
+  {
+    "term": "Alerting",
+    "aliases": [
+      "alerting",
+      "алертинг",
+      "алерты",
+      "алертинга",
+      "алертингом"
+    ]
+  },
+  {
+    "term": "SRE",
+    "aliases": [
+      "sre",
+      "site reliability engineering"
+    ]
+  },
+  {
+    "term": "Incident management",
+    "aliases": [
+      "incident management",
+      "управление инцидентами",
+      "инцидент",
+      "инциденты",
+      "авария",
+      "аварии",
+      "инцидентов",
+      "инцидентами",
+      "аварий"
+    ]
+  },
+  {
+    "term": "Postmortem",
+    "aliases": [
+      "postmortem",
+      "post-mortem",
+      "постмортем",
+      "разбор инцидентов"
+    ]
+  },
+  {
+    "term": "SLA",
+    "aliases": [
+      "sla"
+    ]
+  },
+  {
+    "term": "SLO",
+    "aliases": [
+      "slo"
+    ]
+  },
+  {
+    "term": "SLI",
+    "aliases": [
+      "sli"
+    ]
+  },
+  {
+    "term": "RTO",
+    "aliases": [
+      "rto"
+    ]
+  },
+  {
+    "term": "RPO",
+    "aliases": [
+      "rpo"
+    ]
+  },
+  {
+    "term": "Disaster recovery",
+    "aliases": [
+      "disaster recovery",
+      "аварийное восстановление",
+      "восстановление после аварий",
+      "аварийного восстановления"
+    ]
+  },
+  {
+    "term": "Backup",
+    "aliases": [
+      "backup",
+      "бэкап",
+      "бэкапы",
+      "резервное копирование",
+      "backup/restore",
+      "бэкапов",
+      "бэкапами",
+      "резервного копирования"
+    ]
+  },
+  {
+    "term": "High availability",
+    "aliases": [
+      "high availability",
+      "высокая доступность",
+      "отказоустойчивость",
+      "отказоустойчивости",
+      "отказоустойчивостью"
+    ]
+  },
+  {
+    "term": "Scalability",
+    "aliases": [
+      "scalability",
+      "масштабируемость",
+      "масштабируемости",
+      "масштабируемостью"
+    ]
+  },
+  {
+    "term": "Canary release",
+    "aliases": [
+      "canary",
+      "canary release",
+      "канареечный",
+      "канареечные релизы"
+    ]
+  },
+  {
+    "term": "Blue-green deployment",
+    "aliases": [
+      "blue-green",
+      "blue green",
+      "bluegreen",
+      "сине-зеленый"
+    ]
+  },
+  {
+    "term": "Rollback",
+    "aliases": [
+      "rollback",
+      "откат"
+    ]
+  },
+  {
+    "term": "Autoscaling",
+    "aliases": [
+      "autoscaling",
+      "auto scaling",
+      "hpa",
+      "автомасштабирование"
+    ]
+  },
+  {
+    "term": "Git",
+    "aliases": [
+      "git",
+      "гит"
+    ]
+  },
+  {
+    "term": "GitLab",
+    "aliases": [
+      "gitlab"
+    ]
+  },
+  {
+    "term": "GitHub",
+    "aliases": [
+      "github"
+    ]
+  },
+  {
+    "term": "Trunk-based development",
+    "aliases": [
+      "trunk-based development",
+      "trunk based development",
+      "trunk based"
+    ]
+  },
+  {
+    "term": "Feature flags",
+    "aliases": [
+      "feature flags",
+      "feature toggles",
+      "фича-флаги"
+    ]
+  },
+  {
+    "term": "Secrets management",
+    "aliases": [
+      "secrets management",
+      "secret management",
+      "управление секретами"
+    ]
+  },
+  {
+    "term": "DevSecOps",
+    "aliases": [
+      "devsecops",
+      "dev sec ops"
+    ]
+  },
+  {
+    "term": "Security",
+    "aliases": [
+      "security",
+      "безопасность",
+      "иб",
+      "безопасности",
+      "безопасностью"
+    ]
+  },
+  {
+    "term": "Harbor",
+    "aliases": [
+      "harbor registry"
+    ]
+  },
+  {
+    "term": "Nexus",
+    "aliases": [
+      "nexus repository"
+    ]
+  },
+  {
+    "term": "Artifact registry",
+    "aliases": [
+      "artifact registry",
+      "registry",
+      "реестр образов"
+    ]
+  },
+  {
+    "term": "Jira",
+    "aliases": [
+      "джира"
+    ]
+  },
+  {
+    "term": "Confluence",
+    "aliases": [
+      "конфлюенс"
+    ]
+  },
+  {
+    "term": "AI",
+    "aliases": [
+      "ai",
+      "ии",
+      "искусственный интеллект"
+    ]
+  },
+  {
+    "term": "Claude",
+    "aliases": [
+      "claude ai",
+      "anthropic claude",
+      "клод"
+    ]
+  },
+  {
+    "term": "ChatGPT",
+    "aliases": [
+      "chatgpt",
+      "chat gpt",
+      "gpt",
+      "чат gpt"
+    ]
+  },
+  {
+    "term": "Codex",
+    "aliases": [
+      "openai codex",
+      "codex cli"
+    ]
+  },
+  {
+    "term": "OpenCode",
+    "aliases": [
+      "opencode",
+      "opencode cli",
+      "опенкод"
+    ]
+  },
+  {
+    "term": "AI SDLC",
+    "aliases": [
+      "ai sdlc",
+      "ai в sdlc",
+      "ai-assisted development",
+      "ai в разработке"
+    ]
+  },
+  {
+    "term": "FinOps",
+    "aliases": [
+      "finops",
+      "cloud cost optimization",
+      "оптимизация затрат"
+    ]
+  },
+  {
+    "term": "Cost optimization",
+    "aliases": [
+      "cost optimization",
+      "оптимизация стоимости",
+      "снижение затрат",
+      "оптимизации стоимости"
+    ]
+  },
+  {
+    "term": "Podman",
+    "aliases": []
+  },
+  {
+    "term": "Buildah",
+    "aliases": []
+  },
+  {
+    "term": "BuildKit",
+    "aliases": []
+  },
+  {
+    "term": "Kaniko",
+    "aliases": []
+  },
+  {
+    "term": "Docker Compose",
+    "aliases": [
+      "docker-compose",
+      "compose"
+    ]
+  },
+  {
+    "term": "Docker Swarm",
+    "aliases": [
+      "swarm mode",
+      "сворм"
+    ]
+  },
+  {
+    "term": "Nomad",
+    "aliases": [
+      "hashicorp nomad"
+    ]
+  },
+  {
+    "term": "OpenShift",
+    "aliases": [
+      "openshift"
+    ]
+  },
+  {
+    "term": "Rancher",
+    "aliases": [
+      "ранчер"
+    ]
+  },
+  {
+    "term": "k3s",
+    "aliases": []
+  },
+  {
+    "term": "k0s",
+    "aliases": []
+  },
+  {
+    "term": "Talos Linux",
+    "aliases": [
+      "talos"
+    ]
+  },
+  {
+    "term": "MicroK8s",
+    "aliases": [
+      "microk8s"
+    ]
+  },
+  {
+    "term": "Amazon EKS",
+    "aliases": [
+      "eks"
+    ]
+  },
+  {
+    "term": "Google GKE",
+    "aliases": [
+      "gke"
+    ]
+  },
+  {
+    "term": "Azure AKS",
+    "aliases": [
+      "aks"
+    ]
+  },
+  {
+    "term": "kubectl",
+    "aliases": []
+  },
+  {
+    "term": "k9s",
+    "aliases": []
+  },
+  {
+    "term": "Lens",
+    "aliases": []
+  },
+  {
+    "term": "Kustomize",
+    "aliases": [
+      "кустомайз"
+    ]
+  },
+  {
+    "term": "Helmfile",
+    "aliases": []
+  },
+  {
+    "term": "Operator SDK",
+    "aliases": []
+  },
+  {
+    "term": "Kubebuilder",
+    "aliases": []
+  },
+  {
+    "term": "Knative",
+    "aliases": []
+  },
+  {
+    "term": "KEDA",
+    "aliases": []
+  },
+  {
+    "term": "Cilium",
+    "aliases": [
+      "силиум"
+    ]
+  },
+  {
+    "term": "Calico",
+    "aliases": []
+  },
+  {
+    "term": "Flannel",
+    "aliases": []
+  },
+  {
+    "term": "MetalLB",
+    "aliases": []
+  },
+  {
+    "term": "Traefik",
+    "aliases": []
+  },
+  {
+    "term": "Kong",
+    "aliases": []
+  },
+  {
+    "term": "Contour",
+    "aliases": []
+  },
+  {
+    "term": "Gateway API",
+    "aliases": []
+  },
+  {
+    "term": "Keepalived",
+    "aliases": []
+  },
+  {
+    "term": "Corosync",
+    "aliases": []
+  },
+  {
+    "term": "Pacemaker",
+    "aliases": []
+  },
+  {
+    "term": "systemd",
+    "aliases": [
+      "системд"
+    ]
+  },
+  {
+    "term": "cron",
+    "aliases": [
+      "крон"
+    ]
+  },
+  {
+    "term": "logrotate",
+    "aliases": []
+  },
+  {
+    "term": "rsyslog",
+    "aliases": []
+  },
+  {
+    "term": "journald",
+    "aliases": []
+  },
+  {
+    "term": "Fluent Bit",
+    "aliases": [
+      "fluent-bit",
+      "fluentbit"
+    ]
+  },
+  {
+    "term": "Fluentd",
+    "aliases": []
+  },
+  {
+    "term": "Vector",
+    "aliases": []
+  },
+  {
+    "term": "Filebeat",
+    "aliases": []
+  },
+  {
+    "term": "Telegraf",
+    "aliases": []
+  },
+  {
+    "term": "Node Exporter",
+    "aliases": [
+      "node-exporter"
+    ]
+  },
+  {
+    "term": "Blackbox Exporter",
+    "aliases": []
+  },
+  {
+    "term": "cAdvisor",
+    "aliases": []
+  },
+  {
+    "term": "kube-state-metrics",
+    "aliases": []
+  },
+  {
+    "term": "Pushgateway",
+    "aliases": []
+  },
+  {
+    "term": "Thanos",
+    "aliases": []
+  },
+  {
+    "term": "Cortex",
+    "aliases": []
+  },
+  {
+    "term": "Grafana Mimir",
+    "aliases": [
+      "mimir"
+    ]
+  },
+  {
+    "term": "Tempo",
+    "aliases": []
+  },
+  {
+    "term": "Zipkin",
+    "aliases": []
+  },
+  {
+    "term": "Datadog",
+    "aliases": [
+      "датадог"
+    ]
+  },
+  {
+    "term": "New Relic",
+    "aliases": [
+      "newrelic"
+    ]
+  },
+  {
+    "term": "Dynatrace",
+    "aliases": []
+  },
+  {
+    "term": "Splunk",
+    "aliases": [
+      "спланк"
+    ]
+  },
+  {
+    "term": "Graylog",
+    "aliases": []
+  },
+  {
+    "term": "OpenSearch",
+    "aliases": [
+      "open search"
+    ]
+  },
+  {
+    "term": "Nagios",
+    "aliases": [
+      "нагиос"
+    ]
+  },
+  {
+    "term": "Icinga",
+    "aliases": []
+  },
+  {
+    "term": "Sensu",
+    "aliases": []
+  },
+  {
+    "term": "PagerDuty",
+    "aliases": [
+      "пейджердьюти"
+    ]
+  },
+  {
+    "term": "Opsgenie",
+    "aliases": []
+  },
+  {
+    "term": "Statuspage",
+    "aliases": []
+  },
+  {
+    "term": "Better Stack",
+    "aliases": []
+  },
+  {
+    "term": "Uptime Kuma",
+    "aliases": [
+      "uptime-kuma"
+    ]
+  },
+  {
+    "term": "Gatus",
+    "aliases": []
+  },
+  {
+    "term": "Healthchecks",
+    "aliases": []
+  },
+  {
+    "term": "Sentry",
+    "aliases": [
+      "сентри"
+    ]
+  },
+  {
+    "term": "Bugsnag",
+    "aliases": []
+  },
+  {
+    "term": "Rollbar",
+    "aliases": []
+  },
+  {
+    "term": "GlitchTip",
+    "aliases": []
+  },
+  {
+    "term": "Ubuntu",
+    "aliases": [
+      "убунту"
+    ]
+  },
+  {
+    "term": "Debian",
+    "aliases": [
+      "дебиан"
+    ]
+  },
+  {
+    "term": "CentOS",
+    "aliases": [
+      "центос"
+    ]
+  },
+  {
+    "term": "RHEL",
+    "aliases": [
+      "red hat enterprise linux",
+      "redhat"
+    ]
+  },
+  {
+    "term": "Rocky Linux",
+    "aliases": [
+      "rocky"
+    ]
+  },
+  {
+    "term": "AlmaLinux",
+    "aliases": [
+      "alma"
+    ]
+  },
+  {
+    "term": "Fedora",
+    "aliases": []
+  },
+  {
+    "term": "Alpine Linux",
+    "aliases": [
+      "alpine"
+    ]
+  },
+  {
+    "term": "Amazon Linux",
+    "aliases": []
+  },
+  {
+    "term": "Windows Server",
+    "aliases": []
+  },
+  {
+    "term": "FreeBSD",
+    "aliases": []
+  },
+  {
+    "term": "SELinux",
+    "aliases": []
+  },
+  {
+    "term": "AppArmor",
+    "aliases": []
+  },
+  {
+    "term": "iptables",
+    "aliases": []
+  },
+  {
+    "term": "nftables",
+    "aliases": []
+  },
+  {
+    "term": "firewalld",
+    "aliases": []
+  },
+  {
+    "term": "UFW",
+    "aliases": []
+  },
+  {
+    "term": "eBPF",
+    "aliases": []
+  },
+  {
+    "term": "BGP",
+    "aliases": []
+  },
+  {
+    "term": "OSPF",
+    "aliases": []
+  },
+  {
+    "term": "VLAN",
+    "aliases": []
+  },
+  {
+    "term": "VXLAN",
+    "aliases": []
+  },
+  {
+    "term": "SDN",
+    "aliases": []
+  },
+  {
+    "term": "Anycast",
+    "aliases": []
+  },
+  {
+    "term": "CDN",
+    "aliases": []
+  },
+  {
+    "term": "PowerDNS",
+    "aliases": []
+  },
+  {
+    "term": "BIND",
+    "aliases": []
+  },
+  {
+    "term": "CoreDNS",
+    "aliases": []
+  },
+  {
+    "term": "dnsmasq",
+    "aliases": []
+  },
+  {
+    "term": "Unbound",
+    "aliases": []
+  },
+  {
+    "term": "Pi-hole",
+    "aliases": []
+  },
+  {
+    "term": "AdGuard Home",
+    "aliases": []
+  },
+  {
+    "term": "WireGuard",
+    "aliases": [
+      "вайргард"
+    ]
+  },
+  {
+    "term": "OpenVPN",
+    "aliases": []
+  },
+  {
+    "term": "IPSec",
+    "aliases": []
+  },
+  {
+    "term": "Zero Trust",
+    "aliases": [
+      "zero-trust",
+      "нулевое доверие",
+      "нулевого доверия"
+    ]
+  },
+  {
+    "term": "Bastion",
+    "aliases": [
+      "бастион"
+    ]
+  },
+  {
+    "term": "Jump host",
+    "aliases": [
+      "jump-host",
+      "джамп хост"
+    ]
+  },
+  {
+    "term": "SSH",
+    "aliases": []
+  },
+  {
+    "term": "rsync",
+    "aliases": []
+  },
+  {
+    "term": "NFS",
+    "aliases": []
+  },
+  {
+    "term": "SMB",
+    "aliases": []
+  },
+  {
+    "term": "iSCSI",
+    "aliases": []
+  },
+  {
+    "term": "RAID",
+    "aliases": []
+  },
+  {
+    "term": "LVM",
+    "aliases": []
+  },
+  {
+    "term": "ZFS",
+    "aliases": []
+  },
+  {
+    "term": "Btrfs",
+    "aliases": []
+  },
+  {
+    "term": "XFS",
+    "aliases": []
+  },
+  {
+    "term": "ext4",
+    "aliases": []
+  },
+  {
+    "term": "mdadm",
+    "aliases": []
+  },
+  {
+    "term": "GRUB",
+    "aliases": []
+  },
+  {
+    "term": "KVM",
+    "aliases": []
+  },
+  {
+    "term": "QEMU",
+    "aliases": []
+  },
+  {
+    "term": "Xen",
+    "aliases": []
+  },
+  {
+    "term": "Hyper-V",
+    "aliases": []
+  },
+  {
+    "term": "ESXi",
+    "aliases": []
+  },
+  {
+    "term": "Nutanix",
+    "aliases": []
+  },
+  {
+    "term": "Harvester",
+    "aliases": []
+  },
+  {
+    "term": "Longhorn",
+    "aliases": []
+  },
+  {
+    "term": "OpenEBS",
+    "aliases": []
+  },
+  {
+    "term": "Rook",
+    "aliases": []
+  },
+  {
+    "term": "Portworx",
+    "aliases": []
+  },
+  {
+    "term": "GlusterFS",
+    "aliases": []
+  },
+  {
+    "term": "SeaweedFS",
+    "aliases": []
+  },
+  {
+    "term": "Garage",
+    "aliases": []
+  },
+  {
+    "term": "Velero",
+    "aliases": []
+  },
+  {
+    "term": "Kasten",
+    "aliases": []
+  },
+  {
+    "term": "restic",
+    "aliases": []
+  },
+  {
+    "term": "Borg",
+    "aliases": []
+  },
+  {
+    "term": "Duplicity",
+    "aliases": []
+  },
+  {
+    "term": "Barman",
+    "aliases": []
+  },
+  {
+    "term": "pgBackRest",
+    "aliases": []
+  },
+  {
+    "term": "WAL-G",
+    "aliases": []
+  },
+  {
+    "term": "mysqldump",
+    "aliases": []
+  },
+  {
+    "term": "xtrabackup",
+    "aliases": []
+  },
+  {
+    "term": "MariaDB",
+    "aliases": []
+  },
+  {
+    "term": "Percona",
+    "aliases": []
+  },
+  {
+    "term": "CockroachDB",
+    "aliases": []
+  },
+  {
+    "term": "Cassandra",
+    "aliases": []
+  },
+  {
+    "term": "ScyllaDB",
+    "aliases": []
+  },
+  {
+    "term": "Neo4j",
+    "aliases": []
+  },
+  {
+    "term": "InfluxDB",
+    "aliases": []
+  },
+  {
+    "term": "TimescaleDB",
+    "aliases": []
+  },
+  {
+    "term": "QuestDB",
+    "aliases": []
+  },
+  {
+    "term": "NATS",
+    "aliases": []
+  },
+  {
+    "term": "Pulsar",
+    "aliases": []
+  },
+  {
+    "term": "ZooKeeper",
+    "aliases": []
+  },
+  {
+    "term": "ActiveMQ",
+    "aliases": []
+  },
+  {
+    "term": "Memcached",
+    "aliases": []
+  },
+  {
+    "term": "KeyDB",
+    "aliases": []
+  },
+  {
+    "term": "Dragonfly",
+    "aliases": []
+  },
+  {
+    "term": "Keycloak",
+    "aliases": [
+      "кейклок"
+    ]
+  },
+  {
+    "term": "Authentik",
+    "aliases": []
+  },
+  {
+    "term": "Ory",
+    "aliases": []
+  },
+  {
+    "term": "Teleport",
+    "aliases": []
+  },
+  {
+    "term": "Boundary",
+    "aliases": []
+  },
+  {
+    "term": "step-ca",
+    "aliases": []
+  },
+  {
+    "term": "SOPS",
+    "aliases": []
+  },
+  {
+    "term": "Sealed Secrets",
+    "aliases": []
+  },
+  {
+    "term": "External Secrets Operator",
+    "aliases": []
+  },
+  {
+    "term": "age",
+    "aliases": []
+  },
+  {
+    "term": "GPG",
+    "aliases": []
+  },
+  {
+    "term": "OpenSSL",
+    "aliases": []
+  },
+  {
+    "term": "certbot",
+    "aliases": []
+  },
+  {
+    "term": "acme.sh",
+    "aliases": []
+  },
+  {
+    "term": "cert-manager",
+    "aliases": []
+  },
+  {
+    "term": "Let's Encrypt",
+    "aliases": []
+  },
+  {
+    "term": "Docker Hub",
+    "aliases": []
+  },
+  {
+    "term": "Quay",
+    "aliases": []
+  },
+  {
+    "term": "GHCR",
+    "aliases": []
+  },
+  {
+    "term": "GCR",
+    "aliases": []
+  },
+  {
+    "term": "ECR",
+    "aliases": []
+  },
+  {
+    "term": "ACR",
+    "aliases": []
+  },
+  {
+    "term": "Artifactory",
+    "aliases": [
+      "jfrog artifactory"
+    ]
+  },
+  {
+    "term": "JFrog",
+    "aliases": []
+  },
+  {
+    "term": "Cloudsmith",
+    "aliases": []
+  },
+  {
+    "term": "Zot",
+    "aliases": []
+  },
+  {
+    "term": "Kubecost",
+    "aliases": []
+  },
+  {
+    "term": "OpenCost",
+    "aliases": []
+  },
+  {
+    "term": "CAST AI",
+    "aliases": [
+      "castai"
+    ]
+  },
+  {
+    "term": "Terragrunt",
+    "aliases": []
+  },
+  {
+    "term": "Atlantis",
+    "aliases": []
+  },
+  {
+    "term": "Crossplane",
+    "aliases": []
+  },
+  {
+    "term": "Spacelift",
+    "aliases": []
+  },
+  {
+    "term": "env0",
+    "aliases": []
+  },
+  {
+    "term": "Scalr",
+    "aliases": []
+  },
+  {
+    "term": "Terraform Cloud",
+    "aliases": [
+      "hcp terraform"
+    ]
+  },
+  {
+    "term": "Packer",
+    "aliases": []
+  },
+  {
+    "term": "Vagrant",
+    "aliases": []
+  },
+  {
+    "term": "SaltStack",
+    "aliases": [
+      "salt"
+    ]
+  },
+  {
+    "term": "Chef",
+    "aliases": []
+  },
+  {
+    "term": "Puppet",
+    "aliases": [
+      "пупет"
+    ]
+  },
+  {
+    "term": "AWX",
+    "aliases": [
+      "ansible tower"
+    ]
+  },
+  {
+    "term": "Molecule",
+    "aliases": []
+  },
+  {
+    "term": "Testinfra",
+    "aliases": []
+  },
+  {
+    "term": "InSpec",
+    "aliases": []
+  },
+  {
+    "term": "ServerSpec",
+    "aliases": []
+  },
+  {
+    "term": "cloud-init",
+    "aliases": []
+  },
+  {
+    "term": "Ignition",
+    "aliases": []
+  },
+  {
+    "term": "Butane",
+    "aliases": []
+  },
+  {
+    "term": "Flatcar",
+    "aliases": []
+  },
+  {
+    "term": "Argo Rollouts",
+    "aliases": []
+  },
+  {
+    "term": "Argo Events",
+    "aliases": []
+  },
+  {
+    "term": "Flux CD",
+    "aliases": [
+      "fluxcd",
+      "flux"
+    ]
+  },
+  {
+    "term": "Tekton",
+    "aliases": []
+  },
+  {
+    "term": "Spinnaker",
+    "aliases": []
+  },
+  {
+    "term": "Dagger",
+    "aliases": []
+  },
+  {
+    "term": "Earthly",
+    "aliases": []
+  },
+  {
+    "term": "Bazel",
+    "aliases": []
+  },
+  {
+    "term": "Nx",
+    "aliases": []
+  },
+  {
+    "term": "Turborepo",
+    "aliases": []
+  },
+  {
+    "term": "Renovate",
+    "aliases": []
+  },
+  {
+    "term": "Dependabot",
+    "aliases": []
+  },
+  {
+    "term": "Mergify",
+    "aliases": []
+  },
+  {
+    "term": "pre-commit",
+    "aliases": []
+  },
+  {
+    "term": "Husky",
+    "aliases": []
+  },
+  {
+    "term": "semantic-release",
+    "aliases": []
+  },
+  {
+    "term": "GoReleaser",
+    "aliases": []
+  },
+  {
+    "term": "Changesets",
+    "aliases": []
+  },
+  {
+    "term": "release-please",
+    "aliases": []
+  },
+  {
+    "term": "Backstage",
+    "aliases": []
+  },
+  {
+    "term": "Port",
+    "aliases": []
+  },
+  {
+    "term": "OpsLevel",
+    "aliases": []
+  },
+  {
+    "term": "Azure DevOps",
+    "aliases": [
+      "ado"
+    ]
+  },
+  {
+    "term": "Azure Pipelines",
+    "aliases": []
+  },
+  {
+    "term": "CircleCI",
+    "aliases": [
+      "circle ci"
+    ]
+  },
+  {
+    "term": "Travis CI",
+    "aliases": []
+  },
+  {
+    "term": "Drone CI",
+    "aliases": []
+  },
+  {
+    "term": "Buildkite",
+    "aliases": []
+  },
+  {
+    "term": "Jenkins X",
+    "aliases": []
+  },
+  {
+    "term": "Bamboo",
+    "aliases": []
+  },
+  {
+    "term": "Bitbucket Pipelines",
+    "aliases": []
+  },
+  {
+    "term": "Octopus Deploy",
+    "aliases": []
+  },
+  {
+    "term": "GoCD",
+    "aliases": []
+  },
+  {
+    "term": "Concourse",
+    "aliases": []
+  },
+  {
+    "term": "Semaphore CI",
+    "aliases": []
+  },
+  {
+    "term": "Harness",
+    "aliases": []
+  },
+  {
+    "term": "Act",
+    "aliases": [
+      "nektos act"
+    ]
+  },
+  {
+    "term": "AWS",
+    "aliases": [
+      "амазон",
+      "amazon web services",
+      "aws cloud"
+    ]
+  },
+  {
+    "term": "Azure",
+    "aliases": [
+      "microsoft azure"
+    ]
+  },
+  {
+    "term": "GCP",
+    "aliases": [
+      "google cloud",
+      "гугл клауд"
+    ]
+  },
+  {
+    "term": "Yandex Cloud",
+    "aliases": [
+      "яндекс облако"
+    ]
+  },
+  {
+    "term": "VK Cloud",
+    "aliases": [
+      "vk cloud",
+      "mail.ru cloud",
+      "mcs"
+    ]
+  },
+  {
+    "term": "Selectel",
+    "aliases": [
+      "селектел"
+    ]
+  },
+  {
+    "term": "Cloud.ru",
+    "aliases": [
+      "sbercloud",
+      "sber cloud"
+    ]
+  },
+  {
+    "term": "MTS Cloud",
+    "aliases": [
+      "mts cloud"
+    ]
+  },
+  {
+    "term": "OpenStack",
+    "aliases": [
+      "опенстек"
+    ]
+  },
+  {
+    "term": "Alibaba Cloud",
+    "aliases": [
+      "alibaba"
+    ]
+  },
+  {
+    "term": "Oracle Cloud",
+    "aliases": [
+      "oci"
+    ]
+  },
+  {
+    "term": "IBM Cloud",
+    "aliases": []
+  },
+  {
+    "term": "Hetzner",
+    "aliases": [
+      "хетцнер"
+    ]
+  },
+  {
+    "term": "DigitalOcean",
+    "aliases": [
+      "digital ocean"
+    ]
+  },
+  {
+    "term": "Linode",
+    "aliases": [
+      "akamai"
+    ]
+  },
+  {
+    "term": "Vultr",
+    "aliases": []
+  },
+  {
+    "term": "Scaleway",
+    "aliases": []
+  },
+  {
+    "term": "OVHcloud",
+    "aliases": [
+      "ovh"
+    ]
+  },
+  {
+    "term": "Cloudflare R2",
+    "aliases": [
+      "r2"
+    ]
+  },
+  {
+    "term": "Backblaze B2",
+    "aliases": [
+      "b2"
+    ]
+  },
+  {
+    "term": "Wasabi",
+    "aliases": []
+  },
+  {
+    "term": "AWS Lambda",
+    "aliases": [
+      "lambda"
+    ]
+  },
+  {
+    "term": "Google Cloud Run",
+    "aliases": [
+      "cloud run"
+    ]
+  },
+  {
+    "term": "Azure Functions",
+    "aliases": []
+  },
+  {
+    "term": "ECS",
+    "aliases": []
+  },
+  {
+    "term": "Fargate",
+    "aliases": []
+  },
+  {
+    "term": "CloudFormation",
+    "aliases": [
+      "cfn"
+    ]
+  },
+  {
+    "term": "AWS CDK",
+    "aliases": [
+      "cdk"
+    ]
+  },
+  {
+    "term": "CDKTF",
+    "aliases": []
+  },
+  {
+    "term": "Bicep",
+    "aliases": []
+  },
+  {
+    "term": "ARM templates",
+    "aliases": []
+  },
+  {
+    "term": "EBS",
+    "aliases": []
+  },
+  {
+    "term": "EFS",
+    "aliases": []
+  },
+  {
+    "term": "Route 53",
+    "aliases": [
+      "route53"
+    ]
+  },
+  {
+    "term": "CloudFront",
+    "aliases": []
+  },
+  {
+    "term": "SQS",
+    "aliases": []
+  },
+  {
+    "term": "SNS",
+    "aliases": []
+  },
+  {
+    "term": "RDS",
+    "aliases": []
+  },
+  {
+    "term": "DynamoDB",
+    "aliases": []
+  },
+  {
+    "term": "ElastiCache",
+    "aliases": []
+  },
+  {
+    "term": "CloudWatch",
+    "aliases": []
+  },
+  {
+    "term": "CloudTrail",
+    "aliases": []
+  },
+  {
+    "term": "KMS",
+    "aliases": []
+  },
+  {
+    "term": "Secrets Manager",
+    "aliases": []
+  },
+  {
+    "term": "Systems Manager",
+    "aliases": [
+      "ssm"
+    ]
+  },
+  {
+    "term": "AWS Organizations",
+    "aliases": []
+  },
+  {
+    "term": "Control Tower",
+    "aliases": []
+  },
+  {
+    "term": "Cost Explorer",
+    "aliases": []
+  },
+  {
+    "term": "Savings Plans",
+    "aliases": []
+  },
+  {
+    "term": "Reserved Instances",
+    "aliases": []
+  },
+  {
+    "term": "Spot Instances",
+    "aliases": []
+  },
+  {
+    "term": "Graviton",
+    "aliases": []
+  },
+  {
+    "term": "ARM64",
+    "aliases": []
+  },
+  {
+    "term": "x86",
+    "aliases": []
+  },
+  {
+    "term": "amd64",
+    "aliases": []
+  },
+  {
+    "term": "Cloudflare Tunnel",
+    "aliases": [
+      "cloudflared"
+    ]
+  },
+  {
+    "term": "Cloudflare Workers",
+    "aliases": []
+  },
+  {
+    "term": "ngrok",
+    "aliases": []
+  },
+  {
+    "term": "Fly.io",
+    "aliases": []
+  },
+  {
+    "term": "Railway",
+    "aliases": []
+  },
+  {
+    "term": "Render",
+    "aliases": []
+  },
+  {
+    "term": "Vercel",
+    "aliases": []
+  },
+  {
+    "term": "Netlify",
+    "aliases": []
+  },
+  {
+    "term": "Supabase",
+    "aliases": []
+  },
+  {
+    "term": "Neon",
+    "aliases": []
+  },
+  {
+    "term": "PlanetScale",
+    "aliases": []
+  },
+  {
+    "term": "Turso",
+    "aliases": []
+  },
+  {
+    "term": "Upstash",
+    "aliases": []
+  },
+  {
+    "term": "Pulumi ESC",
+    "aliases": []
+  },
+  {
+    "term": "Scaleway Elements",
+    "aliases": []
+  },
+  {
+    "term": "Nobl9",
+    "aliases": []
+  },
+  {
+    "term": "Sloth",
+    "aliases": []
+  },
+  {
+    "term": "Pyrra",
+    "aliases": []
+  },
+  {
+    "term": "OpenSLO",
+    "aliases": []
+  },
+  {
+    "term": "Keptn",
+    "aliases": []
+  },
+  {
+    "term": "KubeVela",
+    "aliases": []
+  },
+  {
+    "term": "Crossplane Compositions",
+    "aliases": []
+  },
+  {
+    "term": "Flux Operator",
+    "aliases": []
+  },
+  {
+    "term": "Argo CD Image Updater",
+    "aliases": []
+  },
+  {
+    "term": "Kargo",
+    "aliases": []
+  },
+  {
+    "term": "Kratix",
+    "aliases": []
+  },
+  {
+    "term": "Humanitec",
+    "aliases": []
+  },
+  {
+    "term": "Mia Platform",
+    "aliases": []
+  },
+  {
+    "term": "DevSpace",
+    "aliases": []
+  },
+  {
+    "term": "Garden",
+    "aliases": []
+  },
+  {
+    "term": "Tilt",
+    "aliases": []
+  },
+  {
+    "term": "Skaffold",
+    "aliases": []
+  },
+  {
+    "term": "Telepresence",
+    "aliases": []
+  },
+  {
+    "term": "Okteto",
+    "aliases": []
+  },
+  {
+    "term": "Gitpod",
+    "aliases": []
+  },
+  {
+    "term": "Coder",
+    "aliases": []
+  },
+  {
+    "term": "DevContainer",
+    "aliases": []
+  },
+  {
+    "term": "Nix",
+    "aliases": []
+  },
+  {
+    "term": "NixOS",
+    "aliases": []
+  },
+  {
+    "term": "Devbox",
+    "aliases": []
+  },
+  {
+    "term": "Mise",
+    "aliases": []
+  },
+  {
+    "term": "asdf",
+    "aliases": []
+  },
+  {
+    "term": "aqua",
+    "aliases": []
+  },
+  {
+    "term": "proto",
+    "aliases": []
+  },
+  {
+    "term": "Homebrew",
+    "aliases": []
+  },
+  {
+    "term": "Chocolatey",
+    "aliases": []
+  },
+  {
+    "term": "Winget",
+    "aliases": []
+  },
+  {
+    "term": "Scoop",
+    "aliases": []
+  },
+  {
+    "term": "Ansible Collections",
+    "aliases": []
+  },
+  {
+    "term": "Ansible Galaxy",
+    "aliases": []
+  },
+  {
+    "term": "Helm OCI",
+    "aliases": []
+  },
+  {
+    "term": "OCI registry",
+    "aliases": []
+  },
+  {
+    "term": "Cosign",
+    "aliases": [
+      "cosign"
+    ]
+  },
+  {
+    "term": "Sigstore",
+    "aliases": []
+  },
+  {
+    "term": "SLSA",
+    "aliases": []
+  },
+  {
+    "term": "in-toto",
+    "aliases": []
+  },
+  {
+    "term": "Syft",
+    "aliases": []
+  },
+  {
+    "term": "Grype",
+    "aliases": []
+  },
+  {
+    "term": "Trivy",
+    "aliases": []
+  },
+  {
+    "term": "Checkov",
+    "aliases": []
+  },
+  {
+    "term": "tfsec",
+    "aliases": []
+  },
+  {
+    "term": "KICS",
+    "aliases": []
+  },
+  {
+    "term": "Conftest",
+    "aliases": []
+  },
+  {
+    "term": "OPA",
+    "aliases": [
+      "open policy agent"
+    ]
+  },
+  {
+    "term": "Gatekeeper",
+    "aliases": []
+  },
+  {
+    "term": "Kyverno",
+    "aliases": []
+  },
+  {
+    "term": "Polaris",
+    "aliases": []
+  },
+  {
+    "term": "kube-bench",
+    "aliases": []
+  },
+  {
+    "term": "kube-hunter",
+    "aliases": []
+  },
+  {
+    "term": "Kubescape",
+    "aliases": []
+  },
+  {
+    "term": "Travis CI Enterprise",
+    "aliases": []
+  },
+  {
+    "term": "Team Foundation Server",
+    "aliases": [
+      "tfs"
+    ]
+  },
+  {
+    "term": "Visual Studio Team Services",
+    "aliases": [
+      "vsts"
+    ]
+  },
+  {
+    "term": "IBM UrbanCode Deploy",
+    "aliases": []
+  },
+  {
+    "term": "CA Release Automation",
+    "aliases": []
+  },
+  {
+    "term": "ElectricFlow",
+    "aliases": []
+  },
+  {
+    "term": "Rundeck",
+    "aliases": []
+  },
+  {
+    "term": "Jenkins Shared Library",
+    "aliases": []
+  },
+  {
+    "term": "Salt Cloud",
+    "aliases": []
+  },
+  {
+    "term": "Foreman",
+    "aliases": []
+  },
+  {
+    "term": "Cobbler",
+    "aliases": []
+  },
+  {
+    "term": "Spacewalk",
+    "aliases": []
+  },
+  {
+    "term": "Satellite",
+    "aliases": []
+  },
+  {
+    "term": "Puppet Enterprise",
+    "aliases": []
+  },
+  {
+    "term": "Chef Infra Server",
+    "aliases": []
+  },
+  {
+    "term": "Munin",
+    "aliases": []
+  },
+  {
+    "term": "Cacti",
+    "aliases": []
+  },
+  {
+    "term": "Graphite",
+    "aliases": []
+  },
+  {
+    "term": "StatsD",
+    "aliases": []
+  },
+  {
+    "term": "Smokeping",
+    "aliases": []
+  },
+  {
+    "term": "Observium",
+    "aliases": []
+  },
+  {
+    "term": "LibreNMS",
+    "aliases": []
+  },
+  {
+    "term": "OpenNMS",
+    "aliases": []
+  },
+  {
+    "term": "Zenoss",
+    "aliases": []
+  },
+  {
+    "term": "NetData",
+    "aliases": []
+  },
+  {
+    "term": "Collectd",
+    "aliases": []
+  },
+  {
+    "term": "Logstash Forwarder",
+    "aliases": []
+  },
+  {
+    "term": "Syslog-ng",
+    "aliases": []
+  },
+  {
+    "term": "Loggly",
+    "aliases": []
+  },
+  {
+    "term": "Papertrail",
+    "aliases": []
+  },
+  {
+    "term": "Sumo Logic",
+    "aliases": []
+  },
+  {
+    "term": "LogicMonitor",
+    "aliases": []
+  },
+  {
+    "term": "AppDynamics",
+    "aliases": []
+  },
+  {
+    "term": "Docker Machine",
+    "aliases": []
+  },
+  {
+    "term": "Docker Toolchain",
+    "aliases": []
+  },
+  {
+    "term": "HashiCorp Packer Legacy",
+    "aliases": []
+  },
+  {
+    "term": "Vagrant Cloud",
+    "aliases": []
+  },
+  {
+    "term": "Bazaar",
+    "aliases": []
+  },
+  {
+    "term": "Subversion",
+    "aliases": [
+      "svn"
+    ]
+  },
+  {
+    "term": "Mercurial",
+    "aliases": []
+  },
+  {
+    "term": "Perforce",
+    "aliases": []
+  },
+  {
+    "term": "CVS",
+    "aliases": []
+  },
+  {
+    "term": "Puppet 3",
+    "aliases": []
+  },
+  {
+    "term": "Chef Solo",
+    "aliases": []
+  },
+  {
+    "term": "CFEngine",
+    "aliases": []
+  },
+  {
+    "term": "Jenkins 1.x",
+    "aliases": []
+  },
+  {
+    "term": "Hudson",
+    "aliases": []
+  },
+  {
+    "term": "CruiseControl",
+    "aliases": []
+  },
+  {
+    "term": "Microsoft System Center",
+    "aliases": []
+  },
+  {
+    "term": "HP Operations Manager",
+    "aliases": []
+  },
+  {
+    "term": "BMC Patrol",
+    "aliases": []
+  },
+  {
+    "term": "Tivoli Monitoring",
+    "aliases": []
+  },
+  {
+    "term": "Nagios Core 3",
+    "aliases": []
+  },
+  {
+    "term": "Ganglia",
+    "aliases": []
+  },
+  {
+    "term": "RRDtool",
+    "aliases": []
+  },
+  {
+    "term": "MRTG",
+    "aliases": []
+  },
+  {
+    "term": "Icinga 1",
+    "aliases": []
+  },
+  {
+    "term": "OpenVZ",
+    "aliases": []
+  },
+  {
+    "term": "XenServer",
+    "aliases": []
+  },
+  {
+    "term": "Solaris Zones",
+    "aliases": []
+  },
+  {
+    "term": "AIX",
+    "aliases": []
+  },
+  {
+    "term": "HP-UX",
+    "aliases": []
+  },
+  {
+    "term": "IBM PowerVM",
+    "aliases": []
+  },
+  {
+    "term": "Windows Server 2008",
+    "aliases": []
+  },
+  {
+    "term": "Platform engineering",
+    "aliases": [
+      "platform engineering",
+      "платформенная инженерия"
+    ]
+  },
+  {
+    "term": "Internal Developer Platform",
+    "aliases": [
+      "idp",
+      "внутренняя платформа разработчика"
+    ]
+  },
+  {
+    "term": "Golden path",
+    "aliases": [
+      "golden path"
+    ]
+  },
+  {
+    "term": "Self-service platform",
+    "aliases": []
+  },
+  {
+    "term": "Developer experience",
+    "aliases": [
+      "dx",
+      "devex"
+    ]
+  },
+  {
+    "term": "DORA metrics",
+    "aliases": [
+      "dora"
+    ]
+  },
+  {
+    "term": "Lead time for changes",
+    "aliases": [
+      "lead time"
+    ]
+  },
+  {
+    "term": "Deployment frequency",
+    "aliases": []
+  },
+  {
+    "term": "Change failure rate",
+    "aliases": []
+  },
+  {
+    "term": "MTTR",
+    "aliases": []
+  },
+  {
+    "term": "MTBF",
+    "aliases": []
+  },
+  {
+    "term": "Toil",
+    "aliases": [
+      "тойл"
+    ]
+  },
+  {
+    "term": "Runbook",
+    "aliases": [
+      "ранбук"
+    ]
+  },
+  {
+    "term": "Playbook",
+    "aliases": [
+      "плейбук"
+    ]
+  },
+  {
+    "term": "On-call",
+    "aliases": [
+      "oncall"
+    ]
+  },
+  {
+    "term": "On-call rotation",
+    "aliases": []
+  },
+  {
+    "term": "Error budget",
+    "aliases": [
+      "error budget"
+    ]
+  },
+  {
+    "term": "Game day",
+    "aliases": []
+  },
+  {
+    "term": "Resilience",
+    "aliases": [
+      "resilience"
+    ]
+  },
+  {
+    "term": "Fault tolerance",
+    "aliases": [
+      "fault-tolerance",
+      "отказоустойчивость сервиса"
+    ]
+  },
+  {
+    "term": "Capacity planning",
+    "aliases": []
+  },
+  {
+    "term": "Load testing",
+    "aliases": [
+      "нагрузочное тестирование"
+    ]
+  },
+  {
+    "term": "k6",
+    "aliases": []
+  },
+  {
+    "term": "JMeter",
+    "aliases": []
+  },
+  {
+    "term": "Gatling",
+    "aliases": []
+  },
+  {
+    "term": "Locust",
+    "aliases": []
+  },
+  {
+    "term": "Vegeta",
+    "aliases": []
+  },
+  {
+    "term": "wrk",
+    "aliases": []
+  },
+  {
+    "term": "hey",
+    "aliases": []
+  },
+  {
+    "term": "Smoke testing",
+    "aliases": []
+  },
+  {
+    "term": "Rolling update",
+    "aliases": []
+  },
+  {
+    "term": "Progressive delivery",
+    "aliases": []
+  },
+  {
+    "term": "Dark launch",
+    "aliases": []
+  },
+  {
+    "term": "A/B testing",
+    "aliases": [
+      "ab testing"
+    ]
+  },
+  {
+    "term": "Immutable infrastructure",
+    "aliases": [
+      "immutable infra"
+    ]
+  },
+  {
+    "term": "Cattle not pets",
+    "aliases": []
+  },
+  {
+    "term": "Configuration drift",
+    "aliases": [
+      "drift"
+    ]
+  },
+  {
+    "term": "Idempotency",
+    "aliases": [
+      "идемпотентность"
+    ]
+  },
+  {
+    "term": "Declarative infrastructure",
+    "aliases": []
+  },
+  {
+    "term": "Configuration management",
+    "aliases": [
+      "управление конфигурацией"
+    ]
+  },
+  {
+    "term": "Provisioning",
+    "aliases": [
+      "провижининг"
+    ]
+  },
+  {
+    "term": "Bootstrapping",
+    "aliases": []
+  },
+  {
+    "term": "Golden image",
+    "aliases": []
+  },
+  {
+    "term": "Image hardening",
+    "aliases": []
+  },
+  {
+    "term": "Patch management",
+    "aliases": []
+  },
+  {
+    "term": "Vulnerability management",
+    "aliases": []
+  },
+  {
+    "term": "Zero downtime",
+    "aliases": []
+  },
+  {
+    "term": "Deployment pipeline",
+    "aliases": []
+  },
+  {
+    "term": "Release train",
+    "aliases": []
+  },
+  {
+    "term": "Release management",
+    "aliases": []
+  },
+  {
+    "term": "Change management",
+    "aliases": []
+  },
+  {
+    "term": "ITIL",
+    "aliases": []
+  },
+  {
+    "term": "CMDB",
+    "aliases": []
+  },
+  {
+    "term": "ServiceNow",
+    "aliases": []
+  },
+  {
+    "term": "Asset management",
+    "aliases": []
+  },
+  {
+    "term": "License management",
+    "aliases": []
+  },
+  {
+    "term": "Tagging strategy",
+    "aliases": []
+  },
+  {
+    "term": "Showback",
+    "aliases": []
+  },
+  {
+    "term": "Chargeback",
+    "aliases": []
+  },
+  {
+    "term": "Unit economics",
+    "aliases": []
+  },
+  {
+    "term": "TCO",
+    "aliases": []
+  },
+  {
+    "term": "Cloud spend",
+    "aliases": []
+  },
+  {
+    "term": "Lift and shift",
+    "aliases": []
+  },
+  {
+    "term": "Re-platforming",
+    "aliases": []
+  },
+  {
+    "term": "Re-architecture",
+    "aliases": []
+  },
+  {
+    "term": "Landing zone",
+    "aliases": []
+  },
+  {
+    "term": "Well-Architected Framework",
+    "aliases": []
+  },
+  {
+    "term": "Hybrid cloud",
+    "aliases": []
+  },
+  {
+    "term": "Multi-cloud",
+    "aliases": []
+  },
+  {
+    "term": "On-premise",
+    "aliases": [
+      "on-prem",
+      "онпрем"
+    ]
+  },
+  {
+    "term": "Air-gapped",
+    "aliases": [
+      "air gap"
+    ]
+  },
+  {
+    "term": "Edge computing",
+    "aliases": []
+  },
+  {
+    "term": "Microservices",
+    "aliases": [
+      "микросервисы"
+    ]
+  },
+  {
+    "term": "Monolith",
+    "aliases": [
+      "монолит"
+    ]
+  },
+  {
+    "term": "API gateway",
+    "aliases": []
+  },
+  {
+    "term": "Service discovery",
+    "aliases": []
+  },
+  {
+    "term": "Reverse proxy",
+    "aliases": []
+  },
+  {
+    "term": "Forward proxy",
+    "aliases": []
+  },
+  {
+    "term": "SSL termination",
+    "aliases": []
+  },
+  {
+    "term": "TLS termination",
+    "aliases": []
+  },
+  {
+    "term": "HTTP/2",
+    "aliases": []
+  },
+  {
+    "term": "HTTP/3",
+    "aliases": []
+  },
+  {
+    "term": "QUIC",
+    "aliases": []
+  },
+  {
+    "term": "WebSocket",
+    "aliases": []
+  },
+  {
+    "term": "gRPC",
+    "aliases": []
+  },
+  {
+    "term": "REST",
+    "aliases": []
+  },
+  {
+    "term": "GraphQL",
+    "aliases": []
+  },
+  {
+    "term": "OpenAPI",
+    "aliases": []
+  },
+  {
+    "term": "Swagger",
+    "aliases": []
+  },
+  {
+    "term": "Postman",
+    "aliases": []
+  },
+  {
+    "term": "Insomnia",
+    "aliases": []
+  },
+  {
+    "term": "jq",
+    "aliases": []
+  },
+  {
+    "term": "yq",
+    "aliases": []
+  },
+  {
+    "term": "sed",
+    "aliases": []
+  },
+  {
+    "term": "awk",
+    "aliases": []
+  },
+  {
+    "term": "grep",
+    "aliases": []
+  },
+  {
+    "term": "vim",
+    "aliases": []
+  },
+  {
+    "term": "Neovim",
+    "aliases": []
+  },
+  {
+    "term": "tmux",
+    "aliases": []
+  },
+  {
+    "term": "screen",
+    "aliases": []
+  },
+  {
+    "term": "htop",
+    "aliases": []
+  },
+  {
+    "term": "btop",
+    "aliases": []
+  },
+  {
+    "term": "iotop",
+    "aliases": []
+  },
+  {
+    "term": "strace",
+    "aliases": []
+  },
+  {
+    "term": "perf",
+    "aliases": []
+  },
+  {
+    "term": "tcpdump",
+    "aliases": []
+  },
+  {
+    "term": "Wireshark",
+    "aliases": []
+  },
+  {
+    "term": "nmap",
+    "aliases": []
+  },
+  {
+    "term": "netcat",
+    "aliases": []
+  },
+  {
+    "term": "socat",
+    "aliases": []
+  },
+  {
+    "term": "dig",
+    "aliases": []
+  },
+  {
+    "term": "nslookup",
+    "aliases": []
+  },
+  {
+    "term": "traceroute",
+    "aliases": []
+  },
+  {
+    "term": "mtr",
+    "aliases": []
+  },
+  {
+    "term": "ping",
+    "aliases": []
+  },
+  {
+    "term": "iperf",
+    "aliases": []
+  },
+  {
+    "term": "ss",
+    "aliases": []
+  },
+  {
+    "term": "lsof",
+    "aliases": []
+  },
+  {
+    "term": "dmesg",
+    "aliases": []
+  },
+  {
+    "term": "journalctl",
+    "aliases": []
+  },
+  {
+    "term": "systemctl",
+    "aliases": []
+  },
+  {
+    "term": "Chaos engineering",
+    "aliases": [
+      "хаос-инжиниринг"
+    ]
+  },
+  {
+    "term": "Chaos Mesh",
+    "aliases": []
+  },
+  {
+    "term": "LitmusChaos",
+    "aliases": []
+  },
+  {
+    "term": "Gremlin",
+    "aliases": []
+  },
+  {
+    "term": "Circuit breaker",
+    "aliases": []
+  },
+  {
+    "term": "Rate limiting",
+    "aliases": []
+  },
+  {
+    "term": "Backpressure",
+    "aliases": []
+  },
+  {
+    "term": "Bulkhead",
+    "aliases": []
+  },
+  {
+    "term": "Timeout",
+    "aliases": []
+  },
+  {
+    "term": "Retry",
+    "aliases": []
+  },
+  {
+    "term": "Exponential backoff",
+    "aliases": []
+  },
+  {
+    "term": "Graceful degradation",
+    "aliases": []
+  },
+  {
+    "term": "Graceful shutdown",
+    "aliases": []
+  },
+  {
+    "term": "Shadow traffic",
+    "aliases": []
+  },
+  {
+    "term": "Traffic mirroring",
+    "aliases": []
+  },
+  {
+    "term": "Load shedding",
+    "aliases": []
+  },
+  {
+    "term": "Admission control",
+    "aliases": []
+  },
+  {
+    "term": "Vertical scaling",
+    "aliases": []
+  },
+  {
+    "term": "Horizontal scaling",
+    "aliases": []
+  },
+  {
+    "term": "Cluster autoscaler",
+    "aliases": []
+  },
+  {
+    "term": "VPA",
+    "aliases": []
+  },
+  {
+    "term": "PDB",
+    "aliases": []
+  },
+  {
+    "term": "ResourceQuota",
+    "aliases": []
+  },
+  {
+    "term": "LimitRange",
+    "aliases": []
+  },
+  {
+    "term": "NetworkPolicy",
+    "aliases": []
+  },
+  {
+    "term": "ServiceAccount",
+    "aliases": []
+  },
+  {
+    "term": "RBAC",
+    "aliases": []
+  },
+  {
+    "term": "CRD",
+    "aliases": []
+  },
+  {
+    "term": "Operator",
+    "aliases": []
+  },
+  {
+    "term": "Admission webhook",
+    "aliases": []
+  },
+  {
+    "term": "Sidecar",
+    "aliases": []
+  },
+  {
+    "term": "Init container",
+    "aliases": []
+  },
+  {
+    "term": "DaemonSet",
+    "aliases": []
+  },
+  {
+    "term": "StatefulSet",
+    "aliases": []
+  },
+  {
+    "term": "CronJob",
+    "aliases": []
+  },
+  {
+    "term": "ConfigMap",
+    "aliases": []
+  },
+  {
+    "term": "Secret",
+    "aliases": []
+  },
+  {
+    "term": "PersistentVolume",
+    "aliases": []
+  },
+  {
+    "term": "StorageClass",
+    "aliases": []
+  },
+  {
+    "term": "CNI",
+    "aliases": []
+  },
+  {
+    "term": "CSI",
+    "aliases": []
+  },
+  {
+    "term": "CRI",
+    "aliases": []
+  },
+  {
+    "term": "kubelet",
+    "aliases": []
+  },
+  {
+    "term": "kube-proxy",
+    "aliases": []
+  },
+  {
+    "term": "control plane",
+    "aliases": []
+  },
+  {
+    "term": "worker node",
+    "aliases": []
+  },
+  {
+    "term": "API server",
+    "aliases": []
+  },
+  {
+    "term": "scheduler",
+    "aliases": []
+  },
+  {
+    "term": "controller manager",
+    "aliases": []
+  },
+  {
+    "term": "ReplicaSet",
+    "aliases": []
+  },
+  {
+    "term": "Deployment",
+    "aliases": []
+  },
+  {
+    "term": "Service",
+    "aliases": []
+  },
+  {
+    "term": "Ingress",
+    "aliases": []
+  },
+  {
+    "term": "Namespace",
+    "aliases": []
+  },
+  {
+    "term": "Node affinity",
+    "aliases": []
+  },
+  {
+    "term": "Taint",
+    "aliases": []
+  },
+  {
+    "term": "Toleration",
+    "aliases": []
+  },
+  {
+    "term": "Liveness probe",
+    "aliases": []
+  },
+  {
+    "term": "Readiness probe",
+    "aliases": []
+  },
+  {
+    "term": "Startup probe",
+    "aliases": []
+  },
+  {
+    "term": "Pod disruption budget",
+    "aliases": []
+  },
+  {
+    "term": "Topology spread constraints",
+    "aliases": []
+  },
+  {
+    "term": "PriorityClass",
+    "aliases": []
+  },
+  {
+    "term": "QoS",
+    "aliases": []
+  },
+  {
+    "term": "Resource requests",
+    "aliases": []
+  },
+  {
+    "term": "Resource limits",
+    "aliases": []
+  },
+  {
+    "term": "kubeconfig",
+    "aliases": []
+  },
+  {
+    "term": "Helm chart",
+    "aliases": []
+  },
+  {
+    "term": "Helm release",
+    "aliases": []
+  },
+  {
+    "term": "Kustomization",
+    "aliases": []
+  },
+  {
+    "term": "GitOps repository",
+    "aliases": []
+  },
+  {
+    "term": "Environment promotion",
+    "aliases": []
+  },
+  {
+    "term": "Preview environment",
+    "aliases": []
+  },
+  {
+    "term": "Ephemeral environment",
+    "aliases": []
+  },
+  {
+    "term": "Staging",
+    "aliases": []
+  },
+  {
+    "term": "Production",
+    "aliases": []
+  },
+  {
+    "term": "Sandbox",
+    "aliases": []
+  },
+  {
+    "term": "Dev environment",
+    "aliases": []
+  },
+  {
+    "term": "Monorepo",
+    "aliases": []
+  },
+  {
+    "term": "Polyrepo",
+    "aliases": []
+  },
+  {
+    "term": "Branch",
+    "aliases": []
+  },
+  {
+    "term": "Merge request",
+    "aliases": []
+  },
+  {
+    "term": "Pull request",
+    "aliases": []
+  },
+  {
+    "term": "Code review",
+    "aliases": []
+  },
+  {
+    "term": "Code owners",
+    "aliases": []
+  },
+  {
+    "term": "Branch protection",
+    "aliases": []
+  },
+  {
+    "term": "Signed commits",
+    "aliases": []
+  },
+  {
+    "term": "Conventional commits",
+    "aliases": []
+  },
+  {
+    "term": "Semantic versioning",
+    "aliases": []
+  },
+  {
+    "term": "Changelog",
+    "aliases": []
+  },
+  {
+    "term": "Hotfix",
+    "aliases": []
+  },
+  {
+    "term": "Release notes",
+    "aliases": []
+  },
+  {
+    "term": "Artifact repository",
+    "aliases": []
+  },
+  {
+    "term": "Package registry",
+    "aliases": []
+  },
+  {
+    "term": "npm",
+    "aliases": []
+  },
+  {
+    "term": "pnpm",
+    "aliases": []
+  },
+  {
+    "term": "yarn",
+    "aliases": []
+  },
+  {
+    "term": "Maven",
+    "aliases": []
+  },
+  {
+    "term": "Gradle",
+    "aliases": []
+  },
+  {
+    "term": "NuGet",
+    "aliases": []
+  },
+  {
+    "term": "pip",
+    "aliases": []
+  },
+  {
+    "term": "Poetry",
+    "aliases": []
+  },
+  {
+    "term": "uv",
+    "aliases": []
+  },
+  {
+    "term": "Cargo",
+    "aliases": []
+  },
+  {
+    "term": "Go modules",
+    "aliases": []
+  },
+  {
+    "term": "Dockerfile",
+    "aliases": []
+  },
+  {
+    "term": "Multi-stage build",
+    "aliases": []
+  },
+  {
+    "term": "Layer caching",
+    "aliases": []
+  },
+  {
+    "term": "Image tag",
+    "aliases": []
+  },
+  {
+    "term": "Image digest",
+    "aliases": []
+  },
+  {
+    "term": "Registry mirror",
+    "aliases": []
+  },
+  {
+    "term": "Caching",
+    "aliases": []
+  },
+  {
+    "term": "Cache invalidation",
+    "aliases": []
+  },
+  {
+    "term": "Message queue",
+    "aliases": []
+  },
+  {
+    "term": "Event-driven",
+    "aliases": []
+  },
+  {
+    "term": "Pub/sub",
+    "aliases": []
+  },
+  {
+    "term": "Webhook",
+    "aliases": []
+  },
+  {
+    "term": "Sharding",
+    "aliases": []
+  },
+  {
+    "term": "Partitioning",
+    "aliases": []
+  },
+  {
+    "term": "Replication",
+    "aliases": []
+  },
+  {
+    "term": "Active-active",
+    "aliases": []
+  },
+  {
+    "term": "Active-passive",
+    "aliases": []
+  },
+  {
+    "term": "Failover",
+    "aliases": []
+  },
+  {
+    "term": "Geo-redundancy",
+    "aliases": []
+  },
+  {
+    "term": "DR drill",
+    "aliases": []
+  },
+  {
+    "term": "Disaster recovery plan",
+    "aliases": []
+  },
+  {
+    "term": "Snapshots",
+    "aliases": []
+  },
+  {
+    "term": "Hypervisor",
+    "aliases": []
+  },
+  {
+    "term": "Virtual machine",
+    "aliases": []
+  },
+  {
+    "term": "Containerization",
+    "aliases": []
+  },
+  {
+    "term": "Container runtime",
+    "aliases": []
+  },
+  {
+    "term": "Orchestration",
+    "aliases": []
+  },
+  {
+    "term": "Cluster",
+    "aliases": []
+  },
+  {
+    "term": "Node pool",
+    "aliases": []
+  },
+  {
+    "term": "Control plane node",
+    "aliases": []
+  },
+  {
+    "term": "Bare-metal cluster",
+    "aliases": []
+  },
+  {
+    "term": "Self-hosted runner",
+    "aliases": []
+  },
+  {
+    "term": "Hosted runner",
+    "aliases": []
+  },
+  {
+    "term": "Runner",
+    "aliases": []
+  },
+  {
+    "term": "Pipeline",
+    "aliases": []
+  },
+  {
+    "term": "Pipeline as code",
+    "aliases": []
+  },
+  {
+    "term": "Build pipeline",
+    "aliases": []
+  },
+  {
+    "term": "Deploy pipeline",
+    "aliases": []
+  },
+  {
+    "term": "Continuous deployment",
+    "aliases": []
+  },
+  {
+    "term": "Delivery pipeline",
+    "aliases": []
+  },
+  {
+    "term": "Value stream",
+    "aliases": []
+  },
+  {
+    "term": "Value stream mapping",
+    "aliases": []
+  },
+  {
+    "term": "Deployment window",
+    "aliases": []
+  },
+  {
+    "term": "Maintenance window",
+    "aliases": []
+  },
+  {
+    "term": "Downtime",
+    "aliases": []
+  },
+  {
+    "term": "Uptime",
+    "aliases": []
+  },
+  {
+    "term": "Availability zone",
+    "aliases": []
+  },
+  {
+    "term": "Region",
+    "aliases": []
+  },
+  {
+    "term": "Latency",
+    "aliases": []
+  },
+  {
+    "term": "Throughput",
+    "aliases": []
+  },
+  {
+    "term": "p95",
+    "aliases": []
+  },
+  {
+    "term": "p99",
+    "aliases": []
+  },
+  {
+    "term": "Tail latency",
+    "aliases": []
+  },
+  {
+    "term": "Saturation",
+    "aliases": []
+  },
+  {
+    "term": "Utilization",
+    "aliases": []
+  },
+  {
+    "term": "Health check",
+    "aliases": []
+  },
+  {
+    "term": "Heartbeat",
+    "aliases": []
+  },
+  {
+    "term": "Readiness",
+    "aliases": []
+  },
+  {
+    "term": "Liveness",
+    "aliases": []
+  },
+  {
+    "term": "Observability pipeline",
+    "aliases": []
+  },
+  {
+    "term": "Telemetry pipeline",
+    "aliases": []
+  },
+  {
+    "term": "Metrics",
+    "aliases": []
+  },
+  {
+    "term": "Tracing",
+    "aliases": []
+  },
+  {
+    "term": "Logs",
+    "aliases": []
+  },
+  {
+    "term": "Events",
+    "aliases": []
+  },
+  {
+    "term": "PromQL",
+    "aliases": []
+  },
+  {
+    "term": "LogQL",
+    "aliases": []
+  },
+  {
+    "term": "TraceQL",
+    "aliases": []
+  },
+  {
+    "term": "Dashboard",
+    "aliases": []
+  },
+  {
+    "term": "Alert fatigue",
+    "aliases": []
+  },
+  {
+    "term": "Auto-remediation",
+    "aliases": []
+  },
+  {
+    "term": "Self-healing",
+    "aliases": []
+  },
+  {
+    "term": "Runbook automation",
+    "aliases": []
+  },
+  {
+    "term": "Incident command",
+    "aliases": []
+  },
+  {
+    "term": "Incident response",
+    "aliases": []
+  },
+  {
+    "term": "Status page",
+    "aliases": []
+  },
+  {
+    "term": "Post-incident review",
+    "aliases": []
+  },
+  {
+    "term": "Root cause analysis",
+    "aliases": [
+      "rca"
+    ]
+  },
+  {
+    "term": "Blameless postmortem",
+    "aliases": []
+  },
+  {
+    "term": "MTTD",
+    "aliases": []
+  },
+  {
+    "term": "MTTM",
+    "aliases": []
+  },
+  {
+    "term": "Change advisory board",
+    "aliases": [
+      "cab"
+    ]
+  },
+  {
+    "term": "Emergency change",
+    "aliases": []
+  },
+  {
+    "term": "Standard change",
+    "aliases": []
+  },
+  {
+    "term": "FinOps culture",
+    "aliases": []
+  },
+  {
+    "term": "FinOps Foundation",
+    "aliases": []
+  },
+  {
+    "term": "Unit cost",
+    "aliases": []
+  },
+  {
+    "term": "Kubernetes cost optimization",
+    "aliases": []
+  },
+  {
+    "term": "Right-sizing",
+    "aliases": []
+  },
+  {
+    "term": "Bin packing",
+    "aliases": []
+  },
+  {
+    "term": "Cluster consolidation",
+    "aliases": []
+  },
+  {
+    "term": "Spot orchestration",
+    "aliases": []
+  },
+  {
+    "term": "Platform as a product",
+    "aliases": []
+  },
+  {
+    "term": "Team topologies",
+    "aliases": []
+  },
+  {
+    "term": "Cognitive load",
+    "aliases": []
+  },
+  {
+    "term": "Paved road",
+    "aliases": []
+  },
+  {
+    "term": "Golden path templates",
+    "aliases": []
+  },
+  {
+    "term": "Software catalog",
+    "aliases": []
+  },
+  {
+    "term": "Scorecards",
+    "aliases": []
+  },
+  {
+    "term": "Service maturity",
+    "aliases": []
+  },
+  {
+    "term": "Platform maturity",
+    "aliases": []
+  },
+  {
+    "term": "SLO-driven operations",
+    "aliases": []
+  },
+  {
+    "term": "Observability-driven development",
+    "aliases": []
+  },
+  {
+    "term": "Continuous profiling",
+    "aliases": []
+  },
+  {
+    "term": "eBPF observability",
+    "aliases": []
+  },
+  {
+    "term": "OpenTelemetry Collector",
+    "aliases": []
+  },
+  {
+    "term": "OpenTelemetry Operator",
+    "aliases": []
+  },
+  {
+    "term": "Prometheus Operator",
+    "aliases": []
+  },
+  {
+    "term": "Grafana Operator",
+    "aliases": []
+  },
+  {
+    "term": "GitOps-driven infrastructure",
+    "aliases": []
+  },
+  {
+    "term": "Policy as code",
+    "aliases": []
+  },
+  {
+    "term": "Compliance as code",
+    "aliases": []
+  },
+  {
+    "term": "Infrastructure drift detection",
+    "aliases": []
+  },
+  {
+    "term": "Ephemeral preview environments",
+    "aliases": []
+  },
+  {
+    "term": "Progressive rollout",
+    "aliases": []
+  },
+  {
+    "term": "Canary analysis",
+    "aliases": []
+  },
+  {
+    "term": "Automated rollback",
+    "aliases": []
+  },
+  {
+    "term": "Deployment verification",
+    "aliases": []
+  },
+  {
+    "term": "Release orchestration",
+    "aliases": []
+  },
+  {
+    "term": "Supply chain security",
+    "aliases": []
+  },
+  {
+    "term": "Software supply chain",
+    "aliases": []
+  },
+  {
+    "term": "Artifact provenance",
+    "aliases": []
+  },
+  {
+    "term": "Attestation",
+    "aliases": []
+  },
+  {
+    "term": "Reproducible builds",
+    "aliases": []
+  },
+  {
+    "term": "Hermetic builds",
+    "aliases": []
+  },
+  {
+    "term": "Remote build cache",
+    "aliases": []
+  },
+  {
+    "term": "Build cache",
+    "aliases": []
+  },
+  {
+    "term": "Monorepo tooling",
+    "aliases": []
+  },
+  {
+    "term": "Affected builds",
+    "aliases": []
+  },
+  {
+    "term": "Remote execution",
+    "aliases": []
+  },
+  {
+    "term": "Developer portal",
+    "aliases": []
+  },
+  {
+    "term": "Internal developer portal",
+    "aliases": []
+  },
+  {
+    "term": "Service ownership",
+    "aliases": []
+  },
+  {
+    "term": "On-call compensation",
+    "aliases": []
+  },
+  {
+    "term": "Error budget policy",
+    "aliases": []
+  },
+  {
+    "term": "Reliability engineering",
+    "aliases": []
+  },
+  {
+    "term": "Production readiness review",
+    "aliases": []
+  },
+  {
+    "term": "Launch readiness",
+    "aliases": []
+  },
+  {
+    "term": "Operational readiness",
+    "aliases": []
+  },
+  {
+    "term": "Architecture decision record",
+    "aliases": [
+      "adr"
+    ]
+  },
+  {
+    "term": "Wardley mapping",
+    "aliases": []
+  },
+  {
+    "term": "Runtime security",
+    "aliases": []
+  },
+  {
+    "term": "Admission policy",
+    "aliases": []
+  },
+  {
+    "term": "Workload identity",
+    "aliases": []
+  },
+  {
+    "term": "SPIFFE",
+    "aliases": []
+  },
+  {
+    "term": "SPIRE",
+    "aliases": []
+  },
+  {
+    "term": "Zero-trust networking",
+    "aliases": []
+  },
+  {
+    "term": "mTLS",
+    "aliases": []
+  },
+  {
+    "term": "Service mesh observability",
+    "aliases": []
+  },
+  {
+    "term": "Ambient mesh",
+    "aliases": []
+  },
+  {
+    "term": "Sidecar-less mesh",
+    "aliases": []
+  },
+  {
+    "term": "Multi-cluster management",
+    "aliases": []
+  },
+  {
+    "term": "Fleet management",
+    "aliases": []
+  },
+  {
+    "term": "Cluster API",
+    "aliases": []
+  },
+  {
+    "term": "GitOps at scale",
+    "aliases": []
+  },
+  {
+    "term": "Configuration as data",
+    "aliases": []
+  },
+  {
+    "term": "Environment as code",
+    "aliases": []
+  },
+  {
+    "term": "Everything as code",
+    "aliases": []
+  },
+  {
+    "term": "Linux administration",
+    "aliases": [
+      "администрирование linux"
+    ]
+  },
+  {
+    "term": "Networking administration",
+    "aliases": [
+      "сетевое администрирование"
+    ]
+  },
+  {
+    "term": "Scripting",
+    "aliases": [
+      "скриптинг"
+    ]
+  },
+  {
+    "term": "Shell scripting",
+    "aliases": []
+  },
+  {
+    "term": "PowerShell",
+    "aliases": []
+  },
+  {
+    "term": "Perl",
+    "aliases": []
+  },
+  {
+    "term": "Ruby",
+    "aliases": []
+  },
+  {
+    "term": "Node.js",
+    "aliases": []
+  },
+  {
+    "term": "JavaScript",
+    "aliases": []
+  },
+  {
+    "term": "TypeScript",
+    "aliases": []
+  },
+  {
+    "term": "Java",
+    "aliases": []
+  },
+  {
+    "term": "Kotlin",
+    "aliases": []
+  },
+  {
+    "term": "Scala",
+    "aliases": []
+  },
+  {
+    "term": "C#",
+    "aliases": []
+  },
+  {
+    "term": ".NET",
+    "aliases": []
+  },
+  {
+    "term": "PHP",
+    "aliases": []
+  },
+  {
+    "term": "Lua",
+    "aliases": []
+  },
+  {
+    "term": "SQL",
+    "aliases": []
+  },
+  {
+    "term": "NoSQL",
+    "aliases": [
+      "non-sql",
+      "non sql",
+      "нереляционные бд",
+      "нереляционная бд"
+    ]
+  },
+  {
+    "term": "YAML",
+    "aliases": []
+  },
+  {
+    "term": "JSON",
+    "aliases": []
+  },
+  {
+    "term": "TOML",
+    "aliases": []
+  },
+  {
+    "term": "HCL",
+    "aliases": []
+  },
+  {
+    "term": "XML",
+    "aliases": []
+  },
+  {
+    "term": "Regex",
+    "aliases": [
+      "регулярные выражения"
+    ]
+  },
+  {
+    "term": "Git workflow",
+    "aliases": []
+  },
+  {
+    "term": "Code review skills",
+    "aliases": []
+  },
+  {
+    "term": "Debugging",
+    "aliases": [
+      "отладка"
+    ]
+  },
+  {
+    "term": "Troubleshooting",
+    "aliases": [
+      "траблшутинг"
+    ]
+  },
+  {
+    "term": "Performance tuning",
+    "aliases": []
+  },
+  {
+    "term": "Capacity analysis",
+    "aliases": []
+  },
+  {
+    "term": "Security hardening",
+    "aliases": []
+  },
+  {
+    "term": "Incident triage",
+    "aliases": []
+  },
+  {
+    "term": "Technical documentation",
+    "aliases": []
+  },
+  {
+    "term": "Architecture design",
+    "aliases": []
+  },
+  {
+    "term": "System design",
+    "aliases": []
+  },
+  {
+    "term": "Cloud architecture",
+    "aliases": []
+  },
+  {
+    "term": "Distributed systems",
+    "aliases": []
+  },
+  {
+    "term": "Fault injection",
+    "aliases": []
+  },
+  {
+    "term": "Benchmarking",
+    "aliases": []
+  },
+  {
+    "term": "Automation",
+    "aliases": [
+      "автоматизация",
+      "автоматизации",
+      "автоматизацию",
+      "автоматизацией"
+    ]
+  },
+  {
+    "term": "CI/CD engineering",
+    "aliases": []
+  },
+  {
+    "term": "Release engineering",
+    "aliases": []
+  },
+  {
+    "term": "Site reliability",
+    "aliases": []
+  },
+  {
+    "term": "Platform support",
+    "aliases": []
+  },
+  {
+    "term": "On-call support",
+    "aliases": []
+  },
+  {
+    "term": "Production support",
+    "aliases": []
+  },
+  {
+    "term": "24/7 support",
+    "aliases": []
+  },
+  {
+    "term": "SLA management",
+    "aliases": []
+  },
+  {
+    "term": "Vendor management",
+    "aliases": []
+  },
+  {
+    "term": "Team leadership",
+    "aliases": []
+  },
+  {
+    "term": "Mentoring",
+    "aliases": []
+  },
+  {
+    "term": "English",
+    "aliases": []
+  },
+  {
+    "term": "Russian",
+    "aliases": []
+  },
+  {
+    "term": "DevOps engineer",
+    "aliases": [
+      "devops инженер",
+      "девопс"
+    ]
+  },
+  {
+    "term": "Platform engineer",
+    "aliases": []
+  },
+  {
+    "term": "SRE engineer",
+    "aliases": []
+  },
+  {
+    "term": "Infrastructure engineer",
+    "aliases": []
+  },
+  {
+    "term": "Cloud engineer",
+    "aliases": []
+  },
+  {
+    "term": "Systems engineer",
+    "aliases": []
+  },
+  {
+    "term": "System administrator",
+    "aliases": [
+      "sysadmin",
+      "сисадмин"
+    ]
+  },
+  {
+    "term": "Release engineer",
+    "aliases": []
+  },
+  {
+    "term": "Build engineer",
+    "aliases": []
+  },
+  {
+    "term": "Automation engineer",
+    "aliases": []
+  },
+  {
+    "term": "Reliability engineer",
+    "aliases": []
+  },
+  {
+    "term": "Observability engineer",
+    "aliases": []
+  },
+  {
+    "term": "Kubernetes engineer",
+    "aliases": []
+  },
+  {
+    "term": "Cloud architect",
+    "aliases": []
+  },
+  {
+    "term": "Solution architect",
+    "aliases": []
+  },
+  {
+    "term": "Infrastructure architect",
+    "aliases": []
+  },
+  {
+    "term": "Technical lead",
+    "aliases": []
+  },
+  {
+    "term": "Team lead",
+    "aliases": []
+  },
+  {
+    "term": "Engineering manager",
+    "aliases": []
+  },
+  {
+    "term": "Environment",
+    "aliases": []
+  },
+  {
+    "term": "Infrastructure",
+    "aliases": []
+  },
+  {
+    "term": "Инфраструктура",
+    "aliases": [
+      "инфраструктуры",
+      "инфраструктуру",
+      "инфраструктурой",
+      "инфраструктуре"
+    ]
+  },
+  {
+    "term": "Сопровождение",
+    "aliases": [
+      "сопровождения",
+      "сопровождением"
+    ]
+  },
+  {
+    "term": "Эксплуатация",
+    "aliases": [
+      "эксплуатации",
+      "эксплуатацией"
+    ]
+  },
+  {
+    "term": "Развертывание",
+    "aliases": [
+      "деплой",
+      "развертывания",
+      "развертыванием"
+    ]
+  },
+  {
+    "term": "Сборка",
+    "aliases": [
+      "сборки",
+      "сборкой"
+    ]
+  },
+  {
+    "term": "Конвейер",
+    "aliases": []
+  },
+  {
+    "term": "Оркестрация",
+    "aliases": [
+      "оркестрации",
+      "оркестрацией"
+    ]
+  },
+  {
+    "term": "Доступность",
+    "aliases": [
+      "доступности",
+      "доступностью"
+    ]
+  },
+  {
+    "term": "Надежность",
+    "aliases": [
+      "надежности",
+      "надежностью"
+    ]
+  },
+  {
+    "term": "Производительность",
+    "aliases": [
+      "производительности",
+      "производительностью"
+    ]
+  },
+  {
+    "term": "Секреты",
+    "aliases": [
+      "секретов",
+      "секретами"
+    ]
+  },
+  {
+    "term": "Сеть",
+    "aliases": [
+      "сети",
+      "сетей",
+      "сетям",
+      "сетями"
+    ]
+  },
+  {
+    "term": "Балансировка",
+    "aliases": [
+      "балансировки",
+      "балансировкой"
+    ]
+  },
+  {
+    "term": "Кэширование",
+    "aliases": [
+      "кэширования",
+      "кэшированием"
+    ]
+  },
+  {
+    "term": "Очередь",
+    "aliases": [
+      "очереди",
+      "очередями"
+    ]
+  },
+  {
+    "term": "Хранилище",
+    "aliases": [
+      "хранилища",
+      "хранилищ"
+    ]
+  },
+  {
+    "term": "Контейнеризация",
+    "aliases": [
+      "контейнеризации",
+      "контейнеризацией"
+    ]
+  },
+  {
+    "term": "Конфигурация",
+    "aliases": [
+      "конфигурации",
+      "конфигурацией"
+    ]
+  },
+  {
+    "term": "Релиз",
+    "aliases": [
+      "релиза",
+      "релизов",
+      "релизы",
+      "релизом"
+    ]
+  },
+  {
+    "term": "Техподдержка",
+    "aliases": [
+      "техподдержки",
+      "техподдержкой"
+    ]
+  },
+  {
+    "term": "Дежурство",
+    "aliases": [
+      "дежурства",
+      "дежурств"
+    ]
+  },
+  {
+    "term": "Постанализ",
+    "aliases": [
+      "постанализа"
+    ]
+  },
+  {
+    "term": "Код-ревью",
+    "aliases": []
+  },
+  {
+    "term": "Ветвление",
+    "aliases": [
+      "ветвления",
+      "ветвлением"
+    ]
+  },
+  {
+    "term": "Артефакт",
+    "aliases": [
+      "артефактов",
+      "артефакты",
+      "артефактом"
+    ]
+  },
+  {
+    "term": "Репозиторий",
+    "aliases": [
+      "репозитория",
+      "репозиториев",
+      "репозитории"
+    ]
+  },
+  {
+    "term": "Сборщик",
+    "aliases": [
+      "сборщика",
+      "сборщики"
+    ]
+  },
+  {
+    "term": "Пайплайн",
+    "aliases": [
+      "пайплайна",
+      "пайплайны",
+      "пайплайнов",
+      "пайплайном"
+    ]
+  },
+  {
+    "term": "HTTP",
+    "aliases": [
+      "http протокол",
+      "hypertext transfer protocol"
+    ]
+  },
+  {
+    "term": "HTTPS",
+    "aliases": []
+  },
+  {
+    "term": "CI",
+    "aliases": []
+  },
+  {
+    "term": "CD",
+    "aliases": []
+  },
+  {
+    "term": "DevOps",
+    "aliases": [
+      "devops культура",
+      "devops практика",
+      "devops подход",
+      "devops процесс"
+    ]
+  },
+  {
+    "term": "Cloud",
+    "aliases": [
+      "облако",
+      "облака",
+      "облачные технологии",
+      "облачные сервисы",
+      "cloud computing"
+    ]
+  },
+  {
+    "term": "Web",
+    "aliases": [
+      "веб",
+      "веб-приложение",
+      "web приложение"
+    ]
+  },
+  {
+    "term": "DWH",
+    "aliases": [
+      "data warehouse",
+      "хранилище данных",
+      "хранилища данных"
+    ]
+  },
+  {
+    "term": "Highload",
+    "aliases": [
+      "high load",
+      "высоконагруженные системы",
+      "высоконагруженный"
+    ]
+  },
+  {
+    "term": "Fintech",
+    "aliases": [
+      "финтех"
+    ]
+  },
+  {
+    "term": "SOLID",
+    "aliases": []
+  },
+  {
+    "term": "Scrum",
+    "aliases": [
+      "скрам"
+    ]
+  },
+  {
+    "term": "Agile",
+    "aliases": [
+      "аджайл"
+    ]
+  },
+  {
+    "term": "SDLC",
+    "aliases": []
+  },
+  {
+    "term": "MVP",
+    "aliases": [
+      "minimum viable product"
+    ]
+  },
+  {
+    "term": "Cloud Native",
+    "aliases": [
+      "cloud-native",
+      "клауд нейтив"
+    ]
+  },
+  {
+    "term": "SaaS",
+    "aliases": []
+  },
+  {
+    "term": "B2B",
+    "aliases": []
+  },
+  {
+    "term": "ERP",
+    "aliases": []
+  },
+  {
+    "term": "CRM",
+    "aliases": []
+  },
+  {
+    "term": "BI",
+    "aliases": [
+      "business intelligence"
+    ]
+  },
+  {
+    "term": "ITSM",
+    "aliases": []
+  },
+  {
+    "term": "IAM",
+    "aliases": [
+      "identity and access management"
+    ]
+  },
+  {
+    "term": "OSI",
+    "aliases": [
+      "osi model",
+      "модель osi"
+    ]
+  },
+  {
+    "term": "DHCP",
+    "aliases": []
+  },
+  {
+    "term": "UML",
+    "aliases": []
+  },
+  {
+    "term": "BPMN",
+    "aliases": []
+  },
+  {
+    "term": "SOAP",
+    "aliases": []
+  },
+  {
+    "term": "PCI DSS",
+    "aliases": []
+  },
+  {
+    "term": "OWASP",
+    "aliases": [
+      "owasp top 10"
+    ]
+  },
+  {
+    "term": "Testing",
+    "aliases": [
+      "тестирование",
+      "тестирования",
+      "тестированию",
+      "тестированием"
+    ]
+  },
+  {
+    "term": "Documentation",
+    "aliases": [
+      "документация",
+      "документации",
+      "документацию",
+      "документацией",
+      "документирование"
+    ]
+  },
+  {
+    "term": "Архитектура",
+    "aliases": [
+      "архитектуры",
+      "архитектуру",
+      "архитектурой",
+      "архитектуре"
+    ]
+  },
+  {
+    "term": "Integration",
+    "aliases": [
+      "интеграция",
+      "интеграции",
+      "интеграцию",
+      "интеграцией"
+    ]
+  },
+  {
+    "term": "Optimization",
+    "aliases": [
+      "оптимизация",
+      "оптимизации",
+      "оптимизацию",
+      "оптимизацией"
+    ]
+  },
+  {
+    "term": "Administration",
+    "aliases": [
+      "администрирование",
+      "администрирования",
+      "администрированию",
+      "администрированием"
+    ]
+  },
+  {
+    "term": "Database administration",
+    "aliases": [
+      "администрирование баз данных"
+    ]
+  },
+  {
+    "term": "Fullstack",
+    "aliases": [
+      "full stack",
+      "фулстек",
+      "фуллстек"
+    ]
+  },
+  {
+    "term": "DBA",
+    "aliases": [
+      "database administrator",
+      "администратор баз данных"
+    ]
+  },
+  {
+    "term": "СУБД",
+    "aliases": [
+      "субд",
+      "dbms",
+      "система управления базами данных"
+    ]
+  },
+  {
+    "term": "База данных",
+    "aliases": [
+      "базы данных",
+      "баз данных",
+      "бд",
+      "database"
+    ]
+  },
+  {
+    "term": "API",
+    "aliases": [
+      "апи"
+    ]
+  },
+  {
+    "term": "Инженер",
+    "aliases": [
+      "инженера",
+      "инженеры",
+      "инженеров"
+    ]
+  },
+  {
+    "term": "Разработчик",
+    "aliases": [
+      "разработчика",
+      "разработчики",
+      "разработчиков",
+      "developer"
+    ]
+  },
+  {
+    "term": "Greenplum",
+    "aliases": [
+      "гринплам"
+    ]
+  },
+  {
+    "term": "Patroni",
+    "aliases": [
+      "патрони"
+    ]
+  },
+  {
+    "term": "Playwright",
+    "aliases": [
+      "playwright"
+    ]
+  },
+  {
+    "term": "Oracle Database",
+    "aliases": [
+      "oracle",
+      "oracle db",
+      "оракл"
+    ]
+  },
+  {
+    "term": "Bitbucket",
+    "aliases": [
+      "bitbucket"
+    ]
+  },
+  {
+    "term": "Legacy",
+    "aliases": []
+  }
+]
