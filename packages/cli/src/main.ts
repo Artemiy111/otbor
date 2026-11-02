@@ -3,6 +3,7 @@ import { Cause, Console, Effect, Option } from "effect"
 import { Command } from "effect/cli"
 import "./env.ts"
 import { ApiLayer } from "./client.ts"
+import { acpCommand } from "./commands/acp.ts"
 import { applyCommand } from "./commands/apply.ts"
 import { crawlCommand } from "./commands/crawl.ts"
 import { dbCommand } from "./commands/db.ts"
@@ -10,6 +11,7 @@ import { decisionCommand } from "./commands/decision.ts"
 import { gateCommand } from "./commands/gate.ts"
 import { harnessCommand } from "./commands/harness.ts"
 import { hydrateCommand } from "./commands/hydrate.ts"
+import { inferenceCommand } from "./commands/inference.ts"
 import { lexiconCommand } from "./commands/lexicon.ts"
 import { presetCommand } from "./commands/preset.ts"
 import { proxyCommand } from "./commands/proxy.ts"
@@ -29,6 +31,16 @@ const root = Command.make("otbor").pipe(
 )
 
 /**
+ * Tagged errors such as `NotFound` carry fields, not a `message`. Fall back to
+ * their JSON so the operator sees which entity or account was rejected.
+ */
+const describeFailure = (error: unknown): string => {
+  if (error instanceof Error && error.message.trim() !== "") return error.message
+  const json = JSON.stringify(error)
+  return json === undefined || json === "{}" ? String(error) : json
+}
+
+/**
  * A refused decision is an answer, not a crash: print the typed message and
  * exit non-zero. Anything without a typed failure is a real defect and keeps
  * its full cause.
@@ -37,8 +49,7 @@ const reportFailure = (cause: Cause.Cause<unknown>) =>
   Effect.gen(function*() {
     const failure = Cause.findErrorOption(cause)
     if (Option.isSome(failure)) {
-      const error = failure.value
-      yield* Console.error(`error: ${error instanceof Error ? error.message : String(error)}`)
+      yield* Console.error(`error: ${describeFailure(failure.value)}`)
       process.exitCode = 1
       return
     }
@@ -63,7 +74,9 @@ root
       presetCommand,
       crawlCommand,
       hydrateCommand,
-      proxyCommand
+      proxyCommand,
+      acpCommand,
+      inferenceCommand
     ]),
     Command.run({ version: "0.2.0" })
   )
