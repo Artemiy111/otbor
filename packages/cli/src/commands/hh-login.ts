@@ -20,7 +20,8 @@ export const hhLoginCommand = Command.make(
     const context = yield* Effect.tryPromise({
       try: () => chromium.launchPersistentContext(profileDir, {
         headless: false,
-        executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        ignoreDefaultArgs: ["--no-sandbox"]
       }),
       catch: (error) => new Error(`browser launch failed: ${error}`)
     })
