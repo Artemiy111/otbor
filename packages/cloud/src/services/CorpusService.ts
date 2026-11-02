@@ -1,5 +1,6 @@
 import type {
   ApiError,
+  HydrationTarget,
   IngestResult,
   KeywordMatchRecord,
   VacancyDetail,
@@ -47,8 +48,9 @@ const contentHash = (draft: VacancyDraft): string =>
 const persistDraft = (tx: Executor, draft: VacancyDraft) =>
   Effect.gen(function*() {
     const source = draft.source ?? "hh"
-    const hash = contentHash(draft)
     const existing = yield* VacancyRepository.findByExternal(tx, source, draft.externalId)
+    const effective = VacancyRepository.mergeStubDescription(draft, existing)
+    const hash = contentHash(effective)
 
     if (existing !== null && existing.contentHash === hash) {
       yield* VacancyRepository.touch(tx, existing.id)
@@ -56,41 +58,41 @@ const persistDraft = (tx: Executor, draft: VacancyDraft) =>
     }
 
     const employerRow =
-      draft.employer === null || draft.employer === undefined
+      effective.employer === null || effective.employer === undefined
         ? null
-        : yield* VacancyRepository.upsertEmployer(tx, source, draft.employer)
+        : yield* VacancyRepository.upsertEmployer(tx, source, effective.employer)
 
     const [vacancyRow] = yield* VacancyRepository.upsertVacancy(tx, {
-      draft,
+      draft: effective,
       employerId: employerRow?.[0]?.id ?? null,
       contentHash: hash,
       source
     })
 
     const vacancyId = vacancyRow!.id
-    const skills = draft.skills ?? []
+    const skills = effective.skills ?? []
 
     yield* VacancyRepository.replaceSkills(tx, vacancyId, skills)
     yield* VacancyRepository.insertSnapshot(tx, {
       vacancyId,
       contentHash: hash,
-      raw: draft.raw ?? null,
-      descriptionText: draft.descriptionText ?? null,
+      raw: effective.raw ?? null,
+      descriptionText: effective.descriptionText ?? null,
       adapter: source
     })
     yield* VacancyRepository.insertResponseSample(tx, {
       vacancyId,
-      total: draft.responsesTotal ?? null,
-      vacancy: draft.responsesVacancy ?? null
+      total: effective.responsesTotal ?? null,
+      vacancy: effective.responsesVacancy ?? null
     })
 
-    const gate = gateTitle(draft.title)
+    const gate = gateTitle(effective.title)
     yield* DecisionRepository.cacheRulesVerdict(tx, gate)
 
     const entries = yield* LexiconRepository.loadEntries(tx)
     const matches = matchLexicon(entries, {
-      title: draft.title,
-      body: draft.descriptionText ?? "",
+      title: effective.title,
+      body: effective.descriptionText ?? "",
       skills
     })
     yield* LexiconRepository.replaceMatches(tx, vacancyId, matches)
@@ -107,6 +109,9 @@ export interface CorpusServiceShape {
   >
   readonly get: (id: string) => Effect.Effect<VacancyDetail, ApiError>
   readonly recomputeKeywords: (id: string) => Effect.Effect<number, ApiError>
+  readonly hydrationTargets: (
+    filter: VacancyRepository.HydrationFilter
+  ) => Effect.Effect<ReadonlyArray<HydrationTarget>, ApiError>
 }
 
 export class CorpusService extends Context.Service<CorpusService, CorpusServiceShape>()(
@@ -202,7 +207,12 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
           return count
         })
 
-      return CorpusService.of({ ingest, list, get, recomputeKeywords })
+      const hydrationTargets: CorpusServiceShape["hydrationTargets"] = (filter) =>
+        database
+          .asUser(currentUser.userId, (tx) => VacancyRepository.listNeedingHydration(tx, filter))
+          .pipe(Effect.mapError(toStorageError("vacancy.hydrationTargets")))
+
+      return CorpusService.of({ ingest, list, get, recomputeKeywords, hydrationTargets })
     })
   )
 }

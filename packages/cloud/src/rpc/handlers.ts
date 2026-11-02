@@ -2,6 +2,7 @@ import { OtborRpcs } from "@otbor/contract"
 import { Effect, Layer } from "effect"
 import { ApplicationService } from "../services/ApplicationService.ts"
 import { CorpusService } from "../services/CorpusService.ts"
+import { CrawlService } from "../services/CrawlService.ts"
 import { DecisionService } from "../services/DecisionService.ts"
 import { GateService } from "../services/GateService.ts"
 import { PresetService } from "../services/PresetService.ts"
@@ -17,6 +18,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
   Effect.gen(function*() {
     const system = yield* SystemService
     const corpus = yield* CorpusService
+    const crawl = yield* CrawlService
     const decisions = yield* DecisionService
     const gate = yield* GateService
     const applications = yield* ApplicationService
@@ -29,8 +31,14 @@ export const OtborHandlers = OtborRpcs.toLayer(
       VacanciesList: (payload) => corpus.list(payload),
       VacanciesGet: ({ id }) => corpus.get(id),
       VacanciesUpsert: ({ drafts }) => corpus.ingest(drafts),
+      VacanciesHydrationTargets: (payload) => corpus.hydrationTargets(payload),
       VacanciesEvaluate: ({ vacancyId, resumeId, fit }) =>
         decisions.evaluate({ vacancyId, resumeId, fit }),
+
+      CrawlStart: (payload) => crawl.start(payload),
+      CrawlSavePage: (payload) => crawl.savePage(payload),
+      CrawlFinish: (payload) => crawl.finish(payload),
+      CrawlStatus: ({ runId }) => crawl.status(runId),
 
       TitlesPreview: ({ title }) => gate.preview(title),
       TitlesSetUserVerdict: ({ title, verdict, roleFamily }) =>
@@ -69,6 +77,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
 export const OtborServices = Layer.mergeAll(
   SystemService.layer,
   CorpusService.layer,
+  CrawlService.layer,
   DecisionService.layer,
   GateService.layer,
   ApplicationService.layer,

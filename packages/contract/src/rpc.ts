@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import { Rpc, type RpcClient, type RpcClientError, RpcGroup } from "effect/rpc"
-import { JobKind } from "./enums.ts"
+import { CrawlFinishStatus, JobKind } from "./enums.ts"
 import {
   ApplicationId,
   HhAccountId,
@@ -8,18 +8,21 @@ import {
   HarnessJobId,
   KeywordId,
   LeaseId,
+  SearchRunId,
   VacancyId
 } from "./ids.ts"
 import { ApiError } from "./errors.ts"
 import {
   ApplicationDetail,
   ApplicationRecord,
+  CrawlRun,
   DecisionRecord,
   HarnessExit,
   HarnessJob,
   HarnessRegistration,
   Health,
   HeartbeatResult,
+  HydrationTarget,
   KitRecord,
   LexiconKeyword,
   PresetRecord,
@@ -81,6 +84,17 @@ export const VacanciesUpsert = Rpc.make("VacanciesUpsert", {
   error: ApiError
 })
 
+/** Corpus rows whose search card is still the only description we have. */
+export const VacanciesHydrationTargets = Rpc.make("VacanciesHydrationTargets", {
+  payload: Schema.Struct({
+    limit: Schema.optional(Schema.Int),
+    /** Descriptions shorter than this count as stubs. */
+    minDescriptionLength: Schema.optional(Schema.Int)
+  }),
+  success: Schema.Array(HydrationTarget),
+  error: ApiError
+})
+
 export const VacanciesEvaluate = Rpc.make("VacanciesEvaluate", {
   payload: Schema.Struct({
     vacancyId: VacancyId,
@@ -89,6 +103,57 @@ export const VacanciesEvaluate = Rpc.make("VacanciesEvaluate", {
     fit: Schema.optional(Schema.Int)
   }),
   success: DecisionRecord,
+  error: ApiError
+})
+
+/* -------------------------------------------------------------------------- */
+/* Crawl runs                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The crawler owns fetching and parsing; the cloud owns the run record and the
+ * query/vacancy links. These four calls are the whole persistence surface, and
+ * the corpus itself still goes through `VacanciesUpsert`.
+ */
+export const CrawlStart = Rpc.make("CrawlStart", {
+  payload: Schema.Struct({
+    url: Schema.String,
+    startPage: Schema.optional(Schema.Int),
+    title: Schema.optional(Schema.String)
+  }),
+  success: CrawlRun,
+  error: ApiError
+})
+
+export const CrawlSavePage = Rpc.make("CrawlSavePage", {
+  payload: Schema.Struct({
+    runId: SearchRunId,
+    nextPage: Schema.Int,
+    pagesDone: Schema.Int,
+    found: Schema.Int,
+    /** Ingested vacancies from this page, in card order. */
+    vacancyIds: Schema.Array(VacancyId)
+  }),
+  success: CrawlRun,
+  error: ApiError
+})
+
+export const CrawlFinish = Rpc.make("CrawlFinish", {
+  payload: Schema.Struct({
+    runId: SearchRunId,
+    status: CrawlFinishStatus,
+    nextPage: Schema.Int,
+    pagesDone: Schema.Int,
+    found: Schema.Int,
+    error: Schema.optional(Schema.NullOr(Schema.String))
+  }),
+  success: CrawlRun,
+  error: ApiError
+})
+
+export const CrawlStatus = Rpc.make("CrawlStatus", {
+  payload: Schema.Struct({ runId: SearchRunId }),
+  success: CrawlRun,
   error: ApiError
 })
 
@@ -327,7 +392,12 @@ export const OtborRpcs = RpcGroup.make(
   VacanciesList,
   VacanciesGet,
   VacanciesUpsert,
+  VacanciesHydrationTargets,
   VacanciesEvaluate,
+  CrawlStart,
+  CrawlSavePage,
+  CrawlFinish,
+  CrawlStatus,
   TitlesPreview,
   TitlesSetUserVerdict,
   LexiconList,

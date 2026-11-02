@@ -2,6 +2,7 @@ import { Schema } from "effect"
 import {
   ApplicationState,
   AttemptStage,
+  CrawlRunStatus,
   DecisionReasonCode,
   DecisionVerdict,
   GateVerdict,
@@ -31,6 +32,8 @@ import {
   LeaseId,
   PresetId,
   ResumeId,
+  SearchQueryId,
+  SearchRunId,
   UserId,
   VacancyId
 } from "./ids.ts"
@@ -140,6 +143,45 @@ export const VacancyDetail = Schema.Struct({
 })
 
 export type VacancyDetail = typeof VacancyDetail.Type
+
+/**
+ * A stored vacancy that still needs its full page. The corpus keeps the search
+ * card as a stub first; hydration replaces it with the vacancy page.
+ */
+export const HydrationTarget = Schema.Struct({
+  id: VacancyId,
+  source: Schema.String,
+  externalId: Schema.String,
+  canonicalUrl: Schema.String,
+  title: Schema.String,
+  descriptionLength: Schema.Int
+})
+
+export type HydrationTarget = typeof HydrationTarget.Type
+
+/* -------------------------------------------------------------------------- */
+/* Search runs                                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One persisted crawl. `nextPage` is both the resume cursor and, right after
+ * start, the page the run began on: `search_run` has no separate start column
+ * and a resumed run is exactly "start here next time".
+ */
+export const CrawlRun = Schema.Struct({
+  runId: SearchRunId,
+  queryId: SearchQueryId,
+  normalizedUrl: Schema.String,
+  status: CrawlRunStatus,
+  nextPage: Schema.Int,
+  pagesDone: Schema.Int,
+  found: Schema.Int,
+  error: Schema.optional(Schema.NullOr(Schema.String)),
+  startedAt: Schema.String,
+  finishedAt: Schema.optional(Schema.NullOr(Schema.String))
+})
+
+export type CrawlRun = typeof CrawlRun.Type
 
 /* -------------------------------------------------------------------------- */
 /* Gate, lexicon, decisions                                                   */

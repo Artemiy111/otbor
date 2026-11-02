@@ -1,4 +1,10 @@
-import type { EmployerDraft, SalaryDraft, VacancyDraft, VacancySummary } from "@otbor/contract"
+import type {
+  EmployerDraft,
+  HydrationTarget,
+  SalaryDraft,
+  VacancyDraft,
+  VacancySummary
+} from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
@@ -48,6 +54,50 @@ export const toSummary = (row: VacancyRow): VacancySummary => ({
   createdAt: row.createdAt.toISOString(),
   lastSeenAt: row.lastSeenAt.toISOString()
 })
+
+/**
+ * A search card is a stub: no description HTML and at most a short snippet.
+ * The same rule decides `hydration_status` at ingest and which rows the
+ * hydration command picks, so the two cannot drift apart.
+ */
+export const HYDRATION_MIN_DESCRIPTION = 400
+
+export const needsHydration = (
+  input: {
+    readonly descriptionHtml?: string | null
+    readonly descriptionText?: string | null
+  },
+  minDescriptionLength: number = HYDRATION_MIN_DESCRIPTION
+): boolean =>
+  input.descriptionHtml === null ||
+  input.descriptionHtml === undefined ||
+  (input.descriptionText?.trim().length ?? 0) < Math.max(0, minDescriptionLength)
+
+/** The description columns that a later search-card upsert must not erase. */
+export interface StoredDescription {
+  readonly descriptionText: string | null
+  readonly descriptionHtml: string | null
+  readonly skills: ReadonlyArray<string>
+}
+
+/**
+ * A search card that arrives after hydration carries no description. Keep the
+ * stored full text and skills instead of replacing them with a stub, so a
+ * repeat crawl cannot undo `otbor hydrate`.
+ */
+export const mergeStubDescription = (
+  draft: VacancyDraft,
+  existing: StoredDescription | null
+): VacancyDraft => {
+  if (existing === null || !needsHydration(draft) || needsHydration(existing)) return draft
+
+  return {
+    ...draft,
+    descriptionText: existing.descriptionText,
+    descriptionHtml: existing.descriptionHtml,
+    skills: [...existing.skills]
+  }
+}
 
 /* -------------------------------------------------------------------------- */
 /* Writes                                                                      */
@@ -118,6 +168,7 @@ export const upsertVacancy = (tx: Executor, input: UpsertVacancyInput) => {
     archived: draft.archived ?? false,
     descriptionText: draft.descriptionText ?? null,
     descriptionHtml: draft.descriptionHtml ?? null,
+    hydrationStatus: needsHydration(draft) ? "stub" : "full",
     contentHash: input.contentHash,
     responsesTotal: draft.responsesTotal ?? null,
     responsesVacancy: draft.responsesVacancy ?? null
@@ -148,6 +199,7 @@ export const upsertVacancy = (tx: Executor, input: UpsertVacancyInput) => {
         archived: sql`excluded.archived`,
         descriptionText: sql`excluded.description_text`,
         descriptionHtml: sql`excluded.description_html`,
+        hydrationStatus: sql`excluded.hydration_status`,
         contentHash: sql`excluded.content_hash`,
         responsesTotal: sql`excluded.responses_total`,
         responsesVacancy: sql`excluded.responses_vacancy`,
@@ -277,6 +329,56 @@ export const findByExternal = (tx: Executor, source: string, externalId: string)
   return tx.execute(statement).pipe(
     Effect.map((result) => (result.rows[0] as unknown as VacancyRow | undefined) ?? null)
   )
+}
+
+export interface HydrationFilter {
+  readonly limit?: number
+  readonly minDescriptionLength?: number
+}
+
+/**
+ * Hydration candidates: stored stubs, newest first. The predicate mirrors
+ * `needsHydration`; `hydration_status` makes the intent readable in the table
+ * while the length check keeps rows ingested before status tracking working.
+ */
+export const listNeedingHydration = (tx: Executor, filter: HydrationFilter = {}) => {
+  const limit = Math.min(Math.max(filter.limit ?? 50, 1), 500)
+  const min = Math.max(0, filter.minDescriptionLength ?? HYDRATION_MIN_DESCRIPTION)
+
+  return tx
+    .select({
+      id: vacancy.id,
+      source: vacancy.source,
+      externalId: vacancy.externalId,
+      canonicalUrl: vacancy.canonicalUrl,
+      title: vacancy.title,
+      descriptionLength: sql<number>`coalesce(length(btrim(${vacancy.descriptionText})), 0)::int`
+    })
+    .from(vacancy)
+    .where(sql`
+      ${vacancy.source} = 'hh'
+      and (
+        ${vacancy.hydrationStatus} <> 'full'
+        or ${vacancy.descriptionHtml} is null
+        or coalesce(length(btrim(${vacancy.descriptionText})), 0) < ${min}
+      )
+    `)
+    .orderBy(sql`${vacancy.lastSeenAt} desc`, vacancy.id)
+    .limit(limit)
+    .pipe(
+      Effect.map((rows) =>
+        rows.map(
+          (row): HydrationTarget => ({
+            id: row.id as HydrationTarget["id"],
+            source: row.source,
+            externalId: row.externalId,
+            canonicalUrl: row.canonicalUrl,
+            title: row.title,
+            descriptionLength: Number(row.descriptionLength)
+          })
+        )
+      )
+    )
 }
 
 export interface VacancyFilter {
