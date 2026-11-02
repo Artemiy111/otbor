@@ -16,7 +16,7 @@ reference checkout и не является runtime-зависимостью.
 | `packages/acp` | Effect-адаптер над официальным `@agentclientprotocol/sdk` |
 | `packages/harness` | Edge-воркер: lease/heartbeat/complete и ACP inference |
 | `packages/cli` | Операторский CLI `otbor` |
-| `apps/web` | Локальный Vue-интерфейс поверх той же RPC-группы |
+| `apps/web` | Vue 3 + Tailwind + shadcn-vue + FSD + Pinia Colada поверх той же RPC-группы |
 
 ## Быстрый старт
 
