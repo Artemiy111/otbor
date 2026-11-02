@@ -25,6 +25,7 @@ import {
   LeaseId,
   MailAccountId,
   PresetId,
+  ResumeId,
   ScheduleId,
   ScheduleRunId,
   SearchRunId,
@@ -60,6 +61,9 @@ import {
   PresetPreview,
   PresetRecord,
   QueueStats,
+  ResumeDraft,
+  ResumeEnrichment,
+  ResumeRecord,
   SyncResult,
   TelegramAccountRecord,
   TelegramLoginStatusValue,
@@ -883,6 +887,77 @@ export const WritingResume = Rpc.make("WritingResume", {
 })
 
 /* -------------------------------------------------------------------------- */
+/* Resumes                                                                    */
+/* -------------------------------------------------------------------------- */
+
+export const ResumesList = Rpc.make("ResumesList", {
+  payload: Schema.Struct({
+    hhAccountId: Schema.optional(HhAccountId)
+  }),
+  success: Schema.Array(ResumeRecord),
+  error: ApiError
+})
+
+export const ResumeGet = Rpc.make("ResumeGet", {
+  payload: Schema.Struct({ id: ResumeId }),
+  success: ResumeRecord,
+  error: ApiError
+})
+
+export const ResumeUpsert = Rpc.make("ResumeUpsert", {
+  payload: Schema.Struct({
+    id: Schema.optional(ResumeId),
+    hhAccountId: HhAccountId,
+    source: Schema.optional(Schema.String),
+    externalId: Schema.String,
+    title: Schema.String,
+    text: Schema.String,
+    about: Schema.optional(Schema.String),
+    skills: Schema.optional(Schema.Array(Schema.String)),
+    experience: Schema.optional(Schema.Unknown),
+    education: Schema.optional(Schema.Unknown),
+    workFormats: Schema.optional(Schema.Array(Schema.String)),
+    salaryAmount: Schema.optional(Schema.NullOr(Schema.Int)),
+    salaryCurrency: Schema.optional(Schema.NullOr(Schema.String)),
+    status: Schema.optional(Schema.NullOr(Schema.String)),
+    isActive: Schema.optional(Schema.Boolean),
+    lastSeenAt: Schema.optional(Schema.String)
+  }),
+  success: ResumeRecord,
+  error: ApiError
+})
+
+export const ResumeEnrichmentGet = Rpc.make("ResumeEnrichmentGet", {
+  payload: Schema.Struct({ resumeId: ResumeId }),
+  success: ResumeEnrichment,
+  error: ApiError
+})
+
+export const ResumeEnrichmentSave = Rpc.make("ResumeEnrichmentSave", {
+  payload: Schema.Struct({
+    resumeId: ResumeId,
+    data: Schema.Struct({
+      comment: Schema.optional(Schema.String),
+      salaryMin: Schema.optional(Schema.NullOr(Schema.Int)),
+      salaryExpectation: Schema.optional(Schema.NullOr(Schema.Int)),
+      currency: Schema.optional(Schema.NullOr(Schema.String)),
+      experience: Schema.optional(
+        Schema.Array(
+          Schema.Struct({
+            key: Schema.String,
+            employmentType: Schema.optional(Schema.NullOr(Schema.String)),
+            comment: Schema.optional(Schema.NullOr(Schema.String)),
+            leaveReason: Schema.optional(Schema.NullOr(Schema.String))
+          })
+        )
+      )
+    })
+  }),
+  success: ResumeEnrichment,
+  error: ApiError
+})
+
+/* -------------------------------------------------------------------------- */
 /* The one group                                                              */
 /* -------------------------------------------------------------------------- */
 
@@ -958,7 +1033,12 @@ export const OtborRpcs = RpcGroup.make(
   InferenceGet,
   WritingCoverLetter,
   WritingAnswers,
-  WritingResume
+  WritingResume,
+  ResumesList,
+  ResumeGet,
+  ResumeUpsert,
+  ResumeEnrichmentGet,
+  ResumeEnrichmentSave
 )
 
 export type OtborRpcs = RpcGroup.Rpcs<typeof OtborRpcs>

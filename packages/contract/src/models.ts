@@ -891,6 +891,70 @@ export type StreamRecord = typeof StreamRecord.Type
 /* System                                                                     */
 /* -------------------------------------------------------------------------- */
 
+export const ResumeExperienceEnrichment = Schema.Struct({
+  key: Schema.String,
+  employmentType: Schema.optional(Schema.NullOr(Schema.String)),
+  comment: Schema.optional(Schema.NullOr(Schema.String)),
+  leaveReason: Schema.optional(Schema.NullOr(Schema.String))
+})
+
+export type ResumeExperienceEnrichment = typeof ResumeExperienceEnrichment.Type
+
+export const ResumeEnrichment = Schema.Struct({
+  resumeId: ResumeId,
+  comment: Schema.String,
+  salaryMin: Schema.optional(Schema.NullOr(Schema.Int)),
+  salaryExpectation: Schema.optional(Schema.NullOr(Schema.Int)),
+  currency: Schema.optional(Schema.NullOr(Schema.String)),
+  experience: Schema.Array(ResumeExperienceEnrichment),
+  updatedAt: Schema.optional(Schema.NullOr(Schema.String))
+})
+
+export type ResumeEnrichment = typeof ResumeEnrichment.Type
+
+export const ResumeRecord = Schema.Struct({
+  id: ResumeId,
+  hhAccountId: HhAccountId,
+  source: Schema.String,
+  externalId: Schema.String,
+  title: Schema.String,
+  text: Schema.String,
+  about: Schema.String,
+  skills: Schema.Array(Schema.String),
+  experience: Schema.Array(Schema.Unknown),
+  education: Schema.Unknown,
+  workFormats: Schema.Array(Schema.String),
+  salaryAmount: Schema.optional(Schema.NullOr(Schema.Int)),
+  salaryCurrency: Schema.optional(Schema.NullOr(Schema.String)),
+  status: Schema.optional(Schema.NullOr(Schema.String)),
+  isActive: Schema.Boolean,
+  lastSeenAt: Schema.String,
+  createdAt: Schema.String,
+  updatedAt: Schema.String
+})
+
+export type ResumeRecord = typeof ResumeRecord.Type
+
+export const ResumeDraft = Schema.Struct({
+  hhAccountId: HhAccountId,
+  source: Schema.optional(Schema.String),
+  externalId: Schema.String,
+  title: Schema.String,
+  text: Schema.String,
+  about: Schema.optional(Schema.String),
+  skills: Schema.optional(Schema.Array(Schema.String)),
+  experience: Schema.optional(Schema.Unknown),
+  education: Schema.optional(Schema.Unknown),
+  workFormats: Schema.optional(Schema.Array(Schema.String)),
+  salaryAmount: Schema.optional(Schema.NullOr(Schema.Int)),
+  salaryCurrency: Schema.optional(Schema.NullOr(Schema.String)),
+  status: Schema.optional(Schema.NullOr(Schema.String)),
+  isActive: Schema.optional(Schema.Boolean),
+  lastSeenAt: Schema.optional(Schema.String)
+})
+
+export type ResumeDraft = typeof ResumeDraft.Type
+
 export const Health = Schema.Struct({
   status: Schema.Literals(["ok", "degraded"]),
   version: Schema.String,
