@@ -20,6 +20,7 @@
     "db:seed": "bun run cli db seed",
     "link": "cd packages/cli && bun link",
     "test": "bun test",
+    "test:integration": "OTBOR_TEST_DATABASE_URL=${OTBOR_TEST_DATABASE_URL:-postgres://otbor:otbor@localhost:55432/postgres} bun test packages/cloud/test/integration",
     "typecheck": "tsc -p tsconfig.json"
   },
   "devDependencies": {
