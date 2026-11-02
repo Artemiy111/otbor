@@ -1,0 +1,63 @@
+import type { ApiError, PresetKind, PresetRecord } from "@otbor/contract"
+import { Conflict } from "@otbor/contract"
+import { Context, Effect, Layer } from "effect"
+import { Database } from "../db/Database.ts"
+import * as PresetRepository from "../repositories/PresetRepository.ts"
+import { CurrentUser } from "./CurrentUser.ts"
+import { toStorageError } from "./support.ts"
+
+export interface PresetServiceShape {
+  readonly list: (options: { readonly kind?: string }) => Effect.Effect<
+    ReadonlyArray<PresetRecord>,
+    ApiError
+  >
+  readonly upsert: (input: {
+    readonly id?: string
+    readonly kind: PresetKind
+    readonly title: string
+    readonly filter: unknown
+    readonly system?: boolean
+  }) => Effect.Effect<PresetRecord, ApiError>
+}
+
+export class PresetService extends Context.Service<PresetService, PresetServiceShape>()(
+  "otbor/cloud/PresetService"
+) {
+  static readonly layer = Layer.effect(
+    PresetService,
+    Effect.gen(function*() {
+      const database = yield* Database
+      const currentUser = yield* CurrentUser
+
+      const list: PresetServiceShape["list"] = (options) =>
+        database
+          .asUser(currentUser.userId, (tx) => PresetRepository.list(tx, options))
+          .pipe(Effect.mapError(toStorageError("preset.list")))
+
+      const upsert: PresetServiceShape["upsert"] = (input) =>
+        Effect.gen(function*() {
+          if (input.title.trim() === "") {
+            return yield* new Conflict({
+              entity: "Preset",
+              message: "title must not be empty"
+            })
+          }
+
+          return yield* database
+            .asUser(currentUser.userId, (tx) =>
+              PresetRepository.upsert(tx, {
+                userId: currentUser.userId,
+                id: input.id ?? null,
+                kind: input.kind,
+                title: input.title,
+                filter: input.filter,
+                system: input.system ?? false
+              })
+            )
+            .pipe(Effect.mapError(toStorageError("preset.upsert")))
+        })
+
+      return PresetService.of({ list, upsert })
+    })
+  )
+}
