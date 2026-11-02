@@ -9,6 +9,7 @@ import { InferenceService } from "../services/InferenceService.ts"
 import { PresetService } from "../services/PresetService.ts"
 import { QueueService } from "../services/QueueService.ts"
 import { SystemService } from "../services/SystemService.ts"
+import { WritingService } from "../services/WritingService.ts"
 
 /**
  * The RPC boundary is a thin mapping. Every handler is a service method, so
@@ -21,6 +22,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const corpus = yield* CorpusService
     const crawl = yield* CrawlService
     const inference = yield* InferenceService
+    const writing = yield* WritingService
     const decisions = yield* DecisionService
     const gate = yield* GateService
     const applications = yield* ApplicationService
@@ -74,7 +76,11 @@ export const OtborHandlers = OtborRpcs.toLayer(
       HarnessRevoke: ({ harnessId }) => queue.revoke({ harnessId }),
 
       InferenceEnqueue: (payload) => inference.enqueue(payload),
-      InferenceGet: ({ id }) => inference.get(id)
+      InferenceGet: ({ id }) => inference.get(id),
+
+      WritingCoverLetter: (payload) => writing.coverLetter(payload),
+      WritingAnswers: (payload) => writing.answers(payload),
+      WritingResume: (payload) => writing.resume(payload)
     }
   })
 )
@@ -85,6 +91,7 @@ export const OtborServices = Layer.mergeAll(
   CorpusService.layer,
   CrawlService.layer,
   InferenceService.layer,
+  WritingService.layer,
   DecisionService.layer,
   GateService.layer,
   ApplicationService.layer,

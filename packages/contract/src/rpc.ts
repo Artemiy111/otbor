@@ -423,6 +423,46 @@ export const InferenceGet = Rpc.make("InferenceGet", {
 })
 
 /* -------------------------------------------------------------------------- */
+/* Writing                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Writing is inference with context: the cloud loads the application, the
+ * vacancy and the resume, then enqueues one prompt. It never calls a model and
+ * never fills a form; the answer is text a human or the harness can use.
+ */
+export const WritingCoverLetter = Rpc.make("WritingCoverLetter", {
+  payload: Schema.Struct({
+    applicationId: ApplicationId,
+    tone: Schema.optional(Schema.String),
+    length: Schema.optional(Schema.Literals(["short", "medium", "long"])),
+    model: Schema.optional(Schema.String)
+  }),
+  success: Schema.Struct({ job: HarnessJob }),
+  error: ApiError
+})
+
+export const WritingAnswers = Rpc.make("WritingAnswers", {
+  payload: Schema.Struct({
+    applicationId: ApplicationId,
+    questions: Schema.Array(Schema.String),
+    model: Schema.optional(Schema.String)
+  }),
+  success: Schema.Struct({ job: HarnessJob }),
+  error: ApiError
+})
+
+export const WritingResume = Rpc.make("WritingResume", {
+  payload: Schema.Struct({
+    text: Schema.String,
+    targetRole: Schema.optional(Schema.String),
+    model: Schema.optional(Schema.String)
+  }),
+  success: Schema.Struct({ job: HarnessJob }),
+  error: ApiError
+})
+
+/* -------------------------------------------------------------------------- */
 /* The one group                                                              */
 /* -------------------------------------------------------------------------- */
 
@@ -460,7 +500,10 @@ export const OtborRpcs = RpcGroup.make(
   HarnessComplete,
   HarnessRevoke,
   InferenceEnqueue,
-  InferenceGet
+  InferenceGet,
+  WritingCoverLetter,
+  WritingAnswers,
+  WritingResume
 )
 
 export type OtborRpcs = RpcGroup.Rpcs<typeof OtborRpcs>
