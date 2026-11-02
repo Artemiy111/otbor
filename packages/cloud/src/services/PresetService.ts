@@ -1,5 +1,5 @@
-import type { ApiError, PresetKind, PresetRecord } from "@otbor/contract"
-import { Conflict } from "@otbor/contract"
+import type { ApiError, PresetFilter, PresetKind, PresetRecord } from "@otbor/contract"
+import { Conflict, emptyPresetFilter, parsePresetFilter } from "@otbor/contract"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "../db/Database.ts"
 import * as PresetRepository from "../repositories/PresetRepository.ts"
@@ -15,9 +15,10 @@ export interface PresetServiceShape {
     readonly id?: string
     readonly kind: PresetKind
     readonly title: string
-    readonly filter: unknown
+    readonly filter?: PresetFilter
     readonly system?: boolean
   }) => Effect.Effect<PresetRecord, ApiError>
+  readonly remove: (id: string) => Effect.Effect<boolean, ApiError>
 }
 
 export class PresetService extends Context.Service<PresetService, PresetServiceShape>()(
@@ -50,14 +51,21 @@ export class PresetService extends Context.Service<PresetService, PresetServiceS
                 id: input.id ?? null,
                 kind: input.kind,
                 title: input.title,
-                filter: input.filter,
+                filter: parsePresetFilter(input.filter ?? emptyPresetFilter),
                 system: input.system ?? false
               })
             )
             .pipe(Effect.mapError(toStorageError("preset.upsert")))
         })
 
-      return PresetService.of({ list, upsert })
+      const remove: PresetServiceShape["remove"] = (id) =>
+        database
+          .asUser(currentUser.userId, (tx) =>
+            PresetRepository.remove(tx, id, currentUser.userId)
+          )
+          .pipe(Effect.mapError(toStorageError("preset.remove")))
+
+      return PresetService.of({ list, upsert, remove })
     })
   )
 }

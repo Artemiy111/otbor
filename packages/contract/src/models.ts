@@ -252,6 +252,8 @@ export const LexiconKeyword = Schema.Struct({
   term: Schema.String,
   normalizedTerm: Schema.String,
   enabled: Schema.Boolean,
+  /** Vacancies that mention this keyword, after the caller's preset filter. */
+  vacancyCount: Schema.Int,
   aliases: Schema.Array(KeywordAliasRecord)
 })
 
@@ -451,12 +453,52 @@ export type HeartbeatResult = typeof HeartbeatResult.Type
 /* Presets and streams                                                        */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * The concrete filter a preset carries. Every field is optional: an absent
+ * field does not constrain the result.
+ *
+ * `text` matches the vacancy title case-insensitively, `gate` keeps only
+ * titles with that cached verdict, and `includeArchived` widens the search to
+ * archived vacancies. `keywordIds` only narrows which keywords are returned;
+ * it never changes which vacancies are counted.
+ */
+export const PresetFilter = Schema.Struct({
+  text: Schema.optional(Schema.String),
+  gate: Schema.optional(GateVerdict),
+  keywordIds: Schema.optional(Schema.Array(KeywordId)),
+  includeArchived: Schema.optional(Schema.Boolean)
+})
+
+export type PresetFilter = typeof PresetFilter.Type
+
+export const emptyPresetFilter: PresetFilter = {}
+
+/**
+ * Parses a stored or submitted filter and drops values that mean "no
+ * constraint": blank text, an empty keyword list and `includeArchived: false`.
+ * Unknown properties (the legacy `{"all":[]}` default) are ignored.
+ */
+export const parsePresetFilter = (input: unknown): PresetFilter => {
+  const decoded = Schema.decodeUnknownSync(PresetFilter)(input ?? {})
+  const text = decoded.text?.trim() ?? ""
+  const keywordIds = decoded.keywordIds === undefined
+    ? []
+    : [...new Set(decoded.keywordIds)]
+
+  return {
+    ...(text === "" ? {} : { text }),
+    ...(decoded.gate === undefined ? {} : { gate: decoded.gate }),
+    ...(keywordIds.length === 0 ? {} : { keywordIds }),
+    ...(decoded.includeArchived === true ? { includeArchived: true } : {})
+  }
+}
+
 export const PresetRecord = Schema.Struct({
   id: PresetId,
   userId: Schema.optional(Schema.NullOr(UserId)),
   kind: PresetKind,
   title: Schema.String,
-  filter: Schema.Unknown,
+  filter: PresetFilter,
   system: Schema.Boolean,
   createdAt: Schema.String,
   updatedAt: Schema.String

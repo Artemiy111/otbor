@@ -1,7 +1,7 @@
-import type { LexiconKeyword } from "@otbor/contract"
+import type { LexiconKeyword, PresetFilter } from "@otbor/contract"
 import type { LexiconEntryInput, LexiconMatch } from "@otbor/domain"
 import { normalizeTerm } from "@otbor/domain"
-import { sql } from "drizzle-orm"
+import { sql, type SQL } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
 import { keyword, keywordAlias, vacancyKeyword } from "../db/tables.ts"
@@ -11,8 +11,48 @@ interface Entry {
   readonly term: string
   readonly normalizedTerm: string
   readonly enabled: boolean
+  readonly vacancyCount: number
   aliases: Array<{ id: string; alias: string; normalizedAlias: string; typo: boolean }>
 }
+
+/** Escapes the LIKE wildcards so a preset's text is a literal substring. */
+export const likePattern = (text: string): string =>
+  `%${text.trim().replace(/[\\%_]/g, "\\$&")}%`
+
+/**
+ * The vacancy predicate shared by the keyword count and the "has matching
+ * vacancies" filter. `vacancy` is in scope in both correlated subqueries, and
+ * `title_verdict` keys are normalized exactly like `VacancyRepository.list`.
+ */
+export const vacancyFilterSql = (filter: PresetFilter): SQL => {
+  const clauses: Array<SQL> = [sql`true`]
+
+  if (filter.includeArchived !== true) {
+    clauses.push(sql`not vacancy.archived`)
+  }
+
+  const text = filter.text?.trim()
+  if (text !== undefined && text !== "") {
+    clauses.push(sql`vacancy.title ilike ${likePattern(text)}`)
+  }
+
+  if (filter.gate !== undefined) {
+    clauses.push(sql`exists (
+      select 1 from title_verdict
+      where title_verdict.normalized_title = regexp_replace(lower(btrim(vacancy.title)), '\\s+', ' ', 'g')
+        and title_verdict.verdict = ${filter.gate}
+    )`)
+  }
+
+  return sql.join(clauses, sql` and `)
+}
+
+const vacancyCountSql = (filter: PresetFilter): SQL => sql`(
+  select count(distinct vk.vacancy_id)::int
+  from vacancy_keyword vk
+  join vacancy on vacancy.id = vk.vacancy_id
+  where vk.keyword_id = k.id and ${vacancyFilterSql(filter)}
+)`
 
 export const loadEntries = (tx: Executor): RepoEffect<ReadonlyArray<LexiconEntryInput>> =>
   Effect.gen(function*() {
@@ -43,6 +83,7 @@ export const loadEntries = (tx: Executor): RepoEffect<ReadonlyArray<LexiconEntry
           term: raw.term,
           normalizedTerm: raw.normalized_term,
           enabled: raw.enabled,
+          vacancyCount: 0,
           aliases: []
         }
         entries.set(raw.id, entry)
@@ -65,12 +106,14 @@ const toRecord = (entry: {
   term: string
   normalizedTerm: string
   enabled: boolean
+  vacancyCount: number
   aliases: ReadonlyArray<{ id: string; alias: string; normalizedAlias: string; typo: boolean }>
 }): LexiconKeyword => ({
   id: entry.id as LexiconKeyword["id"],
   term: entry.term,
   normalizedTerm: entry.normalizedTerm,
   enabled: entry.enabled,
+  vacancyCount: entry.vacancyCount,
   aliases: entry.aliases.map((alias) => ({
     id: alias.id as LexiconKeyword["aliases"][number]["id"],
     alias: alias.alias,
@@ -80,9 +123,20 @@ const toRecord = (entry: {
   }))
 })
 
+export interface LexiconListOptions {
+  readonly query?: string
+  readonly limit?: number
+  /**
+   * When present, the returned keywords and their counts describe the
+   * vacancies this filter selects. Without it every keyword is returned and
+   * `vacancyCount` still counts active vacancies.
+   */
+  readonly filter?: PresetFilter
+}
+
 export const list = (
   tx: Executor,
-  options: { readonly query?: string; readonly limit?: number } = {}
+  options: LexiconListOptions = {}
 ): RepoEffect<ReadonlyArray<LexiconKeyword>> =>
   Effect.gen(function*() {
     const limit = Math.min(Math.max(options.limit ?? 100, 1), 1000)
@@ -90,14 +144,35 @@ export const list = (
       ? null
       : `%${normalizeTerm(options.query)}%`
 
+    const filter = options.filter ?? {}
+    const ids = filter.keywordIds ?? []
+    const keywordClause = ids.length === 0
+      ? sql`true`
+      : sql`k.id in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`
+
+    // A preset narrows the keyword list to keywords that appear in at least
+    // one vacancy the filter selects. The count uses its own correlated
+    // subquery, so the alias join below cannot inflate it.
+    const presetClause = options.filter === undefined
+      ? sql`true`
+      : sql`exists (
+          select 1
+          from vacancy_keyword vk_filter
+          join vacancy on vacancy.id = vk_filter.vacancy_id
+          where vk_filter.keyword_id = k.id and ${vacancyFilterSql(filter)}
+        )`
+
     const rows = yield* tx.execute(sql`
       select k.id, k.term, k.normalized_term, k.enabled,
-             a.id as alias_id, a.alias, a.normalized_alias, a.typo
+             a.id as alias_id, a.alias, a.normalized_alias, a.typo,
+             ${vacancyCountSql(filter)} as vacancy_count
       from keyword k
       left join keyword_alias a on a.keyword_id = k.id
       where ${pattern === null
         ? sql`true`
         : sql`(k.normalized_term like ${pattern} or a.normalized_alias like ${pattern})`}
+        and ${keywordClause}
+        and ${presetClause}
       order by k.term, a.alias
       limit ${limit}
     `)
@@ -112,6 +187,7 @@ export const list = (
       alias: string | null
       normalized_alias: string | null
       typo: boolean | null
+      vacancy_count: number | string | null
     }>) {
       let entry = entries.get(raw.id)
       if (entry === undefined) {
@@ -120,6 +196,7 @@ export const list = (
           term: raw.term,
           normalizedTerm: raw.normalized_term,
           enabled: raw.enabled,
+          vacancyCount: Number(raw.vacancy_count ?? 0),
           aliases: []
         }
         entries.set(raw.id, entry)
@@ -193,7 +270,7 @@ export const upsert = (
 
     const entries = yield* list(tx, { query: input.term, limit: 1 })
     const updated = entries.find((entry) => entry.id === keywordId)
-    return updated ?? toRecord({ ...row!, aliases: [] })
+    return updated ?? toRecord({ ...row!, vacancyCount: 0, aliases: [] })
   })
 
 export const remove = (tx: Executor, id: string): RepoEffect<boolean> =>

@@ -12,6 +12,8 @@ import { Context, Effect, Layer } from "effect"
 import { Database } from "../db/Database.ts"
 import * as DecisionRepository from "../repositories/DecisionRepository.ts"
 import * as LexiconRepository from "../repositories/LexiconRepository.ts"
+import * as PresetRepository from "../repositories/PresetRepository.ts"
+import { CurrentUser } from "./CurrentUser.ts"
 import { toStorageError } from "./support.ts"
 
 export interface TitleVerdictInput {
@@ -31,6 +33,7 @@ export interface GateServiceShape {
   readonly lexiconList: (options: {
     readonly query?: string
     readonly limit?: number
+    readonly presetId?: string
   }) => Effect.Effect<ReadonlyArray<LexiconKeyword>, ApiError>
   readonly lexiconUpsert: (input: {
     readonly term: string
@@ -47,6 +50,7 @@ export class GateService extends Context.Service<GateService, GateServiceShape>(
     GateService,
     Effect.gen(function*() {
       const database = yield* Database
+      const currentUser = yield* CurrentUser
 
       const preview: GateServiceShape["preview"] = (title) =>
         Effect.gen(function*() {
@@ -107,9 +111,30 @@ export class GateService extends Context.Service<GateService, GateServiceShape>(
         })
 
       const lexiconList: GateServiceShape["lexiconList"] = (options) =>
-        database
-          .asOwner((tx) => LexiconRepository.list(tx, options))
-          .pipe(Effect.mapError(toStorageError("lexicon.list")))
+        Effect.gen(function*() {
+          const presetId = options.presetId
+          const preset = presetId === undefined
+            ? null
+            : yield* database
+              .asUser(currentUser.userId, (tx) =>
+                PresetRepository.findById(tx, presetId, currentUser.userId)
+              )
+              .pipe(Effect.mapError(toStorageError("lexicon.list")))
+
+          if (presetId !== undefined && preset === null) {
+            return yield* new NotFound({ entity: "Preset", id: presetId })
+          }
+
+          return yield* database
+            .asUser(currentUser.userId, (tx) =>
+              LexiconRepository.list(tx, {
+                query: options.query,
+                limit: options.limit,
+                filter: preset?.filter
+              })
+            )
+            .pipe(Effect.mapError(toStorageError("lexicon.list")))
+        })
 
       const lexiconUpsert: GateServiceShape["lexiconUpsert"] = (input) =>
         database
