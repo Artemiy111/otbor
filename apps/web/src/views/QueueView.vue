@@ -114,6 +114,7 @@ onMounted(load)
               <th>Lease</th>
               <th>Run at</th>
               <th>Payload</th>
+              <th>Result</th>
             </tr>
           </thead>
           <tbody>
@@ -136,6 +137,13 @@ onMounted(load)
                   <summary class="mono small">{{ payloadPreview(job.payload) }}</summary>
                   <pre class="payload">{{ payloadText(job.payload) }}</pre>
                 </details>
+              </td>
+              <td class="payload-cell">
+                <details v-if="job.result">
+                  <summary class="mono small">{{ payloadPreview(job.result) }}</summary>
+                  <pre class="payload">{{ payloadText(job.result) }}</pre>
+                </details>
+                <span v-else>—</span>
               </td>
             </tr>
           </tbody>
