@@ -72,6 +72,12 @@ guide doesn't cover, search through the source code in `node_modules/effect/src`
   `~/.bun/bin`. Do not tell operators to type `bun packages/cli/src/main.ts`.
 - No `console.log` in server code. Use `Effect.log*`; logs go to the terminal
   and to `logs/app-YYYY-MM-DD.log`.
+- Crawl schedules are user-owned rows. The worker claims due schedules with
+  `FOR UPDATE SKIP LOCKED`, advances `next_run_at` in the same transaction and
+  runs exactly one search page through `CrawlRunner`. `ScheduleRunNow` only
+  accepts the request and forks the crawl, so the RPC never waits for hh.ru.
+- Web list tables use the shared `apps/web/src/shared/ui/data-table` wrapper
+  (TanStack Table) instead of raw shadcn `Table` markup.
 - IDs are UUIDv7, generated in Postgres (`uuidv7()` on Postgres 18) and are the
   same value inside and outside the system. Vendor IDs live in
   `external_id` + `source`, never in a primary key.
