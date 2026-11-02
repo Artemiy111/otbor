@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from "vue"
+import { computed, h, ref } from "vue"
 import { useQuery } from "@pinia/colada"
+import type { DecisionRecord } from "@otbor/contract"
+import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert } from "@lucide/vue"
 import { decisionApi, decisionKeys } from "@/entities/decision"
 import { DecisionVerdictFilter } from "@/features/decision-filter"
@@ -11,6 +13,7 @@ import {
   formatDate,
   formatPriority,
   roleFamilyLabel,
+  statusLabel,
   vacancyPath
 } from "@/shared/lib"
 import {
@@ -18,17 +21,9 @@ import {
   AlertDescription,
   AlertTitle,
   Badge,
-  Card,
-  CardContent,
-  EmptyState,
-  Skeleton,
+  DataTable,
   StatusBadge,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
+  sortableHeader
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
 
@@ -43,7 +38,86 @@ const query = useQuery({
     })
 })
 
-const decisions = computed(() => query.data.value ?? [])
+const decisions = computed<ReadonlyArray<DecisionRecord>>(() => query.data.value ?? [])
+
+const columns: ColumnDef<DecisionRecord>[] = [
+  {
+    id: "vacancy",
+    accessorFn: (row) => row.vacancyTitle ?? row.vacancyId,
+    header: sortableHeader<DecisionRecord>("Вакансия"),
+    cell: ({ row }) =>
+      h("div", { class: "max-w-[360px]" }, [
+        h(
+          "a",
+          {
+            href: vacancyPath(row.original.vacancyId),
+            class: "font-medium text-foreground transition-colors hover:text-primary"
+          },
+          row.original.vacancyTitle ?? row.original.vacancyId
+        ),
+        row.original.reasons.length > 0
+          ? h(
+              "div",
+              { class: "mt-1 flex flex-wrap gap-1" },
+              row.original.reasons.map((reason) =>
+                h(
+                  Badge,
+                  {
+                    key: reason.code + (reason.detail ?? ""),
+                    variant: "secondary",
+                    class: "font-normal",
+                    title: reason.code
+                  },
+                  () => [
+                    decisionReasonLabel(reason.code),
+                    h("span", { class: "ml-1 font-mono text-[10px] opacity-60" }, reason.code)
+                  ]
+                )
+              )
+            )
+          : null
+      ])
+  },
+  {
+    id: "verdict",
+    accessorFn: (row) => statusLabel(row.verdict),
+    header: sortableHeader<DecisionRecord>("Вердикт"),
+    cell: ({ row }) => h(StatusBadge, { value: row.original.verdict, raw: true })
+  },
+  {
+    id: "gate",
+    accessorFn: (row) => statusLabel(row.gate),
+    header: sortableHeader<DecisionRecord>("Гейт"),
+    cell: ({ row }) => h(StatusBadge, { value: row.original.gate, raw: true })
+  },
+  {
+    accessorKey: "fit",
+    header: sortableHeader<DecisionRecord>("Соответствие"),
+    cell: ({ row }) => h("span", { class: "tabular-nums" }, String(row.original.fit))
+  },
+  {
+    accessorKey: "priority",
+    header: sortableHeader<DecisionRecord>("Приоритет"),
+    cell: ({ row }) =>
+      h("span", { class: "font-mono tabular-nums" }, formatPriority(row.original.priority))
+  },
+  {
+    id: "role",
+    accessorFn: (row) => row.roleFamily ?? "",
+    header: sortableHeader<DecisionRecord>("Роль"),
+    cell: ({ row }) => h("span", null, roleFamilyLabel(row.original.roleFamily))
+  },
+  {
+    accessorKey: "createdAt",
+    header: sortableHeader<DecisionRecord>("Создано"),
+    cell: ({ row }) =>
+      h(
+        "span",
+        { class: "whitespace-nowrap text-muted-foreground" },
+        formatDate(row.original.createdAt)
+      )
+  }
+]
 </script>
 
 <template>
@@ -57,82 +131,27 @@ const decisions = computed(() => query.data.value ?? [])
       </template>
     </PageHeader>
 
-    <div class="mb-4 flex flex-wrap items-end gap-3">
-      <DecisionVerdictFilter v-model="verdict" />
-      <span class="pb-2 text-xs text-muted-foreground">Показано: {{ decisions.length }}</span>
-    </div>
-
     <Alert v-if="query.error.value" variant="destructive" class="mb-4">
       <CircleAlert />
       <AlertTitle>Не удалось загрузить решения</AlertTitle>
       <AlertDescription>{{ describeError(query.error.value) }}</AlertDescription>
     </Alert>
 
-    <Card>
-      <CardContent class="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Вакансия</TableHead>
-              <TableHead>Вердикт</TableHead>
-              <TableHead>Гейт</TableHead>
-              <TableHead>Соответствие</TableHead>
-              <TableHead>Приоритет</TableHead>
-              <TableHead>Роль</TableHead>
-              <TableHead>Создано</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <template v-if="query.isPending.value">
-              <TableRow v-for="index in 8" :key="index">
-                <TableCell :colspan="7">
-                  <Skeleton class="h-4 w-full" />
-                </TableCell>
-              </TableRow>
-            </template>
-
-            <TableRow v-else-if="decisions.length === 0">
-              <TableCell :colspan="7">
-                <EmptyState
-                  title="Решений не найдено"
-                  description="Оцените вакансию, чтобы сохранить артефакт решения."
-                />
-              </TableCell>
-            </TableRow>
-
-            <TableRow v-for="decision in decisions" :key="decision.id">
-              <TableCell class="max-w-[360px]">
-                <a
-                  :href="vacancyPath(decision.vacancyId)"
-                  class="font-medium text-foreground transition-colors hover:text-primary"
-                >
-                  {{ decision.vacancyTitle ?? decision.vacancyId }}
-                </a>
-                <div v-if="decision.reasons.length > 0" class="mt-1 flex flex-wrap gap-1">
-                  <Badge
-                    v-for="reason in decision.reasons"
-                    :key="reason.code + (reason.detail ?? '')"
-                    variant="secondary"
-                    class="font-normal"
-                    :title="reason.code"
-                  >
-                    {{ decisionReasonLabel(reason.code) }}
-                    <span class="ml-1 font-mono text-[10px] opacity-60">{{ reason.code }}</span>
-                  </Badge>
-                </div>
-              </TableCell>
-              <TableCell><StatusBadge :value="decision.verdict" raw /></TableCell>
-              <TableCell><StatusBadge :value="decision.gate" raw /></TableCell>
-              <TableCell class="tabular-nums">{{ decision.fit }}</TableCell>
-              <TableCell class="font-mono tabular-nums">{{ formatPriority(decision.priority) }}</TableCell>
-              <TableCell>{{ roleFamilyLabel(decision.roleFamily) }}</TableCell>
-              <TableCell class="whitespace-nowrap text-muted-foreground">
-                {{ formatDate(decision.createdAt) }}
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+    <DataTable
+      :columns="columns"
+      :data="decisions"
+      :is-loading="query.isPending.value"
+      :loading-row-count="8"
+      filter
+      filter-label="Поиск"
+      filter-placeholder="Вакансия, вердикт или роль"
+      empty-title="Решений не найдено"
+      empty-description="Оцените вакансию, чтобы сохранить артефакт решения."
+    >
+      <template #toolbar>
+        <DecisionVerdictFilter v-model="verdict" />
+        <span class="pb-2 text-xs text-muted-foreground">Показано: {{ decisions.length }}</span>
+      </template>
+    </DataTable>
   </section>
 </template>

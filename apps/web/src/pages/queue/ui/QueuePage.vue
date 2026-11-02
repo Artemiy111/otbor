@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from "vue"
+import { computed, h, ref } from "vue"
 import { useQuery } from "@pinia/colada"
+import type { HarnessJob } from "@otbor/contract"
+import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert } from "@lucide/vue"
 import { queueJobApi, queueJobKeys } from "@/entities/queue-job"
 import { QueueStatusFilter } from "@/features/queue-filter"
@@ -12,23 +14,17 @@ import {
   jobKindLabel,
   jobStageLabel,
   payloadPreview,
-  payloadText
+  payloadText,
+  statusLabel
 } from "@/shared/lib"
 import {
   Alert,
   AlertDescription,
   AlertTitle,
-  Card,
-  CardContent,
-  EmptyState,
+  DataTable,
   Skeleton,
   StatusBadge,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
+  sortableHeader
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
 import { StatCard } from "@/widgets/stat-card"
@@ -50,7 +46,7 @@ const jobsQuery = useQuery({
 })
 
 const stats = computed(() => statsQuery.data.value)
-const jobs = computed(() => jobsQuery.data.value ?? [])
+const jobs = computed<ReadonlyArray<HarnessJob>>(() => jobsQuery.data.value ?? [])
 
 const cards = computed(() => {
   const value = stats.value
@@ -75,6 +71,106 @@ const errorText = computed(() => {
 const isRefreshing = computed(
   () => statsQuery.isLoading.value || jobsQuery.isLoading.value
 )
+
+const payloadCell = (value: unknown) =>
+  h("div", { class: "max-w-[320px]" }, [
+    h("details", null, [
+      h(
+        "summary",
+        { class: "cursor-pointer font-mono text-xs text-muted-foreground" },
+        payloadPreview(value)
+      ),
+      h(
+        "pre",
+        {
+          class:
+            "mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-2 text-[11px]"
+        },
+        payloadText(value)
+      )
+    ])
+  ])
+
+const columns: ColumnDef<HarnessJob>[] = [
+  {
+    id: "kind",
+    accessorFn: (row) => jobKindLabel(row.kind),
+    header: sortableHeader<HarnessJob>("Тип"),
+    cell: ({ row }) => h("span", null, jobKindLabel(row.original.kind))
+  },
+  {
+    id: "stage",
+    accessorFn: (row) => jobStageLabel(row.stage),
+    header: sortableHeader<HarnessJob>("Этап"),
+    cell: ({ row }) => h("span", null, jobStageLabel(row.original.stage))
+  },
+  {
+    id: "status",
+    accessorFn: (row) => statusLabel(row.status),
+    header: sortableHeader<HarnessJob>("Статус"),
+    cell: ({ row }) => h(StatusBadge, { value: row.original.status, raw: true })
+  },
+  {
+    accessorKey: "priority",
+    header: sortableHeader<HarnessJob>("Приоритет"),
+    cell: ({ row }) =>
+      h("span", { class: "font-mono tabular-nums" }, String(row.original.priority))
+  },
+  {
+    accessorKey: "attempts",
+    header: sortableHeader<HarnessJob>("Попытки"),
+    cell: ({ row }) =>
+      h(
+        "span",
+        { class: "tabular-nums" },
+        `${row.original.attempts} / ${row.original.maxAttempts}`
+      )
+  },
+  {
+    id: "lease",
+    accessorFn: (row) => row.leaseUntil ?? "",
+    enableGlobalFilter: false,
+    header: sortableHeader<HarnessJob>("Аренда"),
+    cell: ({ row }) => {
+      const job = row.original
+      if (!job.leaseUntil) return h("span", { class: "text-muted-foreground" }, "—")
+      return h("div", { class: "text-muted-foreground" }, [
+        h("div", { class: "font-mono text-xs" }, job.leaseId ?? "—"),
+        h("div", null, formatDate(job.leaseUntil))
+      ])
+    }
+  },
+  {
+    accessorKey: "runAt",
+    header: sortableHeader<HarnessJob>("Запуск"),
+    cell: ({ row }) =>
+      h(
+        "span",
+        { class: "whitespace-nowrap text-muted-foreground" },
+        formatDate(row.original.runAt)
+      )
+  },
+  {
+    id: "payload",
+    enableSorting: false,
+    enableGlobalFilter: false,
+    header: "Задание",
+    cell: ({ row }) => payloadCell(row.original.payload)
+  },
+  {
+    id: "result",
+    enableSorting: false,
+    enableGlobalFilter: false,
+    header: "Результат",
+    cell: ({ row }) => {
+      const result = row.original.result
+      if (result === null || result === undefined) {
+        return h("span", { class: "text-muted-foreground" }, "—")
+      }
+      return payloadCell(result)
+    }
+  }
+]
 
 const refresh = () => {
   void Promise.all([statsQuery.refetch(), jobsQuery.refetch()])
@@ -106,86 +202,23 @@ const refresh = () => {
       <StatCard label="Старейшее ожидание" :value="formatAge(stats.oldestPendingAgeSeconds)" />
     </div>
 
-    <div class="mb-4 mt-4 flex flex-wrap items-end gap-3">
-      <QueueStatusFilter v-model="status" />
-      <span class="pb-2 text-xs text-muted-foreground">Заданий: {{ jobs.length }}</span>
+    <div class="mt-4">
+      <DataTable
+        :columns="columns"
+        :data="jobs"
+        :is-loading="jobsQuery.isPending.value"
+        :loading-row-count="8"
+        filter
+        filter-label="Поиск"
+        filter-placeholder="Тип, этап или статус"
+        empty-title="Заданий нет"
+        empty-description="Новая работа браузера и генерации появится здесь после постановки в очередь."
+      >
+        <template #toolbar>
+          <QueueStatusFilter v-model="status" />
+          <span class="pb-2 text-xs text-muted-foreground">Заданий: {{ jobs.length }}</span>
+        </template>
+      </DataTable>
     </div>
-
-    <Card>
-      <CardContent class="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Тип</TableHead>
-              <TableHead>Этап</TableHead>
-              <TableHead>Статус</TableHead>
-              <TableHead>Приоритет</TableHead>
-              <TableHead>Попытки</TableHead>
-              <TableHead>Аренда</TableHead>
-              <TableHead>Запуск</TableHead>
-              <TableHead>Задание</TableHead>
-              <TableHead>Результат</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <template v-if="jobsQuery.isPending.value">
-              <TableRow v-for="index in 8" :key="index">
-                <TableCell :colspan="9">
-                  <Skeleton class="h-4 w-full" />
-                </TableCell>
-              </TableRow>
-            </template>
-
-            <TableRow v-else-if="jobs.length === 0">
-              <TableCell :colspan="9">
-                <EmptyState
-                  title="Заданий нет"
-                  description="Новая работа браузера и генерации появится здесь после постановки в очередь."
-                />
-              </TableCell>
-            </TableRow>
-
-            <TableRow v-for="job in jobs" :key="job.id">
-              <TableCell>{{ jobKindLabel(job.kind) }}</TableCell>
-              <TableCell>{{ jobStageLabel(job.stage) }}</TableCell>
-              <TableCell><StatusBadge :value="job.status" raw /></TableCell>
-              <TableCell class="font-mono tabular-nums">{{ job.priority }}</TableCell>
-              <TableCell class="tabular-nums">{{ job.attempts }} / {{ job.maxAttempts }}</TableCell>
-              <TableCell class="text-muted-foreground">
-                <template v-if="job.leaseUntil">
-                  <div class="font-mono text-xs">{{ job.leaseId }}</div>
-                  <div>{{ formatDate(job.leaseUntil) }}</div>
-                </template>
-                <span v-else>—</span>
-              </TableCell>
-              <TableCell class="whitespace-nowrap text-muted-foreground">
-                {{ formatDate(job.runAt) }}
-              </TableCell>
-              <TableCell class="max-w-[320px]">
-                <details>
-                  <summary class="cursor-pointer font-mono text-xs text-muted-foreground">
-                    {{ payloadPreview(job.payload) }}
-                  </summary>
-                  <pre
-                    class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-2 text-[11px]"
-                  >{{ payloadText(job.payload) }}</pre>
-                </details>
-              </TableCell>
-              <TableCell class="max-w-[320px]">
-                <details v-if="job.result">
-                  <summary class="cursor-pointer font-mono text-xs text-muted-foreground">
-                    {{ payloadPreview(job.result) }}
-                  </summary>
-                  <pre
-                    class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-2 text-[11px]"
-                  >{{ payloadText(job.result) }}</pre>
-                </details>
-                <span v-else class="text-muted-foreground">—</span>
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
   </section>
 </template>

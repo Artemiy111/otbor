@@ -14,6 +14,7 @@
     "@otbor/contract": "workspace:*",
     "@pinia/colada": "^1.4.9",
     "@tailwindcss/vite": "^4.3.3",
+    "@tanstack/vue-table": "^8.21.3",
     "@vueuse/core": "^15.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
