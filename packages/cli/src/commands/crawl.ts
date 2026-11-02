@@ -2,35 +2,23 @@ import type { VacancyDraft } from "@otbor/contract"
 import {
   canRotate,
   classifyCrawlBlock,
-  CrawlerError,
   draftFromCard,
-  ensureEngine,
   fetchHtml,
-  loadProxyConfig,
   parseSearchHtml,
-  proxyForUrl,
   proxyLabel,
   rotateProxy,
   runCrawl,
+  type CrawlerError,
   type CrawlEvent,
   type CrawlPageMeta,
   type FetchedPage,
-  type SearchCard,
   type SearchPage
 } from "@otbor/crawler"
-import { extractVacancy } from "@otbor/hh"
 import { Console, Effect, Option } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { Api } from "../client.ts"
 import { table } from "../format.ts"
-
-const asCrawlerError = (code: CrawlerError["code"], error: unknown): CrawlerError =>
-  error instanceof CrawlerError
-    ? error
-    : new CrawlerError({
-        code,
-        message: error instanceof Error ? error.message : String(error)
-      })
+import { asCrawlerError, fetchVacancyDraft, prepareProxy } from "../hh-fetch.ts"
 
 const crawl = Command.make(
   "crawl",
@@ -62,29 +50,10 @@ const crawl = Command.make(
   },
   Effect.fn(function*({ url, pages, start, delay, hydrate, hydrateLimit, json }) {
     const api = yield* Api
-
-    const config = yield* Effect.try({
-      try: () => loadProxyConfig(),
-      catch: (error) =>
-        new CrawlerError({
-          code: "proxy",
-          message: error instanceof Error ? error.message : String(error)
-        })
-    })
-
-    if (config !== null && config.source === "subscription") {
-      yield* Effect.tryPromise({
-        try: () => ensureEngine(config),
-        catch: (error) =>
-          new CrawlerError({
-            code: "proxy",
-            message: error instanceof Error ? error.message : String(error)
-          })
-      })
-    }
-
-    const proxy = config === null ? null : proxyForUrl(config, "https://hh.ru/")
+    const { config, proxy } = yield* prepareProxy
     let rotations = 0
+
+    const crawlRun = yield* api.CrawlStart({ url, startPage: start })
 
     const fetchOnce = (pageUrl: string): Effect.Effect<FetchedPage, CrawlerError> =>
       Effect.gen(function*() {
@@ -127,64 +96,56 @@ const crawl = Command.make(
         return yield* fetchOnce(pageUrl)
       })
 
-    const hydrateCard = (
-      card: SearchCard
-    ): Effect.Effect<VacancyDraft | null> =>
-      Effect.gen(function*() {
-        const response = yield* Effect.tryPromise({
-          try: () =>
-            fetchHtml(`https://hh.ru/vacancy/${card.externalId}`, { proxy }),
-          catch: () => null
-        }).pipe(Effect.match({ onFailure: () => null, onSuccess: (value) => value }))
-
-        if (response === null || response.status !== 200) return null
-        if (classifyCrawlBlock(response.status, response.html) !== null) return null
-
-        return yield* extractVacancy(response.html, { url: response.url }).pipe(
-          Effect.match({ onFailure: () => null, onSuccess: (value) => value })
-        )
-      })
+    let pagesDone = 0
+    let found = 0
 
     const savePage = (
       page: SearchPage,
-      _meta: CrawlPageMeta
+      meta: CrawlPageMeta
     ): Effect.Effect<{ inserted: number; updated: number; skipped: number; errors: number }, CrawlerError> =>
       Effect.gen(function*() {
         const stubs = page.cards.map(draftFromCard)
         const saved = yield* api.VacanciesUpsert({ drafts: stubs }).pipe(
           Effect.mapError((error) => asCrawlerError("network", error))
         )
+        const vacancyIds = new Set(saved.items.map((item) => item.id))
 
-        if (!hydrate || page.cards.length === 0) {
-          return {
-            inserted: saved.inserted,
-            updated: saved.updated,
-            skipped: saved.skipped,
-            errors: 0
-          }
-        }
-
-        const hydrated: Array<VacancyDraft> = []
         let errors = 0
-        const limit = Option.getOrUndefined(hydrateLimit)
-        const cards = limit === undefined
-          ? page.cards
-          : page.cards.slice(0, Math.max(0, limit))
-        for (const card of cards) {
-          const draft = yield* hydrateCard(card)
-          if (draft === null) {
-            errors += 1
-          } else {
-            hydrated.push(draft)
+        if (hydrate && page.cards.length > 0) {
+          const hydrated: Array<VacancyDraft> = []
+          const limit = Option.getOrUndefined(hydrateLimit)
+          const cards = limit === undefined
+            ? page.cards
+            : page.cards.slice(0, Math.max(0, limit))
+
+          for (const card of cards) {
+            const draft = yield* fetchVacancyDraft(card.externalId, proxy)
+            if (draft === null) {
+              errors += 1
+            } else {
+              hydrated.push(draft)
+            }
+            yield* Effect.sleep("400 millis")
           }
-          yield* Effect.sleep("400 millis")
+
+          if (hydrated.length > 0) {
+            const stored = yield* api.VacanciesUpsert({ drafts: hydrated }).pipe(
+              Effect.mapError((error) => asCrawlerError("network", error))
+            )
+            for (const item of stored.items) vacancyIds.add(item.id)
+          }
         }
 
-        if (hydrated.length > 0) {
-          yield* api.VacanciesUpsert({ drafts: hydrated }).pipe(
-            Effect.mapError((error) => asCrawlerError("network", error))
-          )
-        }
+        pagesDone += 1
+        found += page.cards.length
+
+        yield* api.CrawlSavePage({
+          runId: crawlRun.runId,
+          nextPage: meta.page + 1,
+          pagesDone,
+          found,
+          vacancyIds: [...vacancyIds]
+        }).pipe(Effect.mapError((error) => asCrawlerError("network", error)))
 
         return {
           inserted: saved.inserted,
@@ -212,9 +173,18 @@ const crawl = Command.make(
       onEvent
     })
 
+    const finished = yield* api.CrawlFinish({
+      runId: crawlRun.runId,
+      status: outcome.status,
+      nextPage: outcome.nextPage,
+      pagesDone: outcome.pagesDone,
+      found: outcome.found,
+      error: outcome.status === "done" ? null : outcome.reason
+    })
+
     if (json) {
       yield* Console.log(
-        JSON.stringify({ proxy: proxyLabel(config), rotations, outcome }, null, 2)
+        JSON.stringify({ proxy: proxyLabel(config), rotations, run: finished, outcome }, null, 2)
       )
       return
     }
@@ -222,6 +192,7 @@ const crawl = Command.make(
     if (config !== null) {
       yield* Console.log(`proxy:   ${proxyLabel(config)} (${config.source})`)
     }
+    yield* Console.log(`run:     ${finished.runId}`)
     yield* Console.log(`status:  ${outcome.status}${outcome.reason === null ? "" : ` (${outcome.reason})`}`)
     yield* Console.log(`pages:   ${outcome.pagesDone}`)
     yield* Console.log(`found:   ${outcome.found}`)

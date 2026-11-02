@@ -150,3 +150,17 @@ export const HarnessExitTag = Schema.Literals([
 ])
 
 export type HarnessExitTag = typeof HarnessExitTag.Type
+
+/**
+ * Lifecycle of one persisted search run. `running` exists only while the crawl
+ * is in flight; a crash leaves it there and the next run starts fresh rather
+ * than pretending the gap was crawled.
+ */
+export const CrawlRunStatus = Schema.Literals(["running", "done", "stopped", "error"])
+
+export type CrawlRunStatus = typeof CrawlRunStatus.Type
+
+/** A run can only be finished as one of these. */
+export const CrawlFinishStatus = Schema.Literals(["done", "stopped", "error"])
+
+export type CrawlFinishStatus = typeof CrawlFinishStatus.Type

@@ -28,6 +28,8 @@ export const HarnessId = UuidV7.pipe(Schema.brand("HarnessId"))
 export const HarnessJobId = UuidV7.pipe(Schema.brand("HarnessJobId"))
 export const LeaseId = UuidV7.pipe(Schema.brand("LeaseId"))
 export const ScheduleId = UuidV7.pipe(Schema.brand("ScheduleId"))
+export const SearchQueryId = UuidV7.pipe(Schema.brand("SearchQueryId"))
+export const SearchRunId = UuidV7.pipe(Schema.brand("SearchRunId"))
 
 export type UserId = typeof UserId.Type
 export type HhAccountId = typeof HhAccountId.Type
@@ -45,6 +47,8 @@ export type HarnessId = typeof HarnessId.Type
 export type HarnessJobId = typeof HarnessJobId.Type
 export type LeaseId = typeof LeaseId.Type
 export type ScheduleId = typeof ScheduleId.Type
+export type SearchQueryId = typeof SearchQueryId.Type
+export type SearchRunId = typeof SearchRunId.Type
 
 /** External ids stay strings: a vendor may reuse them or make them negative. */
 export const HhVacancyId = Schema.String.pipe(Schema.brand("HhVacancyId"))

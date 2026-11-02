@@ -1,5 +1,8 @@
+import { normalizeSearchUrl } from "@otbor/contract"
 import { decodeEntities, initialStatePayload } from "@otbor/hh"
 import { CrawlerError } from "./errors.ts"
+
+export { normalizeSearchUrl }
 
 /**
  * Browser-independent parser for hh.ru search results.
@@ -55,17 +58,6 @@ export type CrawlBlock = "captcha" | "auth" | "forbidden" | "geo"
 const CAPTCHA_RE =
   /captcha\.hh\.ru|подтвердите, что вы не робот|введите символы с картинки|доступ ограничен/i
 const AUTH_RE = /войдите с паролем|вход и регистрация|войти с помощью|укажите телефон/i
-
-const VOLATILE_PARAMS = new Set([
-  "page",
-  "search_session_id",
-  "hhtmFrom",
-  "hhtmFromLabel",
-  "from",
-  "src",
-  "source",
-  "redirect"
-])
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -321,29 +313,6 @@ export const classifyCrawlBlock = (status: number, html: string): CrawlBlock | n
   if (CAPTCHA_RE.test(html)) return "captcha"
   if (AUTH_RE.test(html)) return "auth"
   return null
-}
-
-/** Stable identity of a saved search: drops paging and session noise. */
-export const normalizeSearchUrl = (input: string): string => {
-  try {
-    const url = new URL(input)
-    url.hostname = url.hostname.replace(/^www\./, "").replace(/^m\./, "")
-    url.hash = ""
-    for (const key of [...url.searchParams.keys()]) {
-      if (VOLATILE_PARAMS.has(key)) url.searchParams.delete(key)
-    }
-    const entries = [...url.searchParams.entries()].sort(([leftKey, leftValue], [rightKey, rightValue]) =>
-      leftKey === rightKey ? leftValue.localeCompare(rightValue) : leftKey.localeCompare(rightKey)
-    )
-    url.search = ""
-    for (const [key, value] of entries) url.searchParams.append(key, value)
-    if (url.pathname.length > 1 && url.pathname.endsWith("/")) {
-      url.pathname = url.pathname.slice(0, -1)
-    }
-    return url.toString()
-  } catch {
-    return input.trim()
-  }
 }
 
 export const withPageParam = (input: string, page: number): string => {

@@ -9,6 +9,7 @@ import { dbCommand } from "./commands/db.ts"
 import { decisionCommand } from "./commands/decision.ts"
 import { gateCommand } from "./commands/gate.ts"
 import { harnessCommand } from "./commands/harness.ts"
+import { hydrateCommand } from "./commands/hydrate.ts"
 import { lexiconCommand } from "./commands/lexicon.ts"
 import { presetCommand } from "./commands/preset.ts"
 import { proxyCommand } from "./commands/proxy.ts"
@@ -61,6 +62,7 @@ root
       harnessCommand,
       presetCommand,
       crawlCommand,
+      hydrateCommand,
       proxyCommand
     ]),
     Command.run({ version: "0.2.0" })
