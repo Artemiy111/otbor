@@ -477,6 +477,17 @@ export const KeywordAliasRecord = Schema.Struct({
 
 export type KeywordAliasRecord = typeof KeywordAliasRecord.Type
 
+export const KeywordAliasStat = Schema.Struct({
+  alias: Schema.String,
+  normalizedAlias: Schema.String,
+  typo: Schema.Boolean,
+  vacancies: Schema.Int,
+  mentions: Schema.Int,
+  share: Schema.Int
+})
+
+export type KeywordAliasStat = typeof KeywordAliasStat.Type
+
 export const LexiconKeyword = Schema.Struct({
   id: KeywordId,
   term: Schema.String,
@@ -484,7 +495,8 @@ export const LexiconKeyword = Schema.Struct({
   enabled: Schema.Boolean,
   /** Vacancies that mention this keyword, after the caller's preset filter. */
   vacancyCount: Schema.Int,
-  aliases: Schema.Array(KeywordAliasRecord)
+  aliases: Schema.Array(KeywordAliasRecord),
+  aliasStats: Schema.Array(KeywordAliasStat)
 })
 
 export type LexiconKeyword = typeof LexiconKeyword.Type
