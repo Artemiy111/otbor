@@ -22,6 +22,7 @@ import {
   MessageKind,
   PresetKind,
   ScheduleKind,
+  SourceSyncKind,
   Seniority,
   StreamMode,
   TestsPolicy,
@@ -47,6 +48,7 @@ import {
   PresetId,
   ResumeId,
   ScheduleId,
+  ScheduleRunId,
   SearchQueryId,
   SearchRunId,
   TelegramAccountId,
@@ -280,6 +282,23 @@ export const CrawlSchedule = Schema.Struct({
 })
 
 export type CrawlSchedule = typeof CrawlSchedule.Type
+
+/* -------------------------------------------------------------------------- */
+/* Schedule runs                                                              */
+/* -------------------------------------------------------------------------- */
+
+export const ScheduleRun = Schema.Struct({
+  id: ScheduleRunId,
+  scheduleId: ScheduleId,
+  kind: SourceSyncKind,
+  status: Schema.Literals(["running", "done", "error"]),
+  detail: Schema.optional(Schema.NullOr(Schema.Unknown)),
+  error: Schema.optional(Schema.NullOr(Schema.String)),
+  startedAt: Schema.String,
+  finishedAt: Schema.optional(Schema.NullOr(Schema.String))
+})
+
+export type ScheduleRun = typeof ScheduleRun.Type
 
 /* -------------------------------------------------------------------------- */
 /* Sources: contacts and conversations                                        */

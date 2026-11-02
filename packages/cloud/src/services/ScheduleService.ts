@@ -1,8 +1,9 @@
-import type { ApiError, CrawlSchedule, ScheduleId, SourceSyncKind } from "@otbor/contract"
+import type { ApiError, CrawlSchedule, ScheduleId, ScheduleRun, SourceSyncKind } from "@otbor/contract"
 import { InvalidInput, NotFound } from "@otbor/contract"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "../db/Database.ts"
 import * as ScheduleRepository from "../repositories/ScheduleRepository.ts"
+import * as ScheduleRunRepository from "../repositories/ScheduleRunRepository.ts"
 import { ScheduleDispatcher } from "./ScheduleDispatcher.ts"
 import { CurrentUser } from "./CurrentUser.ts"
 import { toStorageError } from "./support.ts"
@@ -28,6 +29,12 @@ export interface ScheduleServiceShape {
     id: string
   ) => Effect.Effect<{ readonly id: ScheduleId; readonly deleted: boolean }, ApiError>
   readonly runNow: (id: string) => Effect.Effect<ScheduleRunNowResult, ApiError>
+  readonly runs: (params: {
+    readonly scheduleId?: ScheduleId
+    readonly kind?: SourceSyncKind
+    readonly limit?: number
+    readonly offset?: number
+  }) => Effect.Effect<{ readonly items: ReadonlyArray<ScheduleRun>; readonly total: number }, ApiError>
 }
 
 const errorMessage = (error: ApiError): string => {
@@ -132,13 +139,40 @@ export class ScheduleService extends Context.Service<ScheduleService, ScheduleSe
 
           if (stored === null) return
 
+          const runId = yield* database
+            .asOwner((tx) => ScheduleRunRepository.createRun(tx, schedule.id, schedule.kind))
+            .pipe(Effect.catchCause((cause) => Effect.logError(`schedule ${schedule.id}: could not create run`, cause).pipe(Effect.as(null))))
+
+          const finishRun = (status: "done" | "error", detail?: Record<string, unknown> | null, error?: string | null) =>
+            runId === null
+              ? Effect.void
+              : database
+                  .asOwner((tx) =>
+                    ScheduleRunRepository.finishRun(tx, runId, { status, detail, error })
+                  )
+                  .pipe(Effect.catchCause((cause) =>
+                    Effect.logError(`schedule ${schedule.id}: could not finish run`, cause)
+                  ))
+
           yield* dispatcher.run(stored).pipe(
             Effect.matchEffect({
-              onFailure: (error) => recordResult(schedule.id, errorMessage(error)),
-              onSuccess: (result) => recordResult(schedule.id, result.error)
+              onFailure: (error) =>
+                finishRun("error", null, errorMessage(error)).pipe(
+                  Effect.andThen(recordResult(schedule.id, errorMessage(error)))
+                ),
+              onSuccess: (result) =>
+                finishRun(
+                  result.error === null ? "done" : "error",
+                  result.detail ?? null,
+                  result.error
+                ).pipe(Effect.andThen(recordResult(schedule.id, result.error)))
             }),
             Effect.catchCause((cause) =>
-              Effect.logError(`schedule ${schedule.id}: runner crashed`, cause)
+              Effect.gen(function*() {
+                yield* Effect.logError(`schedule ${schedule.id}: runner crashed`, cause)
+                yield* finishRun("error", null, "runner crashed")
+                yield* recordResult(schedule.id, "runner crashed")
+              })
             )
           )
         })
@@ -180,7 +214,25 @@ export class ScheduleService extends Context.Service<ScheduleService, ScheduleSe
           return { accepted: true, schedule: updated }
         })
 
-      return ScheduleService.of({ list, upsert, remove, runNow })
+      const runs: ScheduleServiceShape["runs"] = (params) =>
+        database
+          .asUser(currentUser.userId, (tx) =>
+            Effect.gen(function*() {
+              const result = yield* ScheduleRunRepository.listRuns(tx, {
+                scheduleId: params.scheduleId,
+                kind: params.kind,
+                limit: params.limit,
+                offset: params.offset
+              })
+              return {
+                items: result.items.map((row) => ScheduleRunRepository.toScheduleRun(row)),
+                total: result.total
+              }
+            })
+          )
+          .pipe(Effect.mapError(toStorageError("schedule.runs")))
+
+      return ScheduleService.of({ list, upsert, remove, runNow, runs })
     })
   )
 }
