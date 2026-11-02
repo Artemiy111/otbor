@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { computed, h, ref } from "vue"
-import { useQuery } from "@pinia/colada"
+import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
 import type { DecisionRecord } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
-import { CircleAlert } from "@lucide/vue"
+import { CircleAlert, FilePlus2 } from "@lucide/vue"
+import { applicationApi } from "@/entities/application"
 import { decisionApi, decisionKeys } from "@/entities/decision"
+import { applicationKeys } from "@/entities/application/model"
 import { DecisionVerdictFilter } from "@/features/decision-filter"
 import { RefreshButton } from "@/features/refresh-button"
 import {
+  applicationPath,
   decisionReasonLabel,
   describeError,
   formatDate,
@@ -21,6 +24,7 @@ import {
   AlertDescription,
   AlertTitle,
   Badge,
+  Button,
   DataTable,
   StatusBadge,
   sortableHeader
@@ -39,6 +43,35 @@ const query = useQuery({
 })
 
 const decisions = computed<ReadonlyArray<DecisionRecord>>(() => query.data.value ?? [])
+
+const queryCache = useQueryCache()
+const creatingDecisionId = ref<string | null>(null)
+
+const createMutation = useMutation({
+  mutation: (decision: DecisionRecord) => {
+    if (decision.hhAccountId === null || decision.hhAccountId === undefined) {
+      throw new Error("Для решения не выбран hh-аккаунт")
+    }
+    return applicationApi.createFromDecision({
+      decisionId: decision.id,
+      hhAccountId: decision.hhAccountId,
+      resumeId: decision.resumeId ?? undefined,
+      mode: "drafts"
+    })
+  },
+  async onSuccess(application) {
+    await Promise.all([
+      queryCache.invalidateQueries({ key: applicationKeys.all }),
+      query.refetch()
+    ])
+    creatingDecisionId.value = null
+    // Navigate to the new application? Keep simple: store last created id.
+    void application
+  },
+  onError() {
+    creatingDecisionId.value = null
+  }
+})
 
 const columns: ColumnDef<DecisionRecord>[] = [
   {
@@ -106,6 +139,35 @@ const columns: ColumnDef<DecisionRecord>[] = [
     accessorFn: (row) => row.roleFamily ?? "",
     header: sortableHeader<DecisionRecord>("Роль"),
     cell: ({ row }) => h("span", null, roleFamilyLabel(row.original.roleFamily))
+  },
+  {
+    id: "actions",
+    header: "Действия",
+    enableGlobalFilter: false,
+    cell: ({ row }) => {
+      const decision = row.original
+      const hasAccount = decision.hhAccountId !== null && decision.hhAccountId !== undefined
+      if (!hasAccount) {
+        return h("span", { class: "text-xs text-muted-foreground" }, "нет аккаунта")
+      }
+      const isCreating = creatingDecisionId.value === decision.id || createMutation.isLoading.value
+      return h(
+        Button,
+        {
+          size: "sm",
+          variant: "outline",
+          disabled: isCreating,
+          onClick: () => {
+            creatingDecisionId.value = decision.id
+            createMutation.mutate(decision)
+          }
+        },
+        () => [
+          h(FilePlus2, { class: "mr-1 h-3.5 w-3.5" }),
+          isCreating ? "Создание..." : "Черновик"
+        ]
+      )
+    }
   },
   {
     accessorKey: "createdAt",
