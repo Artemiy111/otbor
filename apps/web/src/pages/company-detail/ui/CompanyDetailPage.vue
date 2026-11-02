@@ -2,6 +2,7 @@
 import { computed } from "vue"
 import { useQuery } from "@pinia/colada"
 import { CircleAlert, ExternalLink } from "@lucide/vue"
+import { applicationApi, applicationKeys } from "@/entities/application"
 import { companyApi, companyKeys } from "@/entities/company"
 import { RefreshButton } from "@/features/refresh-button"
 import {
@@ -47,6 +48,14 @@ const query = useQuery({
 const data = computed(() => query.data.value)
 const employer = computed(() => data.value?.employer)
 const vacancies = computed(() => data.value?.vacancies ?? [])
+
+const applicationsQuery = useQuery({
+  key: () => applicationKeys.list("all"),
+  query: () => applicationApi.list({ limit: 500 })
+})
+const applicationVacancyIds = computed(
+  () => new Set((applicationsQuery.data.value ?? []).map((application) => application.vacancyId))
+)
 
 const subtitle = computed(() => {
   const company = employer.value
@@ -159,6 +168,7 @@ const errorText = computed(() =>
                 <TableHead>Город</TableHead>
                 <TableHead>Уровень</TableHead>
                 <TableHead>Опубликована</TableHead>
+                <TableHead>Отклик</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -179,6 +189,10 @@ const errorText = computed(() =>
                 <TableCell>{{ seniorityLabel(vacancy.seniority) }}</TableCell>
                 <TableCell class="whitespace-nowrap text-muted-foreground">
                   {{ formatDate(vacancy.publishedAt ?? vacancy.lastSeenAt) }}
+                </TableCell>
+                <TableCell>
+                  <Badge v-if="applicationVacancyIds.has(vacancy.id)" variant="success">Отправлен</Badge>
+                  <span v-else class="text-muted-foreground">—</span>
                 </TableCell>
               </TableRow>
             </TableBody>

@@ -232,9 +232,22 @@ watch(
           "
         />
         <StatCard label="Уровень" :value="seniorityLabel(data.vacancy.seniority)" />
+        <StatCard label="Занятость" :value="data.vacancy.employmentForm ?? '—'" />
+        <StatCard label="Опыт" :value="data.vacancy.experienceCode ?? '—'" />
         <StatCard label="Опубликована" :value="formatDate(data.vacancy.publishedAt)" />
         <StatCard label="Замечена" :value="formatDate(data.vacancy.lastSeenAt)" />
       </div>
+
+      <Card v-if="data.vacancy.workFormats.length > 0" class="mt-4">
+        <CardHeader>
+          <CardTitle>Формат работы</CardTitle>
+        </CardHeader>
+        <CardContent class="flex flex-wrap gap-2">
+          <Badge v-for="format in data.vacancy.workFormats" :key="format" variant="secondary">
+            {{ format }}
+          </Badge>
+        </CardContent>
+      </Card>
 
       <Card class="mt-4">
         <CardHeader>

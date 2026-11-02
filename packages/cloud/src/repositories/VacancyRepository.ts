@@ -27,6 +27,8 @@ export interface VacancyRow {
   readonly salaryTo: number | null
   readonly salaryCurrency: string | null
   readonly seniority: string
+  readonly experienceCode: string | null
+  readonly employmentForm: string | null
   readonly publishedAt: Date | null
   readonly archived: boolean
   readonly createdAt: Date
@@ -55,6 +57,9 @@ export const toSummary = (row: VacancyRow): VacancySummary => {
     salaryTo: row.salaryTo,
     salaryCurrency: row.salaryCurrency,
     seniority: row.seniority as VacancySummary["seniority"],
+    experienceCode: row.experienceCode,
+    employmentForm: row.employmentForm,
+    workFormats: row.workFormats,
     publishedAt: row.publishedAt?.toISOString() ?? null,
     archived: row.archived,
     createdAt: row.createdAt.toISOString(),
@@ -311,6 +316,8 @@ export const rowSelection = {
   salaryTo: vacancy.salaryTo,
   salaryCurrency: vacancy.salaryCurrency,
   seniority: vacancy.seniority,
+  experienceCode: vacancy.experienceCode,
+  employmentForm: vacancy.employmentForm,
   publishedAt: vacancy.publishedAt,
   archived: vacancy.archived,
   createdAt: vacancy.createdAt,
