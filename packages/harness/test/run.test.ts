@@ -1,0 +1,238 @@
+import { AcpClient, type AcpEvent, type AcpSessionInfo } from "@otbor/acp"
+import { HarnessJob, type HarnessExit } from "@otbor/contract"
+import { describe, expect, test } from "bun:test"
+import { Duration, Effect, Layer, Ref, Schema, Stream } from "effect"
+import {
+  HarnessGateway,
+  HarnessGatewayError,
+  type HarnessGatewayShape
+} from "../src/client.ts"
+import { parseHarnessConfig } from "../src/config.ts"
+import {
+  BROWSER_UNAVAILABLE_MESSAGE,
+  runHarness,
+  runJob
+} from "../src/run.ts"
+
+const HARNESS_ID = "0190c8f5-8c2b-7abc-8def-0123456789ab"
+const JOB_ID = "0190c8f5-8c2b-7abc-8def-0123456789cd"
+const LEASE_ID = "0190c8f5-8c2b-7abc-8def-0123456789ef"
+
+const makeJob = (overrides: Record<string, unknown> = {}) =>
+  Schema.decodeUnknownSync(HarnessJob)({
+    id: JOB_ID,
+    kind: "inference",
+    stage: "inference",
+    status: "leased",
+    priority: 100,
+    payload: { prompt: "hello" },
+    result: null,
+    attempts: 1,
+    maxAttempts: 3,
+    leaseId: LEASE_ID,
+    leaseEpoch: 1,
+    leaseUntil: "2026-11-02T00:00:00.000Z",
+    runAt: "2026-11-02T00:00:00.000Z",
+    createdAt: "2026-11-02T00:00:00.000Z",
+    ...overrides
+  })
+
+const makeConfig = (overrides: Record<string, string | undefined> = {}) =>
+  Effect.runPromise(
+    parseHarnessConfig({
+      OTBOR_HARNESS_ID: HARNESS_ID,
+      OTBOR_HARNESS_TOKEN: "device-token",
+      ...overrides
+    })
+  )
+
+const gatewayLayer = (overrides: Partial<HarnessGatewayShape>) =>
+  Layer.succeed(HarnessGateway)(
+    HarnessGateway.of({
+      leaseNext: () => Effect.die("leaseNext should not be called"),
+      heartbeat: () => Effect.die("heartbeat should not be called"),
+      complete: () => Effect.die("complete should not be called"),
+      ...overrides
+    })
+  )
+
+const session: AcpSessionInfo = {
+  sessionId: "session-1",
+  protocolVersion: 1,
+  agent: { name: "fake" },
+  configOptions: [{ id: "model", currentValue: "fake/model" }]
+}
+
+const doneEvent: AcpEvent = {
+  _tag: "Done",
+  text: "answer",
+  sessionId: "session-1",
+  stopReason: "end_turn",
+  usage: null,
+  providerResponse: null,
+  providerUsage: null,
+  durationMs: 5
+}
+
+const slowAcpLayer = (delay: Duration.Input): Layer.Layer<AcpClient> =>
+  Layer.succeed(AcpClient)(
+    AcpClient.of({
+      prompt: () => Effect.succeed("answer"),
+      promptEvents: () =>
+        Stream.fromEffect(Effect.sleep(delay)).pipe(Stream.map(() => doneEvent)),
+      sessionId: Effect.succeed(session.sessionId),
+      session: Effect.succeed(session)
+    })
+  )
+
+describe("runJob", () => {
+  test("a browser job is completed as blocked with a clear message", async () => {
+    const config = await makeConfig()
+    const job = makeJob({ kind: "browser", stage: "prepare" })
+
+    const outcome = await Effect.runPromise(
+      runJob(config, job).pipe(Effect.provide(gatewayLayer({})))
+    )
+
+    expect(outcome._tag).toBe("complete")
+    if (outcome._tag !== "complete") return
+    expect(outcome.exit.tag).toBe("blocked")
+    expect(outcome.exit.message).toBe(BROWSER_UNAVAILABLE_MESSAGE)
+  })
+
+  test("a job without a lease is skipped instead of completed", async () => {
+    const config = await makeConfig()
+    const job = makeJob({ leaseId: null })
+
+    const outcome = await Effect.runPromise(
+      runJob(config, job).pipe(Effect.provide(gatewayLayer({})))
+    )
+
+    expect(outcome._tag).toBe("skip")
+  })
+
+  test("heartbeats while the prompt runs and reports prepared", async () => {
+    const config = await makeConfig()
+    const job = makeJob()
+    const pings = await Effect.runPromise(Ref.make(0))
+
+    const outcome = await Effect.runPromise(
+      runJob(config, job, {
+        heartbeatEvery: Duration.millis(10),
+        acpLayer: slowAcpLayer(Duration.millis(60))
+      }).pipe(
+        Effect.provide(
+          gatewayLayer({
+            heartbeat: () =>
+              Ref.update(pings, (count) => count + 1).pipe(
+                Effect.as({ ok: true, reason: null })
+              )
+          })
+        )
+      )
+    )
+
+    expect(outcome._tag).toBe("complete")
+    if (outcome._tag !== "complete") return
+    expect(outcome.exit.tag).toBe("prepared")
+    expect(await Effect.runPromise(Ref.get(pings))).toBeGreaterThan(0)
+  })
+
+  test("a lost lease stops the prompt without completing it", async () => {
+    const config = await makeConfig()
+    const job = makeJob()
+
+    const outcome = await Effect.runPromise(
+      runJob(config, job, {
+        heartbeatEvery: Duration.millis(10),
+        acpLayer: slowAcpLayer(Duration.seconds(5))
+      }).pipe(
+        Effect.provide(
+          gatewayLayer({
+            heartbeat: () => Effect.succeed({ ok: false, reason: "lease expired" })
+          })
+        )
+      )
+    )
+
+    expect(outcome._tag).toBe("lease_lost")
+    if (outcome._tag !== "lease_lost") return
+    expect(outcome.reason).toBe("lease expired")
+  })
+
+  test("a failing heartbeat also stops the prompt", async () => {
+    const config = await makeConfig()
+    const job = makeJob()
+
+    const outcome = await Effect.runPromise(
+      runJob(config, job, {
+        heartbeatEvery: Duration.millis(10),
+        acpLayer: slowAcpLayer(Duration.seconds(5))
+      }).pipe(
+        Effect.provide(
+          gatewayLayer({
+            heartbeat: () =>
+              Effect.fail(
+                new HarnessGatewayError({ message: "connection reset" })
+              )
+          })
+        )
+      )
+    )
+
+    expect(outcome._tag).toBe("lease_lost")
+    if (outcome._tag !== "lease_lost") return
+    expect(outcome.reason).toContain("connection reset")
+  })
+})
+
+describe("runHarness", () => {
+  test("once mode leases one job, completes it and returns", async () => {
+    const config = await makeConfig({ OTBOR_HARNESS_ONCE: "true" })
+    const job = makeJob({ kind: "browser", stage: "prepare" })
+    const exits = await Effect.runPromise(Ref.make<ReadonlyArray<HarnessExit>>([]))
+    let leases = 0
+
+    await Effect.runPromise(
+      runHarness(config).pipe(
+        Effect.provide(
+          gatewayLayer({
+            leaseNext: () => {
+              leases += 1
+              return Effect.succeed({ job })
+            },
+            complete: (input) =>
+              Ref.update(exits, (all) => [...all, input.exit]).pipe(
+                Effect.as({ status: "needs_human", accepted: true, message: "queued" })
+              )
+          })
+        )
+      )
+    )
+
+    expect(leases).toBe(1)
+    const completed = await Effect.runPromise(Ref.get(exits))
+    expect(completed).toHaveLength(1)
+    expect(completed[0]?.tag).toBe("blocked")
+  })
+
+  test("once mode returns after an empty lease without completing anything", async () => {
+    const config = await makeConfig({ OTBOR_HARNESS_ONCE: "1" })
+    let leases = 0
+
+    await Effect.runPromise(
+      runHarness(config).pipe(
+        Effect.provide(
+          gatewayLayer({
+            leaseNext: () => {
+              leases += 1
+              return Effect.succeed({ job: null })
+            }
+          })
+        )
+      )
+    )
+
+    expect(leases).toBe(1)
+  })
+})
