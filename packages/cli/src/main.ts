@@ -6,6 +6,7 @@ import { ApiLayer } from "./client.ts"
 import { acpCommand } from "./commands/acp.ts"
 import { applyCommand } from "./commands/apply.ts"
 import { blacklistCommand } from "./commands/blacklist.ts"
+import { hhCommand } from "./commands/hh.ts"
 import { contactsCommand } from "./commands/contacts.ts"
 import { crawlCommand } from "./commands/crawl.ts"
 import { dbCommand } from "./commands/db.ts"
@@ -79,6 +80,7 @@ root
       harnessCommand,
       presetCommand,
       blacklistCommand,
+      hhCommand,
       crawlCommand,
       hydrateCommand,
       scheduleCommand,
