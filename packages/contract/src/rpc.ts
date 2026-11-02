@@ -401,6 +401,28 @@ export const HarnessRevoke = Rpc.make("HarnessRevoke", {
 })
 
 /* -------------------------------------------------------------------------- */
+/* Inference                                                                  */
+/* -------------------------------------------------------------------------- */
+
+export const InferenceEnqueue = Rpc.make("InferenceEnqueue", {
+  payload: Schema.Struct({
+    prompt: Schema.String,
+    system: Schema.optional(Schema.String),
+    model: Schema.optional(Schema.String),
+    jsonSchema: Schema.optional(Schema.Unknown),
+    hhAccountId: Schema.optional(HhAccountId)
+  }),
+  success: Schema.Struct({ job: HarnessJob }),
+  error: ApiError
+})
+
+export const InferenceGet = Rpc.make("InferenceGet", {
+  payload: Schema.Struct({ id: HarnessJobId }),
+  success: HarnessJob,
+  error: ApiError
+})
+
+/* -------------------------------------------------------------------------- */
 /* The one group                                                              */
 /* -------------------------------------------------------------------------- */
 
@@ -436,7 +458,9 @@ export const OtborRpcs = RpcGroup.make(
   HarnessLeaseNext,
   HarnessHeartbeat,
   HarnessComplete,
-  HarnessRevoke
+  HarnessRevoke,
+  InferenceEnqueue,
+  InferenceGet
 )
 
 export type OtborRpcs = RpcGroup.Rpcs<typeof OtborRpcs>

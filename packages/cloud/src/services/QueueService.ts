@@ -350,6 +350,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                   null
                 let appPatch: Record<string, unknown> = {}
                 let enqueue: "reconcile" | "submit" | null = null
+                let jobResult: unknown
 
                 switch (job.stage) {
                   case "prepare": {
@@ -478,6 +479,33 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                     }
                     break
                   }
+
+                  case "inference": {
+                    if (exit.tag === "prepared") {
+                      status = "done"
+                      jobResult = exit.artifacts ?? null
+                      message = "inference completed"
+                    } else if (terminalFailure.includes(exit.tag)) {
+                      status = "failed"
+                      message = `inference failed: ${exit.tag}`
+                    } else if (needsHuman.includes(exit.tag)) {
+                      status = "needs_human"
+                      message = `inference needs a human: ${exit.tag}`
+                    } else if (retryable.includes(exit.tag)) {
+                      if (job.attempts < job.maxAttempts) {
+                        status = "pending"
+                        runAt = retryLater(exit, 15)
+                        message = `inference retry ${job.attempts + 1}/${job.maxAttempts}: ${exit.tag}`
+                      } else {
+                        status = "dead"
+                        message = `inference exhausted retries: ${exit.tag}`
+                      }
+                    } else {
+                      status = "needs_human"
+                      message = `inference finished with unexpected exit: ${exit.tag}`
+                    }
+                    break
+                  }
                 }
 
                 const accepted = yield* QueueRepository.complete(tx, {
@@ -487,6 +515,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                   holder: input.harnessId,
                   status,
                   lastError: message,
+                  result: jobResult,
                   runAt
                 })
 

@@ -376,6 +376,8 @@ export const harnessJob = pgTable(
     stage: text("stage").notNull(),
     kind: text("kind").notNull(),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+    /** ACP inference output, filled on completion. */
+    result: jsonb("result").$type<unknown>(),
     status: text("status").notNull().default("pending"),
     priority: integer("priority").notNull().default(0),
     runAt: timestamp("run_at", { withTimezone: true }).notNull().defaultNow(),

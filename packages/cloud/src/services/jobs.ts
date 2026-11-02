@@ -1,4 +1,4 @@
-import type { JobStage, KitRecord } from "@otbor/contract"
+import type { InferencePayload, JobStage, KitRecord } from "@otbor/contract"
 import { Effect } from "effect"
 import type { DatabaseError, Executor } from "../db/Database.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
@@ -114,3 +114,34 @@ export const reconcileJob = (
     idempotencyKey: `application:${input.applicationId}:reconcile:${input.sequence}`
   })
 }
+
+/**
+ * An ACP prompt as a queue job. The harness owns the actual agent process; the
+ * cloud only stores the request and the result.
+ */
+export const inferenceJob = (
+  tx: Executor,
+  input: {
+    readonly userId: string
+    readonly hhAccountId: string | null
+    readonly payload: InferencePayload
+    readonly idempotencyKey: string
+    readonly priority?: number
+  }
+) =>
+  QueueRepository.enqueue(tx, {
+    userId: input.userId,
+    hhAccountId: input.hhAccountId,
+    applicationId: null,
+    stage: "inference",
+    kind: "inference",
+    priority: input.priority ?? 100,
+    maxAttempts: 3,
+    payload: {
+      prompt: input.payload.prompt,
+      ...(input.payload.system === undefined ? {} : { system: input.payload.system }),
+      ...(input.payload.model === undefined ? {} : { model: input.payload.model }),
+      ...(input.payload.jsonSchema === undefined ? {} : { jsonSchema: input.payload.jsonSchema })
+    },
+    idempotencyKey: input.idempotencyKey
+  })

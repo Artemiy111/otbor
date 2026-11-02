@@ -346,6 +346,8 @@ export const HarnessJob = Schema.Struct({
   status: JobStatus,
   priority: Schema.Int,
   payload: Schema.Unknown,
+  /** Inference output, filled by the harness on completion. */
+  result: Schema.optional(Schema.NullOr(Schema.Unknown)),
   attempts: Schema.Int,
   maxAttempts: Schema.Int,
   leaseId: Schema.NullOr(LeaseId),
@@ -356,6 +358,35 @@ export const HarnessJob = Schema.Struct({
 })
 
 export type HarnessJob = typeof HarnessJob.Type
+
+/* -------------------------------------------------------------------------- */
+/* Inference                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * An ACP prompt carried inside the job envelope. The cloud never sends free
+ * text to a model directly: it enqueues this payload, and an inference
+ * harness runs it through `opencode acp` or another ACP agent.
+ */
+export const InferencePayload = Schema.Struct({
+  prompt: Schema.String,
+  system: Schema.optional(Schema.String),
+  model: Schema.optional(Schema.String),
+  /** Optional JSON schema the agent should satisfy with its answer. */
+  jsonSchema: Schema.optional(Schema.Unknown)
+})
+
+export type InferencePayload = typeof InferencePayload.Type
+
+export const InferenceResult = Schema.Struct({
+  text: Schema.String,
+  model: Schema.optional(Schema.NullOr(Schema.String)),
+  usage: Schema.optional(Schema.Unknown),
+  providerResponse: Schema.optional(Schema.Unknown),
+  durationMs: Schema.optional(Schema.Int)
+})
+
+export type InferenceResult = typeof InferenceResult.Type
 
 export const HarnessRegistration = Schema.Struct({
   id: HarnessId,

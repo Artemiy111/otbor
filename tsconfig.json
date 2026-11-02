@@ -6,6 +6,7 @@
       "@otbor/domain": ["./packages/domain/src/index.ts"],
       "@otbor/hh": ["./packages/hh/src/index.ts"],
       "@otbor/crawler": ["./packages/crawler/src/index.ts"],
+      "@otbor/acp": ["./packages/acp/src/index.ts"],
       "@otbor/cloud": ["./packages/cloud/src/index.ts"]
     }
   },

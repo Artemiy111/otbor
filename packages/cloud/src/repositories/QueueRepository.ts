@@ -12,6 +12,7 @@ export interface JobRow {
   readonly stage: string
   readonly kind: string
   readonly payload: unknown
+  readonly result: unknown
   readonly status: string
   readonly priority: number
   readonly run_at: Date
@@ -30,6 +31,7 @@ export const toJob = (row: JobRow): HarnessJob => ({
   status: row.status as JobStatus,
   priority: row.priority,
   payload: row.payload,
+  result: row.result ?? null,
   attempts: row.attempts,
   maxAttempts: row.max_attempts,
   leaseId: row.lease_id as HarnessJob["leaseId"],
@@ -52,6 +54,7 @@ const fromSelect = (row: typeof harnessJob.$inferSelect): JobRow => ({
   stage: row.stage,
   kind: row.kind,
   payload: row.payload,
+  result: row.result,
   status: row.status,
   priority: row.priority,
   run_at: row.runAt,
@@ -159,6 +162,7 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
                   or (harness_jobs.stage = 'submit' and a.state = 'queued')
                   or (harness_jobs.stage = 'reconcile' and a.state in ('submitting', 'needs_human', 'failed'))
                   or harness_jobs.stage = 'session'
+                  or harness_jobs.stage = 'inference'
                 )
             )
           )
@@ -252,6 +256,7 @@ export interface CompleteJobInput {
   readonly holder: string
   readonly status: JobStatus
   readonly lastError: string | null
+  readonly result?: unknown
   readonly runAt?: Date | null
 }
 
@@ -269,6 +274,11 @@ export const complete = (
       set status = ${input.status},
           lease_until = null,
           last_error = ${input.lastError},
+          result = ${
+            input.result === undefined
+              ? sql`result`
+              : sql`${JSON.stringify(input.result)}::jsonb`
+          },
           run_at = ${input.runAt ?? sql`run_at`},
           updated_at = now()
       where id = ${input.jobId}

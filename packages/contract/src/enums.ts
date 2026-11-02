@@ -63,7 +63,7 @@ export const JobStatus = Schema.Literals([
 
 export type JobStatus = typeof JobStatus.Type
 
-export const JobStage = Schema.Literals(["prepare", "submit", "reconcile", "session"])
+export const JobStage = Schema.Literals(["prepare", "submit", "reconcile", "session", "inference"])
 
 export type JobStage = typeof JobStage.Type
 

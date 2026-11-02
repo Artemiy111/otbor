@@ -5,6 +5,7 @@ import { CorpusService } from "../services/CorpusService.ts"
 import { CrawlService } from "../services/CrawlService.ts"
 import { DecisionService } from "../services/DecisionService.ts"
 import { GateService } from "../services/GateService.ts"
+import { InferenceService } from "../services/InferenceService.ts"
 import { PresetService } from "../services/PresetService.ts"
 import { QueueService } from "../services/QueueService.ts"
 import { SystemService } from "../services/SystemService.ts"
@@ -19,6 +20,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const system = yield* SystemService
     const corpus = yield* CorpusService
     const crawl = yield* CrawlService
+    const inference = yield* InferenceService
     const decisions = yield* DecisionService
     const gate = yield* GateService
     const applications = yield* ApplicationService
@@ -69,7 +71,10 @@ export const OtborHandlers = OtborRpcs.toLayer(
       HarnessLeaseNext: (payload) => queue.leaseNext(payload),
       HarnessHeartbeat: (payload) => queue.heartbeat(payload),
       HarnessComplete: (payload) => queue.complete(payload),
-      HarnessRevoke: ({ harnessId }) => queue.revoke({ harnessId })
+      HarnessRevoke: ({ harnessId }) => queue.revoke({ harnessId }),
+
+      InferenceEnqueue: (payload) => inference.enqueue(payload),
+      InferenceGet: ({ id }) => inference.get(id)
     }
   })
 )
@@ -79,6 +84,7 @@ export const OtborServices = Layer.mergeAll(
   SystemService.layer,
   CorpusService.layer,
   CrawlService.layer,
+  InferenceService.layer,
   DecisionService.layer,
   GateService.layer,
   ApplicationService.layer,
