@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue"
+import { computed, h, ref, watch } from "vue"
 import { useQuery } from "@pinia/colada"
+import type { EmployerSummary } from "@otbor/contract"
+import type { ColumnDef } from "@tanstack/vue-table"
 import { ChevronLeft, ChevronRight, CircleAlert, Search } from "@lucide/vue"
 import { companyApi, companyKeys } from "@/entities/company"
 import { RefreshButton } from "@/features/refresh-button"
@@ -11,18 +13,10 @@ import {
   AlertTitle,
   Badge,
   Button,
-  Card,
-  CardContent,
-  EmptyState,
+  DataTable,
   Input,
   Label,
-  Skeleton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow
+  sortableHeader
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
 
@@ -42,7 +36,9 @@ const query = useQuery({
     })
 })
 
-const companies = computed(() => query.data.value?.items ?? [])
+const companies = computed<ReadonlyArray<EmployerSummary>>(
+  () => query.data.value?.items ?? []
+)
 const total = computed(() => query.data.value?.total ?? 0)
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)))
 const page = computed(() => Math.floor(offset.value / PAGE_SIZE) + 1)
@@ -65,6 +61,76 @@ const reset = () => {
 const refresh = () => {
   void query.refetch()
 }
+
+const columns: ColumnDef<EmployerSummary>[] = [
+  {
+    accessorKey: "name",
+    header: sortableHeader<EmployerSummary>("Компания"),
+    cell: ({ row }) =>
+      h("div", { class: "flex items-center gap-2.5" }, [
+        row.original.logoUrl
+          ? h("img", {
+              src: row.original.logoUrl,
+              alt: row.original.name,
+              class: "size-8 shrink-0 rounded-md border bg-white object-contain",
+              loading: "lazy"
+            })
+          : null,
+        h(
+          "a",
+          {
+            href: companyPath(row.original.id),
+            class: "font-medium text-foreground transition-colors hover:text-primary"
+          },
+          row.original.name
+        )
+      ])
+  },
+  {
+    id: "rating",
+    accessorFn: (row) => row.rating ?? null,
+    enableGlobalFilter: false,
+    header: sortableHeader<EmployerSummary>("Рейтинг"),
+    cell: ({ row }) =>
+      h("span", { class: "whitespace-nowrap" }, [
+        h("span", { class: "text-amber-400" }, "★"),
+        ` ${formatRating(row.original.rating)}`,
+        row.original.reviewsCount
+          ? h(
+              "span",
+              { class: "text-xs text-muted-foreground" },
+              ` · ${formatNumber(row.original.reviewsCount)} отзывов`
+            )
+          : null
+      ])
+  },
+  {
+    id: "industries",
+    accessorFn: (row) => row.industries.join(", "),
+    enableGlobalFilter: false,
+    header: sortableHeader<EmployerSummary>("Отрасли"),
+    cell: ({ row }) => {
+      const industries = row.original.industries
+      if (industries.length === 0) return h("span", { class: "text-muted-foreground" }, "—")
+      return h("div", { class: "flex flex-wrap gap-1" }, [
+        ...industries
+          .slice(0, 3)
+          .map((industry) =>
+            h(Badge, { key: industry, variant: "secondary", class: "font-normal" }, () => industry)
+          ),
+        industries.length > 3
+          ? h(Badge, { variant: "outline" }, () => `+${industries.length - 3}`)
+          : null
+      ])
+    }
+  },
+  {
+    accessorKey: "vacancyCount",
+    header: sortableHeader<EmployerSummary>("Вакансии", "right"),
+    cell: ({ row }) =>
+      h("div", { class: "text-right tabular-nums" }, formatNumber(row.original.vacancyCount))
+  }
+]
 </script>
 
 <template>
@@ -131,83 +197,13 @@ const refresh = () => {
       <AlertDescription>{{ describeError(query.error.value) }}</AlertDescription>
     </Alert>
 
-    <Card>
-      <CardContent class="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Компания</TableHead>
-              <TableHead>Рейтинг</TableHead>
-              <TableHead>Отрасли</TableHead>
-              <TableHead class="text-right">Вакансии</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <template v-if="query.isPending.value">
-              <TableRow v-for="index in 6" :key="index">
-                <TableCell :colspan="4">
-                  <Skeleton class="h-4 w-full" />
-                </TableCell>
-              </TableRow>
-            </template>
-
-            <TableRow v-else-if="companies.length === 0">
-              <TableCell :colspan="4">
-                <EmptyState
-                  title="Компании не найдены"
-                  description="Измените запрос или сохраните вакансии, чтобы работодатели появились в корпусе."
-                />
-              </TableCell>
-            </TableRow>
-
-            <TableRow v-for="company in companies" :key="company.id">
-              <TableCell>
-                <div class="flex items-center gap-2.5">
-                  <img
-                    v-if="company.logoUrl"
-                    :src="company.logoUrl"
-                    :alt="company.name"
-                    class="size-8 shrink-0 rounded-md border bg-white object-contain"
-                    loading="lazy"
-                  />
-                  <a
-                    :href="companyPath(company.id)"
-                    class="font-medium text-foreground transition-colors hover:text-primary"
-                  >
-                    {{ company.name }}
-                  </a>
-                </div>
-              </TableCell>
-              <TableCell class="whitespace-nowrap">
-                <span class="text-amber-400">★</span>
-                {{ formatRating(company.rating) }}
-                <span v-if="company.reviewsCount" class="text-xs text-muted-foreground">
-                  · {{ formatNumber(company.reviewsCount) }} отзывов
-                </span>
-              </TableCell>
-              <TableCell>
-                <div v-if="company.industries.length > 0" class="flex flex-wrap gap-1">
-                  <Badge
-                    v-for="industry in company.industries.slice(0, 3)"
-                    :key="industry"
-                    variant="secondary"
-                    class="font-normal"
-                  >
-                    {{ industry }}
-                  </Badge>
-                  <Badge v-if="company.industries.length > 3" variant="outline">
-                    +{{ company.industries.length - 3 }}
-                  </Badge>
-                </div>
-                <span v-else class="text-muted-foreground">—</span>
-              </TableCell>
-              <TableCell class="text-right tabular-nums">
-                {{ formatNumber(company.vacancyCount) }}
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+    <DataTable
+      :columns="columns"
+      :data="companies"
+      :is-loading="query.isPending.value"
+      :loading-row-count="6"
+      empty-title="Компании не найдены"
+      empty-description="Измените запрос или сохраните вакансии, чтобы работодатели появились в корпусе."
+    />
   </section>
 </template>
