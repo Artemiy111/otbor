@@ -281,6 +281,8 @@ export const HarnessRegister = Rpc.make("HarnessRegister", {
 export const HarnessLeaseNext = Rpc.make("HarnessLeaseNext", {
   payload: Schema.Struct({
     harnessId: HarnessId,
+    /** Device token from `HarnessRegister`; the only credential a harness has. */
+    token: Schema.String,
     kinds: Schema.Array(JobKind),
     accounts: Schema.Array(HhAccountId),
     waitSeconds: Schema.optional(Schema.Int)
@@ -294,6 +296,7 @@ export const HarnessLeaseNext = Rpc.make("HarnessLeaseNext", {
 export const HarnessHeartbeat = Rpc.make("HarnessHeartbeat", {
   payload: Schema.Struct({
     harnessId: HarnessId,
+    token: Schema.String,
     jobId: HarnessJobId,
     leaseId: LeaseId,
     epoch: Schema.Int
@@ -305,6 +308,7 @@ export const HarnessHeartbeat = Rpc.make("HarnessHeartbeat", {
 export const HarnessComplete = Rpc.make("HarnessComplete", {
   payload: Schema.Struct({
     harnessId: HarnessId,
+    token: Schema.String,
     jobId: HarnessJobId,
     leaseId: LeaseId,
     epoch: Schema.Int,
@@ -314,6 +318,19 @@ export const HarnessComplete = Rpc.make("HarnessComplete", {
     status: Schema.String,
     accepted: Schema.Boolean,
     message: Schema.optional(Schema.NullOr(Schema.String))
+  }),
+  error: ApiError
+})
+
+/**
+ * Clears the harness token so the device can no longer lease, heartbeat or
+ * complete work. Re-registering the harness issues a new token.
+ */
+export const HarnessRevoke = Rpc.make("HarnessRevoke", {
+  payload: Schema.Struct({ harnessId: HarnessId }),
+  success: Schema.Struct({
+    harnessId: HarnessId,
+    revoked: Schema.Boolean
   }),
   error: ApiError
 })
@@ -348,7 +365,8 @@ export const OtborRpcs = RpcGroup.make(
   HarnessRegister,
   HarnessLeaseNext,
   HarnessHeartbeat,
-  HarnessComplete
+  HarnessComplete,
+  HarnessRevoke
 )
 
 export type OtborRpcs = RpcGroup.Rpcs<typeof OtborRpcs>

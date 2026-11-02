@@ -1,6 +1,7 @@
 import type {
   ApiError,
   HarnessExit,
+  HarnessId,
   HarnessJob,
   HarnessRegistration,
   HeartbeatResult,
@@ -11,7 +12,8 @@ import type {
 import { HarnessRejected, NotFound } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
-import { Database, type Executor } from "../db/Database.ts"
+import { generateHarnessToken, hashHarnessToken } from "../auth/harnessToken.ts"
+import { Database } from "../db/Database.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
 import * as HarnessRepository from "../repositories/HarnessRepository.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
@@ -47,10 +49,8 @@ const unwrap = <A>(outcome: Outcome<A>): Effect.Effect<A, ApiError> =>
 /* Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
 
-const harnessOwned = (tx: Executor, harnessId: string) =>
-  tx
-    .execute(sql`select id from harness where id = ${harnessId} limit 1`)
-    .pipe(Effect.map((result) => result.rows.length > 0))
+/** One message for unknown, unregistered and revoked harnesses alike. */
+const invalidToken = "invalid harness token; register again to receive a new one"
 
 /** Retry the same row; the lease and epoch make a duplicate harmless. */
 const retryLater = (exit: HarnessExit, fallbackSeconds: number) =>
@@ -86,6 +86,8 @@ export interface RegisterInput {
 
 export interface LeaseInput {
   readonly harnessId: string
+  /** Device token from `register`; every harness request proves it. */
+  readonly token: string
   readonly kinds: ReadonlyArray<JobKind>
   readonly accounts: ReadonlyArray<string>
   readonly waitSeconds?: number
@@ -93,6 +95,7 @@ export interface LeaseInput {
 
 export interface HeartbeatInput {
   readonly harnessId: string
+  readonly token: string
   readonly jobId: string
   readonly leaseId: string
   readonly epoch: number
@@ -100,6 +103,11 @@ export interface HeartbeatInput {
 
 export interface CompleteInput extends HeartbeatInput {
   readonly exit: HarnessExit
+}
+
+export interface RevokeResult {
+  readonly harnessId: HarnessId
+  readonly revoked: boolean
 }
 
 export interface CompleteResult {
@@ -118,6 +126,7 @@ export interface QueueServiceShape {
   readonly leaseNext: (input: LeaseInput) => Effect.Effect<{ readonly job: HarnessJob | null }, ApiError>
   readonly heartbeat: (input: HeartbeatInput) => Effect.Effect<HeartbeatResult, ApiError>
   readonly complete: (input: CompleteInput) => Effect.Effect<CompleteResult, ApiError>
+  readonly revoke: (input: { readonly harnessId: string }) => Effect.Effect<RevokeResult, ApiError>
 }
 
 export class QueueService extends Context.Service<QueueService, QueueServiceShape>()(
@@ -141,6 +150,11 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
 
       const register: QueueServiceShape["register"] = (input) =>
         Effect.gen(function*() {
+          // Generated per registration, including a re-registration: the token
+          // is shown once and only its hash is stored.
+          const token = generateHarnessToken()
+          const tokenHash = hashHarnessToken(token)
+
           const outcome = yield* database
             .asUser(currentUser.userId, (tx) =>
               Effect.gen(function*() {
@@ -168,9 +182,10 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                   userId: currentUser.userId,
                   name: input.name,
                   kinds: input.kinds,
-                  accounts: input.accounts
+                  accounts: input.accounts,
+                  tokenHash
                 })
-                return ok(registration)
+                return ok({ ...registration, token })
               })
             )
             .pipe(Effect.mapError(toStorageError("harness.register")))
@@ -232,13 +247,13 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
 
       const leaseNext: QueueServiceShape["leaseNext"] = (input) =>
         Effect.gen(function*() {
-          const owned = yield* database
-            .asUser(currentUser.userId, (tx) => harnessOwned(tx, input.harnessId))
+          const authenticated = yield* database
+            .asUser(currentUser.userId, (tx) =>
+              HarnessRepository.authenticate(tx, input.harnessId, hashHarnessToken(input.token))
+            )
             .pipe(Effect.mapError(toStorageError("harness.lease")))
-          if (!owned) {
-            return yield* new HarnessRejected({
-              message: "unknown harness; register before leasing"
-            })
+          if (!authenticated) {
+            return yield* new HarnessRejected({ message: invalidToken })
           }
 
           const registered = yield* database
@@ -267,7 +282,15 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
           const result = yield* database
             .asUser(currentUser.userId, (tx) =>
               Effect.gen(function*() {
-                if (!(yield* harnessOwned(tx, input.harnessId))) return null
+                if (
+                  !(yield* HarnessRepository.authenticate(
+                    tx,
+                    input.harnessId,
+                    hashHarnessToken(input.token)
+                  ))
+                ) {
+                  return null
+                }
                 return yield* QueueRepository.heartbeat(tx, {
                   jobId: input.jobId,
                   leaseId: input.leaseId,
@@ -279,7 +302,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
             .pipe(Effect.mapError(toStorageError("harness.heartbeat")))
 
           if (result === null) {
-            return yield* new HarnessRejected({ message: "unknown harness" })
+            return yield* new HarnessRejected({ message: invalidToken })
           }
 
           return result
@@ -292,6 +315,16 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
           const outcome = yield* database
             .asUser(currentUser.userId, (tx) =>
               Effect.gen(function*() {
+                if (
+                  !(yield* HarnessRepository.authenticate(
+                    tx,
+                    input.harnessId,
+                    hashHarnessToken(input.token)
+                  ))
+                ) {
+                  return fail({ _tag: "rejected", message: invalidToken })
+                }
+
                 const ctx = yield* QueueRepository.context(tx, input.jobId)
                 if (ctx === null || ctx.userId !== currentUser.userId) {
                   return fail({ _tag: "not_found", entity: "HarnessJob", id: input.jobId })
@@ -529,13 +562,24 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
           return yield* unwrap(outcome)
         })
 
+      const revoke: QueueServiceShape["revoke"] = (input) =>
+        database
+          .asUser(currentUser.userId, (tx) =>
+            HarnessRepository.revoke(tx, input.harnessId)
+          )
+          .pipe(
+            Effect.map((revoked) => ({ harnessId: input.harnessId as HarnessId, revoked })),
+            Effect.mapError(toStorageError("harness.revoke"))
+          )
+
       return QueueService.of({
         stats,
         jobs,
         register,
         leaseNext,
         heartbeat,
-        complete
+        complete,
+        revoke
       })
     })
   )

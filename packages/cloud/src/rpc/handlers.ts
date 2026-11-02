@@ -60,7 +60,8 @@ export const OtborHandlers = OtborRpcs.toLayer(
       HarnessRegister: (payload) => queue.register(payload),
       HarnessLeaseNext: (payload) => queue.leaseNext(payload),
       HarnessHeartbeat: (payload) => queue.heartbeat(payload),
-      HarnessComplete: (payload) => queue.complete(payload)
+      HarnessComplete: (payload) => queue.complete(payload),
+      HarnessRevoke: ({ harnessId }) => queue.revoke({ harnessId })
     }
   })
 )

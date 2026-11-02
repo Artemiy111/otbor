@@ -320,6 +320,11 @@ export const HarnessRegistration = Schema.Struct({
   name: Schema.String,
   kinds: Schema.Array(JobKind),
   accounts: Schema.Array(HhAccountId),
+  /**
+   * The device token in plaintext. It is present only in the `HarnessRegister`
+   * response and is never stored or returned again.
+   */
+  token: Schema.NullOr(Schema.String),
   lastSeenAt: Schema.String
 })
 

@@ -1,6 +1,6 @@
 import type { HarnessId, HarnessJobId, HhAccountId, JobKind, LeaseId } from "@otbor/contract"
 import { HarnessExitTag, JobKind as JobKindSchema } from "@otbor/contract"
-import { Console, Effect, Option } from "effect"
+import { Config, Console, Effect, Option } from "effect"
 import { Command, Flag } from "effect/cli"
 import { Api } from "../client.ts"
 
@@ -12,6 +12,12 @@ const kindFlag = Flag.Literals("kind", JobKindSchema.literals).pipe(
 const accountFlag = Flag.String("account").pipe(
   Flag.withDescription("hh account the harness may work for (repeatable)"),
   Flag.between(0, 10)
+)
+
+/** `--token` first, `OTBOR_HARNESS_TOKEN` as the fallback for a long-lived device. */
+const tokenFlag = Flag.String("token").pipe(
+  Flag.withDescription("Device token from register (or set OTBOR_HARNESS_TOKEN)"),
+  Flag.withFallbackConfig(Config.String("OTBOR_HARNESS_TOKEN"))
 )
 
 const register = Command.make(
@@ -31,6 +37,10 @@ const register = Command.make(
     yield* Console.log(`${registration.id}  ${registration.name}`)
     yield* Console.log(`kinds:    ${registration.kinds.join(", ") || "all"}`)
     yield* Console.log(`accounts: ${registration.accounts.join(", ") || "all"}`)
+    yield* Console.log(`token:    ${registration.token ?? "-"}`)
+    yield* Console.log(
+      "Store this token now: it is shown once and cannot be recovered. Re-register to rotate it."
+    )
   })
 ).pipe(Command.withDescription("Register this machine's harness"))
 
@@ -38,6 +48,7 @@ const lease = Command.make(
   "lease",
   {
     harness: Flag.String("harness").pipe(Flag.withDescription("Harness id from register")),
+    token: tokenFlag,
     kinds: kindFlag,
     accounts: accountFlag,
     wait: Flag.Int("wait").pipe(
@@ -45,10 +56,11 @@ const lease = Command.make(
       Flag.withDefault(0)
     )
   },
-  Effect.fn(function*({ harness, kinds, accounts, wait }) {
+  Effect.fn(function*({ harness, token, kinds, accounts, wait }) {
     const api = yield* Api
     const { job } = yield* api.HarnessLeaseNext({
       harnessId: harness as HarnessId,
+      token,
       kinds: kinds as ReadonlyArray<JobKind>,
       accounts: accounts as ReadonlyArray<HhAccountId>,
       waitSeconds: wait
@@ -71,14 +83,16 @@ const heartbeat = Command.make(
   "heartbeat",
   {
     harness: Flag.String("harness"),
+    token: tokenFlag,
     job: Flag.String("job"),
     lease: Flag.String("lease"),
     epoch: Flag.Int("epoch")
   },
-  Effect.fn(function*({ harness, job, lease, epoch }) {
+  Effect.fn(function*({ harness, token, job, lease, epoch }) {
     const api = yield* Api
     const result = yield* api.HarnessHeartbeat({
       harnessId: harness as HarnessId,
+      token,
       jobId: job as HarnessJobId,
       leaseId: lease as LeaseId,
       epoch
@@ -91,6 +105,7 @@ const complete = Command.make(
   "complete",
   {
     harness: Flag.String("harness"),
+    token: tokenFlag,
     job: Flag.String("job"),
     lease: Flag.String("lease"),
     epoch: Flag.Int("epoch"),
@@ -110,10 +125,11 @@ const complete = Command.make(
       Flag.optional
     )
   },
-  Effect.fn(function*({ harness, job, lease, epoch, exit, message, formHash, retryAfter }) {
+  Effect.fn(function*({ harness, token, job, lease, epoch, exit, message, formHash, retryAfter }) {
     const api = yield* Api
     const result = yield* api.HarnessComplete({
       harnessId: harness as HarnessId,
+      token,
       jobId: job as HarnessJobId,
       leaseId: lease as LeaseId,
       epoch,
@@ -131,7 +147,23 @@ const complete = Command.make(
   })
 ).pipe(Command.withDescription("Report the outcome of a leased job"))
 
+const revoke = Command.make(
+  "revoke",
+  {
+    harness: Flag.String("harness").pipe(Flag.withDescription("Harness id to revoke"))
+  },
+  Effect.fn(function*({ harness }) {
+    const api = yield* Api
+    const result = yield* api.HarnessRevoke({ harnessId: harness as HarnessId })
+    yield* Console.log(
+      result.revoked
+        ? `revoked ${result.harnessId}; the device can no longer lease work`
+        : `no harness ${result.harnessId} for the current user`
+    )
+  })
+).pipe(Command.withDescription("Clear a harness token so its device cannot continue"))
+
 export const harnessCommand = Command.make("harness").pipe(
-  Command.withSubcommands([register, lease, heartbeat, complete]),
+  Command.withSubcommands([register, lease, heartbeat, complete, revoke]),
   Command.withDescription("The edge harness protocol")
 )
