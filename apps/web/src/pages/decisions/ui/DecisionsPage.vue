@@ -115,13 +115,13 @@ const columns: ColumnDef<DecisionRecord>[] = [
     id: "verdict",
     accessorFn: (row) => statusLabel(row.verdict),
     header: sortableHeader<DecisionRecord>("Вердикт"),
-    cell: ({ row }) => h(StatusBadge, { value: row.original.verdict, raw: true })
+    cell: ({ row }) => h(StatusBadge, { value: row.original.verdict })
   },
   {
     id: "gate",
     accessorFn: (row) => statusLabel(row.gate),
     header: sortableHeader<DecisionRecord>("Проверка"),
-    cell: ({ row }) => h(StatusBadge, { value: row.original.gate, raw: true })
+    cell: ({ row }) => h(StatusBadge, { value: row.original.gate })
   },
   {
     accessorKey: "fit",

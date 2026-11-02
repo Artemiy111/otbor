@@ -45,7 +45,7 @@ const columns: ColumnDef<ApplicationRecord>[] = [
     header: sortableHeader<ApplicationRecord>("Состояние"),
     cell: ({ row }) =>
       h("div", null, [
-        h(StatusBadge, { value: row.original.state, raw: true }),
+        h(StatusBadge, { value: row.original.state }),
         row.original.streamId
           ? h("div", { class: "mt-1 text-xs text-muted-foreground" }, [
               "поток ",
