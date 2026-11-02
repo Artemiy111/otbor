@@ -14,6 +14,7 @@ import { MailPage } from "@/pages/mail"
 import { PresetsPage } from "@/pages/presets"
 import { QueuePage } from "@/pages/queue"
 import { SchedulesPage } from "@/pages/schedules"
+import { SearchPage } from "@/pages/search"
 import { TelegramPage } from "@/pages/telegram"
 import { VacanciesPage } from "@/pages/vacancies"
 import { VacancyDetailPage } from "@/pages/vacancy-detail"
@@ -41,6 +42,7 @@ const applicationId = computed(() =>
     <QueuePage v-else-if="route.name === 'queue'" />
     <InferencePage v-else-if="route.name === 'inference'" />
     <PresetsPage v-else-if="route.name === 'presets'" />
+    <SearchPage v-else-if="route.name === 'search'" />
     <SchedulesPage v-else-if="route.name === 'schedules'" />
     <ContactsPage v-else-if="route.name === 'contacts'" />
     <MailPage v-else-if="route.name === 'mail'" />

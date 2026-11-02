@@ -34,6 +34,7 @@ server-side fallback:
 | `/queue` | queue stats and harness jobs |
 | `/inference` | enqueue one ACP inference job and poll its result |
 | `/presets` | saved explore/apply filters |
+| `/search` | primary vacancy search schedules: crawl hh.ru search URLs into corpus |
 
 Inference is the only write. Every other screen is read-only; it consumes the
 same RPC methods as before.

@@ -11,6 +11,7 @@ import {
   ListChecks,
   Mail,
   MessageCircle,
+  Search,
   Send,
   SlidersHorizontal,
   Sparkles
@@ -61,6 +62,7 @@ export const navSections: ReadonlyArray<NavSection> = [
     items: [
       { id: "mail", label: "Почта", href: "/mail", icon: Mail },
       { id: "telegram", label: "Telegram", href: "/telegram", icon: MessageCircle },
+      { id: "search", label: "Поиск", href: "/search", icon: Search },
       { id: "schedules", label: "Обход", href: "/schedules", icon: CalendarClock }
     ]
   },
