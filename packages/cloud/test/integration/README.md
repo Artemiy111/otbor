@@ -46,6 +46,11 @@ the first run creates it, exactly as `bun run db:migrate` does.
    harness leases and completes with artifacts, `inference_failed` retries to
    `dead`, `result` round-trips, another user cannot read the job, and migration
    0006 accepts the `inference` stage.
+7. **Crawl bookkeeping** — `CrawlStart` reuses `search_query` by normalized URL
+   and starts a run, `CrawlSavePage` advances the cursor and dedupes
+   `vacancy_search_hit` by (query, vacancy), `CrawlFinish` stores
+   done/stopped/error with `finished_at`, and a second run of the same URL
+   reuses the query and keeps its own cursor.
 
 ## Notes
 
