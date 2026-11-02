@@ -14,12 +14,17 @@
 
 | Вызов | Payload |
 |---|---|
-| `WritingCoverLetter` | `applicationId`, `tone?`, `length?` (`short`/`medium`/`long`), `model?` |
-| `WritingAnswers` | `applicationId`, `questions: string[]`, `model?` |
-| `WritingResume` | `text`, `targetRole?`, `model?` |
+| `WritingCoverLetter` | `applicationId`, `tone?`, `length?` (`short`/`medium`/`long`), `language?`, `model?` |
+| `WritingAnswers` | `applicationId`, `questions: string[]`, `language?`, `model?` |
+| `WritingResume` | `text`, `targetRole?`, `language?`, `model?` |
 
 `model` уходит в `InferencePayload`; без него харнес использует модель по
 умолчанию. `tone` и `length` влияют только на текст промпта.
+
+`language` принимает `auto`, `ru` или `en`. При `auto` (и когда поле не
+передано) язык определяется по тексту вакансии для письма и ответов и по
+тексту самого резюме для переписывания. Правило то же, что в старом проекте:
+русский, если кириллицы больше четверти латиницы, иначе английский.
 
 ## Что загружает облако
 
@@ -41,23 +46,32 @@
 
 Промпты собираются чистыми функциями в
 `packages/cloud/src/writing/prompts.ts`, поэтому их можно проверять без
-Postgres и без вызова модели.
+Postgres и без вызова модели. Правила и формулировки взяты из проверенных
+промптов старого hh-extracter; RU и EN варианты живут раздельно.
 
-Общая системная инструкция `WRITING_SYSTEM_PROMPT` запрещает выдумывать
-работодателей, даты, образование, метрики и навыки, требует писать на языке
-вакансии или резюме и не использовать emoji, восклицательные знаки, длинные
-тире и markdown-обёртки.
+Каждый билдер возвращает `WritingPrompt { system, user, language,
+promptVersion }`. `WritingService` кладёт `system` в `InferencePayload.system`,
+а `user` — в `payload.prompt`, поэтому облако не склеивает промпт из частей.
 
-- **Письмо.** Вакансия (заголовок, работодатель, описание, навыки), резюме,
-  тон и длина. Явно сказано вернуть только текст письма, без темы, шаблонных
-  заглушек и комментариев.
-- **Ответы.** Тот же контекст плюс нумерованные вопросы. Ответ должен быть
-  JSON-массивом `{ "question": "...", "answer": "..." }`, по одному объекту на
-  вопрос, в том же порядке, без markdown. Если факта нет в резюме, промпт
-  требует сказать об этом, а не придумывать.
-- **Резюме.** Исходный текст и целевая роль. Запрещено менять работодателей,
-  должности, даты, образование и числа; можно менять формулировки, порядок и
-  акценты. Вернуть только новый текст резюме.
+- **Письмо** (`cover-letter-v2`). Блоки `VACANCY`, `RESUME` и
+  `APPLICANT NOTES`; `CONFIRMED FACTS` и `GAPS` добавляются, только если они
+  есть у вызывающей стороны. Системные правила запрещают выдумывать компании,
+  проекты, технологии, метрики и опыт, писать «нет в резюме» или «не указано в
+  резюме», использовать тире (—, –), эмодзи и Markdown. Письмо начинается с
+  приветствия, не содержит подписи, контактов и этикетной концовки. Жёсткий
+  лимит длины: `short` — 400 знаков и один абзац, `medium` — 700 и два,
+  `long` — 1000 и три. Тон и длина передаются только в промпте.
+- **Ответы** (`answers-v2`). Вакансия, резюме, нумерованные вопросы и
+  заметки соискателя. Ответ — строгий JSON-массив
+  `[{ "question": "...", "answer": "...", "confidence": 0.8, "needsHuman": false }]`
+  по одному объекту на вопрос, в том же порядке, без Markdown. Если данных
+  нет, промпт требует правдоподобный ответ с низкой `confidence` и
+  `needsHuman=true`, но запрещает сообщать работодателю, что чего-то «нет в
+  резюме». Возвращается только JSON.
+- **Резюме** (`resume-v2`). Исходный текст и целевая роль. Запрещено менять
+  работодателей, должности, даты, образование и числа, добавлять технологии и
+  навыки; можно менять формулировки, порядок и акценты. Возвращается только
+  переписанный текст резюме.
 
 ## CLI
 
@@ -66,13 +80,13 @@ Postgres и без вызова модели.
 `http://127.0.0.1:3001/rpc`).
 
 ```bash
-otbor write letter <application-id> --tone "спокойно и по делу" --length short
+otbor write letter <application-id> --tone "спокойно и по делу" --length short --language ru
 otbor write letter <application-id> --save
 
 otbor write answers <application-id> --question "Почему мы?" --question "Ваш опыт с Kubernetes?"
-cat questions.txt | otbor write answers <application-id> --save
+cat questions.txt | otbor write answers <application-id> --save --language auto
 
-otbor write resume ./resume.txt --target-role "Platform Engineer"
+otbor write resume ./resume.txt --target-role "Platform Engineer" --language en
 cat resume.txt | otbor write resume --target-role "SRE"
 ```
 
@@ -80,6 +94,7 @@ cat resume.txt | otbor write resume --target-role "SRE"
 
 Общие флаги:
 
+- `--language auto|ru|en` — язык промпта и ответа (по умолчанию `auto`);
 - `--model` — модель для харнеса;
 - `--timeout` — сколько секунд ждать результат (по умолчанию 180);
 - `--no-wait` — поставить job и напечатать id (с `--json` — весь job);
