@@ -52,6 +52,7 @@ export interface ContactFilter {
   readonly query?: string
   readonly kind?: ContactKind
   readonly source?: ContactSource
+  readonly vacancyId?: string
   readonly limit?: number
   readonly offset?: number
 }
@@ -79,6 +80,7 @@ export const list = (
     const conditions = [sql`user_id = ${userId}`]
     if (filter.kind !== undefined) conditions.push(sql`kind = ${filter.kind}`)
     if (filter.source !== undefined) conditions.push(sql`source = ${filter.source}`)
+    if (filter.vacancyId !== undefined) conditions.push(sql`vacancy_id = ${filter.vacancyId}`)
     if (pattern !== null) {
       conditions.push(sql`(person_name ilike ${pattern} or value ilike ${pattern})`)
     }

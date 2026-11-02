@@ -256,6 +256,7 @@ export const ContactsList = Rpc.make("ContactsList", {
     query: Schema.optional(Schema.String),
     kind: Schema.optional(ContactKind),
     source: Schema.optional(ContactSource),
+    vacancyId: Schema.optional(VacancyId),
     limit: Schema.optional(Schema.Int),
     offset: Schema.optional(Schema.Int)
   }),
