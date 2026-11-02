@@ -20,6 +20,7 @@ import {
   AlertDescription,
   AlertTitle,
   Badge,
+  Button,
   DataTable,
   Label,
   Select,
@@ -200,9 +201,12 @@ const refresh = () => {
   <section>
     <PageHeader
       title="Вакансии"
-      description="Корпус вакансий: заголовок, компания, зарплата, город и детерминированная проверка заголовка."
+      description="Корпус вакансий: заголовок, компания, зарплата, город и детерминированная проверка заголовка. Новые вакансии появляются через расписания на странице «Обход»."
     >
       <template #actions>
+        <Button variant="outline" as-child>
+          <a href="/schedules">Обход</a>
+        </Button>
         <RefreshButton :loading="isLoading" @refresh="refresh" />
       </template>
     </PageHeader>
