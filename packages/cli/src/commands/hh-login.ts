@@ -16,43 +16,52 @@ export const hhLoginCommand = Command.make(
     )
   },
   Effect.fn(function*({ timeout }) {
-    const browser = yield* Effect.tryPromise({
-      try: () => chromium.launch({ headless: false, executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" }),
+    const profileDir = join(homedir(), ".otbor", "hh", "profile")
+    const context = yield* Effect.tryPromise({
+      try: () => chromium.launchPersistentContext(profileDir, {
+        headless: false,
+        executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+      }),
       catch: (error) => new Error(`browser launch failed: ${error}`)
     })
-    const context = yield* Effect.tryPromise({
-      try: () => browser.newContext(),
-      catch: (error) => new Error(`context failed: ${error}`)
-    })
-    const page = yield* Effect.tryPromise({
+    const page = context.pages()[0] ?? (yield* Effect.tryPromise({
       try: () => context.newPage(),
       catch: (error) => new Error(`page failed: ${error}`)
-    })
+    }))
 
     yield* Effect.tryPromise({
       try: () => page.goto("https://hh.ru/login"),
       catch: (error) => new Error(`goto failed: ${error}`)
     })
 
-    yield* Console.log("Войдите в аккаунт hh.ru в открывшемся браузере. Ожидание...")
+    yield* Console.log("Войдите в аккаунт hh.ru в открывшемся браузере. После входа нажмите Enter в этом терминале (или дождитесь автопроверки).")
+
+    const enterPressed = new Promise<void>((resolve) => {
+      const onData = () => { process.stdin.off("data", onData); resolve() }
+      process.stdin.resume()
+      process.stdin.on("data", onData)
+    })
 
     const deadline = Date.now() + timeout * 1000
-    while (Date.now() < deadline) {
+    let loggedIn = false
+    while (Date.now() < deadline && !loggedIn) {
       const cookies = yield* Effect.tryPromise({
         try: () => context.cookies("https://hh.ru"),
         catch: (error) => new Error(`cookies failed: ${error}`)
       })
-      if (cookies.some((c) => c.name === "hhtoken" || c.name === "hhul")) break
-      yield* Effect.sleep("2 seconds")
-    }
-
-    const cookies = yield* Effect.tryPromise({
-      try: () => context.cookies("https://hh.ru"),
-      catch: (error) => new Error(`cookies failed: ${error}`)
-    })
-    if (!cookies.some((c) => c.name === "hhtoken" || c.name === "hhul")) {
-      yield* Effect.tryPromise({ try: () => browser.close(), catch: () => new Error("close failed") })
-      return yield* Effect.fail(new Error("login timeout"))
+      if (cookies.some((c) => c.name === "hhtoken" || c.name === "hhul")) { loggedIn = true; break }
+      // race: wait 2s or Enter
+      yield* Effect.promise(() => Promise.race([enterPressed, new Promise((r) => setTimeout(r, 2000))]))
+      const cookies2 = yield* Effect.tryPromise({
+        try: () => context.cookies("https://hh.ru"),
+        catch: (error) => new Error(`cookies failed: ${error}`)
+      })
+      if (cookies2.some((c) => c.name === "hhtoken" || c.name === "hhul")) { loggedIn = true; break }
+      // if Enter pressed, break regardless
+      // (enterPressed resolved) -> check url
+      if (page.url().includes("hh.ru") && !page.url().includes("/login")) {
+        // maybe logged in
+      }
     }
 
     const state = yield* Effect.tryPromise({
@@ -69,7 +78,7 @@ export const hhLoginCommand = Command.make(
       catch: (error) => new Error(`save failed: ${error}`)
     })
 
-    yield* Effect.tryPromise({ try: () => browser.close(), catch: () => new Error("close failed") })
+    yield* Effect.tryPromise({ try: () => context.close(), catch: () => new Error("close failed") })
     yield* Console.log(`Сессия сохранена: ${path}`)
   })
 ).pipe(Command.withDescription("Log in to hh.ru and save session"))
