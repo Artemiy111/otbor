@@ -20,6 +20,8 @@ export interface MailSyncOptions {
   /** Messages per IMAP page; capped by the gateway. */
   readonly limit?: number
   readonly maxPages?: number
+  /** Override the account's backfill window for this run; omitted uses the account setting. */
+  readonly days?: number
   readonly now?: Date
 }
 
@@ -223,7 +225,7 @@ export class MailSync extends Context.Service<MailSync, MailSyncShape>()(
                 .pipe(Effect.mapError(toStorageError("mail.folder")))
 
               let afterUid = Number(stored?.last_uid ?? 0)
-              const sinceDays = account.backfill_days
+              const sinceDays = options.days ?? account.backfill_days
 
               for (let pageIndex = 0; pageIndex < maxPages; pageIndex += 1) {
                 let page = yield* Effect.tryPromise({

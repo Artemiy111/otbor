@@ -148,9 +148,14 @@ export class ScheduleDispatcher extends Context.Service<
                   message: `schedule ${schedule.id}: mail_sync needs a mail account id`
                 })
               }
+              const hasDays = Object.prototype.hasOwnProperty.call(options, "days")
+              const days = hasDays
+                ? intOption(options, "days", 0, 0, 3_650)
+                : undefined
               const result = yield* mail.sync(schedule.userId, schedule.targetId, {
                 limit: intOption(options, "limit", 100, 1, 500),
-                maxPages: intOption(options, "maxPages", 10, 1, 100)
+                maxPages: intOption(options, "maxPages", 10, 1, 100),
+                               ...(days === undefined ? {} : { days })
               })
               return syncResult(result)
             }
