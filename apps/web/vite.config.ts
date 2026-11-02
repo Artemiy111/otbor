@@ -1,3 +1,4 @@
+import tailwindcss from "@tailwindcss/vite"
 import vue from "@vitejs/plugin-vue"
 import { fileURLToPath } from "node:url"
 import { defineConfig, loadEnv } from "vite"
@@ -9,6 +10,7 @@ import { defineConfig, loadEnv } from "vite"
  * required. A built bundle can point at any server with `OTBOR_API_URL`.
  */
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url))
+const srcRoot = fileURLToPath(new URL("./src", import.meta.url))
 
 export default defineConfig(({ mode }) => {
   // Load only the OTBOR_ namespace: no crawler proxy secret can leak into the
@@ -33,8 +35,13 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
-    plugins: [vue()],
+    plugins: [vue(), tailwindcss()],
     envDir: repoRoot,
+    resolve: {
+      alias: {
+        "@": srcRoot
+      }
+    },
     define: {
       __OTBOR_API_URL__: JSON.stringify(configured)
     },
