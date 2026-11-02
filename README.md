@@ -57,6 +57,26 @@ otbor proxy test
 Настройки лежат в `~/.otbor/proxy/config.json` (0600). Поддерживаются только
 `OTBOR_PROXY_*`; секреты подписки не попадают в БД, логи или git.
 
+## Расписания обхода
+
+Расписание — это поисковый URL hh.ru и интервал в минутах. Воркер
+(`bun run worker`) каждые `WORKER_SCHEDULE_SECONDS` секунд (по умолчанию 60)
+забирает созревшие расписания и прогоняет одну страницу тем же `CrawlRunner`,
+что и ручной обход. Ошибка одного расписания пишется в `last_error` и не
+останавливает остальные.
+
+```bash
+otbor schedule list
+otbor schedule upsert \
+  --target 'https://hh.ru/search/vacancy?text=devops&search_field=name&area=1&order_by=publication_time' \
+  --interval 360
+otbor schedule run-now --id <id>
+otbor schedule remove --id <id>
+```
+
+`run-now` только принимает заявку: сам обход идёт в отдельном fiber, поэтому
+RPC возвращается до загрузки страницы hh.ru.
+
 ## Очередь и harness
 
 Регистрация устройства выдаёт токен один раз и сохраняет локальную
