@@ -18,6 +18,7 @@ import { proxyCommand } from "./commands/proxy.ts"
 import { queueCommand } from "./commands/queue.ts"
 import { healthCommand } from "./commands/system.ts"
 import { vacancyCommand } from "./commands/vacancy.ts"
+import { writeCommand } from "./commands/write.ts"
 
 /**
  * One CLI, two kinds of commands:
@@ -76,7 +77,8 @@ root
       hydrateCommand,
       proxyCommand,
       acpCommand,
-      inferenceCommand
+      inferenceCommand,
+      writeCommand
     ]),
     Command.run({ version: "0.2.0" })
   )

@@ -100,6 +100,26 @@ OpenCode; `inference run --model` применяется через
 `session/set_config_option` (если агент его поддерживает). `OTBOR_ACP_BIN`,
 `OTBOR_ACP_CWD` и `OTBOR_ACP_TIMEOUT_SECONDS` переопределяют процесс.
 
+## Письма, ответы и резюме
+
+Письменные задачи идут через ту же очередь: облако собирает вакансию, резюме и
+задачу в строгий промпт, а текст возвращает inference-харнес.
+
+```bash
+otbor write letter <application-id> --tone "спокойно и по делу" --length short
+otbor write letter <application-id> --save
+
+otbor write answers <application-id> --question "Почему мы?" --save
+cat questions.txt | otbor write answers <application-id>
+
+otbor write resume ./resume.txt --target-role "Platform Engineer"
+cat resume.txt | otbor write resume --target-role "SRE"
+```
+
+`--save` для письма и ответов обновляет существующий kit заявки через
+`ApplicationsSetKit`, сохраняя форму (`formHash`) и остальные поля. Без kit
+ничего не создаётся. Подробности и ограничения: [docs/writing.md](docs/writing.md).
+
 ## Проверки
 
 ```bash
