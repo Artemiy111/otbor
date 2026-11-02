@@ -48,6 +48,8 @@ const props = withDefaults(
     pageSize?: number
     pageSizeOptions?: ReadonlyArray<number>
     initialSorting?: SortingState
+    /** Prefix every row with a visible ordinal. Paginated tables continue across pages. */
+    rowNumbers?: boolean
   }>(),
   {
     isLoading: false,
@@ -59,7 +61,8 @@ const props = withDefaults(
     filterPlaceholder: "Поиск…",
     pageSize: undefined,
     pageSizeOptions: () => [10, 20, 25, 50, 100],
-    initialSorting: () => []
+    initialSorting: () => [],
+    rowNumbers: true
   }
 )
 
@@ -122,7 +125,14 @@ const globalFilterModel = computed({
   set: (value: string) => table.setGlobalFilter(value)
 })
 
-const columnCount = computed(() => table.getAllLeafColumns().length)
+const columnCount = computed(
+  () => table.getAllLeafColumns().length + (props.rowNumbers ? 1 : 0)
+)
+const rowOffset = computed(() => {
+  if (props.pageSize === undefined) return 0
+  const state = table.getState().pagination
+  return state.pageIndex * state.pageSize
+})
 const showToolbar = computed(
   () => props.filter || slots.toolbar !== undefined
 )
@@ -163,6 +173,7 @@ watchEffect(() => {
         <TableRoot>
           <TableHeader>
             <TableRow v-for="headerGroup in table.getHeaderGroups()" :key="headerGroup.id">
+              <TableHead v-if="props.rowNumbers" class="w-12 text-right">№</TableHead>
               <TableHead v-for="header in headerGroup.headers" :key="header.id">
                 <FlexRender
                   v-if="!header.isPlaceholder"
@@ -189,7 +200,16 @@ watchEffect(() => {
               </TableCell>
             </TableRow>
 
-            <TableRow v-for="row in table.getRowModel().rows" :key="row.id">
+            <TableRow
+              v-for="(row, index) in table.getRowModel().rows"
+              :key="row.id"
+            >
+              <TableCell
+                v-if="props.rowNumbers"
+                class="w-12 text-right tabular-nums text-muted-foreground"
+              >
+                {{ rowOffset + index + 1 }}
+              </TableCell>
               <TableCell v-for="cell in row.getVisibleCells()" :key="cell.id">
                 <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
               </TableCell>
