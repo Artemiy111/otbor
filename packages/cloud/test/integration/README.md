@@ -40,7 +40,12 @@ the first run creates it, exactly as `bun run db:migrate` does.
    leaves the application `submitting`; a successful reconcile marks it
    `submitted`.
 5. **Account lease** — two holders cannot serve the same account at once; after
-   the lease expires a different holder takes over and the epoch increments.
+   the lease expires a different holder takes over and the epoch increments;
+   rebinding or revoking a harness releases the old runtime lease.
+6. **Inference** — enqueue attaches the default hh account, a token-authenticated
+   harness leases and completes with artifacts, `inference_failed` retries to
+   `dead`, `result` round-trips, another user cannot read the job, and migration
+   0006 accepts the `inference` stage.
 
 ## Notes
 
