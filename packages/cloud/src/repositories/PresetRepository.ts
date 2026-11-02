@@ -1,9 +1,11 @@
-import type { PresetFilter, PresetRecord } from "@otbor/contract"
+import type { PresetFilter, PresetPreview, PresetRecord } from "@otbor/contract"
 import { parsePresetFilter } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
-import { preset } from "../db/tables.ts"
+import { employer, preset, vacancy } from "../db/tables.ts"
+import { vacancyFilterSql } from "./LexiconRepository.ts"
+import * as VacancyRepository from "./VacancyRepository.ts"
 
 const toRecord = (row: typeof preset.$inferSelect): PresetRecord => ({
   id: row.id as PresetRecord["id"],
@@ -50,6 +52,73 @@ export const findById = (
     )
     .limit(1)
     .pipe(Effect.map((rows) => (rows[0] === undefined ? null : toRecord(rows[0]))))
+
+const facetRows = (rows: ReadonlyArray<Record<string, unknown>>) =>
+  rows.map((row) => ({
+    term: String(row.term),
+    count: Number(row.count ?? 0)
+  }))
+
+/** Live counts and facets for an unsaved filter. */
+export const preview = (
+  tx: Executor,
+  filter: PresetFilter
+): RepoEffect<PresetPreview> =>
+  Effect.gen(function*() {
+    const where = vacancyFilterSql(filter)
+
+    const countRows = yield* tx.execute(sql`
+      select count(*)::int as count from vacancy where ${where}
+    `)
+    const keywordRows = yield* tx.execute(sql`
+      select k.term as term, count(distinct vk.vacancy_id)::int as count
+      from keyword k
+      join vacancy_keyword vk on vk.keyword_id = k.id
+      join vacancy on vacancy.id = vk.vacancy_id
+      where ${where}
+      group by k.term
+      order by count desc, k.term
+      limit 12
+    `)
+    const skillRows = yield* tx.execute(sql`
+      select vs.term as term, count(distinct vs.vacancy_id)::int as count
+      from vacancy_skill vs
+      join vacancy on vacancy.id = vs.vacancy_id
+      where ${where}
+      group by vs.term
+      order by count desc, vs.term
+      limit 12
+    `)
+    const companyRows = yield* tx.execute(sql`
+      select e.id::text as id, e.name as name, count(*)::int as count
+      from vacancy
+      join employer e on e.id = vacancy.employer_id
+      where ${where}
+      group by e.id, e.name
+      order by count desc, e.name
+      limit 12
+    `)
+    const vacancyRows = yield* tx
+      .select(VacancyRepository.rowSelection)
+      .from(vacancy)
+      .leftJoin(employer, sql`${employer.id} = ${vacancy.employerId}`)
+      .where(where)
+      .orderBy(sql`${vacancy.publishedAt} desc nulls last`)
+      .limit(10)
+
+    return {
+      count: Number((countRows.rows[0] as { count?: number | string } | undefined)?.count ?? 0),
+      keywords: facetRows(keywordRows.rows as ReadonlyArray<Record<string, unknown>>),
+      skills: facetRows(skillRows.rows as ReadonlyArray<Record<string, unknown>>),
+      companies: (companyRows.rows as ReadonlyArray<Record<string, unknown>>).map((row) => ({
+        id: String(row.id) as PresetPreview["companies"][number]["id"],
+        name: String(row.name),
+        count: Number(row.count ?? 0)
+      })),
+      vacancies: (vacancyRows as unknown as ReadonlyArray<Parameters<typeof VacancyRepository.toSummary>[0]>)
+        .map(VacancyRepository.toSummary)
+    }
+  })
 
 /** Deletes only the caller's own preset; system presets stay untouched. */
 export const remove = (tx: Executor, id: string, userId: string): RepoEffect<boolean> =>

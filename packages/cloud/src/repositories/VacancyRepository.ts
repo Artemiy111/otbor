@@ -287,7 +287,7 @@ export const insertResponseSample = (
 /* Reads                                                                       */
 /* -------------------------------------------------------------------------- */
 
-const rowSelection = {
+export const rowSelection = {
   id: vacancy.id,
   source: vacancy.source,
   externalId: vacancy.externalId,

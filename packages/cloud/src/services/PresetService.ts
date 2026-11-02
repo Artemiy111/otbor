@@ -1,4 +1,4 @@
-import type { ApiError, PresetFilter, PresetKind, PresetRecord } from "@otbor/contract"
+import type { ApiError, PresetFilter, PresetKind, PresetPreview, PresetRecord } from "@otbor/contract"
 import { Conflict, emptyPresetFilter, parsePresetFilter } from "@otbor/contract"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "../db/Database.ts"
@@ -19,6 +19,7 @@ export interface PresetServiceShape {
     readonly system?: boolean
   }) => Effect.Effect<PresetRecord, ApiError>
   readonly remove: (id: string) => Effect.Effect<boolean, ApiError>
+  readonly preview: (filter: PresetFilter) => Effect.Effect<PresetPreview, ApiError>
 }
 
 export class PresetService extends Context.Service<PresetService, PresetServiceShape>()(
@@ -65,7 +66,14 @@ export class PresetService extends Context.Service<PresetService, PresetServiceS
           )
           .pipe(Effect.mapError(toStorageError("preset.remove")))
 
-      return PresetService.of({ list, upsert, remove })
+      const preview: PresetServiceShape["preview"] = (filter) =>
+        database
+          .asUser(currentUser.userId, (tx) =>
+            PresetRepository.preview(tx, parsePresetFilter(filter))
+          )
+          .pipe(Effect.mapError(toStorageError("preset.preview")))
+
+      return PresetService.of({ list, upsert, remove, preview })
     })
   )
 }

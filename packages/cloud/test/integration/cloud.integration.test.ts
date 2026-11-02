@@ -69,6 +69,7 @@ import {
   makeJobRunnable,
   migrateTestDatabase,
   recoverExpiredJobs,
+  presetPreview,
   recordingRunner,
   registerHarness,
   removePreset,
@@ -94,6 +95,7 @@ import {
   seedTitleVerdict,
   seedVacancy,
   seedVacancyKeyword,
+  seedVacancySkill,
   seedVacancyTitled,
   serverUrl,
   setDefaultAccount,
@@ -1190,6 +1192,77 @@ if (!integrationEnabled || serverUrl === null) {
         `alpha-one-${suffix}`,
         `alpha-two-${suffix}`
       ])
+    })
+
+    test("preview applies field rules and returns facets", async () => {
+      const tenant = await seedTenant("preset-preview")
+      const suffix = randomUUID().slice(0, 8)
+      const keywordId = await seedKeyword(`preview-${suffix}`)
+
+      const devopsTitle = `DevOps Kubernetes engineer ${suffix}`
+      const backendTitle = `Backend TypeScript developer ${suffix}`
+      const devops = await seedVacancyTitled("preview-devops", devopsTitle, {
+        salaryFrom: 999_999,
+        descriptionText: "Kubernetes and Terraform",
+        workFormats: ["remote"]
+      })
+      const backend = await seedVacancyTitled("preview-backend", backendTitle, {
+        salaryFrom: 111_111,
+        descriptionText: "TypeScript and PostgreSQL",
+        workFormats: ["office"]
+      })
+      await seedTitleVerdict(devopsTitle, "match")
+      await seedTitleVerdict(backendTitle, "reject")
+      await seedVacancySkill(devops, `Kube-${suffix}`)
+      await seedVacancySkill(backend, `TypeScript-${suffix}`)
+      await seedVacancyKeyword({
+        vacancyId: devops,
+        keywordId,
+        matchedForm: `preview-${suffix}`,
+        inSkills: true
+      })
+
+      const byTitle = await presetPreview(tenant.userId, {
+        rules: [{ field: "title", op: "contains", value: devopsTitle }]
+      })
+      expect(byTitle.count).toBe(1)
+      expect(byTitle.vacancies.map((vacancy) => vacancy.title)).toEqual([devopsTitle])
+
+      const bySalary = await presetPreview(tenant.userId, {
+        rules: [
+          { field: "title", op: "contains", value: suffix },
+          { field: "salary_from", op: "gte", value: 900_000 }
+        ]
+      })
+      expect(bySalary.count).toBe(1)
+
+      const byGate = await presetPreview(tenant.userId, {
+        rules: [
+          { field: "title", op: "contains", value: suffix },
+          { field: "gate", op: "eq", value: "match" }
+        ]
+      })
+      expect(byGate.count).toBe(1)
+
+      const bySkills = await presetPreview(tenant.userId, {
+        rules: [{ field: "skills", op: "contains", value: `Kube-${suffix}` }]
+      })
+      expect(bySkills.count).toBe(1)
+      expect(bySkills.skills.map((facet) => facet.term)).toContain(`Kube-${suffix}`)
+
+      const byKeywords = await presetPreview(tenant.userId, {
+        rules: [{ field: "keywords", op: "in", value: [`preview-${suffix}`] }]
+      })
+      expect(byKeywords.count).toBe(1)
+      expect(byKeywords.keywords.map((facet) => facet.term)).toContain(`preview-${suffix}`)
+
+      const byFormat = await presetPreview(tenant.userId, {
+        rules: [
+          { field: "title", op: "contains", value: suffix },
+          { field: "work_format", op: "in", value: ["remote"] }
+        ]
+      })
+      expect(byFormat.count).toBe(1)
     })
 
     test("the location narrows keywords to skills, body, title or text+skills", async () => {

@@ -32,6 +32,7 @@ import {
   KitRecord,
   LexiconKeyword,
   PresetFilter,
+  PresetPreview,
   PresetRecord,
   QueueStats,
   TitleGateResult,
@@ -391,6 +392,13 @@ export const PresetsRemove = Rpc.make("PresetsRemove", {
   error: ApiError
 })
 
+/** Counts and facets for the unsaved filter currently being edited. */
+export const PresetsPreview = Rpc.make("PresetsPreview", {
+  payload: Schema.Struct({ filter: PresetFilter }),
+  success: PresetPreview,
+  error: ApiError
+})
+
 /* -------------------------------------------------------------------------- */
 /* Queue                                                                      */
 /* -------------------------------------------------------------------------- */
@@ -578,6 +586,7 @@ export const OtborRpcs = RpcGroup.make(
   PresetsList,
   PresetsUpsert,
   PresetsRemove,
+  PresetsPreview,
   QueueStatsGet,
   QueueJobsList,
   HarnessRegister,

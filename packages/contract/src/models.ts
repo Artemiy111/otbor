@@ -492,7 +492,72 @@ export type HeartbeatResult = typeof HeartbeatResult.Type
  * archived vacancies. `keywordIds` only narrows which keywords are returned;
  * it never changes which vacancies are counted.
  */
+/**
+ * A preset is a conjunction of rules plus a few legacy shorthands. The legacy
+ * `text`/`gate` fields predate the rule builder and are normalized into rules
+ * by the UI; they stay in the schema so old rows keep working.
+ */
+export const PresetField = Schema.Literals([
+  "title",
+  "description",
+  "skills",
+  "keywords",
+  "employer",
+  "area",
+  "salary_from",
+  "salary_to",
+  "salary_currency",
+  "seniority",
+  "work_format",
+  "experience",
+  "employment_form",
+  "published_days",
+  "archived",
+  "gate",
+  "role_family",
+  "source",
+  "responses_total",
+  "description_length",
+  "skills_count"
+])
+
+export type PresetField = typeof PresetField.Type
+
+export const PresetOperator = Schema.Literals([
+  "contains",
+  "not_contains",
+  "eq",
+  "neq",
+  "in",
+  "not_in",
+  "gte",
+  "lte",
+  "is_true",
+  "is_false"
+])
+
+export type PresetOperator = typeof PresetOperator.Type
+
+export const PresetRuleValue = Schema.Union([
+  Schema.String,
+  Schema.Number,
+  Schema.Boolean,
+  Schema.Array(Schema.String)
+])
+
+export type PresetRuleValue = typeof PresetRuleValue.Type
+
+export const PresetRule = Schema.Struct({
+  field: PresetField,
+  op: PresetOperator,
+  value: Schema.optional(PresetRuleValue)
+})
+
+export type PresetRule = typeof PresetRule.Type
+
 export const PresetFilter = Schema.Struct({
+  /** Additional AND rules over vacancy fields. */
+  rules: Schema.optional(Schema.Array(PresetRule)),
   text: Schema.optional(Schema.String),
   gate: Schema.optional(GateVerdict),
   keywordIds: Schema.optional(Schema.Array(KeywordId)),
@@ -516,8 +581,14 @@ export const parsePresetFilter = (input: unknown): PresetFilter => {
   const keywordIds = decoded.keywordIds === undefined
     ? []
     : [...new Set(decoded.keywordIds)]
+  const rules = (decoded.rules ?? []).filter((rule) => {
+    if (rule.op === "is_true" || rule.op === "is_false") return true
+    if (rule.value === undefined || rule.value === "") return false
+    return !Array.isArray(rule.value) || rule.value.length > 0
+  })
 
   return {
+    ...(rules.length === 0 ? {} : { rules }),
     ...(text === "" ? {} : { text }),
     ...(decoded.gate === undefined ? {} : { gate: decoded.gate }),
     ...(keywordIds.length === 0 ? {} : { keywordIds }),
@@ -540,6 +611,32 @@ export const PresetRecord = Schema.Struct({
 })
 
 export type PresetRecord = typeof PresetRecord.Type
+
+export const PresetFacet = Schema.Struct({
+  term: Schema.String,
+  count: Schema.Int
+})
+
+export type PresetFacet = typeof PresetFacet.Type
+
+export const PresetCompanyFacet = Schema.Struct({
+  id: EmployerId,
+  name: Schema.String,
+  count: Schema.Int
+})
+
+export type PresetCompanyFacet = typeof PresetCompanyFacet.Type
+
+/** A live preview of what the current preset rules select. */
+export const PresetPreview = Schema.Struct({
+  count: Schema.Int,
+  keywords: Schema.Array(PresetFacet),
+  skills: Schema.Array(PresetFacet),
+  companies: Schema.Array(PresetCompanyFacet),
+  vacancies: Schema.Array(VacancySummary)
+})
+
+export type PresetPreview = typeof PresetPreview.Type
 
 export const StreamRecord = Schema.Struct({
   id: Schema.String,

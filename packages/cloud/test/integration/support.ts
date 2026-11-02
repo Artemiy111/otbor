@@ -5,6 +5,7 @@ import type {
   JobKind,
   JobStage,
   KitRecord,
+  PresetFilter,
   UserId,
   VacancyId
 } from "@otbor/contract"
@@ -29,7 +30,8 @@ import {
   users,
   vacancy,
   vacancyKeyword,
-  vacancySearchHit
+  vacancySearchHit,
+  vacancySkill
 } from "../../src/db/tables.ts"
 import * as ApplicationRepository from "../../src/repositories/ApplicationRepository.ts"
 import * as HarnessRepository from "../../src/repositories/HarnessRepository.ts"
@@ -283,7 +285,12 @@ export const setDefaultAccount = async (userId: string, accountId: string): Prom
 export const seedVacancyTitled = async (
   label: string,
   title: string,
-  options: { readonly archived?: boolean } = {}
+  options: {
+    readonly archived?: boolean
+    readonly salaryFrom?: number
+    readonly descriptionText?: string
+    readonly workFormats?: ReadonlyArray<string>
+  } = {}
 ): Promise<string> => {
   const externalId = unique(`v-${label}`)
   return runAs(
@@ -298,6 +305,9 @@ export const seedVacancyTitled = async (
             canonicalUrl: `https://hh.ru/vacancy/${externalId}`,
             title,
             archived: options.archived ?? false,
+            salaryFrom: options.salaryFrom ?? null,
+            descriptionText: options.descriptionText ?? null,
+            workFormats: options.workFormats ?? [],
             contentHash: randomUUID()
           })
           .returning()
@@ -309,6 +319,24 @@ export const seedVacancyTitled = async (
 
 export const seedVacancy = async (label: string): Promise<string> =>
   seedVacancyTitled(label, `Integration vacancy ${label}`)
+
+export const seedVacancySkill = async (
+  vacancyId: string,
+  term: string,
+  position = 0
+): Promise<void> => {
+  await runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx.insert(vacancySkill).values({
+        vacancyId,
+        term,
+        normalizedTerm: normalizeTerm(term),
+        position
+      })
+    )
+  )
+}
 
 export const seedKeyword = async (term: string): Promise<string> =>
   runAs(
@@ -730,6 +758,15 @@ export const removePreset = async (userId: string, id: string) =>
     Effect.gen(function*() {
       const presets = yield* PresetService
       return yield* presets.remove(id)
+    })
+  )
+
+export const presetPreview = (userId: string, filter: PresetFilter) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const presets = yield* PresetService
+      return yield* presets.preview(filter)
     })
   )
 

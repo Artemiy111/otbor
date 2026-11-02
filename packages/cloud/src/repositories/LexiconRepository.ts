@@ -1,4 +1,4 @@
-import type { LexiconKeyword, PresetFilter } from "@otbor/contract"
+import type { LexiconKeyword, PresetFilter, PresetRule } from "@otbor/contract"
 import type { LexiconEntryInput, LexiconMatch } from "@otbor/domain"
 import { normalizeTerm } from "@otbor/domain"
 import { sql, type SQL } from "drizzle-orm"
@@ -41,6 +41,189 @@ const locationSql = (
   }
 }
 
+const textPattern = (value: unknown): string =>
+  `%${String(value).trim().replace(/[\\%_]/g, "\\$&")}%`
+
+const numberValue = (value: unknown): number => {
+  const parsed = typeof value === "number" ? value : Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+const textValue = (value: unknown): string => String(value ?? "").trim()
+
+const stringList = (value: unknown): ReadonlyArray<string> => {
+  if (Array.isArray(value)) return value.map((item) => String(item))
+  const single = textValue(value)
+  return single === "" ? [] : [single]
+}
+
+/** A rule value as a JSONB array for `work_formats @> ...`. */
+const jsonArrayList = (values: ReadonlyArray<string>): SQL =>
+  sql`${JSON.stringify(values)}::jsonb`
+
+const textFieldSql = (field: PresetRule["field"]): SQL | null => {
+  switch (field) {
+    case "title":
+      return sql`vacancy.title`
+    case "description":
+      return sql`coalesce(vacancy.description_text, '')`
+    case "employer":
+      return sql`(select e.name from employer e where e.id = vacancy.employer_id)`
+    case "area":
+      return sql`coalesce(vacancy.area_name, '')`
+    case "salary_currency":
+      return sql`coalesce(vacancy.salary_currency, '')`
+    case "seniority":
+      return sql`vacancy.seniority`
+    case "experience":
+      return sql`coalesce(vacancy.experience_code, '')`
+    case "employment_form":
+      return sql`coalesce(vacancy.employment_form, '')`
+    case "source":
+      return sql`vacancy.source`
+    default:
+      return null
+  }
+}
+
+const numberFieldSql = (field: PresetRule["field"]): SQL | null => {
+  switch (field) {
+    case "salary_from":
+      return sql`vacancy.salary_from`
+    case "salary_to":
+      return sql`vacancy.salary_to`
+    case "responses_total":
+      return sql`vacancy.responses_total`
+    case "description_length":
+      return sql`length(coalesce(vacancy.description_text, ''))`
+    case "skills_count":
+      return sql`(select count(*)::int from vacancy_skill vs where vs.vacancy_id = vacancy.id)`
+    default:
+      return null
+  }
+}
+
+const ruleClause = (rule: PresetRule, filter: PresetFilter): SQL => {
+  const op = rule.op
+  const value = rule.value
+
+  if (rule.field === "archived") {
+    return op === "is_true" ? sql`vacancy.archived` : sql`not vacancy.archived`
+  }
+
+  if (rule.field === "gate") {
+    const verdict = textValue(value)
+    return sql`exists (
+      select 1 from title_verdict
+      where title_verdict.normalized_title = regexp_replace(lower(btrim(vacancy.title)), '\\s+', ' ', 'g')
+        and title_verdict.verdict = ${verdict}
+    )`
+  }
+
+  if (rule.field === "role_family") {
+    const role = textValue(value)
+    return sql`exists (
+      select 1 from title_verdict
+      where title_verdict.normalized_title = regexp_replace(lower(btrim(vacancy.title)), '\\s+', ' ', 'g')
+        and title_verdict.role_family = ${role}
+    )`
+  }
+
+  if (rule.field === "published_days") {
+    return sql`vacancy.published_at >= now() - make_interval(days => ${numberValue(value)})`
+  }
+
+  if (rule.field === "skills") {
+    if (op === "in" || op === "not_in") {
+      const terms = stringList(value).map((term) => term.trim()).filter(Boolean)
+      if (terms.length === 0) return sql`true`
+      const pattern = sql.join(terms.map((term) => sql`${textPattern(term)}`), sql`, `)
+      const exists = sql`exists (
+        select 1 from vacancy_skill vs
+        where vs.vacancy_id = vacancy.id and vs.normalized_term ilike any (array[${pattern}])
+      )`
+      return op === "not_in" ? sql`not (${exists})` : exists
+    }
+    const pattern = textPattern(value)
+    const exists = sql`exists (
+      select 1 from vacancy_skill vs
+      where vs.vacancy_id = vacancy.id and vs.normalized_term ilike ${pattern}
+    )`
+    return op === "not_contains" ? sql`not (${exists})` : exists
+  }
+
+  if (rule.field === "keywords") {
+    const location = locationSql(filter.location, "vk")
+    const locationFilter = location === null ? sql`` : sql`and ${location}`
+
+    if (op === "in" || op === "not_in") {
+      const terms = stringList(value)
+        .map((term) => term.trim().toLowerCase())
+        .filter(Boolean)
+      if (terms.length === 0) return sql`true`
+      const list = sql.join(terms.map((term) => sql`${term}`), sql`, `)
+      const exists = sql`exists (
+        select 1
+        from vacancy_keyword vk
+        join keyword k on k.id = vk.keyword_id
+        where vk.vacancy_id = vacancy.id
+          and k.normalized_term in (${list})
+          ${locationFilter}
+      )`
+      return op === "not_in" ? sql`not (${exists})` : exists
+    }
+
+    const pattern = textPattern(value)
+    const exists = sql`exists (
+      select 1
+      from vacancy_keyword vk
+      join keyword k on k.id = vk.keyword_id
+      where vk.vacancy_id = vacancy.id
+        and (k.normalized_term ilike ${pattern})
+        ${locationFilter}
+    )`
+    return op === "not_contains" ? sql`not (${exists})` : exists
+  }
+
+  if (rule.field === "work_format") {
+    const formats = stringList(value).map((format) => format.trim()).filter(Boolean)
+    if (formats.length === 0) return sql`true`
+    const formula = sql`vacancy.work_formats @> ${jsonArrayList(formats)}`
+    return op === "not_in" || op === "neq" ? sql`not (${formula})` : formula
+  }
+
+  const textField = textFieldSql(rule.field)
+  if (textField !== null) {
+    if (op === "contains") {
+      return sql`${textField} ilike ${textPattern(value)}`
+    }
+    if (op === "not_contains") {
+      return sql`${textField} not ilike ${textPattern(value)}`
+    }
+    if (op === "in" || op === "not_in") {
+      const values = stringList(value).map((item) => item.trim()).filter(Boolean)
+      if (values.length === 0) return sql`true`
+      const list = sql.join(values.map((item) => sql`${item}`), sql`, `)
+      return op === "not_in"
+        ? sql`${textField} not in (${list})`
+        : sql`${textField} in (${list})`
+    }
+    return op === "neq"
+      ? sql`${textField} <> ${textValue(value)}`
+      : sql`${textField} = ${textValue(value)}`
+  }
+
+  const numberField = numberFieldSql(rule.field)
+  if (numberField !== null) {
+    const numeric = numberValue(value)
+    if (op === "gte") return sql`${numberField} >= ${numeric}`
+    if (op === "lte") return sql`${numberField} <= ${numeric}`
+    return op === "neq" ? sql`${numberField} <> ${numeric}` : sql`${numberField} = ${numeric}`
+  }
+
+  return sql`true`
+}
+
 /**
  * The vacancy predicate shared by the keyword count and the "has matching
  * vacancies" filter. `vacancy` is in scope in both correlated subqueries, and
@@ -49,7 +232,8 @@ const locationSql = (
 export const vacancyFilterSql = (filter: PresetFilter): SQL => {
   const clauses: Array<SQL> = [sql`true`]
 
-  if (filter.includeArchived !== true) {
+  const hasArchivedRule = (filter.rules ?? []).some((rule) => rule.field === "archived")
+  if (filter.includeArchived !== true && !hasArchivedRule) {
     clauses.push(sql`not vacancy.archived`)
   }
 
@@ -64,6 +248,10 @@ export const vacancyFilterSql = (filter: PresetFilter): SQL => {
       where title_verdict.normalized_title = regexp_replace(lower(btrim(vacancy.title)), '\\s+', ' ', 'g')
         and title_verdict.verdict = ${filter.gate}
     )`)
+  }
+
+  for (const rule of filter.rules ?? []) {
+    clauses.push(ruleClause(rule, filter))
   }
 
   return sql.join(clauses, sql` and `)
