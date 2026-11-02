@@ -72,6 +72,7 @@ import { MailGatewayProvider } from "../../src/services/MailGatewayProvider.ts"
 import { MailService, type MailAccountUpsertInput } from "../../src/services/MailService.ts"
 import { MailSync } from "../../src/services/MailSync.ts"
 import { PresetService } from "../../src/services/PresetService.ts"
+import { ResumeService } from "../../src/services/ResumeService.ts"
 import { submitJob } from "../../src/services/jobs.ts"
 import { QueueService } from "../../src/services/QueueService.ts"
 import { ScheduleDispatcher } from "../../src/services/ScheduleDispatcher.ts"
@@ -239,6 +240,7 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
     ConversationService.layer.pipe(Layer.provide(shared)),
     // These services already depend only on Database + CurrentUser.
     BlacklistService.layer.pipe(Layer.provide(shared)),
+    ResumeService.layer.pipe(Layer.provide(shared)),
     DecisionService.layer.pipe(Layer.provide(shared)),
     QueueService.layer.pipe(Layer.provide(shared)),
     InferenceService.layer.pipe(Layer.provide(shared)),
@@ -269,6 +271,7 @@ type Requirements =
   | EmployerHydrator
   | BlacklistService
   | DecisionService
+  | ResumeService
 
 export const runAs = <A, E>(
   userId: string,

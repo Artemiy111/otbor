@@ -19,6 +19,7 @@ import { MailService } from "../services/MailService.ts"
 import { MailSync } from "../services/MailSync.ts"
 import { PresetService } from "../services/PresetService.ts"
 import { QueueService } from "../services/QueueService.ts"
+import { ResumeService } from "../services/ResumeService.ts"
 import { ScheduleDispatcher } from "../services/ScheduleDispatcher.ts"
 import { ScheduleService } from "../services/ScheduleService.ts"
 import { SystemService } from "../services/SystemService.ts"
@@ -52,6 +53,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const telegram = yield* TelegramService
     const blacklist = yield* BlacklistService
     const hhAccounts = yield* HhAccountService
+    const resumes = yield* ResumeService
 
     return {
       SystemHealth: () => system.health(),
@@ -69,6 +71,12 @@ export const OtborHandlers = OtborRpcs.toLayer(
       HhAccountsList: () => hhAccounts.list(),
       HhAccountUpsert: (payload) => hhAccounts.upsert(payload),
       HhAccountRemove: ({ id }) => hhAccounts.remove(id),
+
+      ResumesList: (payload) => resumes.list(payload?.hhAccountId),
+      ResumeGet: ({ id }) => resumes.get(id),
+      ResumeUpsert: (payload) => resumes.upsert(payload),
+      ResumeEnrichmentGet: ({ resumeId }) => resumes.enrichmentGet(resumeId),
+      ResumeEnrichmentSave: ({ resumeId, data }) => resumes.enrichmentSave(resumeId, data),
       VacanciesUpsert: ({ drafts }) => corpus.ingest(drafts),
       VacanciesHydrationTargets: (payload) => corpus.hydrationTargets(payload),
       VacanciesHydrateOne: ({ id }) =>
@@ -208,6 +216,7 @@ export const OtborServices = Layer.mergeAll(
   telegramService,
   BlacklistService.layer,
   HhAccountService.layer,
+  ResumeService.layer,
   ContactService.layer,
   ConversationService.layer,
   InferenceService.layer,
