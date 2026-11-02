@@ -2139,7 +2139,8 @@ if (!integrationEnabled || serverUrl === null) {
               skipped: 0,
               errors: []
             } satisfies HydrationRunResult
-          })
+          }),
+        hydrateOne: (_userId: string, _id: string) => Effect.succeed(true)
       })
       const hydrationSchedule = await scheduleUpsert(tenant.userId, {
         kind: "vacancy_hydration",

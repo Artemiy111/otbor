@@ -34,6 +34,10 @@ export interface HydrationRunnerShape {
     userId: string,
     options?: HydrationRunOptions
   ) => Effect.Effect<HydrationRunResult, ApiError>
+  readonly hydrateOne: (
+    userId: string,
+    id: string
+  ) => Effect.Effect<boolean, ApiError>
 }
 
 /**
@@ -193,7 +197,108 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
         return { processed, hydrated, failed, inserted, updated, skipped, errors }
       })
 
-      return HydrationRunner.of({ run })
+      const hydrateOne = Effect.fn("HydrationRunner.hydrateOne")(function*(
+        userId: string,
+        id: string
+      ) {
+        const config = yield* prepareProxy()
+
+        const row = yield* database
+          .asUser(userId, (tx) => VacancyRepository.findById(tx, id))
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new InvalidInput({
+                  message: `vacancy load ${id}: ${
+                    cause instanceof Error ? cause.message : String(cause)
+                  }`
+                })
+            )
+          )
+
+        if (row === null) {
+          return yield* new InvalidInput({
+            message: `vacancy not found: ${id}`
+          })
+        }
+
+        if (
+          !VacancyRepository.needsHydration({
+            descriptionHtml: row.descriptionHtml,
+            descriptionText: row.descriptionText
+          })
+        ) {
+          return false
+        }
+
+        const success = yield* Effect.gen(function*() {
+          const proxy = yield* Effect.try({
+            try: () => proxyForUrl(config, row.canonicalUrl),
+            catch: (error) =>
+              new InvalidInput({
+                message: error instanceof Error ? error.message : String(error)
+              })
+          })
+
+          const response = yield* Effect.tryPromise({
+            try: () =>
+              fetchHtml(row.canonicalUrl, {
+                proxy
+              }),
+            catch: (error) =>
+              new InvalidInput({
+                message: `fetch ${row.canonicalUrl}: ${
+                  error instanceof Error ? error.message : String(error)
+                }`
+              })
+          })
+
+          if (response.status !== 200) {
+            return yield* new InvalidInput({
+              message: `fetch ${row.canonicalUrl}: HTTP ${response.status}`
+            })
+          }
+
+          const draft = yield* extractVacancy(response.html, {
+            url: response.url || row.canonicalUrl
+          }).pipe(
+            Effect.mapError(
+              (error) =>
+                new InvalidInput({
+                  message: `parse ${row.canonicalUrl}: ${error.message}`
+                })
+            )
+          )
+
+          yield* corpus.ingest([draft], { userId }).pipe(
+            Effect.mapError(
+              (error) =>
+                new InvalidInput({
+                  message: `ingest ${row.externalId}: ${error.message}`
+                })
+            )
+          )
+
+          return true
+        }).pipe(
+          Effect.catchCause((cause) => {
+            const error = Cause.squash(cause)
+            return Effect.logWarning(
+              `vacancy hydrate failed: ${
+                error instanceof Error ? error.message : String(error)
+              }`
+            ).pipe(Effect.as(false))
+          })
+        )
+
+        if (success) {
+          yield* Effect.logInfo(`vacancy hydrated: ${row.externalId}`)
+        }
+
+        return success
+      })
+
+      return HydrationRunner.of({ run, hydrateOne })
     })
   )
 }
