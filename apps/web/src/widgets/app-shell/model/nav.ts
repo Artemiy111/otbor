@@ -13,6 +13,7 @@ import {
   MessageCircle,
   Search,
   Send,
+  FileText,
   SlidersHorizontal,
   Sparkles,
   User
@@ -50,6 +51,11 @@ export const navSections: ReadonlyArray<NavSection> = [
       { id: "keywords", label: "Ключевые слова", href: "/keywords", icon: BookOpen },
       { id: "blacklist", label: "Чёрный список", href: "/blacklist", icon: Ban }
     ]
+  },
+  {
+    id: "resume",
+    label: "Резюме",
+    items: [{ id: "resumes", label: "Резюме", href: "/resumes", icon: FileText }]
   },
   {
     id: "selection",
