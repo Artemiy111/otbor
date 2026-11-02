@@ -29,9 +29,7 @@ export interface ProxyFileConfig {
 export const proxySettingsDir = (
   env: Record<string, string | undefined> = process.env
 ): string =>
-  env.OTBOR_PROXY_DIR?.trim() ||
-  env.HHX_PROXY_DIR?.trim() ||
-  join(homedir(), ".otbor", "proxy")
+  env.OTBOR_PROXY_DIR?.trim() || join(homedir(), ".otbor", "proxy")
 
 export const proxyFilePath = (
   env: Record<string, string | undefined> = process.env

@@ -1,0 +1,17 @@
+#!/bin/sh
+# Stable entry point for the operator CLI. Resolves symlinks so `bun link`
+# can put this file in ~/.bun/bin without breaking the relative import.
+set -eu
+
+SELF=$0
+while [ -h "$SELF" ]; do
+  DIR=$(CDPATH= cd -P "$(dirname "$SELF")" && pwd)
+  LINK=$(readlink "$SELF")
+  case "$LINK" in
+    /*) SELF=$LINK ;;
+    *) SELF=$DIR/$LINK ;;
+  esac
+done
+
+DIR=$(CDPATH= cd -P "$(dirname "$SELF")" && pwd)
+exec bun "$DIR/../src/main.ts" "$@"

@@ -61,11 +61,7 @@ export const loadProxyConfig = (
 const envValue = (
   env: Record<string, string | undefined>,
   name: string
-): string | null => {
-  const own = text(env[`OTBOR_PROXY_${name}`])
-  if (own !== null) return own
-  return text(env[`HHX_PROXY_${name}`])
-}
+): string | null => text(env[`OTBOR_PROXY_${name}`])
 
 /** Pure resolution, used by tests and by `otbor proxy set` previews. */
 export const resolveProxyConfig = (

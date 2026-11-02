@@ -18,6 +18,7 @@
     "db:migrate": "bun run cli db migrate",
     "db:reset": "bun run cli db reset",
     "db:seed": "bun run cli db seed",
+    "link": "cd packages/cli && bun link",
     "test": "bun test",
     "typecheck": "tsc -p tsconfig.json"
   },

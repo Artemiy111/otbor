@@ -3,17 +3,15 @@
 ## Origin
 
 `otbor` is a **full rewrite** of the previous `hh-extracter` project. The old
-project is the behavioural and data-model reference for the hh adapters, the
-search crawler, the proxy engine and the corpus schema. It is not a dependency:
-nothing is imported from it at runtime, and new code must not copy its old
-transport or storage assumptions blindly.
+project exists only as a local reference checkout; there is no upstream
+repository and nothing is imported from it at runtime. It is the behavioural
+reference for the hh adapters, the search crawler, the proxy engine and the
+corpus schema, but new code must not copy its old transport or storage
+assumptions blindly.
 
 - Local reference checkout: [hh-extracter](file:///Users/art/Code/hh-extracter)
-- The local checkout has no git remote configured. When the private Forgejo
-  instance is reachable, the upstream is
-  [artemiy/hh-extracter](https://forgejo.biplane.casa/artemiy/hh-extracter).
 
-The crawler is a port: `packages/crawler` fetches hh search and vacancy pages
+The crawler lives in `packages/crawler`. It fetches hh search and vacancy pages
 and emits `VacancyDraft` values. It never writes SQL. Persistence stays in
 `packages/cloud` (`CorpusService` / `VacancyRepository`), so the same drafts can
 come from a local CLI, a future edge harness or a fixture test.
@@ -60,6 +58,9 @@ guide doesn't cover, search through the source code in `node_modules/effect/src`
 - Migrations are hand-written SQL applied by `effect/sql/Migrator`, because
   RLS, triggers, partial indexes and `uuidv7()` are part of the schema.
 - Use `Effect.fn` in services and `Effect.fnUntraced` in hot paths.
+- The operator CLI is also a binary: `packages/cli/bin/otbor` is the executable,
+  and `bun run link` (or `cd packages/cli && bun link`) installs `otbor` into
+  `~/.bun/bin`. Do not tell operators to type `bun packages/cli/src/main.ts`.
 - No `console.log` in server code. Use `Effect.log*`; logs go to the terminal
   and to `logs/app-YYYY-MM-DD.log`.
 - IDs are UUIDv7, generated in Postgres (`uuidv7()` on Postgres 18) and are the
