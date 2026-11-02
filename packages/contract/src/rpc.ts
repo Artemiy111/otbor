@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import { Rpc, type RpcClient, type RpcClientError, RpcGroup } from "effect/rpc"
-import { CrawlFinishStatus, JobKind, WritingLanguage } from "./enums.ts"
+import { CrawlFinishStatus, JobKind, KeywordMatchLocation, WritingLanguage } from "./enums.ts"
 import {
   ApplicationId,
   EmployerId,
@@ -250,7 +250,9 @@ export const LexiconList = Rpc.make("LexiconList", {
     query: Schema.optional(Schema.String),
     limit: Schema.optional(Schema.Int),
     /** Apply this preset's filter to the keyword set and counts. */
-    presetId: Schema.optional(PresetId)
+    presetId: Schema.optional(PresetId),
+    /** Narrow keyword matches to a place: title, body, HH skills, text+skills. */
+    location: Schema.optional(KeywordMatchLocation)
   }),
   success: Schema.Array(LexiconKeyword),
   error: ApiError

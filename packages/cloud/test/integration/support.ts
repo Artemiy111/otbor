@@ -341,6 +341,9 @@ export const seedVacancyKeyword = async (input: {
   readonly vacancyId: string
   readonly keywordId: string
   readonly matchedForm: string
+  readonly inTitle?: boolean
+  readonly inBody?: boolean
+  readonly inSkills?: boolean
 }): Promise<void> => {
   await runAs(
     "owner",
@@ -348,7 +351,12 @@ export const seedVacancyKeyword = async (input: {
       tx.insert(vacancyKeyword).values({
         vacancyId: input.vacancyId,
         keywordId: input.keywordId,
-        matchedForm: normalizeTerm(input.matchedForm)
+        matchedForm: normalizeTerm(input.matchedForm),
+        inTitle: input.inTitle ?? false,
+        titleCount: input.inTitle === true ? 1 : 0,
+        inBody: input.inBody ?? false,
+        bodyCount: input.inBody === true ? 1 : 0,
+        inSkills: input.inSkills ?? false
       })
     )
   )

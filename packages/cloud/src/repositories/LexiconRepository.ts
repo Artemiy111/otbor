@@ -20,6 +20,28 @@ export const likePattern = (text: string): string =>
   `%${text.trim().replace(/[\\%_]/g, "\\$&")}%`
 
 /**
+ * Which match row counts for a keyword location. `any` is no constraint;
+ * `text_or_skills` is the union the operator sees as "в тексте или навыках".
+ */
+const locationSql = (
+  location: PresetFilter["location"],
+  alias: "vk" | "vk_filter"
+): SQL | null => {
+  switch (location) {
+    case "title":
+      return sql.raw(`${alias}.in_title`)
+    case "body":
+      return sql.raw(`${alias}.in_body`)
+    case "skills":
+      return sql.raw(`${alias}.in_skills`)
+    case "text_or_skills":
+      return sql.raw(`(${alias}.in_body or ${alias}.in_skills)`)
+    default:
+      return null
+  }
+}
+
+/**
  * The vacancy predicate shared by the keyword count and the "has matching
  * vacancies" filter. `vacancy` is in scope in both correlated subqueries, and
  * `title_verdict` keys are normalized exactly like `VacancyRepository.list`.
@@ -47,12 +69,17 @@ export const vacancyFilterSql = (filter: PresetFilter): SQL => {
   return sql.join(clauses, sql` and `)
 }
 
-const vacancyCountSql = (filter: PresetFilter, keywordId: SQL): SQL => sql`(
-  select count(distinct vk.vacancy_id)::int
-  from vacancy_keyword vk
-  join vacancy on vacancy.id = vk.vacancy_id
-  where vk.keyword_id = ${keywordId} and ${vacancyFilterSql(filter)}
-)`
+const vacancyCountSql = (filter: PresetFilter, keywordId: SQL): SQL => {
+  const location = locationSql(filter.location, "vk")
+  return sql`(
+    select count(distinct vk.vacancy_id)::int
+    from vacancy_keyword vk
+    join vacancy on vacancy.id = vk.vacancy_id
+    where vk.keyword_id = ${keywordId}
+      and ${vacancyFilterSql(filter)}
+      ${location === null ? sql`` : sql`and ${location}`}
+  )`
+}
 
 export const loadEntries = (tx: Executor): RepoEffect<ReadonlyArray<LexiconEntryInput>> =>
   Effect.gen(function*() {
@@ -155,12 +182,17 @@ export const list = (
     // subquery, so the alias join below cannot inflate it.
     const presetClause = options.filter === undefined
       ? sql`true`
-      : sql`exists (
-          select 1
-          from vacancy_keyword vk_filter
-          join vacancy on vacancy.id = vk_filter.vacancy_id
-          where vk_filter.keyword_id = k.id and ${vacancyFilterSql(filter)}
-        )`
+      : (() => {
+          const locationFilter = locationSql(filter.location, "vk_filter")
+          return sql`exists (
+            select 1
+            from vacancy_keyword vk_filter
+            join vacancy on vacancy.id = vk_filter.vacancy_id
+            where vk_filter.keyword_id = k.id
+              and ${vacancyFilterSql(filter)}
+              ${locationFilter === null ? sql`` : sql`and ${locationFilter}`}
+          )`
+        })()
 
     const rows = yield* tx.execute(sql`
       with matching as (

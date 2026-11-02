@@ -27,6 +27,10 @@ describe("preset filter parsing", () => {
     })
     expect(parsePresetFilter({ text: "   ", keywordIds: [] })).toEqual({})
     expect(parsePresetFilter({ includeArchived: true })).toEqual({ includeArchived: true })
+    expect(parsePresetFilter({ location: "any" })).toEqual({})
+    expect(parsePresetFilter({ location: "text_or_skills" })).toEqual({
+      location: "text_or_skills"
+    })
   })
 
   test("an unknown gate is rejected instead of silently ignored", () => {
@@ -38,6 +42,7 @@ describe("preset filter parsing", () => {
       text: "DevOps",
       gate: "reject" as const,
       keywordIds: [firstKeyword],
+      location: "skills" as const,
       includeArchived: true
     }
     expect(Schema.decodeUnknownSync(PresetFilter)(filter)).toEqual(filter)

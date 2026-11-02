@@ -29,6 +29,16 @@ export const GateVerdict = Schema.Literals(["match", "unknown", "reject"])
 
 export type GateVerdict = typeof GateVerdict.Type
 
+export const KeywordMatchLocation = Schema.Literals([
+  "any",
+  "title",
+  "body",
+  "skills",
+  "text_or_skills"
+])
+
+export type KeywordMatchLocation = typeof KeywordMatchLocation.Type
+
 export const DecisionVerdict = Schema.Literals(["apply", "draft", "skip"])
 
 export type DecisionVerdict = typeof DecisionVerdict.Type

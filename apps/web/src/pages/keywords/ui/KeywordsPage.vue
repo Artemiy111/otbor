@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, h, ref } from "vue"
 import { useQuery } from "@pinia/colada"
-import type { LexiconKeyword } from "@otbor/contract"
+import type { KeywordMatchLocation, LexiconKeyword } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert, Search } from "@lucide/vue"
 import { keywordApi, keywordKeys } from "@/entities/keyword"
@@ -29,6 +29,7 @@ import { PageHeader } from "@/widgets/page-header"
 const appliedQuery = ref("")
 const draft = ref("")
 const presetId = ref("all")
+const location = ref<KeywordMatchLocation>("any")
 
 const presetsQuery = useQuery({
   key: () => presetKeys.list("all"),
@@ -36,12 +37,13 @@ const presetsQuery = useQuery({
 })
 
 const query = useQuery({
-  key: () => keywordKeys.list(appliedQuery.value, presetId.value),
+  key: () => keywordKeys.list(appliedQuery.value, presetId.value, location.value),
   query: () =>
     keywordApi.list({
       query: appliedQuery.value === "" ? undefined : appliedQuery.value,
       limit: 5000,
-      presetId: presetId.value === "all" ? undefined : presetId.value
+      presetId: presetId.value === "all" ? undefined : presetId.value,
+      location: location.value === "any" ? undefined : location.value
     })
 })
 
@@ -63,6 +65,7 @@ const reset = () => {
   draft.value = ""
   appliedQuery.value = ""
   presetId.value = "all"
+  location.value = "any"
 }
 
 const refresh = () => {
@@ -172,6 +175,21 @@ const columns: ColumnDef<LexiconKeyword>[] = [
           </SelectContent>
         </Select>
       </div>
+      <div class="space-y-1.5">
+        <Label for="keyword-location" class="text-xs text-muted-foreground">Где искать</Label>
+        <Select v-model="location">
+          <SelectTrigger id="keyword-location" class="w-[210px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="any">Везде</SelectItem>
+            <SelectItem value="skills">В навыках HH</SelectItem>
+            <SelectItem value="body">В тексте вакансии</SelectItem>
+            <SelectItem value="text_or_skills">Текст + навыки</SelectItem>
+            <SelectItem value="title">В заголовке</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
       <Button type="submit" :disabled="query.isLoading.value">Найти</Button>
       <Button type="button" variant="outline" :disabled="query.isLoading.value" @click="reset">
         Сбросить
@@ -189,6 +207,10 @@ const columns: ColumnDef<LexiconKeyword>[] = [
     <p v-if="selectedPreset" class="mb-3 text-xs text-muted-foreground">
       Пресет «{{ selectedPreset.title }}»: показаны только термины, которые встречаются в его
       вакансиях, и счётчики считают только эти вакансии.
+    </p>
+
+    <p v-if="location !== 'any'" class="mb-3 text-xs text-muted-foreground">
+      Учитываются только совпадения в выбранном месте вакансии. «Текст + навыки» — любое из двух.
     </p>
 
     <Alert v-if="query.error.value" variant="destructive" class="mb-4">

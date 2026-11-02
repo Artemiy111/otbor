@@ -1,6 +1,7 @@
 import type {
   ApiError,
   GateVerdict,
+  KeywordMatchLocation,
   LexiconKeyword,
   RoleFamily,
   TitleGateResult,
@@ -34,6 +35,7 @@ export interface GateServiceShape {
     readonly query?: string
     readonly limit?: number
     readonly presetId?: string
+    readonly location?: KeywordMatchLocation
   }) => Effect.Effect<ReadonlyArray<LexiconKeyword>, ApiError>
   readonly lexiconUpsert: (input: {
     readonly term: string
@@ -125,12 +127,21 @@ export class GateService extends Context.Service<GateService, GateServiceShape>(
             return yield* new NotFound({ entity: "Preset", id: presetId })
           }
 
+          const filter = preset !== null
+            ? {
+                ...preset.filter,
+                ...(options.location === undefined ? {} : { location: options.location })
+              }
+            : options.location === undefined
+              ? undefined
+              : { location: options.location }
+
           return yield* database
             .asUser(currentUser.userId, (tx) =>
               LexiconRepository.list(tx, {
                 query: options.query,
                 limit: options.limit,
-                filter: preset?.filter
+                filter
               })
             )
             .pipe(Effect.mapError(toStorageError("lexicon.list")))

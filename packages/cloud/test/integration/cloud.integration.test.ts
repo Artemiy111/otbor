@@ -1191,6 +1191,42 @@ if (!integrationEnabled || serverUrl === null) {
         `alpha-two-${suffix}`
       ])
     })
+
+    test("the location narrows keywords to skills, body, title or text+skills", async () => {
+      const tenant = await seedTenant("keyword-location")
+      const suffix = randomUUID().slice(0, 8)
+      const term = `loc-${suffix}`
+      const keywordId = await seedKeyword(term)
+
+      const inSkills = await seedVacancyTitled("loc-skills", "DevOps skills")
+      const inBody = await seedVacancyTitled("loc-body", "DevOps body")
+      const inBoth = await seedVacancyTitled("loc-both", "DevOps both")
+      const inTitle = await seedVacancyTitled("loc-title", "DevOps title")
+      const nowhere = await seedVacancyTitled("loc-none", "DevOps none")
+
+      await seedVacancyKeyword({ vacancyId: inSkills, keywordId, matchedForm: term, inSkills: true })
+      await seedVacancyKeyword({ vacancyId: inBody, keywordId, matchedForm: term, inBody: true })
+      await seedVacancyKeyword({
+        vacancyId: inBoth,
+        keywordId,
+        matchedForm: term,
+        inBody: true,
+        inSkills: true
+      })
+      await seedVacancyKeyword({ vacancyId: inTitle, keywordId, matchedForm: term, inTitle: true })
+      await seedVacancyKeyword({ vacancyId: nowhere, keywordId, matchedForm: term })
+
+      const countFor = async (location: "any" | "title" | "body" | "skills" | "text_or_skills") => {
+        const rows = await lexiconList(tenant.userId, { query: suffix, location, limit: 100 })
+        return rows.find((keyword) => keyword.term === term)?.vacancyCount
+      }
+
+      expect(await countFor("any")).toBe(5)
+      expect(await countFor("skills")).toBe(2)
+      expect(await countFor("body")).toBe(2)
+      expect(await countFor("text_or_skills")).toBe(3)
+      expect(await countFor("title")).toBe(1)
+    })
   })
 
   /* ------------------------------------------------------------------------ */

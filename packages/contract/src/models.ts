@@ -10,6 +10,7 @@ import {
   JobKind,
   JobStage,
   JobStatus,
+  KeywordMatchLocation,
   LetterPolicy,
   PresetKind,
   ScheduleKind,
@@ -495,6 +496,8 @@ export const PresetFilter = Schema.Struct({
   text: Schema.optional(Schema.String),
   gate: Schema.optional(GateVerdict),
   keywordIds: Schema.optional(Schema.Array(KeywordId)),
+  /** Where a keyword must appear: title, body, HH skills, or text+skills. */
+  location: Schema.optional(KeywordMatchLocation),
   includeArchived: Schema.optional(Schema.Boolean)
 })
 
@@ -518,6 +521,9 @@ export const parsePresetFilter = (input: unknown): PresetFilter => {
     ...(text === "" ? {} : { text }),
     ...(decoded.gate === undefined ? {} : { gate: decoded.gate }),
     ...(keywordIds.length === 0 ? {} : { keywordIds }),
+    ...(decoded.location === undefined || decoded.location === "any"
+      ? {}
+      : { location: decoded.location }),
     ...(decoded.includeArchived === true ? { includeArchived: true } : {})
   }
 }
