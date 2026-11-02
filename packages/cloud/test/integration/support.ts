@@ -8,6 +8,7 @@ import type {
   UserId,
   VacancyId
 } from "@otbor/contract"
+import { normalizeTerm } from "@otbor/domain"
 import { PgClient } from "@effect/sql-pg"
 import { asc, eq, sql } from "drizzle-orm"
 import { Effect, Layer, Logger, Redacted } from "effect"
@@ -18,21 +19,28 @@ import {
   application,
   harnessJob,
   hhAccount,
+  keyword,
+  preset,
   searchQuery,
   searchRun,
+  titleVerdict,
   users,
   vacancy,
+  vacancyKeyword,
   vacancySearchHit
 } from "../../src/db/tables.ts"
 import * as ApplicationRepository from "../../src/repositories/ApplicationRepository.ts"
 import * as HarnessRepository from "../../src/repositories/HarnessRepository.ts"
+import * as PresetRepository from "../../src/repositories/PresetRepository.ts"
 import * as QueueRepository from "../../src/repositories/QueueRepository.ts"
 import { CrawlService, type CrawlSavePageInput } from "../../src/services/CrawlService.ts"
 import { CurrentUser } from "../../src/services/CurrentUser.ts"
+import { GateService, type GateServiceShape } from "../../src/services/GateService.ts"
 import {
   InferenceService,
   type EnqueueInferenceInput
 } from "../../src/services/InferenceService.ts"
+import { PresetService } from "../../src/services/PresetService.ts"
 import { submitJob } from "../../src/services/jobs.ts"
 import { QueueService } from "../../src/services/QueueService.ts"
 
@@ -133,17 +141,23 @@ export const layerFor = (userId: string) => {
   )
   return Layer.merge(
     shared,
-    Layer.merge(
-      Layer.merge(
-        QueueService.layer.pipe(Layer.provide(shared)),
-        InferenceService.layer.pipe(Layer.provide(shared))
-      ),
-      CrawlService.layer.pipe(Layer.provide(shared))
+    Layer.mergeAll(
+      QueueService.layer.pipe(Layer.provide(shared)),
+      InferenceService.layer.pipe(Layer.provide(shared)),
+      CrawlService.layer.pipe(Layer.provide(shared)),
+      GateService.layer.pipe(Layer.provide(shared)),
+      PresetService.layer.pipe(Layer.provide(shared))
     )
   )
 }
 
-type Requirements = Database | QueueService | InferenceService | CrawlService
+type Requirements =
+  | Database
+  | QueueService
+  | InferenceService
+  | CrawlService
+  | GateService
+  | PresetService
 
 export const runAs = <A, E>(
   userId: string,
@@ -222,7 +236,11 @@ export const setDefaultAccount = async (userId: string, accountId: string): Prom
   )
 }
 
-export const seedVacancy = async (label: string): Promise<string> => {
+export const seedVacancyTitled = async (
+  label: string,
+  title: string,
+  options: { readonly archived?: boolean } = {}
+): Promise<string> => {
   const externalId = unique(`v-${label}`)
   return runAs(
     "owner",
@@ -234,7 +252,8 @@ export const seedVacancy = async (label: string): Promise<string> => {
             source: "hh",
             externalId,
             canonicalUrl: `https://hh.ru/vacancy/${externalId}`,
-            title: `Integration vacancy ${label}`,
+            title,
+            archived: options.archived ?? false,
             contentHash: randomUUID()
           })
           .returning()
@@ -242,6 +261,91 @@ export const seedVacancy = async (label: string): Promise<string> => {
       })
     )
   )
+}
+
+export const seedVacancy = async (label: string): Promise<string> =>
+  seedVacancyTitled(label, `Integration vacancy ${label}`)
+
+export const seedKeyword = async (term: string): Promise<string> =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      Effect.gen(function*() {
+        const [row] = yield* tx
+          .insert(keyword)
+          .values({ term, normalizedTerm: normalizeTerm(term) })
+          .returning({ id: keyword.id })
+        return row!.id
+      })
+    )
+  )
+
+export const seedVacancyKeyword = async (input: {
+  readonly vacancyId: string
+  readonly keywordId: string
+  readonly matchedForm: string
+}): Promise<void> => {
+  await runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx.insert(vacancyKeyword).values({
+        vacancyId: input.vacancyId,
+        keywordId: input.keywordId,
+        matchedForm: normalizeTerm(input.matchedForm)
+      })
+    )
+  )
+}
+
+/** Mirrors the normalized title `title_verdict` is keyed by. */
+export const normalizedTitle = (title: string): string =>
+  title.trim().toLowerCase().replace(/\s+/g, " ")
+
+export const seedTitleVerdict = async (
+  title: string,
+  verdict: "match" | "unknown" | "reject"
+): Promise<void> => {
+  await runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx.insert(titleVerdict).values({
+        normalizedTitle: normalizedTitle(title),
+        verdict,
+        source: "rules",
+        rulesVersion: 1
+      })
+    )
+  )
+}
+
+export const seedPreset = async (
+  userId: string,
+  input: {
+    readonly kind?: "explore" | "apply"
+    readonly title: string
+    readonly filter?: {
+      readonly text?: string
+      readonly gate?: "match" | "unknown" | "reject"
+      readonly keywordIds?: ReadonlyArray<string>
+      readonly includeArchived?: boolean
+    }
+  }
+): Promise<string> => {
+  const [row] = await runAs(
+    userId,
+    ownerTx((tx) =>
+      tx
+        .insert(preset)
+        .values({
+          userId,
+          kind: input.kind ?? "explore",
+          title: input.title,
+          filter: (input.filter ?? {}) as Record<string, unknown>
+        })
+        .returning({ id: preset.id })
+    )
+  )
+  return row!.id
 }
 
 export const seedApplication = async (input: {
@@ -528,6 +632,49 @@ export const crawlStatus = async (userId: string, runId: string) =>
     Effect.gen(function*() {
       const crawl = yield* CrawlService
       return yield* crawl.status(runId)
+    })
+  )
+
+/* -------------------------------------------------------------------------- */
+/* Gate and preset calls                                                      */
+/* -------------------------------------------------------------------------- */
+
+type LexiconListInput = Parameters<GateServiceShape["lexiconList"]>[0]
+
+export const lexiconList = async (userId: string, options: LexiconListInput = {}) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const gate = yield* GateService
+      return yield* gate.lexiconList(options)
+    })
+  )
+
+export const lexiconListFailure = async (userId: string, options: LexiconListInput = {}) =>
+  runAsFailure(
+    userId,
+    Effect.gen(function*() {
+      const gate = yield* GateService
+      return yield* gate.lexiconList(options)
+    })
+  )
+
+export const removePreset = async (userId: string, id: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const presets = yield* PresetService
+      return yield* presets.remove(id)
+    })
+  )
+
+export const findPreset = async (userId: string, id: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const database = yield* Database
+      return yield* database
+        .asUser(userId, (tx) => PresetRepository.findById(tx, id, userId))
     })
   )
 

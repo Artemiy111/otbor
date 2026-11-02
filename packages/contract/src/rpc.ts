@@ -9,6 +9,7 @@ import {
   HarnessJobId,
   KeywordId,
   LeaseId,
+  PresetId,
   SearchRunId,
   VacancyId
 } from "./ids.ts"
@@ -28,6 +29,7 @@ import {
   HydrationTarget,
   KitRecord,
   LexiconKeyword,
+  PresetFilter,
   PresetRecord,
   QueueStats,
   TitleGateResult,
@@ -204,7 +206,9 @@ export const TitlesSetUserVerdict = Rpc.make("TitlesSetUserVerdict", {
 export const LexiconList = Rpc.make("LexiconList", {
   payload: Schema.Struct({
     query: Schema.optional(Schema.String),
-    limit: Schema.optional(Schema.Int)
+    limit: Schema.optional(Schema.Int),
+    /** Apply this preset's filter to the keyword set and counts. */
+    presetId: Schema.optional(PresetId)
   }),
   success: Schema.Array(LexiconKeyword),
   error: ApiError
@@ -330,10 +334,16 @@ export const PresetsUpsert = Rpc.make("PresetsUpsert", {
     id: Schema.optional(Schema.String),
     kind: Schema.Literals(["explore", "apply"]),
     title: Schema.String,
-    filter: Schema.Unknown,
+    filter: Schema.optional(PresetFilter),
     system: Schema.optional(Schema.Boolean)
   }),
   success: PresetRecord,
+  error: ApiError
+})
+
+export const PresetsRemove = Rpc.make("PresetsRemove", {
+  payload: Schema.Struct({ id: PresetId }),
+  success: Schema.Struct({ id: PresetId, deleted: Schema.Boolean }),
   error: ApiError
 })
 
@@ -519,6 +529,7 @@ export const OtborRpcs = RpcGroup.make(
   ApplicationsSetKit,
   PresetsList,
   PresetsUpsert,
+  PresetsRemove,
   QueueStatsGet,
   QueueJobsList,
   HarnessRegister,

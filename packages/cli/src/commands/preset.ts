@@ -1,3 +1,4 @@
+import { parsePresetFilter } from "@otbor/contract"
 import { Console, Effect, FileSystem, Option } from "effect"
 import { Command, Flag } from "effect/cli"
 import { Api } from "../client.ts"
@@ -60,7 +61,7 @@ const upsert = Command.make(
       id: Option.getOrUndefined(id),
       kind,
       title,
-      filter: parsed
+      filter: parsePresetFilter(parsed)
     })
     yield* Console.log(`${preset.id}  ${preset.kind}  ${preset.title}`)
   })

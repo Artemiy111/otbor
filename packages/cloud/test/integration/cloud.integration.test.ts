@@ -48,6 +48,7 @@ import {
   findAccountLease,
   findApplication,
   findJob,
+  findPreset,
   findSearchQuery,
   getInference,
   getInferenceFailure,
@@ -59,18 +60,26 @@ import {
   jobAccountId,
   jobRowsForApplication,
   leaseNext,
+  lexiconList,
+  lexiconListFailure,
   makeJobRunnable,
   migrateTestDatabase,
   recoverExpiredJobs,
   registerHarness,
+  removePreset,
   revokeHarness,
   runAs,
   searchHitsFor,
   searchRunRowsFor,
   seedApplication,
+  seedKeyword,
   seedKit,
+  seedPreset,
   seedTenant,
+  seedTitleVerdict,
   seedVacancy,
+  seedVacancyKeyword,
+  seedVacancyTitled,
   serverUrl,
   setDefaultAccount,
   testDatabaseUrl
@@ -1023,6 +1032,128 @@ if (!integrationEnabled || serverUrl === null) {
         vacancyIds: []
       })
       expect(error._tag).toBe("NotFound")
+    })
+  })
+
+  /* ------------------------------------------------------------------------ */
+  /* 8. Keyword presets                                                       */
+  /* ------------------------------------------------------------------------ */
+
+  describe("keyword presets", () => {
+    test("two presets select different keyword sets and counts", async () => {
+      const tenant = await seedTenant("keyword-presets")
+      // Random suffixes keep the shared keyword table independent of other runs.
+      const suffix = randomUUID().slice(0, 8)
+      const docker = await seedKeyword(`docker-${suffix}`)
+      const kubernetes = await seedKeyword(`kubernetes-${suffix}`)
+      const typescript = await seedKeyword(`typescript-${suffix}`)
+
+      const devops = await seedVacancyTitled("devops", "DevOps Kubernetes engineer")
+      const devopsPlatform = await seedVacancyTitled(
+        "devops-platform",
+        "DevOps Kubernetes platform engineer"
+      )
+      const backend = await seedVacancyTitled("backend", "Backend TypeScript developer")
+      const rejected = await seedVacancyTitled("devops-reject", "DevOps manager")
+      const archived = await seedVacancyTitled("devops-archived", "DevOps Kubernetes archived", {
+        archived: true
+      })
+
+      for (const title of [
+        "DevOps Kubernetes engineer",
+        "DevOps Kubernetes platform engineer",
+        "Backend TypeScript developer",
+        "DevOps Kubernetes archived"
+      ]) {
+        await seedTitleVerdict(title, "match")
+      }
+      await seedTitleVerdict("DevOps manager", "reject")
+
+      // Two forms of the same keyword on one vacancy must count as one vacancy.
+      await seedVacancyKeyword({ vacancyId: devops, keywordId: kubernetes, matchedForm: "kubernetes" })
+      await seedVacancyKeyword({ vacancyId: devops, keywordId: kubernetes, matchedForm: "k8s" })
+      await seedVacancyKeyword({ vacancyId: devops, keywordId: docker, matchedForm: "docker" })
+      await seedVacancyKeyword({
+        vacancyId: devopsPlatform,
+        keywordId: kubernetes,
+        matchedForm: "kubernetes"
+      })
+      await seedVacancyKeyword({
+        vacancyId: devopsPlatform,
+        keywordId: docker,
+        matchedForm: "docker"
+      })
+      await seedVacancyKeyword({ vacancyId: backend, keywordId: typescript, matchedForm: "typescript" })
+      await seedVacancyKeyword({ vacancyId: backend, keywordId: docker, matchedForm: "docker" })
+      await seedVacancyKeyword({ vacancyId: rejected, keywordId: kubernetes, matchedForm: "kubernetes" })
+      await seedVacancyKeyword({ vacancyId: archived, keywordId: kubernetes, matchedForm: "kubernetes" })
+
+      const devopsPreset = await seedPreset(tenant.userId, {
+        title: "DevOps match",
+        filter: { text: "DevOps", gate: "match" }
+      })
+      const backendPreset = await seedPreset(tenant.userId, {
+        title: "Backend match",
+        filter: { text: "Backend", gate: "match" }
+      })
+
+      const asCounts = (keywords: ReadonlyArray<{ term: string; vacancyCount: number }>) =>
+        Object.fromEntries(keywords.map((keyword) => [keyword.term, keyword.vacancyCount]))
+
+      const devopsKeywords = await lexiconList(tenant.userId, { presetId: devopsPreset })
+      expect(asCounts(devopsKeywords)).toEqual({
+        [`docker-${suffix}`]: 2,
+        [`kubernetes-${suffix}`]: 2
+      })
+
+      const backendKeywords = await lexiconList(tenant.userId, { presetId: backendPreset })
+      expect(asCounts(backendKeywords)).toEqual({
+        [`docker-${suffix}`]: 1,
+        [`typescript-${suffix}`]: 1
+      })
+
+      // Archived vacancies only join when the preset asks for them.
+      const withArchived = await seedPreset(tenant.userId, {
+        title: "DevOps match with archive",
+        filter: { text: "DevOps", gate: "match", includeArchived: true }
+      })
+      expect(asCounts(await lexiconList(tenant.userId, { presetId: withArchived }))).toEqual({
+        [`docker-${suffix}`]: 2,
+        [`kubernetes-${suffix}`]: 3
+      })
+
+      // keywordIds narrows the returned keyword list without changing counts.
+      const dockerOnly = await seedPreset(tenant.userId, {
+        title: "DevOps docker only",
+        filter: { text: "DevOps", gate: "match", keywordIds: [docker] }
+      })
+      const onlyDocker = await lexiconList(tenant.userId, { presetId: dockerOnly })
+      expect(onlyDocker.map((keyword) => keyword.term)).toEqual([`docker-${suffix}`])
+      expect(onlyDocker[0]?.vacancyCount).toBe(2)
+
+      // Without a preset the whole lexicon is returned, still with active counts.
+      const allKeywords = await lexiconList(tenant.userId, { query: suffix })
+      expect(asCounts(allKeywords)).toEqual({
+        [`docker-${suffix}`]: 3,
+        [`kubernetes-${suffix}`]: 3,
+        [`typescript-${suffix}`]: 1
+      })
+
+      // An unknown preset is a typed NotFound, not an empty keyword list.
+      const missing = await lexiconListFailure(tenant.userId, { presetId: randomUUID() })
+      expect(missing._tag).toBe("NotFound")
+    })
+
+    test("remove deletes only the caller's preset", async () => {
+      const owner = await seedTenant("preset-remove")
+      const other = await seedTenant("preset-remove-other")
+      const presetId = await seedPreset(owner.userId, { title: "temporary" })
+
+      expect(await removePreset(other.userId, presetId)).toBe(false)
+      expect(String((await findPreset(owner.userId, presetId))?.id)).toBe(presetId)
+
+      expect(await removePreset(owner.userId, presetId)).toBe(true)
+      expect(await findPreset(owner.userId, presetId)).toBeNull()
     })
   })
 }
