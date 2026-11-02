@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, h, onUnmounted, ref } from "vue"
 import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
-import type { CrawlSchedule, SourceSyncKind } from "@otbor/contract"
+import type { CrawlSchedule, ScheduleRun, SourceSyncKind } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert } from "@lucide/vue"
 import { mailAccountApi, mailAccountKeys } from "@/entities/mail-account"
 import { scheduleApi, scheduleKeys, type ScheduleUpsertInput } from "@/entities/schedule"
+import { scheduleRunApi, scheduleRunKeys } from "@/entities/schedule-run"
 import { telegramAccountApi, telegramAccountKeys } from "@/entities/telegram-account"
 import { RefreshButton } from "@/features/refresh-button"
 import { describeError, formatDate, scheduleKindLabel } from "@/shared/lib"
@@ -50,6 +51,21 @@ const telegramAccountsQuery = useQuery({
 const schedules = computed<ReadonlyArray<CrawlSchedule>>(() =>
   (query.data.value ?? []).filter((schedule) => schedule.kind !== "search")
 )
+
+const runsQuery = useQuery({
+  key: () => scheduleRunKeys.list(),
+  query: () => scheduleRunApi.list({ limit: 50 })
+})
+const runs = computed<ReadonlyArray<ScheduleRun>>(() =>
+  (runsQuery.data.value as { items?: ReadonlyArray<ScheduleRun> } | undefined)?.items ?? []
+)
+const runsPending = computed(
+  () => (runsQuery as { isPending?: { value: boolean } }).isPending?.value ?? false
+)
+const runsLoading = computed(
+  () => (runsQuery as { isLoading?: { value: boolean } }).isLoading?.value ?? false
+)
+const refreshRuns = () => (runsQuery as { refetch?: () => void }).refetch?.()
 const mailAccounts = computed(() => mailAccountsQuery.data.value ?? [])
 const telegramAccounts = computed(() => telegramAccountsQuery.data.value ?? [])
 
@@ -500,6 +516,62 @@ const columns: ColumnDef<CrawlSchedule>[] = [
     }
   }
 ]
+const runColumns: ColumnDef<ScheduleRun>[] = [
+  {
+    id: "schedule",
+    accessorFn: (row) => row.scheduleId,
+    header: sortableHeader<ScheduleRun>("Расписание"),
+    cell: ({ row }) => h("code", { class: "font-mono text-xs" }, row.original.scheduleId)
+  },
+  {
+    id: "kind",
+    accessorFn: (row) => row.kind,
+    header: sortableHeader<ScheduleRun>("Вид"),
+    cell: ({ row }) => h("span", null, row.original.kind)
+  },
+  {
+    id: "status",
+    accessorFn: (row) => row.status,
+    header: sortableHeader<ScheduleRun>("Статус"),
+    cell: ({ row }) =>
+      h(Badge, { variant: row.original.status === "done" ? "success" : "secondary" }, () =>
+        row.original.status
+      )
+  },
+  {
+    id: "detail",
+    accessorFn: (row) => JSON.stringify(row.detail ?? {}),
+    header: "Результат",
+    cell: ({ row }) => {
+      const detail = row.original.detail
+      if (detail === null || detail === undefined) return h("span", { class: "text-muted-foreground" }, "—")
+      return h("span", { class: "text-xs" }, JSON.stringify(detail))
+    }
+  },
+  {
+    id: "error",
+    accessorFn: (row) => row.error ?? "",
+    header: "Ошибка",
+    cell: ({ row }) =>
+      row.original.error
+        ? h("span", { class: "text-xs text-destructive" }, row.original.error)
+        : h("span", { class: "text-muted-foreground" }, "—")
+  },
+  {
+    id: "startedAt",
+    accessorFn: (row) => row.startedAt,
+    header: sortableHeader<ScheduleRun>("Запущен"),
+    cell: ({ row }) =>
+      h("span", { class: "whitespace-nowrap text-muted-foreground" }, formatDate(row.original.startedAt))
+  },
+  {
+    id: "finishedAt",
+    accessorFn: (row) => row.finishedAt ?? "",
+    header: sortableHeader<ScheduleRun>("Завершён"),
+    cell: ({ row }) =>
+      h("span", { class: "whitespace-nowrap text-muted-foreground" }, formatDate(row.original.finishedAt))
+  }
+]
 </script>
 
 <template>
@@ -811,5 +883,32 @@ const columns: ColumnDef<CrawlSchedule>[] = [
         <span class="pb-2 text-xs text-muted-foreground">Обходов: {{ schedules.length }}</span>
       </template>
     </DataTable>
+
+    <Card class="mt-6">
+      <CardHeader>
+        <CardTitle>История прогонов</CardTitle>
+        <CardDescription>
+          Результаты последних запусков расписаний: статус, ошибка и возвращённые данные.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <DataTable
+          :columns="runColumns"
+          :data="runs"
+          :is-loading="runsPending"
+          :loading-row-count="6"
+          filter
+          filter-label="Поиск"
+          filter-placeholder="Вид, статус или ошибка"
+          empty-title="Прогонов пока нет"
+          empty-description="Запустите обход кнопкой «Запустить», чтобы здесь появился результат."
+        >
+          <template #toolbar>
+            <RefreshButton :loading="runsLoading" @refresh="refreshRuns" />
+            <span class="pb-2 text-xs text-muted-foreground">Прогонов: {{ runs.length }}</span>
+          </template>
+        </DataTable>
+      </CardContent>
+    </Card>
   </section>
 </template>
