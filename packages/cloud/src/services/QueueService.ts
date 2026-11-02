@@ -190,7 +190,27 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
             )
             .pipe(Effect.mapError(toStorageError("harness.register")))
 
-          return yield* unwrap(outcome)
+          const registration = yield* unwrap(outcome)
+
+          // A rebind must drop the old runtime lease too. account_lease is
+          // owner-only under RLS, so cleanup happens after the user-scoped
+          // registration transaction commits.
+          if (input.accounts.length > 0) {
+            const accounts = sql.join(
+              input.accounts.map((account) => sql`${account}`),
+              sql`, `
+            )
+            yield* database
+              .asOwner((tx) =>
+                tx.execute(sql`
+                  delete from account_lease
+                  where hh_account_id in (${accounts}) and holder <> ${registration.id}
+                `)
+              )
+              .pipe(Effect.mapError(toStorageError("harness.register")))
+          }
+
+          return registration
         })
 
       const claimOnce = (input: LeaseInput) =>
@@ -592,14 +612,23 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
         })
 
       const revoke: QueueServiceShape["revoke"] = (input) =>
-        database
-          .asUser(currentUser.userId, (tx) =>
-            HarnessRepository.revoke(tx, input.harnessId)
-          )
-          .pipe(
-            Effect.map((revoked) => ({ harnessId: input.harnessId as HarnessId, revoked })),
-            Effect.mapError(toStorageError("harness.revoke"))
-          )
+        Effect.gen(function*() {
+          const revoked = yield* database
+            .asUser(currentUser.userId, (tx) =>
+              HarnessRepository.revoke(tx, input.harnessId)
+            )
+            .pipe(Effect.mapError(toStorageError("harness.revoke")))
+
+          if (revoked) {
+            yield* database
+              .asOwner((tx) =>
+                tx.execute(sql`delete from account_lease where holder = ${input.harnessId}`)
+              )
+              .pipe(Effect.mapError(toStorageError("harness.revoke")))
+          }
+
+          return { harnessId: input.harnessId as HarnessId, revoked }
+        })
 
       return QueueService.of({
         stats,
