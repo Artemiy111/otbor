@@ -86,23 +86,36 @@ const keywordTotals = computed(() => {
   return totals
 })
 
-const sortedKeywords = computed(() =>
-  [...(data.value?.keywords ?? [])]
-    .map((keyword) => {
-      const total = keywordTotals.value.get(keyword.term) ?? 0
-      const count = keyword.titleCount + keyword.bodyCount
-      return {
-        ...keyword,
-        total,
-        share: total > 0 ? Math.round((count / total) * 100) : 0
-      }
-    })
-    .sort(
-      (a, b) =>
-        a.term.localeCompare(b.term, "ru") ||
-        b.titleCount + b.bodyCount - (a.titleCount + a.bodyCount)
-    )
-)
+const groupedKeywords = computed(() => {
+  const groups = new Map<
+    string,
+    { term: string; forms: Array<NonNullable<typeof data.value>["keywords"][number]>; total: number }
+  >()
+  for (const keyword of data.value?.keywords ?? []) {
+    const group = groups.get(keyword.term) ?? { term: keyword.term, forms: [], total: 0 }
+    group.forms.push(keyword)
+    group.total += keyword.titleCount + keyword.bodyCount
+    groups.set(keyword.term, group)
+  }
+  return [...groups.values()]
+    .map((group) => ({
+      term: group.term,
+      total: group.total,
+      titleCount: group.forms.reduce((sum, form) => sum + form.titleCount, 0),
+      bodyCount: group.forms.reduce((sum, form) => sum + form.bodyCount, 0),
+      inSkills: group.forms.some((form) => form.inSkills),
+      forms: group.forms
+        .map((form) => ({
+          ...form,
+          share:
+            group.total > 0
+              ? Math.round(((form.titleCount + form.bodyCount) / group.total) * 100)
+              : 0
+        }))
+        .sort((a, b) => b.titleCount + b.bodyCount - (a.titleCount + a.bodyCount))
+    }))
+    .sort((a, b) => a.term.localeCompare(b.term, "ru"))
+})
 
 const highlightedDescription = computed(() => {
   const text = data.value?.descriptionText ?? ""
@@ -377,28 +390,35 @@ watch(
               </CardDescription>
             </CardHeader>
             <CardContent class="p-0">
-              <Table v-if="sortedKeywords.length > 0">
+              <Table v-if="groupedKeywords.length > 0">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Термин</TableHead>
-                    <TableHead>Форма</TableHead>
+                    <TableHead>Формы</TableHead>
                     <TableHead>В заголовке</TableHead>
                     <TableHead>В тексте</TableHead>
                     <TableHead>В навыках</TableHead>
-                    <TableHead>Доля</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow v-for="keyword in sortedKeywords" :key="keyword.keywordId + keyword.matchedForm">
+                  <TableRow v-for="keyword in groupedKeywords" :key="keyword.term">
                     <TableCell class="font-medium">{{ keyword.term }}</TableCell>
                     <TableCell>
-                      {{ keyword.matchedForm }}
-                      <span v-if="keyword.typo" class="text-xs text-muted-foreground"> · опечатка</span>
+                      <div class="flex flex-wrap gap-1">
+                        <span
+                          v-for="form in keyword.forms"
+                          :key="form.matchedForm"
+                          class="inline-flex items-center gap-1 rounded border border-border bg-muted/40 px-1.5 py-0.5 text-xs"
+                        >
+                          {{ form.matchedForm }}
+                          <span v-if="form.typo" class="text-muted-foreground">· опечатка</span>
+                          <span class="text-muted-foreground">{{ form.share }}%</span>
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell>{{ formatNumber(keyword.titleCount) }}</TableCell>
                     <TableCell>{{ formatNumber(keyword.bodyCount) }}</TableCell>
                     <TableCell>{{ keyword.inSkills ? "да" : "—" }}</TableCell>
-                    <TableCell>{{ keyword.share }}%</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>

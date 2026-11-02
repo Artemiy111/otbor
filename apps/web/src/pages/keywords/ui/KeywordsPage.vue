@@ -98,25 +98,48 @@ const columns: ColumnDef<LexiconKeyword>[] = [
     enableGlobalFilter: false,
     header: sortableHeader<LexiconKeyword>("Алиасы"),
     cell: ({ row }) => {
-      const aliases = row.original.aliases
-      if (aliases.length === 0) return h("span", { class: "text-sm text-muted-foreground" }, "—")
+      const stats = row.original.aliasStats ?? []
+      if (stats.length === 0) {
+        const aliases = row.original.aliases
+        if (aliases.length === 0) return h("span", { class: "text-sm text-muted-foreground" }, "—")
+        return h(
+          "div",
+          { class: "flex flex-wrap gap-1" },
+          aliases.map((alias) =>
+            h(
+              Badge,
+              {
+                key: alias.id,
+                variant: "secondary",
+                class: "font-normal",
+                title: `${alias.matchType}${alias.typo ? " · опечатка" : ""}`
+              },
+              () => [
+                alias.alias,
+                alias.typo
+                  ? h("span", { class: "ml-1 text-[10px] opacity-60" }, "опечатка")
+                  : null
+              ]
+            )
+          )
+        )
+      }
       return h(
         "div",
         { class: "flex flex-wrap gap-1" },
-        aliases.map((alias) =>
+        stats.map((stat) =>
           h(
             Badge,
             {
-              key: alias.id,
+              key: stat.normalizedAlias,
               variant: "secondary",
               class: "font-normal",
-              title: `${alias.matchType}${alias.typo ? " · опечатка" : ""}`
+              title: `${stat.vacancies} вакансий, ${stat.mentions} упоминаний`
             },
             () => [
-              alias.alias,
-              alias.typo
-                ? h("span", { class: "ml-1 text-[10px] opacity-60" }, "опечатка")
-                : null
+              stat.alias,
+              stat.typo ? h("span", { class: "ml-1 text-[10px] opacity-60" }, "опечатка") : null,
+              h("span", { class: "ml-1 text-muted-foreground" }, `${stat.share}%`)
             ]
           )
         )
