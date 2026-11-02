@@ -87,6 +87,7 @@ import {
   searchRunRowsFor,
   seedApplication,
   seedKeyword,
+  seedKeywordAlias,
   seedKit,
   seedPreset,
   seedTenant,
@@ -1169,6 +1170,26 @@ if (!integrationEnabled || serverUrl === null) {
 
       expect(await removePreset(owner.userId, presetId)).toBe(true)
       expect(await findPreset(owner.userId, presetId)).toBeNull()
+    })
+
+    test("the limit counts keywords, not alias rows", async () => {
+      const tenant = await seedTenant("keyword-limit")
+      const suffix = randomUUID().slice(0, 8)
+      const alpha = await seedKeyword(`alpha-${suffix}`)
+      const beta = await seedKeyword(`beta-${suffix}`)
+      await seedKeywordAlias(alpha, `alpha-one-${suffix}`)
+      await seedKeywordAlias(alpha, `alpha-two-${suffix}`)
+
+      const limited = await lexiconList(tenant.userId, { query: suffix, limit: 2 })
+
+      expect(limited.map((keyword) => keyword.term)).toEqual([
+        `alpha-${suffix}`,
+        `beta-${suffix}`
+      ])
+      expect(limited[0]?.aliases.map((alias) => alias.alias).sort()).toEqual([
+        `alpha-one-${suffix}`,
+        `alpha-two-${suffix}`
+      ])
     })
   })
 

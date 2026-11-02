@@ -55,7 +55,7 @@ const query = useQuery({
 
 const lexiconQuery = useQuery({
   key: () => keywordKeys.list(""),
-  query: () => keywordApi.list({ limit: 1000 })
+  query: () => keywordApi.list({ limit: 5000 })
 })
 
 const presets = computed<ReadonlyArray<PresetRecord>>(() => query.data.value ?? [])

@@ -47,11 +47,11 @@ export const vacancyFilterSql = (filter: PresetFilter): SQL => {
   return sql.join(clauses, sql` and `)
 }
 
-const vacancyCountSql = (filter: PresetFilter): SQL => sql`(
+const vacancyCountSql = (filter: PresetFilter, keywordId: SQL): SQL => sql`(
   select count(distinct vk.vacancy_id)::int
   from vacancy_keyword vk
   join vacancy on vacancy.id = vk.vacancy_id
-  where vk.keyword_id = k.id and ${vacancyFilterSql(filter)}
+  where vk.keyword_id = ${keywordId} and ${vacancyFilterSql(filter)}
 )`
 
 export const loadEntries = (tx: Executor): RepoEffect<ReadonlyArray<LexiconEntryInput>> =>
@@ -139,7 +139,7 @@ export const list = (
   options: LexiconListOptions = {}
 ): RepoEffect<ReadonlyArray<LexiconKeyword>> =>
   Effect.gen(function*() {
-    const limit = Math.min(Math.max(options.limit ?? 100, 1), 1000)
+    const limit = Math.min(Math.max(options.limit ?? 100, 1), 5000)
     const pattern = options.query === undefined || options.query.trim() === ""
       ? null
       : `%${normalizeTerm(options.query)}%`
@@ -163,18 +163,26 @@ export const list = (
         )`
 
     const rows = yield* tx.execute(sql`
-      select k.id, k.term, k.normalized_term, k.enabled,
+      with matching as (
+        select k.id, k.term, k.normalized_term, k.enabled
+        from keyword k
+        where ${pattern === null
+          ? sql`true`
+          : sql`(k.normalized_term like ${pattern} or exists (
+              select 1 from keyword_alias a
+              where a.keyword_id = k.id and a.normalized_alias like ${pattern}
+            ))`}
+          and ${keywordClause}
+          and ${presetClause}
+        order by k.term
+        limit ${limit}
+      )
+      select matching.id, matching.term, matching.normalized_term, matching.enabled,
              a.id as alias_id, a.alias, a.normalized_alias, a.typo,
-             ${vacancyCountSql(filter)} as vacancy_count
-      from keyword k
-      left join keyword_alias a on a.keyword_id = k.id
-      where ${pattern === null
-        ? sql`true`
-        : sql`(k.normalized_term like ${pattern} or a.normalized_alias like ${pattern})`}
-        and ${keywordClause}
-        and ${presetClause}
-      order by k.term, a.alias
-      limit ${limit}
+             ${vacancyCountSql(filter, sql`matching.id`)} as vacancy_count
+      from matching
+      left join keyword_alias a on a.keyword_id = matching.id
+      order by matching.term, a.alias
     `)
 
     const entries = new Map<string, Entry>()

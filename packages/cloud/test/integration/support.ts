@@ -20,6 +20,7 @@ import {
   harnessJob,
   hhAccount,
   keyword,
+  keywordAlias,
   preset,
   schedule,
   searchQuery,
@@ -322,6 +323,19 @@ export const seedKeyword = async (term: string): Promise<string> =>
       })
     )
   )
+
+export const seedKeywordAlias = async (keywordId: string, alias: string): Promise<void> => {
+  await runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx.insert(keywordAlias).values({
+        keywordId,
+        alias,
+        normalizedAlias: normalizeTerm(alias)
+      })
+    )
+  )
+}
 
 export const seedVacancyKeyword = async (input: {
   readonly vacancyId: string

@@ -40,7 +40,7 @@ const query = useQuery({
   query: () =>
     keywordApi.list({
       query: appliedQuery.value === "" ? undefined : appliedQuery.value,
-      limit: 1000,
+      limit: 5000,
       presetId: presetId.value === "all" ? undefined : presetId.value
     })
 })
