@@ -81,7 +81,8 @@ const slowAcpLayer = (delay: Duration.Input): Layer.Layer<AcpClient> =>
       promptEvents: () =>
         Stream.fromEffect(Effect.sleep(delay)).pipe(Stream.map(() => doneEvent)),
       sessionId: Effect.succeed(session.sessionId),
-      session: Effect.succeed(session)
+      session: Effect.succeed(session),
+      setConfigOption: () => Effect.void
     })
   )
 

@@ -36,7 +36,8 @@ const acpLayer = (
       prompt: () => Effect.succeed("answer"),
       promptEvents: () => Stream.fromIterable(events),
       sessionId: Effect.succeed(info.sessionId),
-      session: Effect.succeed(info)
+      session: Effect.succeed(info),
+      setConfigOption: () => Effect.void
     })
   )
 
@@ -46,7 +47,8 @@ const failingAcpLayer = (message: string): Layer.Layer<AcpClient> =>
       prompt: () => Effect.fail(new AcpError({ message })),
       promptEvents: () => Stream.fail(new AcpError({ message })),
       sessionId: Effect.fail(new AcpError({ message })),
-      session: Effect.fail(new AcpError({ message }))
+      session: Effect.fail(new AcpError({ message })),
+      setConfigOption: () => Effect.fail(new AcpError({ message }))
     })
   )
 
@@ -151,7 +153,8 @@ describe("runAcpPrompt", () => {
           return Stream.fromIterable([doneEvent()])
         },
         sessionId: Effect.succeed(session.sessionId),
-        session: Effect.succeed(session)
+        session: Effect.succeed(session),
+        setConfigOption: () => Effect.void
       })
     )
 

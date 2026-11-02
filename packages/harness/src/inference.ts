@@ -74,6 +74,16 @@ export const runAcpPrompt = Effect.fn("Harness.runAcpPrompt")(
     AcpClient
   > {
     const acp = yield* AcpClient
+    const requestedModel = payload.model?.trim()
+    if (requestedModel !== undefined && requestedModel.length > 0) {
+      yield* acp.setConfigOption("model", requestedModel).pipe(
+        Effect.catch((error) =>
+          Effect.logWarning(
+            `ACP model ${requestedModel} could not be selected: ${error.message}`
+          )
+        )
+      )
+    }
     const session = yield* acp.session
     const events = yield* Stream.runCollect(acp.promptEvents(inferencePrompt(payload)))
     const done = Array.from(events).find(isDone)
@@ -86,7 +96,7 @@ export const runAcpPrompt = Effect.fn("Harness.runAcpPrompt")(
 
     const artifacts: InferenceArtifacts = {
       text: done.text.trim(),
-      model: sessionModel(session) ?? payload.model ?? null,
+      model: sessionModel(session) ?? requestedModel ?? null,
       usage: done.providerUsage ?? done.usage,
       providerResponse: done.providerResponse,
       durationMs: done.durationMs

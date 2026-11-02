@@ -102,6 +102,11 @@ export class AcpClient extends Context.Service<
     readonly sessionId: Effect.Effect<string, AcpError | AcpUnavailable>
     /** Model, effort, mode and agent info captured at `session/new`. */
     readonly session: Effect.Effect<AcpSessionInfo, AcpError | AcpUnavailable>
+    /** Change a session config option such as `model` or `effort`. */
+    readonly setConfigOption: (
+      id: string,
+      value: string
+    ) => Effect.Effect<void, AcpError | AcpUnavailable>
   }
 >()("otbor/acp/AcpClient") {
   static readonly layer = Layer.unwrap(
@@ -138,7 +143,9 @@ export class AcpClient extends Context.Service<
                 sessionId: Effect.fail(
                   new AcpUnavailable({ message: "ACP is unavailable" })
                 ),
-                session: Effect.fail(new AcpUnavailable({ message: "ACP is unavailable" }))
+                session: Effect.fail(new AcpUnavailable({ message: "ACP is unavailable" })),
+                setConfigOption: () =>
+                  Effect.fail(new AcpUnavailable({ message: "ACP is unavailable" }))
               })
             )
           )
@@ -153,7 +160,9 @@ export class AcpClient extends Context.Service<
       prompt: () => Effect.fail(new AcpUnavailable({ message: "ACP is disabled" })),
       promptEvents: () => Stream.fail(new AcpUnavailable({ message: "ACP is disabled" })),
       sessionId: Effect.fail(new AcpUnavailable({ message: "ACP is disabled" })),
-      session: Effect.fail(new AcpUnavailable({ message: "ACP is disabled" }))
+      session: Effect.fail(new AcpUnavailable({ message: "ACP is disabled" })),
+      setConfigOption: () =>
+        Effect.fail(new AcpUnavailable({ message: "ACP is disabled" }))
     })
   )
 }
@@ -371,26 +380,49 @@ const make = Effect.fnUntraced(function*(options: AcpOptions) {
     (session) => Effect.sync(() => session.dispose())
   )
 
-  const sessionInfo: AcpSessionInfo = {
-    sessionId: session.sessionId,
+  const sessionId = session.sessionId
+  const configOptionsRef = yield* Ref.make(
+    toConfigOptions(session.newSessionResponse.configOptions ?? [])
+  )
+
+  const readSessionInfo = Effect.map(Ref.get(configOptionsRef), (configOptions): AcpSessionInfo => ({
+    sessionId,
     protocolVersion: initialized.protocolVersion,
     agent,
-    configOptions: toConfigOptions(session.newSessionResponse.configOptions ?? [])
-  }
+    configOptions
+  }))
 
   const configValue = (id: string) =>
-    sessionInfo.configOptions.find((option) => option.id === id)?.currentValue ?? null
+    Ref.get(configOptionsRef).pipe(
+      Effect.map(
+        (options) => options.find((option) => option.id === id)?.currentValue ?? null
+      )
+    )
 
   yield* Effect.logInfo(
     `ACP ready: ${agent.name ?? "agent"} ${agent.version ?? ""}`.trim(),
     {
-      sessionId: sessionInfo.sessionId,
-      protocolVersion: sessionInfo.protocolVersion,
-      model: configValue("model"),
-      effort: configValue("effort"),
-      mode: configValue("mode")
+      sessionId,
+      protocolVersion: initialized.protocolVersion,
+      model: yield* configValue("model"),
+      effort: yield* configValue("effort"),
+      mode: yield* configValue("mode")
     }
   )
+
+  const setConfigOption = (id: string, value: string) =>
+    tryAcp("session/set_config_option", () =>
+      connection.agent.request(acp.methods.agent.session.setConfigOption, {
+        sessionId,
+        configId: id,
+        value
+      })
+    ).pipe(
+      Effect.tap((response) =>
+        Ref.set(configOptionsRef, toConfigOptions(response.configOptions))
+      ),
+      Effect.asVoid
+    )
 
   const semaphore = yield* Semaphore.make(1)
 
@@ -502,7 +534,7 @@ const make = Effect.fnUntraced(function*(options: AcpOptions) {
               return Option.some<AcpEvent>({
                 _tag: "Done",
                 text: yield* Ref.get(chunks),
-                sessionId: session.sessionId,
+                sessionId,
                 stopReason: message.stopReason,
                 usage: yield* Ref.get(usage),
                 providerResponse,
@@ -538,7 +570,8 @@ const make = Effect.fnUntraced(function*(options: AcpOptions) {
   return AcpClient.of({
     prompt,
     promptEvents,
-    sessionId: Effect.succeed(sessionInfo.sessionId),
-    session: Effect.succeed(sessionInfo)
+    sessionId: Effect.succeed(sessionId),
+    session: readSessionInfo,
+    setConfigOption
   })
 })
