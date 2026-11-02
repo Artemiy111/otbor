@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, h, onUnmounted, ref } from "vue"
 import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
-import type { CrawlSchedule } from "@otbor/contract"
+import type { CrawlRun, CrawlSchedule } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert } from "@lucide/vue"
+import { crawlRunApi, crawlRunKeys } from "@/entities/crawl-run"
 import { scheduleApi, scheduleKeys, type ScheduleUpsertInput } from "@/entities/schedule"
 import { RefreshButton } from "@/features/refresh-button"
 import { describeError, formatDate } from "@/shared/lib"
@@ -33,6 +34,17 @@ const query = useQuery({
 const schedules = computed<ReadonlyArray<CrawlSchedule>>(() =>
   (query.data.value ?? []).filter((schedule) => schedule.kind === "search")
 )
+
+const runsQuery = useQuery({
+  key: () => crawlRunKeys.list(),
+  query: () => crawlRunApi.list({ limit: 50 })
+})
+const runs = computed<ReadonlyArray<CrawlRun>>(() =>
+  (runsQuery.data.value as { items?: ReadonlyArray<CrawlRun> } | undefined)?.items ?? []
+)
+const runsPending = computed(() => (runsQuery as { isPending?: { value: boolean } }).isPending?.value ?? false)
+const runsLoading = computed(() => (runsQuery as { isLoading?: { value: boolean } }).isLoading?.value ?? false)
+const refreshRuns = () => (runsQuery as { refetch?: () => void }).refetch?.()
 
 const queryCache = useQueryCache()
 
@@ -260,6 +272,66 @@ const columns: ColumnDef<CrawlSchedule>[] = [
     }
   }
 ]
+
+const runColumns: ColumnDef<CrawlRun>[] = [
+  {
+    id: "url",
+    accessorFn: (row) => row.normalizedUrl,
+    header: sortableHeader<CrawlRun>("URL"),
+    cell: ({ row }) =>
+      h("span", { class: "break-all text-xs" }, row.original.normalizedUrl)
+  },
+  {
+    id: "status",
+    accessorFn: (row) => row.status,
+    header: sortableHeader<CrawlRun>("Статус"),
+    cell: ({ row }) =>
+      h(Badge, { variant: row.original.status === "done" ? "success" : "secondary" }, () =>
+        row.original.status
+      )
+  },
+  {
+    accessorKey: "pagesDone",
+    header: sortableHeader<CrawlRun>("Страниц"),
+    cell: ({ row }) => h("span", { class: "tabular-nums" }, String(row.original.pagesDone))
+  },
+  {
+    accessorKey: "found",
+    header: sortableHeader<CrawlRun>("Найдено"),
+    cell: ({ row }) => h("span", { class: "tabular-nums" }, String(row.original.found))
+  },
+  {
+    accessorKey: "inserted",
+    header: sortableHeader<CrawlRun>("Добавлено"),
+    cell: ({ row }) => h("span", { class: "tabular-nums" }, String(row.original.inserted))
+  },
+  {
+    accessorKey: "updated",
+    header: sortableHeader<CrawlRun>("Обновлено"),
+    cell: ({ row }) => h("span", { class: "tabular-nums" }, String(row.original.updated))
+  },
+  {
+    accessorKey: "skipped",
+    header: sortableHeader<CrawlRun>("Пропущено"),
+    cell: ({ row }) => h("span", { class: "tabular-nums" }, String(row.original.skipped))
+  },
+  {
+    id: "startedAt",
+    accessorFn: (row) => row.startedAt,
+    header: sortableHeader<CrawlRun>("Запущен"),
+    cell: ({ row }) =>
+      h("span", { class: "whitespace-nowrap text-muted-foreground" }, formatDate(row.original.startedAt))
+  },
+  {
+    id: "error",
+    accessorFn: (row) => row.error ?? "",
+    header: sortableHeader<CrawlRun>("Ошибка"),
+    cell: ({ row }) =>
+      row.original.error
+        ? h("span", { class: "text-xs text-destructive" }, row.original.error)
+        : h("span", { class: "text-muted-foreground" }, "—")
+  }
+]
 </script>
 
 <template>
@@ -372,5 +444,32 @@ const columns: ColumnDef<CrawlSchedule>[] = [
         <span class="pb-2 text-xs text-muted-foreground">Поисков: {{ schedules.length }}</span>
       </template>
     </DataTable>
+
+    <Card class="mt-6">
+      <CardHeader>
+        <CardTitle>История прогонов</CardTitle>
+        <CardDescription>
+          Результаты последних запусков поиска: сколько найдено, добавлено, обновлено и пропущено.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <DataTable
+          :columns="runColumns"
+          :data="runs"
+          :is-loading="runsPending"
+          :loading-row-count="6"
+          filter
+          filter-label="Поиск"
+          filter-placeholder="URL, статус или ошибка"
+          empty-title="Прогонов пока нет"
+          empty-description="Запустите поиск кнопкой «Запустить», чтобы здесь появился результат."
+        >
+          <template #toolbar>
+            <RefreshButton :loading="runsLoading" @refresh="refreshRuns" />
+            <span class="pb-2 text-xs text-muted-foreground">Прогонов: {{ runs.length }}</span>
+          </template>
+        </DataTable>
+      </CardContent>
+    </Card>
   </section>
 </template>
