@@ -17,6 +17,7 @@
     "@effect/platform-node": "4.1.0",
     "@otbor/cloud": "workspace:*",
     "@otbor/contract": "workspace:*",
+    "@otbor/crawler": "workspace:*",
     "@otbor/domain": "workspace:*",
     "@otbor/hh": "workspace:*",
     "dotenv": "^17.0.0",

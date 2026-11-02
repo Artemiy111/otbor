@@ -4,12 +4,14 @@ import { Command } from "effect/cli"
 import "./env.ts"
 import { ApiLayer } from "./client.ts"
 import { applyCommand } from "./commands/apply.ts"
+import { crawlCommand } from "./commands/crawl.ts"
 import { dbCommand } from "./commands/db.ts"
 import { decisionCommand } from "./commands/decision.ts"
 import { gateCommand } from "./commands/gate.ts"
 import { harnessCommand } from "./commands/harness.ts"
 import { lexiconCommand } from "./commands/lexicon.ts"
 import { presetCommand } from "./commands/preset.ts"
+import { proxyCommand } from "./commands/proxy.ts"
 import { queueCommand } from "./commands/queue.ts"
 import { healthCommand } from "./commands/system.ts"
 import { vacancyCommand } from "./commands/vacancy.ts"
@@ -57,7 +59,9 @@ root
       applyCommand,
       queueCommand,
       harnessCommand,
-      presetCommand
+      presetCommand,
+      crawlCommand,
+      proxyCommand
     ]),
     Command.run({ version: "0.2.0" })
   )

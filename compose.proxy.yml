@@ -1,0 +1,26 @@
+# Прокси-движок для обхода hh.ru: mihomo + подписка.
+#
+# Это отдельный стек от compose.yml (Postgres), чтобы `otbor proxy up` не
+# поднимал базу. Конфиг генерируется командой `otbor proxy up` в
+# data/mihomo/config.yaml; секрет подписки живёт в ~/.otbor/proxy, не здесь.
+#
+# Порты публикуются только на loopback: crawler ходит на 127.0.0.1, наружу
+# порт не выставлен. Внутри контейнера mihomo слушает фиксированные 7890
+# (mixed) и 9090 (контроллер), поэтому OTBOR_PROXY_PORT меняет только внешнюю
+# сторону — конфиг mihomo об этом знать не должен.
+#
+# 27891–27905 — будущие воркеры: каждый порт смотрит в свою группу otbor-N.
+# Порты намеренно не 17890/19090: старый hhx-mihomo может быть запущен рядом.
+name: otbor-proxy
+
+services:
+  mihomo:
+    image: metacubex/mihomo:latest
+    container_name: otbor-mihomo
+    volumes:
+      - ./data/mihomo:/root/.config/mihomo
+    ports:
+      - "127.0.0.1:${OTBOR_PROXY_PORT:-27890}:7890"
+      - "127.0.0.1:${OTBOR_PROXY_CONTROLLER_PORT:-29090}:9090"
+      - "127.0.0.1:27891-27905:7901-7915"
+    restart: unless-stopped

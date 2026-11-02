@@ -1,5 +1,29 @@
 # otbor
 
+## Origin
+
+`otbor` is a **full rewrite** of the previous `hh-extracter` project. The old
+project is the behavioural and data-model reference for the hh adapters, the
+search crawler, the proxy engine and the corpus schema. It is not a dependency:
+nothing is imported from it at runtime, and new code must not copy its old
+transport or storage assumptions blindly.
+
+- Local reference checkout: [hh-extracter](file:///Users/art/Code/hh-extracter)
+- The local checkout has no git remote configured. When the private Forgejo
+  instance is reachable, the upstream is
+  [artemiy/hh-extracter](https://forgejo.biplane.casa/artemiy/hh-extracter).
+
+The crawler is a port: `packages/crawler` fetches hh search and vacancy pages
+and emits `VacancyDraft` values. It never writes SQL. Persistence stays in
+`packages/cloud` (`CorpusService` / `VacancyRepository`), so the same drafts can
+come from a local CLI, a future edge harness or a fixture test.
+
+Proxy settings are local secrets, not product data. They live outside the repo
+(`~/.otbor/proxy/config.json`, mode `0600`) or in `OTBOR_PROXY_*` environment
+variables. A subscription URL is never logged, stored in Postgres or committed.
+mihomo is optional: an already running HTTP proxy can be used with
+`OTBOR_PROXY_URL`, and the crawler must work without Docker in that mode.
+
 ## Learning more about Effect
 
 This repository uses the Effect Typescript library.

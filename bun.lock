@@ -21,6 +21,7 @@
         "@effect/platform-node": "4.1.0",
         "@otbor/cloud": "workspace:*",
         "@otbor/contract": "workspace:*",
+        "@otbor/crawler": "workspace:*",
         "@otbor/domain": "workspace:*",
         "@otbor/hh": "workspace:*",
         "dotenv": "^17.0.0",
@@ -52,6 +53,18 @@
       "name": "@otbor/contract",
       "version": "0.1.0",
       "dependencies": {
+        "effect": "4.1.0",
+      },
+      "devDependencies": {
+        "typescript": "6.0.3",
+      },
+    },
+    "packages/crawler": {
+      "name": "@otbor/crawler",
+      "version": "0.1.0",
+      "dependencies": {
+        "@otbor/contract": "workspace:*",
+        "@otbor/hh": "workspace:*",
         "effect": "4.1.0",
       },
       "devDependencies": {
@@ -94,6 +107,8 @@
     "@otbor/cloud": ["@otbor/cloud@workspace:packages/cloud"],
 
     "@otbor/contract": ["@otbor/contract@workspace:packages/contract"],
+
+    "@otbor/crawler": ["@otbor/crawler@workspace:packages/crawler"],
 
     "@otbor/domain": ["@otbor/domain@workspace:packages/domain"],
 
