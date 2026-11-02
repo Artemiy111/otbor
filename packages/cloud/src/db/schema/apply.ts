@@ -122,6 +122,7 @@ export const schedule = pgTable(
     enabled: boolean("enabled").notNull().default(true),
     nextRunAt: timestamp("next_run_at", { withTimezone: true }),
     lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+    lastError: text("last_error"),
     createdAt: createdAt(),
     updatedAt: updatedAt()
   },

@@ -12,6 +12,7 @@ import {
   JobStatus,
   LetterPolicy,
   PresetKind,
+  ScheduleKind,
   Seniority,
   StreamMode,
   TestsPolicy,
@@ -32,6 +33,7 @@ import {
   LeaseId,
   PresetId,
   ResumeId,
+  ScheduleId,
   SearchQueryId,
   SearchRunId,
   UserId,
@@ -205,6 +207,33 @@ export const CrawlRun = Schema.Struct({
 })
 
 export type CrawlRun = typeof CrawlRun.Type
+
+/* -------------------------------------------------------------------------- */
+/* Crawl schedules                                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A recurring crawl of one saved search. `targetId` is the hh search URL, not
+ * a `search_query` id, because a schedule outlives any single run and the URL
+ * is what the crawler actually needs.
+ *
+ * `lastError` is the last failure text; a successful run clears it. Null
+ * timestamps mean "never happened" rather than "unknown".
+ */
+export const CrawlSchedule = Schema.Struct({
+  id: ScheduleId,
+  kind: ScheduleKind,
+  targetId: Schema.String,
+  intervalMinutes: Schema.Int,
+  enabled: Schema.Boolean,
+  nextRunAt: Schema.NullOr(Schema.String),
+  lastRunAt: Schema.NullOr(Schema.String),
+  lastError: Schema.NullOr(Schema.String),
+  createdAt: Schema.String,
+  updatedAt: Schema.String
+})
+
+export type CrawlSchedule = typeof CrawlSchedule.Type
 
 /* -------------------------------------------------------------------------- */
 /* Gate, lexicon, decisions                                                   */

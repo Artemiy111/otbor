@@ -2,12 +2,14 @@ import { OtborRpcs } from "@otbor/contract"
 import { Effect, Layer } from "effect"
 import { ApplicationService } from "../services/ApplicationService.ts"
 import { CorpusService } from "../services/CorpusService.ts"
+import { CrawlRunner } from "../services/CrawlRunner.ts"
 import { CrawlService } from "../services/CrawlService.ts"
 import { DecisionService } from "../services/DecisionService.ts"
 import { GateService } from "../services/GateService.ts"
 import { InferenceService } from "../services/InferenceService.ts"
 import { PresetService } from "../services/PresetService.ts"
 import { QueueService } from "../services/QueueService.ts"
+import { ScheduleService } from "../services/ScheduleService.ts"
 import { SystemService } from "../services/SystemService.ts"
 import { WritingService } from "../services/WritingService.ts"
 
@@ -28,6 +30,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const applications = yield* ApplicationService
     const presets = yield* PresetService
     const queue = yield* QueueService
+    const schedules = yield* ScheduleService
 
     return {
       SystemHealth: () => system.health(),
@@ -45,6 +48,11 @@ export const OtborHandlers = OtborRpcs.toLayer(
       CrawlSavePage: (payload) => crawl.savePage(payload),
       CrawlFinish: (payload) => crawl.finish(payload),
       CrawlStatus: ({ runId }) => crawl.status(runId),
+
+      SchedulesList: () => schedules.list(),
+      ScheduleUpsert: (payload) => schedules.upsert(payload),
+      ScheduleRemove: ({ id }) => schedules.remove(id),
+      ScheduleRunNow: ({ id }) => schedules.runNow(id),
 
       TitlesPreview: ({ title }) => gate.preview(title),
       TitlesSetUserVerdict: ({ title, verdict, roleFamily }) =>
@@ -89,11 +97,21 @@ export const OtborHandlers = OtborRpcs.toLayer(
   })
 )
 
+/**
+ * `ScheduleService` and `CrawlRunner` depend on the crawl services, and a
+ * merged layer does not feed its siblings. The crawl stack is therefore built
+ * once and provided explicitly; `Database` and `CurrentUser` still come from
+ * the application runtime above it.
+ */
+const crawlServices = Layer.merge(CorpusService.layer, CrawlService.layer)
+const crawlRunner = CrawlRunner.layer.pipe(Layer.provide(crawlServices))
+const crawlStack = Layer.mergeAll(crawlServices, crawlRunner)
+
 /** All services, with their database and user dependencies satisfied. */
 export const OtborServices = Layer.mergeAll(
   SystemService.layer,
-  CorpusService.layer,
-  CrawlService.layer,
+  crawlStack,
+  ScheduleService.layer.pipe(Layer.provide(crawlStack)),
   InferenceService.layer,
   WritingService.layer,
   DecisionService.layer,

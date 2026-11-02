@@ -21,6 +21,7 @@ import {
   hhAccount,
   keyword,
   preset,
+  schedule,
   searchQuery,
   searchRun,
   titleVerdict,
@@ -33,6 +34,9 @@ import * as ApplicationRepository from "../../src/repositories/ApplicationReposi
 import * as HarnessRepository from "../../src/repositories/HarnessRepository.ts"
 import * as PresetRepository from "../../src/repositories/PresetRepository.ts"
 import * as QueueRepository from "../../src/repositories/QueueRepository.ts"
+import * as ScheduleRepository from "../../src/repositories/ScheduleRepository.ts"
+import { CorpusService } from "../../src/services/CorpusService.ts"
+import { CrawlRunner, type CrawlRunnerResult } from "../../src/services/CrawlRunner.ts"
 import { CrawlService, type CrawlSavePageInput } from "../../src/services/CrawlService.ts"
 import { CurrentUser } from "../../src/services/CurrentUser.ts"
 import { GateService, type GateServiceShape } from "../../src/services/GateService.ts"
@@ -43,6 +47,11 @@ import {
 import { PresetService } from "../../src/services/PresetService.ts"
 import { submitJob } from "../../src/services/jobs.ts"
 import { QueueService } from "../../src/services/QueueService.ts"
+import {
+  ScheduleService,
+  type ScheduleUpsertInput
+} from "../../src/services/ScheduleService.ts"
+import { runDueSchedules } from "../../src/services/ScheduleWorker.ts"
 
 /* -------------------------------------------------------------------------- */
 /* Opt-in database lifecycle                                                  */
@@ -133,21 +142,33 @@ export const dropTestDatabase = (base: string): Promise<void> =>
  * A request layer for an explicit user. Both the owner pool and the
  * `otbor_runtime` transaction role come from the real `Database.layer`; only
  * `CurrentUser` is stubbed so tests can speak as A or B.
+ *
+ * `runner` replaces the real hh crawler for schedule tests. Nothing in the
+ * integration suite may fetch hh.ru.
  */
-export const layerFor = (userId: string) => {
+export const layerFor = (
+  userId: string,
+  runner?: Layer.Layer<CrawlRunner, never, never>
+) => {
   const shared = Layer.merge(
     Database.layer,
     Layer.succeed(CurrentUser, { userId: userId as UserId })
   )
-  return Layer.merge(
+  const crawlServices = Layer.merge(CrawlService.layer, CorpusService.layer).pipe(
+    Layer.provide(shared)
+  )
+  const crawlRunner =
+    runner ?? CrawlRunner.layer.pipe(Layer.provide(Layer.merge(shared, crawlServices)))
+  const crawlStack = Layer.mergeAll(crawlServices, crawlRunner)
+
+  return Layer.mergeAll(
     shared,
-    Layer.mergeAll(
-      QueueService.layer.pipe(Layer.provide(shared)),
-      InferenceService.layer.pipe(Layer.provide(shared)),
-      CrawlService.layer.pipe(Layer.provide(shared)),
-      GateService.layer.pipe(Layer.provide(shared)),
-      PresetService.layer.pipe(Layer.provide(shared))
-    )
+    crawlStack,
+    QueueService.layer.pipe(Layer.provide(shared)),
+    InferenceService.layer.pipe(Layer.provide(shared)),
+    GateService.layer.pipe(Layer.provide(shared)),
+    PresetService.layer.pipe(Layer.provide(shared)),
+    ScheduleService.layer.pipe(Layer.provide(Layer.merge(shared, crawlStack)))
   )
 }
 
@@ -158,6 +179,9 @@ type Requirements =
   | CrawlService
   | GateService
   | PresetService
+  | CorpusService
+  | CrawlRunner
+  | ScheduleService
 
 export const runAs = <A, E>(
   userId: string,
@@ -174,6 +198,25 @@ export const runAsFailure = <A, E>(
 ): Promise<E> =>
   Effect.runPromise(
     quiet(effect.pipe(Effect.flip, Effect.provide(layerFor(userId))))
+  )
+
+/** Same as `runAs`, with a fake CrawlRunner instead of the hh crawler. */
+export const runAsWithRunner = <A, E>(
+  userId: string,
+  runner: Layer.Layer<CrawlRunner, never, never>,
+  effect: Effect.Effect<A, E, Requirements>
+): Promise<A> =>
+  Effect.runPromise(
+    quiet(effect.pipe(Effect.provide(layerFor(userId, runner))))
+  )
+
+export const runAsWithRunnerFailure = <A, E>(
+  userId: string,
+  runner: Layer.Layer<CrawlRunner, never, never>,
+  effect: Effect.Effect<A, E, Requirements>
+): Promise<E> =>
+  Effect.runPromise(
+    quiet(effect.pipe(Effect.flip, Effect.provide(layerFor(userId, runner))))
   )
 
 /* -------------------------------------------------------------------------- */
@@ -677,6 +720,147 @@ export const findPreset = async (userId: string, id: string) =>
         .asUser(userId, (tx) => PresetRepository.findById(tx, id, userId))
     })
   )
+
+/* -------------------------------------------------------------------------- */
+/* Schedule calls                                                             */
+/* -------------------------------------------------------------------------- */
+
+export const scheduleUpsert = (userId: string, input: ScheduleUpsertInput) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const schedules = yield* ScheduleService
+      return yield* schedules.upsert(input)
+    })
+  )
+
+export const scheduleUpsertFailure = (userId: string, input: ScheduleUpsertInput) =>
+  runAsFailure(
+    userId,
+    Effect.gen(function*() {
+      const schedules = yield* ScheduleService
+      return yield* schedules.upsert(input)
+    })
+  )
+
+export const schedulesList = (userId: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const schedules = yield* ScheduleService
+      return yield* schedules.list()
+    })
+  )
+
+export const scheduleRemove = (userId: string, id: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const schedules = yield* ScheduleService
+      return yield* schedules.remove(id)
+    })
+  )
+
+export const scheduleRunNow = (userId: string, id: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const schedules = yield* ScheduleService
+      return yield* schedules.runNow(id)
+    })
+  )
+
+export const scheduleRunNowWithRunner = (
+  userId: string,
+  runner: Layer.Layer<CrawlRunner, never, never>,
+  id: string
+) =>
+  runAsWithRunner(
+    userId,
+    runner,
+    Effect.gen(function*() {
+      const schedules = yield* ScheduleService
+      return yield* schedules.runNow(id)
+    })
+  )
+
+export const scheduleRunNowFailure = (userId: string, id: string) =>
+  runAsFailure(
+    userId,
+    Effect.gen(function*() {
+      const schedules = yield* ScheduleService
+      return yield* schedules.runNow(id)
+    })
+  )
+
+/** Forces a schedule due (or not) without waiting for its interval. */
+export const setScheduleNextRun = async (id: string, nextRunAt: Date | null) => {
+  await runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx
+        .update(schedule)
+        .set({ nextRunAt })
+        .where(eq(schedule.id, id))
+    )
+  )
+}
+
+/** Owner read of a schedule row, including columns the DTO hides. */
+export const findScheduleRow = async (id: string) =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx
+        .select()
+        .from(schedule)
+        .where(eq(schedule.id, id))
+        .limit(1)
+        .pipe(Effect.map((rows) => rows[0] ?? null))
+    )
+  )
+
+export const scheduleRowsFor = async (userId: string) =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx
+        .select()
+        .from(schedule)
+        .where(eq(schedule.userId, userId))
+        .orderBy(schedule.createdAt)
+    )
+  )
+
+/** One worker tick with a fake crawler: no live hh.ru traffic. */
+export const runDueSchedulesAs = (
+  userId: string,
+  runner: Layer.Layer<CrawlRunner, never, never>,
+  options: { readonly now?: Date; readonly limit?: number } = {}
+) => runAsWithRunner(userId, runner, runDueSchedules(options))
+
+/** A fake runner that records every target and returns a clean result. */
+export const recordingRunner = (targets: Array<string>) => {
+  const layer = Layer.succeed(CrawlRunner, {
+    run: (input) =>
+      Effect.sync(() => {
+        targets.push(input.url)
+        return {
+          runId: randomUUID(),
+          status: "done" as const,
+          reason: "last_page",
+          error: null,
+          pagesDone: 1,
+          found: 3,
+          inserted: 3,
+          updated: 0,
+          skipped: 0,
+          errors: 0
+        } satisfies CrawlRunnerResult
+      })
+  })
+  return layer
+}
 
 /* -------------------------------------------------------------------------- */
 /* Owner reads and writes used by assertions                                  */

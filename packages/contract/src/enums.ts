@@ -172,3 +172,11 @@ export type CrawlRunStatus = typeof CrawlRunStatus.Type
 export const CrawlFinishStatus = Schema.Literals(["done", "stopped", "error"])
 
 export type CrawlFinishStatus = typeof CrawlFinishStatus.Type
+
+/**
+ * What a schedule points at. Only saved searches are crawlable today; the
+ * database check also allows `source`, which has no runner yet.
+ */
+export const ScheduleKind = Schema.Literals(["search"])
+
+export type ScheduleKind = typeof ScheduleKind.Type
