@@ -7,6 +7,8 @@ export interface VacancyListInput {
   readonly offset?: number
   readonly gate?: string
   readonly includeArchived?: boolean
+  readonly includeBlacklisted?: boolean
+  readonly hhAccountId?: string
 }
 
 export interface VacancyListResult {
@@ -16,7 +18,16 @@ export interface VacancyListResult {
 
 export const vacancyApi = {
   list: (input: VacancyListInput): Promise<VacancyListResult> =>
-    call((client) => client.VacanciesList(input)),
+    call((client) =>
+      client.VacanciesList({
+        limit: input.limit,
+        offset: input.offset,
+        gate: input.gate,
+        includeArchived: input.includeArchived,
+        includeBlacklisted: input.includeBlacklisted,
+        hhAccountId: input.hhAccountId as any
+      })
+    ),
   get: (id: string): Promise<VacancyDetail> =>
     call((client) => client.VacanciesGet({ id: id as VacancyId })),
   titlePreview: (title: string): Promise<{ readonly verdict: GateVerdict }> =>
