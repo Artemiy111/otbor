@@ -6,18 +6,23 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import { Api } from "../client.ts"
 
-const storagePath = () => process.env.OTBOR_HH_STORAGE_STATE?.trim() || join(homedir(), ".otbor", "hh", "storage-state.json")
+const profileDir = (name: string) => join(homedir(), ".otbor", "hh", "accounts", name)
+const storagePath = (name: string) => join(profileDir(name), "storage-state.json")
 
 export const blacklistScrapeCommand = Command.make(
   "scrape-hh",
   {
+    profile: Flag.String("profile").pipe(
+      Flag.withDescription("Profile name for this hh.ru account"),
+      Flag.withDefault("default")
+    ),
     account: Flag.String("account").pipe(
       Flag.withDescription("hh account id to import into")
     )
   },
-  Effect.fn(function*({ account }) {
+  Effect.fn(function*({ profile, account }) {
     const api = yield* Api
-    const path = storagePath()
+    const path = storagePath(profile)
 
     const state = yield* Effect.tryPromise({
       try: async () => {

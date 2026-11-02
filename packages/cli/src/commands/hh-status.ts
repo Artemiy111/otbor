@@ -1,16 +1,21 @@
 import { Console, Effect } from "effect"
-import { Command } from "effect/cli"
+import { Command, Flag } from "effect/cli"
 import { readFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 
-const storagePath = () => process.env.OTBOR_HH_STORAGE_STATE?.trim() || join(homedir(), ".otbor", "hh", "storage-state.json")
+const profileDir = (name: string) => join(homedir(), ".otbor", "hh", "accounts", name)
+const storagePath = (name: string) => join(profileDir(name), "storage-state.json")
 
 export const hhStatusCommand = Command.make(
   "status",
-  {},
-  Effect.fn(function*() {
-    const path = storagePath()
+  {
+    profile: Flag.String("profile").pipe(
+      Flag.withDescription("Profile name for this hh.ru account"),
+      Flag.withDefault("default")
+    ),},
+  Effect.fn(function*({ profile }) {
+    const path = storagePath(profile)
     let state: any
     try {
       const text = yield* Effect.tryPromise({ try: () => readFile(path, "utf8"), catch: () => new Error("missing") })
