@@ -109,6 +109,22 @@
         "typescript": "6.0.3",
       },
     },
+    "packages/harness": {
+      "name": "@otbor/harness",
+      "version": "0.1.0",
+      "bin": {
+        "otbor-harness": "./bin/otbor-harness",
+      },
+      "dependencies": {
+        "@effect/platform-node": "4.1.0",
+        "@otbor/acp": "workspace:*",
+        "@otbor/contract": "workspace:*",
+        "effect": "4.1.0",
+      },
+      "devDependencies": {
+        "typescript": "6.0.3",
+      },
+    },
     "packages/hh": {
       "name": "@otbor/hh",
       "version": "0.1.0",
@@ -152,6 +168,8 @@
     "@otbor/crawler": ["@otbor/crawler@workspace:packages/crawler"],
 
     "@otbor/domain": ["@otbor/domain@workspace:packages/domain"],
+
+    "@otbor/harness": ["@otbor/harness@workspace:packages/harness"],
 
     "@otbor/hh": ["@otbor/hh@workspace:packages/hh"],
 
