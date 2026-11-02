@@ -23,6 +23,8 @@
         "@otbor/contract": "workspace:*",
         "@otbor/domain": "workspace:*",
         "@otbor/hh": "workspace:*",
+        "dotenv": "^17.0.0",
+        "drizzle-orm": "1.0.0-rc.5",
         "effect": "4.1.0",
       },
       "devDependencies": {
