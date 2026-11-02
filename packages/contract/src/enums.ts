@@ -130,8 +130,10 @@ export type TitleVerdictSource = typeof TitleVerdictSource.Type
  * "submitted": only reconcile against the site can set that.
  */
 export const HarnessExitTag = Schema.Literals([
+  "prepared",
   "clicked",
   "submitted",
+  "not_submitted",
   "already_responded",
   "blocked",
   "form_changed",

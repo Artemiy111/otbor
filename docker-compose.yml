@@ -9,7 +9,9 @@ services:
     ports:
       - "55432:5432"
     volumes:
-      - otbor-pgdata:/var/lib/postgresql/data
+      # Postgres 18 keeps the cluster in a versioned subdirectory; the mount
+      # must be the parent so `pg_upgrade --link` can cross the boundary.
+      - otbor-pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U otbor -d otbor"]
       interval: 2s

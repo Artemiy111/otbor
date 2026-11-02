@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { Rpc, RpcGroup } from "effect/rpc"
+import { Rpc, type RpcClient, type RpcClientError, RpcGroup } from "effect/rpc"
 import { JobKind } from "./enums.ts"
 import {
   ApplicationId,
@@ -352,5 +352,7 @@ export const OtborRpcs = RpcGroup.make(
 )
 
 export type OtborRpcs = RpcGroup.Rpcs<typeof OtborRpcs>
+
+export type OtborApi = RpcClient.RpcClient<OtborRpcs, RpcClientError.RpcClientError>
 
 export const RPC_PATH = "/rpc"
