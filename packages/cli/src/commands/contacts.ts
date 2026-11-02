@@ -85,7 +85,26 @@ const remove = Command.make(
   })
 ).pipe(Command.withDescription("Delete a contact"))
 
+const extract = Command.make(
+  "extract",
+  {
+    json: Flag.Boolean("json").pipe(Flag.withDefault(false))
+  },
+  Effect.fn(function*({ json }) {
+    const api = yield* Api
+    const result = yield* api.ContactsExtract()
+    if (json) {
+      yield* Console.log(JSON.stringify(result, null, 2))
+      return
+    }
+    yield* Console.log(
+      `scanned ${result.scanned} vacancy(ies), extracted ${result.contacts} contact(s)`
+    )
+  })
+).pipe(Command.withDescription("Re-extract contacts from stored vacancy texts"))
+
 export const contactsCommand = Command.make("contacts").pipe(
-  Command.withSubcommands([list, remove]),
+  Command.withSubcommands([list, remove, extract]),
+
   Command.withDescription("Contacts extracted from vacancies, mail and Telegram")
 )

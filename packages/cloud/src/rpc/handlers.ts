@@ -71,6 +71,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
 
       ContactsList: (payload) => contacts.list(payload),
       ContactRemove: ({ id }) => contacts.remove(id),
+      ContactsExtract: () => contacts.extract(),
       ConversationsList: (payload) => conversations.list(payload),
       ConversationGet: ({ id }) => conversations.get(id),
 

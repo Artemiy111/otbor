@@ -272,6 +272,15 @@ export const ContactRemove = Rpc.make("ContactRemove", {
   error: ApiError
 })
 
+/** Re-runs contact extraction over stored vacancies; useful after parser changes. */
+export const ContactsExtract = Rpc.make("ContactsExtract", {
+  success: Schema.Struct({
+    scanned: Schema.Int,
+    contacts: Schema.Int
+  }),
+  error: ApiError
+})
+
 export const ConversationsList = Rpc.make("ConversationsList", {
   payload: Schema.Struct({
     channel: Schema.optional(ConversationChannel),
@@ -740,6 +749,7 @@ export const OtborRpcs = RpcGroup.make(
   ScheduleRunNow,
   ContactsList,
   ContactRemove,
+  ContactsExtract,
   ConversationsList,
   ConversationGet,
   MailAccountsList,

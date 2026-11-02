@@ -13,6 +13,10 @@ export interface ContactServiceShape {
   readonly remove: (
     id: string
   ) => Effect.Effect<{ readonly id: ContactId; readonly deleted: boolean }, ApiError>
+  readonly extract: () => Effect.Effect<
+    { readonly scanned: number; readonly contacts: number },
+    ApiError
+  >
 }
 
 /** Contacts are read and deleted from the request path; extraction writes them. */
@@ -42,7 +46,14 @@ export class ContactService extends Context.Service<ContactService, ContactServi
             Effect.map((deleted) => ({ id: id as ContactId, deleted }))
           )
 
-      return ContactService.of({ list, remove })
+      const extract: ContactServiceShape["extract"] = () =>
+        database
+          .asUser(currentUser.userId, (tx) =>
+            ContactRepository.extractFromVacancies(tx, currentUser.userId)
+          )
+          .pipe(Effect.mapError(toStorageError("contact.extract")))
+
+      return ContactService.of({ list, remove, extract })
     })
   )
 }

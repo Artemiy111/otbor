@@ -77,6 +77,14 @@ describe("extractContactsFromText", () => {
     expect(contacts.filter((contact) => contact.kind === "telegram")).toHaveLength(1)
   })
 
+  test("salary ranges are not phone numbers", () => {
+    const { contacts } = extractContactsFromText(
+      "— Зарплата 70 000–100 000 ₽ на руки в месяц.\nТелефон: +7 (999) 123-45-67"
+    )
+    expect(contacts.filter((contact) => contact.kind === "phone")).toHaveLength(1)
+    expect(contacts.find((contact) => contact.kind === "phone")?.value).toBe("+79991234567")
+  })
+
   test("images and filenames are not e-mail addresses", () => {
     expect(extractContactsFromText("см. logo@2x.png и hero@3x.webp").contacts).toEqual([])
   })

@@ -62,6 +62,10 @@ const FILE_EXTENSIONS = new Set([
 const PHONE_CANDIDATE =
   /(?<![\p{L}\p{N}_])\+?\d[\d\s\u00A0().\u2013\u2014-]{7,18}\d(?![\p{L}\p{N}])/gu
 
+/** A phone next to a price/ salary is almost always a number, not a contact. */
+const MONEY_CONTEXT =
+  /(?:₽|руб(?:\.|лей|ля)?|зарплат|оклад|доход|salary|income|\$|€|usd|eur)/iu
+
 const TELEGRAM_USERNAME_URL =
   /(?<![\w@])(?:https?:\/\/)?(?:www\.)?(?:t\.me|telegram\.me|telegram\.dog|tg\.me)\/(?:s\/)?([A-Za-z][A-Za-z0-9_]{3,31})(?![A-Za-z0-9_])/giu
 
@@ -268,6 +272,13 @@ export const extractContactsFromText = (
     if (value === null) continue
 
     const explicit = raw.startsWith("+") || raw.includes("(")
+    const at = match.index ?? 0
+    const window = text.slice(Math.max(0, at - 48), at + match[0].length + 48)
+
+    // "70 000–100 000 ₽" is a salary range, not a phone. An explicit + or
+    // parentheses still wins: operators write phone numbers in many formats.
+    if (!explicit && /[\u2013\u2014]/.test(raw)) continue
+    if (!explicit && MONEY_CONTEXT.test(window)) continue
     found.push({
       kind: "phone",
       value,

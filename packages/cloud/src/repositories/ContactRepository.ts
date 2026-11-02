@@ -1,4 +1,5 @@
 import type { ContactKind, ContactRecord, ContactSource, VacancyId } from "@otbor/contract"
+import { extractContactsFromText } from "@otbor/domain"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
@@ -97,6 +98,43 @@ export const list = (
       items: (rows.rows as unknown as ReadonlyArray<ContactRow>).map(toRecord),
       total: Number((total.rows[0] as { count?: number } | undefined)?.count ?? 0)
     }
+  })
+
+/** Re-runs vacancy contact extraction for one user; idempotent by contact key. */
+export const extractFromVacancies = (
+  tx: Executor,
+  userId: string
+): RepoEffect<{ readonly scanned: number; readonly contacts: number }> =>
+  Effect.gen(function*() {
+    const rows = yield* tx.execute(sql`
+      select id::text as id, title, description_text, employer_id::text as employer_id
+      from vacancy
+      where description_text is not null and length(description_text) > 0
+      order by published_at desc nulls last
+    `)
+    let contacts = 0
+
+    for (const row of rows.rows as unknown as ReadonlyArray<{
+      id: string
+      title: string
+      description_text: string
+      employer_id: string | null
+    }>) {
+      const extraction = extractContactsFromText(
+        [row.title, row.description_text].filter(Boolean).join("\n")
+      )
+      if (extraction.contacts.length === 0) continue
+      yield* upsertMany(tx, {
+        userId,
+        contacts: extraction.contacts,
+        source: "hh_vacancy",
+        vacancyId: row.id,
+        employerId: row.employer_id
+      })
+      contacts += extraction.contacts.length
+    }
+
+    return { scanned: rows.rows.length, contacts }
   })
 
 export const findById = (
