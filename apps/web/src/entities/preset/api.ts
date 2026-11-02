@@ -1,8 +1,12 @@
-import type { PresetFilter, PresetId, PresetRecord } from "@otbor/contract"
+import type { PresetFilter, PresetId, PresetPreview, PresetRecord } from "@otbor/contract"
 import { call } from "@/shared/api"
 
 export interface PresetListInput {
   readonly kind?: string
+}
+
+export interface PresetPreviewInput {
+  readonly filter: PresetFilter
 }
 
 export interface PresetUpsertInput {
@@ -23,5 +27,8 @@ export const presetApi = {
   upsert: (input: PresetUpsertInput): Promise<PresetRecord> =>
     call((client) => client.PresetsUpsert(input)),
   remove: (id: string): Promise<PresetRemoveResult> =>
-    call((client) => client.PresetsRemove({ id: id as PresetId }))
+    call((client) => client.PresetsRemove({ id: id as PresetId })),
+  /** Live counts and facets for an unsaved or stored filter. */
+  preview: (filter: PresetFilter): Promise<PresetPreview> =>
+    call((client) => client.PresetsPreview({ filter }))
 }
