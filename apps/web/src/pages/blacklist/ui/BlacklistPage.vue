@@ -308,7 +308,7 @@ const errorText = computed(() =>
         <RefreshButton :loading="query.isLoading.value" @refresh="query.refetch()" />
         <Button variant="outline" size="sm" @click="openImport">
           <Upload class="h-4 w-4" />
-          Импорт из hh
+          Как импортировать из hh
         </Button>
         <Button size="sm" @click="openAdd">
           <Plus class="h-4 w-4" />
@@ -432,36 +432,18 @@ const errorText = computed(() =>
 
     <!-- Import dialog -->
     <Sheet v-model:open="importOpen">
-      <SheetContent>
+      <SheetContent class="w-full sm:max-w-xl">
         <SheetHeader>
           <SheetTitle>Импорт из hh</SheetTitle>
-          <SheetDescription>Вставьте JSON-массив записей или выберите файл.</SheetDescription>
+          <SheetDescription>
+            Автоматический импорт запускается из терминала:
+            <code class="block mt-2 rounded bg-muted p-2 text-xs">otbor blacklist scrape-hh --account &lt;id аккаунта hh&gt;</code>
+            Откроется браузер Chromium, войдите в hh.ru вручную, затем список заблокированных компаний будет импортирован автоматически.
+          </SheetDescription>
         </SheetHeader>
-        <div class="space-y-3">
-          <Alert v-if="importError" variant="destructive">
-            <CircleAlert />
-            <AlertDescription>{{ importError }}</AlertDescription>
-          </Alert>
-          <Alert v-if="importResult" variant="default">
-            <AlertDescription>{{ importResult }}</AlertDescription>
-          </Alert>
-          <div class="space-y-1.5">
-            <Label>ID аккаунта hh</Label>
-            <Input v-model="importAccount" type="text" />
-          </div>
-          <div class="space-y-1.5">
-            <Label>JSON</Label>
-            <Textarea v-model="importText" rows="8" />
-          </div>
-          <div class="space-y-1.5">
-            <Label>Файл</Label>
-            <input type="file" accept="application/json" @change="onFile" />
-          </div>
-        </div>
+        <div class="mt-4">
           <Button variant="outline" @click="importOpen = false">Закрыть</Button>
-          <Button :disabled="importMutation.isLoading.value" @click="submitImport">
-            {{ importMutation.isLoading.value ? "Импортирую…" : "Импортировать" }}
-          </Button>
+        </div>
       </SheetContent>
     </Sheet>
   </section>

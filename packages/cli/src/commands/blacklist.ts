@@ -1,4 +1,5 @@
 import type { BlacklistId, BlacklistScope, BlacklistTarget, HhAccountId } from "@otbor/contract"
+import { blacklistScrapeCommand } from "./blacklist-scrape.ts"
 import { Console, Effect, FileSystem, Option } from "effect"
 import { Command, Flag } from "effect/cli"
 import { Api } from "../client.ts"
@@ -170,6 +171,6 @@ const importHh = Command.make(
 ).pipe(Command.withDescription("Import hh's own hidden companies/vacancies (idempotent)"))
 
 export const blacklistCommand = Command.make("blacklist").pipe(
-  Command.withSubcommands([list, add, remove, importHh]),
+  Command.withSubcommands([list, add, remove, importHh, blacklistScrapeCommand]),
   Command.withDescription("Blacklist layers: app, hh account and hh-native hiding")
 )
