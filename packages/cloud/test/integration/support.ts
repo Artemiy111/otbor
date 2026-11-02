@@ -362,6 +362,15 @@ export const leaseNext = async (
     })
   )
 
+export const revokeHarness = async (userId: string, harnessId: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const queue = yield* QueueService
+      return yield* queue.revoke({ harnessId })
+    })
+  )
+
 export const heartbeatJob = async (
   userId: string,
   input: { harnessId: string; token: string; jobId: string; leaseId: string; epoch: number }

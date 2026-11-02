@@ -57,6 +57,7 @@ import {
   migrateTestDatabase,
   recoverExpiredJobs,
   registerHarness,
+  revokeHarness,
   runAs,
   seedApplication,
   seedKit,
@@ -574,6 +575,43 @@ if (!integrationEnabled || serverUrl === null) {
       })
       expect(stoleBack).toBeNull()
       expect((await findJob(jobThree.id))?.status).toBe("pending")
+    })
+
+    test("rebinding or revoking a harness releases the runtime account lease", async () => {
+      const tenant = await seedTenant("account-lease-release")
+      const first = await registerHarness(tenant.userId, [tenant.accountId], "release-first")
+      const firstJob = await enqueueJob({
+        userId: tenant.userId,
+        accountId: tenant.accountId,
+        stage: "prepare",
+        priority: 100
+      })
+
+      const firstLease = await leaseNext(tenant.userId, first.id, first.token!, [
+        tenant.accountId
+      ])
+      expect(firstLease.job?.id).toBe(firstJob.id)
+      expect((await findAccountLease(tenant.accountId))?.holder).toBe(first.id)
+
+      // Re-registering the account on another harness must not leave the old
+      // 10-minute account lease behind.
+      const second = await registerHarness(tenant.userId, [tenant.accountId], "release-second")
+      expect(await findAccountLease(tenant.accountId)).toBeNull()
+
+      const secondJob = await enqueueJob({
+        userId: tenant.userId,
+        accountId: tenant.accountId,
+        stage: "prepare",
+        priority: 200
+      })
+      const secondLease = await leaseNext(tenant.userId, second.id, second.token!, [
+        tenant.accountId
+      ])
+      expect(secondLease.job?.id).toBe(secondJob.id)
+      expect((await findAccountLease(tenant.accountId))?.holder).toBe(second.id)
+
+      await revokeHarness(tenant.userId, second.id)
+      expect(await findAccountLease(tenant.accountId)).toBeNull()
     })
   })
 
