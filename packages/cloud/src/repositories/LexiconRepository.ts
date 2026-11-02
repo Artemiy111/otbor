@@ -7,6 +7,15 @@ import type { Executor, RepoEffect } from "../db/Database.ts"
 import { keyword, keywordAlias, vacancyKeyword } from "../db/tables.ts"
 import * as BlacklistRepository from "./BlacklistRepository.ts"
 
+interface AliasStat {
+  alias: string
+  normalizedAlias: string
+  typo: boolean
+  vacancies: number
+  mentions: number
+  share: number
+}
+
 interface Entry {
   readonly id: string
   readonly term: string
@@ -14,6 +23,7 @@ interface Entry {
   readonly enabled: boolean
   readonly vacancyCount: number
   aliases: Array<{ id: string; alias: string; normalizedAlias: string; typo: boolean }>
+  aliasStats: Array<AliasStat>
 }
 
 /** Escapes the LIKE wildcards so a preset's text is a literal substring. */
@@ -322,7 +332,8 @@ export const loadEntries = (tx: Executor): RepoEffect<ReadonlyArray<LexiconEntry
           normalizedTerm: raw.normalized_term,
           enabled: raw.enabled,
           vacancyCount: 0,
-          aliases: []
+          aliases: [],
+        aliasStats: [],
         }
         entries.set(raw.id, entry)
       }
@@ -346,6 +357,7 @@ const toRecord = (entry: {
   enabled: boolean
   vacancyCount: number
   aliases: ReadonlyArray<{ id: string; alias: string; normalizedAlias: string; typo: boolean }>
+  aliasStats?: ReadonlyArray<AliasStat>
 }): LexiconKeyword => ({
   id: entry.id as LexiconKeyword["id"],
   term: entry.term,
@@ -358,6 +370,14 @@ const toRecord = (entry: {
     normalizedAlias: alias.normalizedAlias,
     typo: alias.typo,
     matchType: "word"
+  })),
+  aliasStats: (entry.aliasStats ?? []).map((stat) => ({
+    alias: stat.alias,
+    normalizedAlias: stat.normalizedAlias,
+    typo: stat.typo,
+    vacancies: stat.vacancies,
+    mentions: stat.mentions,
+    share: stat.share
   }))
 })
 
@@ -451,7 +471,8 @@ export const list = (
           normalizedTerm: raw.normalized_term,
           enabled: raw.enabled,
           vacancyCount: Number(raw.vacancy_count ?? 0),
-          aliases: []
+          aliases: [],
+          aliasStats: []
         }
         entries.set(raw.id, entry)
       }
@@ -462,6 +483,67 @@ export const list = (
           normalizedAlias: raw.normalized_alias,
           typo: raw.typo ?? false
         })
+      }
+    }
+
+    const keywordIds = [...entries.keys()]
+    if (keywordIds.length > 0) {
+      const location = locationSql(filter.location, "vk")
+      const statsResult = yield* tx.execute(sql`
+        select vk.keyword_id,
+               vk.alias_id,
+               vk.matched_form,
+               vk.typo,
+               coalesce(ka.alias, vk.matched_form) as alias_text,
+               coalesce(ka.normalized_alias, vk.matched_form) as normalized_alias_text,
+               count(distinct vk.vacancy_id)::int as vacancies,
+               coalesce(sum(vk.title_count + vk.body_count), 0)::int as mentions
+        from vacancy_keyword vk
+        join vacancy on vacancy.id = vk.vacancy_id
+        left join keyword_alias ka on ka.id = vk.alias_id
+        where vk.keyword_id in (${sql.join(keywordIds.map((id) => sql`${id}`), sql`, `)})
+          and ${vacancyFilterSql(filter, context)}
+          ${location === null ? sql`` : sql`and ${location}`}
+        group by vk.keyword_id, vk.alias_id, vk.matched_form, vk.typo, ka.alias, ka.normalized_alias
+      `)
+
+      const grouped = new Map<string, Array<{
+        alias: string
+        normalizedAlias: string
+        typo: boolean
+        vacancies: number
+        mentions: number
+      }>>()
+
+      for (const raw of statsResult.rows as unknown as ReadonlyArray<{
+        keyword_id: string
+        alias_text: string | null
+        normalized_alias_text: string | null
+        typo: boolean | null
+        vacancies: number | string | null
+        mentions: number | string | null
+      }>) {
+        const list = grouped.get(raw.keyword_id) ?? []
+        grouped.set(raw.keyword_id, list)
+        list.push({
+          alias: textValue(raw.alias_text),
+          normalizedAlias: textValue(raw.normalized_alias_text),
+          typo: raw.typo ?? false,
+          vacancies: numberValue(raw.vacancies),
+          mentions: numberValue(raw.mentions)
+        })
+      }
+
+      for (const [keywordId, entry] of entries) {
+        const stats = grouped.get(keywordId) ?? []
+        const total = stats.reduce((sum, stat) => sum + stat.mentions, 0)
+        const withShare = stats
+          .map((stat) => ({
+            ...stat,
+            share: total === 0 ? 0 : Math.round((stat.mentions / total) * 100)
+          }))
+          .sort((a, b) => b.mentions - a.mentions)
+        entry.aliasStats = withShare
       }
     }
 
