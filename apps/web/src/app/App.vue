@@ -4,13 +4,16 @@ import { ApplicationDetailPage } from "@/pages/application-detail"
 import { ApplicationsPage } from "@/pages/applications"
 import { CompaniesPage } from "@/pages/companies"
 import { CompanyDetailPage } from "@/pages/company-detail"
+import { ContactsPage } from "@/pages/contacts"
 import { DecisionsPage } from "@/pages/decisions"
 import { HealthPage } from "@/pages/health"
 import { InferencePage } from "@/pages/inference"
 import { KeywordsPage } from "@/pages/keywords"
+import { MailPage } from "@/pages/mail"
 import { PresetsPage } from "@/pages/presets"
 import { QueuePage } from "@/pages/queue"
 import { SchedulesPage } from "@/pages/schedules"
+import { TelegramPage } from "@/pages/telegram"
 import { VacanciesPage } from "@/pages/vacancies"
 import { VacancyDetailPage } from "@/pages/vacancy-detail"
 import { AppShell } from "@/widgets/app-shell"
@@ -38,5 +41,8 @@ const applicationId = computed(() =>
     <InferencePage v-else-if="route.name === 'inference'" />
     <PresetsPage v-else-if="route.name === 'presets'" />
     <SchedulesPage v-else-if="route.name === 'schedules'" />
+    <ContactsPage v-else-if="route.name === 'contacts'" />
+    <MailPage v-else-if="route.name === 'mail'" />
+    <TelegramPage v-else-if="route.name === 'telegram'" />
   </AppShell>
 </template>
