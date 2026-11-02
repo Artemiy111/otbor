@@ -26,6 +26,7 @@ import {
   MailAccountId,
   PresetId,
   ScheduleId,
+  ScheduleRunId,
   SearchRunId,
   SearchQueryId,
   TelegramAccountId,
@@ -42,6 +43,7 @@ import {
   CrawlRun,
   CrawlSchedule,
   DecisionRecord,
+  ScheduleRun,
   EmployerDetail,
   EmployerSummary,
   HarnessExit,
@@ -340,6 +342,20 @@ export const ScheduleRunNow = Rpc.make("ScheduleRunNow", {
   success: Schema.Struct({
     accepted: Schema.Boolean,
     schedule: CrawlSchedule
+  }),
+  error: ApiError
+})
+
+export const ScheduleRunsList = Rpc.make("ScheduleRunsList", {
+  payload: Schema.Struct({
+    scheduleId: Schema.optional(ScheduleId),
+    kind: Schema.optional(SourceSyncKind),
+    limit: Schema.optional(Schema.Int),
+    offset: Schema.optional(Schema.Int)
+  }),
+  success: Schema.Struct({
+    items: Schema.Array(ScheduleRun),
+    total: Schema.Int
   }),
   error: ApiError
 })
@@ -850,6 +866,7 @@ export const OtborRpcs = RpcGroup.make(
   ScheduleUpsert,
   ScheduleRemove,
   ScheduleRunNow,
+  ScheduleRunsList,
   ContactsList,
   ContactRemove,
   ContactsExtract,

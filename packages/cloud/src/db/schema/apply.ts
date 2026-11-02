@@ -136,19 +136,17 @@ export const scheduleRun = pgTable(
   "schedule_run",
   {
     id: uuidPk(),
-    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
     scheduleId: uuid("schedule_id")
       .notNull()
       .references(() => schedule.id, { onDelete: "cascade" }),
-    scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull(),
+    kind: text("kind").notNull(),
     status: text("status").notNull(),
+    detail: jsonb("detail").$type<Record<string, unknown> | null>(),
     error: text("error"),
-    durationMs: integer("duration_ms"),
-    steps: jsonb("steps").$type<ReadonlyArray<unknown>>().notNull().default([]),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
     finishedAt: timestamp("finished_at", { withTimezone: true })
   },
-  (table) => [uniqueIndex("schedule_run_slot_idx").on(table.scheduleId, table.scheduledFor)]
+  (table) => [index("schedule_run_schedule_started_idx").on(table.scheduleId, table.startedAt)]
 )
 
 export const hiddenTarget = pgTable(

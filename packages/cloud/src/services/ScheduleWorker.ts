@@ -2,6 +2,7 @@ import type { ApiError } from "@otbor/contract"
 import { Effect } from "effect"
 import { Database } from "../db/Database.ts"
 import * as ScheduleRepository from "../repositories/ScheduleRepository.ts"
+import * as ScheduleRunRepository from "../repositories/ScheduleRunRepository.ts"
 import { ScheduleDispatcher, type ScheduleDispatchResult } from "./ScheduleDispatcher.ts"
 
 export interface ScheduleRunOutcome {
@@ -71,10 +72,26 @@ export const runDueSchedules = (
     const outcomes: Array<ScheduleRunOutcome> = []
 
     for (const schedule of due) {
+      const runId = yield* database
+        .asOwner((tx) => ScheduleRunRepository.createRun(tx, schedule.id, schedule.kind))
+        .pipe(Effect.catchCause((cause) =>
+          Effect.logError(`schedule ${schedule.id}: could not create run`, cause).pipe(Effect.as(null))
+        ))
+
+      const finishRun = (status: "done" | "error", detail?: Record<string, unknown> | null, error?: string | null) =>
+        runId === null
+          ? Effect.void
+          : database
+              .asOwner((tx) => ScheduleRunRepository.finishRun(tx, runId, { status, detail, error }))
+              .pipe(Effect.catchCause((cause) =>
+                Effect.logError(`schedule ${schedule.id}: could not finish run`, cause)
+              ))
+
       const outcome = yield* dispatcher.run(schedule).pipe(
         Effect.matchEffect({
           onFailure: (error: ApiError) =>
-            recordError(schedule.id, errorMessage(error)).pipe(
+            finishRun("error", null, errorMessage(error)).pipe(
+              Effect.andThen(recordError(schedule.id, errorMessage(error))),
               Effect.as({
                 scheduleId: schedule.id,
                 targetId: schedule.targetId,
@@ -84,7 +101,12 @@ export const runDueSchedules = (
               } satisfies ScheduleRunOutcome)
             ),
           onSuccess: (result: ScheduleDispatchResult) =>
-            recordError(schedule.id, result.error).pipe(
+            finishRun(
+              result.error === null ? "done" : "error",
+              result.detail ?? null,
+              result.error
+            ).pipe(
+              Effect.andThen(recordError(schedule.id, result.error)),
               Effect.as({
                 scheduleId: schedule.id,
                 targetId: schedule.targetId,
@@ -99,6 +121,7 @@ export const runDueSchedules = (
         Effect.catchCause((cause) =>
           Effect.gen(function*() {
             yield* Effect.logError(`schedule ${schedule.id}: runner crashed`, cause)
+            yield* finishRun("error", null, "runner crashed")
             yield* recordError(schedule.id, "runner crashed")
             return {
               scheduleId: schedule.id,

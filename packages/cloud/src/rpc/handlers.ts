@@ -82,6 +82,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
       ScheduleUpsert: (payload) => schedules.upsert(payload),
       ScheduleRemove: ({ id }) => schedules.remove(id),
       ScheduleRunNow: ({ id }) => schedules.runNow(id),
+      ScheduleRunsList: (payload) => schedules.runs(payload),
 
       ContactsList: (payload) => contacts.list(payload),
       ContactRemove: ({ id }) => contacts.remove(id),
