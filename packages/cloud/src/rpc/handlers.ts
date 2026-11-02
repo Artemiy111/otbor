@@ -5,6 +5,7 @@ import { BlacklistService } from "../services/BlacklistService.ts"
 import { ContactService } from "../services/ContactService.ts"
 import { ConversationService } from "../services/ConversationService.ts"
 import { CorpusService } from "../services/CorpusService.ts"
+import { CurrentUser } from "../services/CurrentUser.ts"
 import { CrawlRunner } from "../services/CrawlRunner.ts"
 import { CrawlService } from "../services/CrawlService.ts"
 import { DecisionService } from "../services/DecisionService.ts"
@@ -34,6 +35,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
   Effect.gen(function*() {
     const system = yield* SystemService
     const corpus = yield* CorpusService
+    const hydrationRunner = yield* HydrationRunner
     const crawl = yield* CrawlService
     const inference = yield* InferenceService
     const writing = yield* WritingService
@@ -63,6 +65,20 @@ export const OtborHandlers = OtborRpcs.toLayer(
       BlacklistImportHh: (payload) => blacklist.importHh(payload),
       VacanciesUpsert: ({ drafts }) => corpus.ingest(drafts),
       VacanciesHydrationTargets: (payload) => corpus.hydrationTargets(payload),
+      VacanciesHydrateOne: ({ id }) =>
+        Effect.gen(function* () {
+          const user = yield* CurrentUser
+          return yield* hydrationRunner.hydrateOne(user.userId, id).pipe(
+            Effect.map((hydrated) => ({ hydrated }))
+          )
+        }),
+      VacancyHydrate: ({ id }) =>
+        Effect.gen(function* () {
+          const user = yield* CurrentUser
+          return yield* hydrationRunner.hydrateOne(user.userId, id).pipe(
+            Effect.map((hydrated) => ({ hydrated }))
+          )
+        }),
       VacanciesEvaluate: ({ vacancyId, resumeId, fit, includeBlacklisted, hhAccountId }) =>
         decisions.evaluate({
           vacancyId,

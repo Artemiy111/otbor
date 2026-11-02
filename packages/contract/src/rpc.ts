@@ -221,6 +221,18 @@ export const VacanciesHydrationTargets = Rpc.make("VacanciesHydrationTargets", {
   error: ApiError
 })
 
+export const VacanciesHydrateOne = Rpc.make("VacanciesHydrateOne", {
+  payload: Schema.Struct({ id: VacancyId }),
+  success: Schema.Struct({ hydrated: Schema.Boolean }),
+  error: ApiError
+})
+
+export const VacancyHydrate = Rpc.make("VacancyHydrate", {
+  payload: Schema.Struct({ id: VacancyId }),
+  success: Schema.Struct({ hydrated: Schema.Boolean }),
+  error: ApiError
+})
+
 export const VacanciesEvaluate = Rpc.make("VacanciesEvaluate", {
   payload: Schema.Struct({
     vacancyId: VacancyId,
@@ -856,6 +868,8 @@ export const OtborRpcs = RpcGroup.make(
   BlacklistImportHh,
   VacanciesUpsert,
   VacanciesHydrationTargets,
+  VacanciesHydrateOne,
+  VacancyHydrate,
   VacanciesEvaluate,
   CrawlStart,
   CrawlSavePage,
