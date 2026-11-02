@@ -46,11 +46,13 @@ export default defineConfig(({ mode }) => {
       __OTBOR_API_URL__: JSON.stringify(configured)
     },
     server: {
+      host: "127.0.0.1",
       port: 5173,
       strictPort: true,
       proxy
     },
     preview: {
+      host: "127.0.0.1",
       port: 4173,
       strictPort: true,
       proxy
