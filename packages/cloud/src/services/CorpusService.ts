@@ -181,7 +181,9 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
 
       const list: CorpusServiceShape["list"] = (filter) =>
         database
-          .asUser(currentUser.userId, (tx) => VacancyRepository.list(tx, filter))
+          .asUser(currentUser.userId, (tx) =>
+            VacancyRepository.list(tx, { ...filter, userId: currentUser.userId })
+          )
           .pipe(Effect.mapError(toStorageError("vacancy.list")))
 
       const get: CorpusServiceShape["get"] = (id) =>
@@ -242,13 +244,17 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
 
       const employers: CorpusServiceShape["employers"] = (filter) =>
         database
-          .asUser(currentUser.userId, (tx) => EmployerRepository.list(tx, filter))
+          .asUser(currentUser.userId, (tx) =>
+            EmployerRepository.list(tx, { ...filter, userId: currentUser.userId })
+          )
           .pipe(Effect.mapError(toStorageError("employer.list")))
 
       const employer: CorpusServiceShape["employer"] = (id) =>
         Effect.gen(function*() {
           const detail = yield* database
-            .asUser(currentUser.userId, (tx) => EmployerRepository.findById(tx, id))
+            .asUser(currentUser.userId, (tx) =>
+              EmployerRepository.findById(tx, id, { userId: currentUser.userId })
+            )
             .pipe(Effect.mapError(toStorageError("employer.get")))
 
           if (detail === null) {

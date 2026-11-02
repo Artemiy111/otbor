@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
 import { employer, preset, vacancy } from "../db/tables.ts"
+import * as BlacklistRepository from "./BlacklistRepository.ts"
 import { vacancyFilterSql } from "./LexiconRepository.ts"
 import * as VacancyRepository from "./VacancyRepository.ts"
 
@@ -62,10 +63,11 @@ const facetRows = (rows: ReadonlyArray<Record<string, unknown>>) =>
 /** Live counts and facets for an unsaved filter. */
 export const preview = (
   tx: Executor,
-  filter: PresetFilter
+  filter: PresetFilter,
+  options: { readonly userId?: string } = {}
 ): RepoEffect<PresetPreview> =>
   Effect.gen(function*() {
-    const where = vacancyFilterSql(filter)
+    const where = vacancyFilterSql(filter, { userId: options.userId })
 
     const countRows = yield* tx.execute(sql`
       select count(*)::int as count from vacancy where ${where}
@@ -99,7 +101,15 @@ export const preview = (
       limit 12
     `)
     const vacancyRows = yield* tx
-      .select(VacancyRepository.rowSelection)
+      .select({
+        ...VacancyRepository.rowSelection,
+        blacklistLayers: BlacklistRepository.layersSql({
+          userId: options.userId,
+          hhAccountId: null,
+          employerExternalId: sql`${employer.externalId}`,
+          vacancyExternalId: sql`${vacancy.externalId}`
+        })
+      })
       .from(vacancy)
       .leftJoin(employer, sql`${employer.id} = ${vacancy.employerId}`)
       .where(where)

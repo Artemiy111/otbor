@@ -1,4 +1,6 @@
 import type {
+  BlacklistScope,
+  BlacklistTarget,
   DecisionReason,
   DecisionVerdict,
   GateVerdict,
@@ -29,6 +31,11 @@ export interface VacancySignal {
 
 export interface HardBlockInput {
   readonly hidden: boolean
+  /** Set only when the caller did not explicitly include blacklisted rows. */
+  readonly blacklist?: {
+    readonly scope: BlacklistScope
+    readonly target: BlacklistTarget
+  } | null
   readonly applied: boolean
   readonly employerCooldown: boolean
   readonly hasTest: boolean
@@ -222,6 +229,12 @@ export const decide = (input: DecideInput): DecisionResult => {
   const hardBlock = (): DecisionReason | null => {
     if (vacancy.archived) return reason("blocked_archived", "vacancy is archived")
     if (blocks.hidden) return reason("blocked_hidden", "hidden by rule")
+    if (blocks.blacklist !== undefined && blocks.blacklist !== null) {
+      return reason(
+        "blocked_blacklist",
+        `${blocks.blacklist.target}:${blocks.blacklist.scope}`
+      )
+    }
     if (blocks.applied && policy.excludeApplied) return reason("blocked_applied", "already applied")
     if (blocks.employerCooldown) {
       return reason("blocked_employer_cooldown", vacancy.employerName ?? vacancy.employerId ?? undefined)

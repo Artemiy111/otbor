@@ -13,6 +13,7 @@ import { sql } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
 import { Database, type Executor } from "../db/Database.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
+import * as BlacklistRepository from "../repositories/BlacklistRepository.ts"
 import * as DecisionRepository from "../repositories/DecisionRepository.ts"
 import * as LexiconRepository from "../repositories/LexiconRepository.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
@@ -64,19 +65,14 @@ const hhAccountFor = (tx: Executor, userId: string) =>
     `)
     .pipe(Effect.map((result) => (result.rows[0] as { id?: string } | undefined)?.id ?? null))
 
-const isHidden = (tx: Executor, userId: string, externalId: string) =>
-  tx
-    .execute(sql`
-      select 1 from hidden_target
-      where user_id = ${userId} and type = 'vacancy' and external_id = ${externalId}
-      limit 1
-    `)
-    .pipe(Effect.map((result) => result.rows.length > 0))
-
 export interface EvaluateInput {
   readonly vacancyId: string
   readonly resumeId?: string | null
   readonly fit?: number | null
+  /** Explicit account; omitted uses the user's default hh account. */
+  readonly hhAccountId?: string | null
+  /** Default `false`: a blacklist match becomes a `blocked_blacklist` skip. */
+  readonly includeBlacklisted?: boolean
 }
 
 export interface DecisionServiceShape {
@@ -135,17 +131,31 @@ export class DecisionService extends Context.Service<DecisionService, DecisionSe
                       weak: [] as ReadonlyArray<string>
                     }
 
-                const hhAccountId = yield* hhAccountFor(tx, currentUser.userId)
+                const hhAccountId = input.hhAccountId === undefined
+                  ? yield* hhAccountFor(tx, currentUser.userId)
+                  : input.hhAccountId
                 const applied =
                   hhAccountId === null
                     ? false
                     : yield* ApplicationRepository.existsForVacancy(tx, hhAccountId, row.id)
 
-                const hidden = yield* isHidden(tx, currentUser.userId, row.externalId)
+                // The blacklist is a soft filter: the layers are computed even
+                // when included, and only a caller that did not ask for them
+                // turns the match into a block.
+                const layers = yield* BlacklistRepository.layersFor(tx, {
+                  userId: currentUser.userId,
+                  hhAccountId,
+                  employerExternalId: row.employerExternalId,
+                  vacancyExternalId: row.externalId
+                })
+                const blacklist = input.includeBlacklisted === true
+                  ? null
+                  : BlacklistRepository.primaryMatch(layers)
 
                 const policy: ApplyPolicy = DEFAULT_APPLY_POLICY
                 const blocks = {
-                  hidden,
+                  hidden: false,
+                  blacklist,
                   applied,
                   employerCooldown: false,
                   hasTest: false,
@@ -156,7 +166,10 @@ export class DecisionService extends Context.Service<DecisionService, DecisionSe
                   contentHash: row.contentHash,
                   gate: gate.verdict,
                   rulesVersion: gate.rulesVersion,
-                  hidden,
+                  hidden: false,
+                  blacklist: blacklist === null
+                    ? null
+                    : `${blacklist.target}:${blacklist.scope}`,
                   applied,
                   fit: input.fit ?? null,
                   policy: policy.version
