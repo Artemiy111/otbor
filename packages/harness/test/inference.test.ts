@@ -130,6 +130,30 @@ describe("runAcpPrompt", () => {
     expect(artifacts.model).toBe("requested/model")
   })
 
+  test("applies the requested model through session config", async () => {
+    const configured: Array<readonly [string, string]> = []
+    const layer = Layer.succeed(AcpClient)(
+      AcpClient.of({
+        prompt: () => Effect.succeed("answer"),
+        promptEvents: () => Stream.fromIterable([doneEvent()]),
+        sessionId: Effect.succeed(session.sessionId),
+        session: Effect.succeed(session),
+        setConfigOption: (id, value) => {
+          configured.push([id, value])
+          return Effect.void
+        }
+      })
+    )
+
+    await Effect.runPromise(
+      runAcpPrompt({ prompt: "hello", model: "requested/model" }).pipe(
+        Effect.provide(layer)
+      )
+    )
+
+    expect(configured).toEqual([["model", "requested/model"]])
+  })
+
   test("fails when the agent produces no Done event", async () => {
     const error = await Effect.runPromise(
       runAcpPrompt({ prompt: "hello" }).pipe(
