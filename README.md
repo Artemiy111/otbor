@@ -95,9 +95,10 @@ otbor inference get <job-id>
 ```
 
 ACP работает через `opencode acp` (ACP v1). Codex ACP не предоставляет, поэтому
-в текущем адаптере не поддерживается. Модель и effort берутся из конфигурации
-OpenCode; `OTBOR_ACP_BIN`, `OTBOR_ACP_CWD` и `OTBOR_ACP_TIMEOUT_SECONDS`
-переопределяют процесс.
+в текущем адаптере не поддерживается. Модель по умолчанию берётся из конфигурации
+OpenCode; `inference run --model` применяется через
+`session/set_config_option` (если агент его поддерживает). `OTBOR_ACP_BIN`,
+`OTBOR_ACP_CWD` и `OTBOR_ACP_TIMEOUT_SECONDS` переопределяют процесс.
 
 ## Проверки
 
