@@ -1,4 +1,13 @@
 <script setup lang="ts">
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator
+} from "@/shared/ui"
+
 withDefaults(
   defineProps<{
     title: string
@@ -16,14 +25,18 @@ withDefaults(
 
 <template>
   <header class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-    <div class="space-y-1.5">
-      <a
-        v-if="backTo"
-        :href="backTo"
-        class="inline-flex items-center text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-      >
-        ← {{ backLabel }}
-      </a>
+    <div class="min-w-0 space-y-1.5">
+      <Breadcrumb v-if="backTo">
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink :href="backTo">{{ backLabel }}</BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage class="max-w-[52vw] truncate sm:max-w-xl">{{ title }}</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
       <h1 class="text-2xl font-semibold tracking-tight">{{ title }}</h1>
       <p v-if="description" class="max-w-3xl text-sm text-muted-foreground">{{ description }}</p>
     </div>
