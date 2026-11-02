@@ -118,6 +118,29 @@ export const VacancySummary = Schema.Struct({
 
 export type VacancySummary = typeof VacancySummary.Type
 
+export const EmployerSummary = Schema.Struct({
+  id: EmployerId,
+  source: Schema.String,
+  externalId: Schema.String,
+  name: Schema.String,
+  rating: Schema.optional(Schema.NullOr(Schema.Number)),
+  reviewsCount: Schema.optional(Schema.NullOr(Schema.Int)),
+  recommendationsPercent: Schema.optional(Schema.NullOr(Schema.Int)),
+  siteUrl: Schema.optional(Schema.NullOr(Schema.String)),
+  logoUrl: Schema.optional(Schema.NullOr(Schema.String)),
+  industries: Schema.Array(Schema.String),
+  vacancyCount: Schema.Int
+})
+
+export type EmployerSummary = typeof EmployerSummary.Type
+
+export const EmployerDetail = Schema.Struct({
+  employer: EmployerSummary,
+  vacancies: Schema.Array(VacancySummary)
+})
+
+export type EmployerDetail = typeof EmployerDetail.Type
+
 export const KeywordMatchRecord = Schema.Struct({
   keywordId: KeywordId,
   term: Schema.String,

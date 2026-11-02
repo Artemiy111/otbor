@@ -34,6 +34,8 @@ export const OtborHandlers = OtborRpcs.toLayer(
 
       VacanciesList: (payload) => corpus.list(payload),
       VacanciesGet: ({ id }) => corpus.get(id),
+      EmployersList: (payload) => corpus.employers(payload),
+      EmployersGet: ({ id }) => corpus.employer(id),
       VacanciesUpsert: ({ drafts }) => corpus.ingest(drafts),
       VacanciesHydrationTargets: (payload) => corpus.hydrationTargets(payload),
       VacanciesEvaluate: ({ vacancyId, resumeId, fit }) =>

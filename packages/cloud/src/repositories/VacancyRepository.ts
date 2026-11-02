@@ -441,3 +441,27 @@ export const findById = (tx: Executor, id: string) =>
       limit 1
     `)
     .pipe(Effect.map((result) => (result.rows[0] as unknown as VacancyRow | undefined) ?? null))
+
+/** Vacancies of one employer, active first, for the company page. */
+export const listByEmployer = (
+  tx: Executor,
+  employerId: string,
+  limit = 100
+): RepoEffect<ReadonlyArray<VacancySummary>> =>
+  tx
+    .execute(sql`
+      select ${sql.join(
+        Object.entries(rowSelection).map(([key, value]) => sql`${value} as ${sql.identifier(key)}`),
+        sql`, `
+      )}
+      from vacancy
+      left join employer on employer.id = vacancy.employer_id
+      where vacancy.employer_id = ${employerId} and not vacancy.archived
+      order by vacancy.published_at desc nulls last, vacancy.created_at desc
+      limit ${Math.min(Math.max(limit, 1), 200)}
+    `)
+    .pipe(
+      Effect.map((result) =>
+        (result.rows as unknown as ReadonlyArray<VacancyRow>).map(toSummary)
+      )
+    )

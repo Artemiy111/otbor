@@ -1,5 +1,7 @@
 import type {
   ApiError,
+  EmployerDetail,
+  EmployerSummary,
   HydrationTarget,
   IngestResult,
   KeywordMatchRecord,
@@ -15,6 +17,7 @@ import { Database } from "../db/Database.ts"
 import { CurrentUser } from "./CurrentUser.ts"
 import * as LexiconRepository from "../repositories/LexiconRepository.ts"
 import * as DecisionRepository from "../repositories/DecisionRepository.ts"
+import * as EmployerRepository from "../repositories/EmployerRepository.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
 import { toStorageError, stableHash } from "./support.ts"
 
@@ -112,6 +115,11 @@ export interface CorpusServiceShape {
   readonly hydrationTargets: (
     filter: VacancyRepository.HydrationFilter
   ) => Effect.Effect<ReadonlyArray<HydrationTarget>, ApiError>
+  readonly employers: (filter: EmployerRepository.EmployerFilter) => Effect.Effect<
+    { readonly items: ReadonlyArray<EmployerSummary>; readonly total: number },
+    ApiError
+  >
+  readonly employer: (id: string) => Effect.Effect<EmployerDetail, ApiError>
 }
 
 export class CorpusService extends Context.Service<CorpusService, CorpusServiceShape>()(
@@ -212,7 +220,32 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
           .asUser(currentUser.userId, (tx) => VacancyRepository.listNeedingHydration(tx, filter))
           .pipe(Effect.mapError(toStorageError("vacancy.hydrationTargets")))
 
-      return CorpusService.of({ ingest, list, get, recomputeKeywords, hydrationTargets })
+      const employers: CorpusServiceShape["employers"] = (filter) =>
+        database
+          .asUser(currentUser.userId, (tx) => EmployerRepository.list(tx, filter))
+          .pipe(Effect.mapError(toStorageError("employer.list")))
+
+      const employer: CorpusServiceShape["employer"] = (id) =>
+        Effect.gen(function*() {
+          const detail = yield* database
+            .asUser(currentUser.userId, (tx) => EmployerRepository.findById(tx, id))
+            .pipe(Effect.mapError(toStorageError("employer.get")))
+
+          if (detail === null) {
+            return yield* new NotFound({ entity: "Employer", id })
+          }
+          return detail
+        })
+
+      return CorpusService.of({
+        ingest,
+        list,
+        get,
+        recomputeKeywords,
+        hydrationTargets,
+        employers,
+        employer
+      })
     })
   )
 }

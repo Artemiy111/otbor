@@ -3,6 +3,7 @@ import { Rpc, type RpcClient, type RpcClientError, RpcGroup } from "effect/rpc"
 import { CrawlFinishStatus, JobKind } from "./enums.ts"
 import {
   ApplicationId,
+  EmployerId,
   HhAccountId,
   HarnessId,
   HarnessJobId,
@@ -17,6 +18,8 @@ import {
   ApplicationRecord,
   CrawlRun,
   DecisionRecord,
+  EmployerDetail,
+  EmployerSummary,
   HarnessExit,
   HarnessJob,
   HarnessRegistration,
@@ -73,6 +76,25 @@ export const VacanciesList = Rpc.make("VacanciesList", {
 export const VacanciesGet = Rpc.make("VacanciesGet", {
   payload: Schema.Struct({ id: VacancyId }),
   success: VacancyDetail,
+  error: ApiError
+})
+
+export const EmployersList = Rpc.make("EmployersList", {
+  payload: Schema.Struct({
+    query: Schema.optional(Schema.String),
+    limit: Schema.optional(Schema.Int),
+    offset: Schema.optional(Schema.Int)
+  }),
+  success: Schema.Struct({
+    items: Schema.Array(EmployerSummary),
+    total: Schema.Int
+  }),
+  error: ApiError
+})
+
+export const EmployersGet = Rpc.make("EmployersGet", {
+  payload: Schema.Struct({ id: EmployerId }),
+  success: EmployerDetail,
   error: ApiError
 })
 
@@ -470,6 +492,8 @@ export const OtborRpcs = RpcGroup.make(
   SystemHealth,
   VacanciesList,
   VacanciesGet,
+  EmployersList,
+  EmployersGet,
   VacanciesUpsert,
   VacanciesHydrationTargets,
   VacanciesEvaluate,
