@@ -49,6 +49,14 @@ export const ApplicationState = Schema.Literals([
 
 export type ApplicationState = typeof ApplicationState.Type
 
+/**
+ * Language of a writing prompt. `auto` detects it from the vacancy text for
+ * application-based calls and from the input text for a resume rewrite.
+ */
+export const WritingLanguage = Schema.Literals(["ru", "en", "auto"])
+
+export type WritingLanguage = typeof WritingLanguage.Type
+
 export const JobStatus = Schema.Literals([
   "pending",
   "leased",

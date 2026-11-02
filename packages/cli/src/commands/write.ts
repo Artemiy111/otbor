@@ -110,6 +110,13 @@ const modelFlag = Flag.String("model").pipe(
   Flag.optional
 )
 
+const languageFlag = Flag.Literals("language", ["auto", "ru", "en"]).pipe(
+  Flag.withDescription(
+    "Prompt language; auto detects it from the vacancy text (or the resume text)"
+  ),
+  Flag.optional
+)
+
 const timeoutFlag = Flag.Int("timeout").pipe(
   Flag.withDescription("Seconds to wait for the result"),
   Flag.withDefault(180)
@@ -152,12 +159,13 @@ const letter = Command.make(
       Flag.withDescription("Replace the letter in the application's existing kit"),
       Flag.withDefault(false)
     ),
+    language: languageFlag,
     model: modelFlag,
     timeout: timeoutFlag,
     noWait: noWaitFlag,
     json: jsonFlag
   },
-  Effect.fn(function*({ id, tone, length, save, model, timeout, noWait, json }) {
+  Effect.fn(function*({ id, tone, length, save, language, model, timeout, noWait, json }) {
     yield* timeoutError(timeout)
     if (noWait && save) {
       return yield* Effect.fail(new Error("--save needs the result; drop --no-wait"))
@@ -169,6 +177,7 @@ const letter = Command.make(
       applicationId,
       ...(Option.isSome(tone) ? { tone: tone.value } : {}),
       ...(Option.isSome(length) ? { length: length.value } : {}),
+      ...(Option.isSome(language) ? { language: language.value } : {}),
       ...(Option.isSome(model) ? { model: model.value } : {})
     })
 
@@ -245,12 +254,13 @@ const answers = Command.make(
       Flag.withDescription("Best effort: save the parsed JSON into an existing kit"),
       Flag.withDefault(false)
     ),
+    language: languageFlag,
     model: modelFlag,
     timeout: timeoutFlag,
     noWait: noWaitFlag,
     json: jsonFlag
   },
-  Effect.fn(function*({ id, question, save, model, timeout, noWait, json }) {
+  Effect.fn(function*({ id, question, save, language, model, timeout, noWait, json }) {
     yield* timeoutError(timeout)
     if (noWait && save) {
       return yield* Effect.fail(new Error("--save needs the result; drop --no-wait"))
@@ -262,6 +272,7 @@ const answers = Command.make(
     const { job } = yield* api.WritingAnswers({
       applicationId,
       questions,
+      ...(Option.isSome(language) ? { language: language.value } : {}),
       ...(Option.isSome(model) ? { model: model.value } : {})
     })
 
@@ -344,12 +355,13 @@ const resume = Command.make(
       Flag.withDescription("Role the rewrite should target"),
       Flag.optional
     ),
+    language: languageFlag,
     model: modelFlag,
     timeout: timeoutFlag,
     noWait: noWaitFlag,
     json: jsonFlag
   },
-  Effect.fn(function*({ file, targetRole, model, timeout, noWait, json }) {
+  Effect.fn(function*({ file, targetRole, language, model, timeout, noWait, json }) {
     yield* timeoutError(timeout)
     const text = yield* readResume(file)
     if (text.trim() === "") {
@@ -360,6 +372,7 @@ const resume = Command.make(
     const { job } = yield* api.WritingResume({
       text,
       ...(Option.isSome(targetRole) ? { targetRole: targetRole.value } : {}),
+      ...(Option.isSome(language) ? { language: language.value } : {}),
       ...(Option.isSome(model) ? { model: model.value } : {})
     })
 

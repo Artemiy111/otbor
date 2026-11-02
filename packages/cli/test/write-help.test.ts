@@ -35,7 +35,16 @@ describe("otbor write help", () => {
   test("write letter documents its flags", () => {
     const help = cli("write", "letter", "--help")
     expect(help.code).toBe(0)
-    for (const flag of ["--tone", "--length", "--save", "--model", "--timeout", "--no-wait", "--json"]) {
+    for (const flag of [
+      "--tone",
+      "--length",
+      "--language",
+      "--save",
+      "--model",
+      "--timeout",
+      "--no-wait",
+      "--json"
+    ]) {
       expect(help.out).toContain(flag)
     }
   })
@@ -44,13 +53,21 @@ describe("otbor write help", () => {
     const help = cli("write", "answers", "--help")
     expect(help.code).toBe(0)
     expect(help.out).toContain("--question")
+    expect(help.out).toContain("--language")
     expect(help.out).toContain("--save")
   })
 
   test("write resume documents the target role and shared flags", () => {
     const help = cli("write", "resume", "--help")
     expect(help.code).toBe(0)
-    for (const flag of ["--target-role", "--model", "--timeout", "--no-wait", "--json"]) {
+    for (const flag of [
+      "--target-role",
+      "--language",
+      "--model",
+      "--timeout",
+      "--no-wait",
+      "--json"
+    ]) {
       expect(help.out).toContain(flag)
     }
   })

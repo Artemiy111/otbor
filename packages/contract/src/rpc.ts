@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import { Rpc, type RpcClient, type RpcClientError, RpcGroup } from "effect/rpc"
-import { CrawlFinishStatus, JobKind } from "./enums.ts"
+import { CrawlFinishStatus, JobKind, WritingLanguage } from "./enums.ts"
 import {
   ApplicationId,
   EmployerId,
@@ -458,6 +458,7 @@ export const WritingCoverLetter = Rpc.make("WritingCoverLetter", {
     applicationId: ApplicationId,
     tone: Schema.optional(Schema.String),
     length: Schema.optional(Schema.Literals(["short", "medium", "long"])),
+    language: Schema.optional(WritingLanguage),
     model: Schema.optional(Schema.String)
   }),
   success: Schema.Struct({ job: HarnessJob }),
@@ -468,6 +469,7 @@ export const WritingAnswers = Rpc.make("WritingAnswers", {
   payload: Schema.Struct({
     applicationId: ApplicationId,
     questions: Schema.Array(Schema.String),
+    language: Schema.optional(WritingLanguage),
     model: Schema.optional(Schema.String)
   }),
   success: Schema.Struct({ job: HarnessJob }),
@@ -478,6 +480,7 @@ export const WritingResume = Rpc.make("WritingResume", {
   payload: Schema.Struct({
     text: Schema.String,
     targetRole: Schema.optional(Schema.String),
+    language: Schema.optional(WritingLanguage),
     model: Schema.optional(Schema.String)
   }),
   success: Schema.Struct({ job: HarnessJob }),

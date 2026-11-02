@@ -10,9 +10,10 @@ import {
   buildAnswersPrompt,
   buildCoverLetterPrompt,
   buildResumePrompt,
-  WRITING_SYSTEM_PROMPT,
   type CoverLetterLength,
-  type VacancyContext
+  type VacancyContext,
+  type WritingLanguageOption,
+  type WritingPrompt
 } from "../writing/prompts.ts"
 import { CurrentUser } from "./CurrentUser.ts"
 import { inferenceJob } from "./jobs.ts"
@@ -26,18 +27,21 @@ export interface CoverLetterInput {
   readonly applicationId: string
   readonly tone?: string
   readonly length?: CoverLetterLength
+  readonly language?: WritingLanguageOption
   readonly model?: string
 }
 
 export interface AnswersInput {
   readonly applicationId: string
   readonly questions: ReadonlyArray<string>
+  readonly language?: WritingLanguageOption
   readonly model?: string
 }
 
 export interface ResumeInput {
   readonly text: string
   readonly targetRole?: string
+  readonly language?: WritingLanguageOption
   readonly model?: string
 }
 
@@ -158,7 +162,7 @@ export class WritingService extends Context.Service<WritingService, WritingServi
         input: {
           readonly userId: string
           readonly hhAccountId: string | null
-          readonly prompt: string
+          readonly prompt: WritingPrompt
           readonly model?: string
         }
       ) =>
@@ -166,8 +170,8 @@ export class WritingService extends Context.Service<WritingService, WritingServi
           userId: input.userId,
           hhAccountId: input.hhAccountId,
           payload: {
-            prompt: input.prompt,
-            system: WRITING_SYSTEM_PROMPT,
+            prompt: input.prompt.user,
+            system: input.prompt.system,
             ...(input.model === undefined ? {} : { model: input.model })
           },
           idempotencyKey: `writing:${input.userId}:${randomUUID()}`
@@ -190,7 +194,8 @@ export class WritingService extends Context.Service<WritingService, WritingServi
                   vacancy: vacancyContext(vacancy),
                   resumeText,
                   ...(input.tone === undefined ? {} : { tone: input.tone }),
-                  ...(input.length === undefined ? {} : { length: input.length })
+                  ...(input.length === undefined ? {} : { length: input.length }),
+                  ...(input.language === undefined ? {} : { language: input.language })
                 })
                 const job = yield* enqueue(tx, {
                   userId: currentUser.userId,
@@ -237,7 +242,8 @@ export class WritingService extends Context.Service<WritingService, WritingServi
                 const prompt = buildAnswersPrompt({
                   vacancy: vacancyContext(vacancy),
                   resumeText,
-                  questions
+                  questions,
+                  ...(input.language === undefined ? {} : { language: input.language })
                 })
                 const job = yield* enqueue(tx, {
                   userId: currentUser.userId,
@@ -270,7 +276,8 @@ export class WritingService extends Context.Service<WritingService, WritingServi
                 const hhAccountId = yield* accountFor(tx, currentUser.userId)
                 const prompt = buildResumePrompt({
                   text: input.text,
-                  ...(input.targetRole === undefined ? {} : { targetRole: input.targetRole })
+                  ...(input.targetRole === undefined ? {} : { targetRole: input.targetRole }),
+                  ...(input.language === undefined ? {} : { language: input.language })
                 })
                 const job = yield* enqueue(tx, {
                   userId: currentUser.userId,
