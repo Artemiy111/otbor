@@ -30,6 +30,7 @@ export const hhAccount = pgTable(
     email: text("email"),
     phone: text("phone"),
     areaName: text("area_name"),
+    sessionProfile: text("session_profile"),
     createdAt: createdAt(),
     updatedAt: updatedAt()
   },

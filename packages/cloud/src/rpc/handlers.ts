@@ -11,6 +11,7 @@ import { CrawlService } from "../services/CrawlService.ts"
 import { DecisionService } from "../services/DecisionService.ts"
 import { EmployerHydrator } from "../services/EmployerHydrator.ts"
 import { GateService } from "../services/GateService.ts"
+import { HhAccountService } from "../services/HhAccountService.ts"
 import { HydrationRunner } from "../services/HydrationRunner.ts"
 import { InferenceService } from "../services/InferenceService.ts"
 import { MailGatewayProvider } from "../services/MailGatewayProvider.ts"
@@ -50,6 +51,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const mail = yield* MailService
     const telegram = yield* TelegramService
     const blacklist = yield* BlacklistService
+    const hhAccounts = yield* HhAccountService
 
     return {
       SystemHealth: () => system.health(),
@@ -63,6 +65,10 @@ export const OtborHandlers = OtborRpcs.toLayer(
       BlacklistRemove: ({ id }) =>
         blacklist.remove(id).pipe(Effect.map((deleted) => ({ id, deleted }))),
       BlacklistImportHh: (payload) => blacklist.importHh(payload),
+
+      HhAccountsList: () => hhAccounts.list(),
+      HhAccountUpsert: (payload) => hhAccounts.upsert(payload),
+      HhAccountRemove: ({ id }) => hhAccounts.remove(id),
       VacanciesUpsert: ({ drafts }) => corpus.ingest(drafts),
       VacanciesHydrationTargets: (payload) => corpus.hydrationTargets(payload),
       VacanciesHydrateOne: ({ id }) =>
@@ -201,6 +207,7 @@ export const OtborServices = Layer.mergeAll(
   mailService,
   telegramService,
   BlacklistService.layer,
+  HhAccountService.layer,
   ContactService.layer,
   ConversationService.layer,
   InferenceService.layer,
