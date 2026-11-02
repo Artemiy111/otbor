@@ -5,10 +5,10 @@ import type {
   BlacklistTarget
 } from "@otbor/contract"
 import { InvalidInput, NotFound } from "@otbor/contract"
-import { sql } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
 import { Database, type Executor } from "../db/Database.ts"
 import * as BlacklistRepository from "../repositories/BlacklistRepository.ts"
+import * as HhAccountRepository from "../repositories/HhAccountRepository.ts"
 import { CurrentUser } from "./CurrentUser.ts"
 import { toStorageError } from "./support.ts"
 
@@ -41,9 +41,7 @@ export interface BlacklistServiceShape {
 }
 
 const accountExists = (tx: Executor, userId: string, accountId: string) =>
-  tx
-    .execute(sql`select 1 from hh_account where id = ${accountId}::uuid and user_id = ${userId} limit 1`)
-    .pipe(Effect.map((result) => result.rows.length > 0))
+  HhAccountRepository.find(tx, userId, accountId).pipe(Effect.map((row) => row !== null))
 
 export class BlacklistService extends Context.Service<BlacklistService, BlacklistServiceShape>()(
   "otbor/cloud/BlacklistService"

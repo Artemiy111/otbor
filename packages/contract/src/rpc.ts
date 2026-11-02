@@ -54,6 +54,7 @@ import {
   HydrationTarget,
   KitRecord,
   LexiconKeyword,
+  HhAccountRecord,
   MailAccountRecord,
   PresetFilter,
   PresetPreview,
@@ -528,6 +529,35 @@ export const TelegramLoginStatus = Rpc.make("TelegramLoginStatus", {
 })
 
 /* -------------------------------------------------------------------------- */
+/* hh.ru accounts                                                             */
+/* -------------------------------------------------------------------------- */
+
+export const HhAccountsList = Rpc.make("HhAccountsList", {
+  success: Schema.Array(HhAccountRecord),
+  error: ApiError
+})
+
+export const HhAccountUpsert = Rpc.make("HhAccountUpsert", {
+  payload: Schema.Struct({
+    id: Schema.optional(HhAccountId),
+    label: Schema.String,
+    isDefault: Schema.optional(Schema.Boolean),
+    sessionProfile: Schema.optional(Schema.NullOr(Schema.String)),
+    firstName: Schema.optional(Schema.NullOr(Schema.String)),
+    lastName: Schema.optional(Schema.NullOr(Schema.String)),
+    areaName: Schema.optional(Schema.NullOr(Schema.String))
+  }),
+  success: HhAccountRecord,
+  error: ApiError
+})
+
+export const HhAccountRemove = Rpc.make("HhAccountRemove", {
+  payload: Schema.Struct({ id: HhAccountId }),
+  success: Schema.Struct({ id: HhAccountId, deleted: Schema.Boolean }),
+  error: ApiError
+})
+
+/* -------------------------------------------------------------------------- */
 /* Gate and lexicon                                                           */
 /* -------------------------------------------------------------------------- */
 
@@ -897,6 +927,9 @@ export const OtborRpcs = RpcGroup.make(
   TelegramSyncNow,
   TelegramLoginQr,
   TelegramLoginStatus,
+  HhAccountsList,
+  HhAccountUpsert,
+  HhAccountRemove,
   TitlesPreview,
   TitlesSetUserVerdict,
   LexiconList,

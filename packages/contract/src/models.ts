@@ -416,6 +416,20 @@ export const TelegramAccountRecord = Schema.Struct({
 
 export type TelegramAccountRecord = typeof TelegramAccountRecord.Type
 
+export const HhAccountRecord = Schema.Struct({
+  id: HhAccountId,
+  label: Schema.String,
+  isDefault: Schema.Boolean,
+  sessionProfile: Schema.NullOr(Schema.String),
+  firstName: Schema.optional(Schema.NullOr(Schema.String)),
+  lastName: Schema.optional(Schema.NullOr(Schema.String)),
+  areaName: Schema.optional(Schema.NullOr(Schema.String)),
+  createdAt: Schema.String,
+  updatedAt: Schema.String
+})
+
+export type HhAccountRecord = typeof HhAccountRecord.Type
+
 /** Outcome of one bounded source sync; counters, never row dumps. */
 export const SyncResult = Schema.Struct({
   processed: Schema.Int,
