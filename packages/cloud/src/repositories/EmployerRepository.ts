@@ -90,3 +90,75 @@ export const findById = (tx: Executor, id: string) =>
         )
       })
     )
+
+export interface EmployerRefreshTarget {
+  readonly id: string
+  readonly externalId: string
+  readonly name: string
+}
+
+/**
+ * Bounded refresh queue: only employers that actually back a vacancy, oldest
+ * profile first. The scheduler never walks the whole employer table.
+ */
+export const listForRefresh = (
+  tx: Executor,
+  options: { readonly limit?: number } = {}
+): RepoEffect<ReadonlyArray<EmployerRefreshTarget>> => {
+  const limit = Math.min(Math.max(options.limit ?? 25, 1), 200)
+  return tx
+    .execute(sql`
+      select e.id, e.external_id, e.name
+      from employer e
+      where e.source = 'hh'
+        and exists (select 1 from vacancy v where v.employer_id = e.id)
+      order by e.updated_at asc, e.id
+      limit ${limit}
+    `)
+    .pipe(
+      Effect.map((result) =>
+        (result.rows as unknown as ReadonlyArray<{
+          id: string
+          external_id: string
+          name: string
+        }>).map((row) => ({
+          id: row.id,
+          externalId: row.external_id,
+          name: row.name
+        }))
+      )
+    )
+}
+
+export interface EmployerProfilePatch {
+  readonly name?: string | null
+  readonly rating?: number | null
+  readonly reviewsCount?: number | null
+  readonly recommendationsPercent?: number | null
+  readonly siteUrl?: string | null
+  readonly logoUrl?: string | null
+  readonly industries?: ReadonlyArray<string>
+}
+
+export const applyProfile = (
+  tx: Executor,
+  id: string,
+  patch: EmployerProfilePatch
+): RepoEffect<void> =>
+  tx
+    .execute(sql`
+      update employer set
+        name = coalesce(${patch.name ?? null}, name),
+        rating = coalesce(${patch.rating ?? null}, rating),
+        reviews_count = coalesce(${patch.reviewsCount ?? null}, reviews_count),
+        recommendations_percent = coalesce(${patch.recommendationsPercent ?? null}, recommendations_percent),
+        site_url = coalesce(${patch.siteUrl ?? null}, site_url),
+        logo_url = coalesce(${patch.logoUrl ?? null}, logo_url),
+        industries = case
+          when ${JSON.stringify(patch.industries ?? [])}::jsonb = '[]'::jsonb then industries
+          else ${JSON.stringify(patch.industries ?? [])}::jsonb
+        end,
+        updated_at = now()
+      where id = ${id}
+    `)
+    .pipe(Effect.asVoid)

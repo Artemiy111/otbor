@@ -7,9 +7,12 @@ import type {
   KitRecord,
   PresetFilter,
   UserId,
+  VacancyDraft,
   VacancyId
 } from "@otbor/contract"
 import { normalizeTerm } from "@otbor/domain"
+import type { MailGateway } from "@otbor/mail"
+import type { TelegramGateway } from "@otbor/telegram"
 import { PgClient } from "@effect/sql-pg"
 import { asc, eq, sql } from "drizzle-orm"
 import { Effect, Layer, Logger, Redacted } from "effect"
@@ -18,14 +21,22 @@ import { runMigrations } from "../../src/db/migrate.ts"
 import {
   accountLease,
   application,
+  contact,
+  conversation,
+  conversationMessage,
+  conversationVacancy,
   harnessJob,
   hhAccount,
   keyword,
   keywordAlias,
+  mailAccount,
+  mailFolder,
+  mailMessage,
   preset,
   schedule,
   searchQuery,
   searchRun,
+  telegramAccount,
   titleVerdict,
   users,
   vacancy,
@@ -38,23 +49,34 @@ import * as HarnessRepository from "../../src/repositories/HarnessRepository.ts"
 import * as PresetRepository from "../../src/repositories/PresetRepository.ts"
 import * as QueueRepository from "../../src/repositories/QueueRepository.ts"
 import * as ScheduleRepository from "../../src/repositories/ScheduleRepository.ts"
+import { ContactService } from "../../src/services/ContactService.ts"
+import { ConversationService } from "../../src/services/ConversationService.ts"
 import { CorpusService } from "../../src/services/CorpusService.ts"
 import { CrawlRunner, type CrawlRunnerResult } from "../../src/services/CrawlRunner.ts"
 import { CrawlService, type CrawlSavePageInput } from "../../src/services/CrawlService.ts"
 import { CurrentUser } from "../../src/services/CurrentUser.ts"
+import { EmployerHydrator } from "../../src/services/EmployerHydrator.ts"
 import { GateService, type GateServiceShape } from "../../src/services/GateService.ts"
+import { HydrationRunner } from "../../src/services/HydrationRunner.ts"
 import {
   InferenceService,
   type EnqueueInferenceInput
 } from "../../src/services/InferenceService.ts"
+import { MailGatewayProvider } from "../../src/services/MailGatewayProvider.ts"
+import { MailService, type MailAccountUpsertInput } from "../../src/services/MailService.ts"
+import { MailSync } from "../../src/services/MailSync.ts"
 import { PresetService } from "../../src/services/PresetService.ts"
 import { submitJob } from "../../src/services/jobs.ts"
 import { QueueService } from "../../src/services/QueueService.ts"
+import { ScheduleDispatcher } from "../../src/services/ScheduleDispatcher.ts"
 import {
   ScheduleService,
   type ScheduleUpsertInput
 } from "../../src/services/ScheduleService.ts"
 import { runDueSchedules } from "../../src/services/ScheduleWorker.ts"
+import { TelegramGatewayProvider } from "../../src/services/TelegramGatewayProvider.ts"
+import { TelegramService, type TelegramAccountUpsertInput } from "../../src/services/TelegramService.ts"
+import { TelegramSync } from "../../src/services/TelegramSync.ts"
 
 /* -------------------------------------------------------------------------- */
 /* Opt-in database lifecycle                                                  */
@@ -141,18 +163,23 @@ export const dropTestDatabase = (base: string): Promise<void> =>
 /* Layers                                                                     */
 /* -------------------------------------------------------------------------- */
 
+export interface LayerOptions {
+  readonly runner?: Layer.Layer<CrawlRunner, never, never>
+  readonly hydrationRunner?: Layer.Layer<HydrationRunner, never, never>
+  readonly mailGateway?: MailGateway
+  readonly telegramGateway?: TelegramGateway
+}
+
 /**
  * A request layer for an explicit user. Both the owner pool and the
  * `otbor_runtime` transaction role come from the real `Database.layer`; only
  * `CurrentUser` is stubbed so tests can speak as A or B.
  *
- * `runner` replaces the real hh crawler for schedule tests. Nothing in the
- * integration suite may fetch hh.ru.
+ * `runner` replaces the real hh crawler for schedule tests, and the gateways
+ * replace IMAP/MTProto. Nothing in the integration suite may reach the
+ * network.
  */
-export const layerFor = (
-  userId: string,
-  runner?: Layer.Layer<CrawlRunner, never, never>
-) => {
+export const layerFor = (userId: string, options: LayerOptions = {}) => {
   const shared = Layer.merge(
     Database.layer,
     Layer.succeed(CurrentUser, { userId: userId as UserId })
@@ -161,17 +188,54 @@ export const layerFor = (
     Layer.provide(shared)
   )
   const crawlRunner =
-    runner ?? CrawlRunner.layer.pipe(Layer.provide(Layer.merge(shared, crawlServices)))
+    options.runner ??
+    CrawlRunner.layer.pipe(Layer.provide(Layer.merge(shared, crawlServices)))
   const crawlStack = Layer.mergeAll(crawlServices, crawlRunner)
+
+  const mailProvider =
+    options.mailGateway === undefined
+      ? MailGatewayProvider.layer
+      : MailGatewayProvider.fixed(options.mailGateway)
+  const mailSync = MailSync.layer.pipe(Layer.provide(Layer.merge(shared, mailProvider)))
+  const mailService = MailService.layer.pipe(Layer.provide(Layer.merge(shared, mailSync)))
+
+  const telegramProvider =
+    options.telegramGateway === undefined
+      ? TelegramGatewayProvider.layer
+      : TelegramGatewayProvider.fixed(options.telegramGateway)
+  const telegramSync = TelegramSync.layer.pipe(
+    Layer.provide(Layer.merge(shared, telegramProvider))
+  )
+  const telegramService = TelegramService.layer.pipe(
+    Layer.provide(Layer.merge(shared, telegramSync))
+  )
+
+  const hydration =
+    options.hydrationRunner ??
+    HydrationRunner.layer.pipe(Layer.provide(Layer.merge(shared, crawlStack)))
+  const employers = EmployerHydrator.layer.pipe(Layer.provide(shared))
+  const sourceStack = Layer.mergeAll(
+    crawlStack,
+    hydration,
+    employers,
+    mailSync,
+    telegramSync
+  )
+  const dispatcher = ScheduleDispatcher.layer.pipe(Layer.provide(sourceStack))
 
   return Layer.mergeAll(
     shared,
-    crawlStack,
+    sourceStack,
+    dispatcher,
+    mailService,
+    telegramService,
+    ContactService.layer.pipe(Layer.provide(shared)),
+    ConversationService.layer.pipe(Layer.provide(shared)),
     QueueService.layer.pipe(Layer.provide(shared)),
     InferenceService.layer.pipe(Layer.provide(shared)),
     GateService.layer.pipe(Layer.provide(shared)),
     PresetService.layer.pipe(Layer.provide(shared)),
-    ScheduleService.layer.pipe(Layer.provide(Layer.merge(shared, crawlStack)))
+    ScheduleService.layer.pipe(Layer.provide(Layer.merge(shared, dispatcher)))
   )
 }
 
@@ -185,6 +249,15 @@ type Requirements =
   | CorpusService
   | CrawlRunner
   | ScheduleService
+  | ScheduleDispatcher
+  | MailService
+  | TelegramService
+  | MailSync
+  | TelegramSync
+  | ContactService
+  | ConversationService
+  | HydrationRunner
+  | EmployerHydrator
 
 export const runAs = <A, E>(
   userId: string,
@@ -192,6 +265,24 @@ export const runAs = <A, E>(
 ): Promise<A> =>
   Effect.runPromise(
     quiet(effect.pipe(Effect.provide(layerFor(userId))))
+  )
+
+export const runAsWithOptions = <A, E>(
+  userId: string,
+  options: LayerOptions,
+  effect: Effect.Effect<A, E, Requirements>
+): Promise<A> =>
+  Effect.runPromise(
+    quiet(effect.pipe(Effect.provide(layerFor(userId, options))))
+  )
+
+export const runAsWithOptionsFailure = <A, E>(
+  userId: string,
+  options: LayerOptions,
+  effect: Effect.Effect<A, E, Requirements>
+): Promise<E> =>
+  Effect.runPromise(
+    quiet(effect.pipe(Effect.flip, Effect.provide(layerFor(userId, options))))
   )
 
 /** Runs an effect expected to fail and returns the typed error. */
@@ -210,7 +301,7 @@ export const runAsWithRunner = <A, E>(
   effect: Effect.Effect<A, E, Requirements>
 ): Promise<A> =>
   Effect.runPromise(
-    quiet(effect.pipe(Effect.provide(layerFor(userId, runner))))
+    quiet(effect.pipe(Effect.provide(layerFor(userId, { runner }))))
   )
 
 export const runAsWithRunnerFailure = <A, E>(
@@ -219,7 +310,7 @@ export const runAsWithRunnerFailure = <A, E>(
   effect: Effect.Effect<A, E, Requirements>
 ): Promise<E> =>
   Effect.runPromise(
-    quiet(effect.pipe(Effect.flip, Effect.provide(layerFor(userId, runner))))
+    quiet(effect.pipe(Effect.flip, Effect.provide(layerFor(userId, { runner }))))
   )
 
 /* -------------------------------------------------------------------------- */
@@ -319,6 +410,32 @@ export const seedVacancyTitled = async (
 
 export const seedVacancy = async (label: string): Promise<string> =>
   seedVacancyTitled(label, `Integration vacancy ${label}`)
+
+/** A vacancy with a caller-chosen hh external id, for link assertions. */
+export const seedVacancyWithExternal = async (
+  externalId: string,
+  title: string
+): Promise<string> =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      Effect.gen(function*() {
+        const [row] = yield* tx
+          .insert(vacancy)
+          .values({
+            source: "hh",
+            externalId,
+            canonicalUrl: `https://hh.ru/vacancy/${externalId}`,
+            title,
+            descriptionText: null,
+            workFormats: [],
+            contentHash: randomUUID()
+          })
+          .returning()
+        return row!.id
+      })
+    )
+  )
 
 export const seedVacancySkill = async (
   vacancyId: string,
@@ -897,6 +1014,330 @@ export const runDueSchedulesAs = (
   runner: Layer.Layer<CrawlRunner, never, never>,
   options: { readonly now?: Date; readonly limit?: number } = {}
 ) => runAsWithRunner(userId, runner, runDueSchedules(options))
+
+/** One worker tick with fake gateways, for mail/Telegram schedule tests. */
+export const runDueSchedulesWithGateways = (
+  userId: string,
+  layer: LayerOptions,
+  options: { readonly now?: Date; readonly limit?: number } = {}
+) => runAsWithOptions(userId, layer, runDueSchedules(options))
+
+/* -------------------------------------------------------------------------- */
+/* Corpus calls                                                               */
+/* -------------------------------------------------------------------------- */
+
+export const corpusIngest = (userId: string, drafts: ReadonlyArray<VacancyDraft>) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const corpus = yield* CorpusService
+      return yield* corpus.ingest(drafts)
+    })
+  )
+
+/* -------------------------------------------------------------------------- */
+/* Contacts and conversations                                                 */
+/* -------------------------------------------------------------------------- */
+
+export const contactsList = (
+  userId: string,
+  filter: {
+    readonly query?: string
+    readonly kind?: "email" | "telegram" | "phone" | "hh_chat" | "other"
+    readonly source?: "hh_vacancy" | "mail" | "telegram" | "hh_chat" | "manual"
+    readonly limit?: number
+    readonly offset?: number
+  } = {}
+) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const contacts = yield* ContactService
+      return yield* contacts.list(filter)
+    })
+  )
+
+export const contactRemove = (userId: string, id: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const contacts = yield* ContactService
+      return yield* contacts.remove(id)
+    })
+  )
+
+export const conversationsList = (
+  userId: string,
+  filter: {
+    readonly channel?: "mail" | "telegram" | "hh_chat"
+    readonly query?: string
+    readonly limit?: number
+  } = {}
+) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const conversations = yield* ConversationService
+      return yield* conversations.list(filter)
+    })
+  )
+
+export const conversationGet = (userId: string, id: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const conversations = yield* ConversationService
+      return yield* conversations.get(id)
+    })
+  )
+
+export const conversationGetFailure = (userId: string, id: string) =>
+  runAsFailure(
+    userId,
+    Effect.gen(function*() {
+      const conversations = yield* ConversationService
+      return yield* conversations.get(id)
+    })
+  )
+
+/* -------------------------------------------------------------------------- */
+/* Mail                                                                       */
+/* -------------------------------------------------------------------------- */
+
+export const mailAccountsList = (userId: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const mail = yield* MailService
+      return yield* mail.list()
+    })
+  )
+
+export const mailAccountUpsert = (userId: string, input: MailAccountUpsertInput) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const mail = yield* MailService
+      return yield* mail.upsert(input)
+    })
+  )
+
+export const mailAccountUpsertFailure = (userId: string, input: MailAccountUpsertInput) =>
+  runAsFailure(
+    userId,
+    Effect.gen(function*() {
+      const mail = yield* MailService
+      return yield* mail.upsert(input)
+    })
+  )
+
+export const mailAccountRemove = (userId: string, id: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const mail = yield* MailService
+      return yield* mail.remove(id)
+    })
+  )
+
+export const mailAccountTest = (userId: string, id: string, layer: LayerOptions = {}) =>
+  runAsWithOptions(
+    userId,
+    layer,
+    Effect.gen(function*() {
+      const mail = yield* MailService
+      return yield* mail.test(id)
+    })
+  )
+
+export const mailSyncNow = (userId: string, id: string, layer: LayerOptions = {}) =>
+  runAsWithOptions(
+    userId,
+    layer,
+    Effect.gen(function*() {
+      const mail = yield* MailService
+      return yield* mail.syncNow(id)
+    })
+  )
+
+/* -------------------------------------------------------------------------- */
+/* Telegram                                                                   */
+/* -------------------------------------------------------------------------- */
+
+export const telegramAccountsList = (userId: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const telegram = yield* TelegramService
+      return yield* telegram.list()
+    })
+  )
+
+export const telegramAccountUpsert = (
+  userId: string,
+  input: TelegramAccountUpsertInput
+) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const telegram = yield* TelegramService
+      return yield* telegram.upsert(input)
+    })
+  )
+
+export const telegramAccountUpsertFailure = (
+  userId: string,
+  input: TelegramAccountUpsertInput
+) =>
+  runAsFailure(
+    userId,
+    Effect.gen(function*() {
+      const telegram = yield* TelegramService
+      return yield* telegram.upsert(input)
+    })
+  )
+
+export const telegramAccountRemove = (userId: string, id: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const telegram = yield* TelegramService
+      return yield* telegram.remove(id)
+    })
+  )
+
+export const telegramSyncNow = (userId: string, id: string, layer: LayerOptions = {}) =>
+  runAsWithOptions(
+    userId,
+    layer,
+    Effect.gen(function*() {
+      const telegram = yield* TelegramService
+      return yield* telegram.syncNow(id)
+    })
+  )
+
+export const telegramLoginQr = (userId: string, id: string, layer: LayerOptions = {}) =>
+  runAsWithOptions(
+    userId,
+    layer,
+    Effect.gen(function*() {
+      const telegram = yield* TelegramService
+      return yield* telegram.loginQr(id)
+    })
+  )
+
+export const telegramLoginStatus = (userId: string, id: string, layer: LayerOptions = {}) =>
+  runAsWithOptions(
+    userId,
+    layer,
+    Effect.gen(function*() {
+      const telegram = yield* TelegramService
+      return yield* telegram.loginStatus(id)
+    })
+  )
+
+/* -------------------------------------------------------------------------- */
+/* Owner source reads                                                         */
+/* -------------------------------------------------------------------------- */
+
+export const contactRowsFor = async (userId: string) =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx.select().from(contact).where(eq(contact.userId, userId))
+    )
+  )
+
+export const conversationRowsFor = async (userId: string) =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx
+        .select()
+        .from(conversation)
+        .where(eq(conversation.userId, userId))
+        .orderBy(asc(conversation.createdAt))
+    )
+  )
+
+export const conversationMessagesFor = async (conversationId: string) =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx
+        .select()
+        .from(conversationMessage)
+        .where(eq(conversationMessage.conversationId, conversationId))
+        .orderBy(asc(conversationMessage.sentAt))
+    )
+  )
+
+export const conversationVacanciesFor = async (conversationId: string) =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx
+        .select()
+        .from(conversationVacancy)
+        .where(eq(conversationVacancy.conversationId, conversationId))
+    )
+  )
+
+export const mailAccountRowsFor = async (userId: string) =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx.select().from(mailAccount).where(eq(mailAccount.userId, userId))
+    )
+  )
+
+export const mailFolderRowsFor = async (accountId: string) =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx
+        .select()
+        .from(mailFolder)
+        .where(eq(mailFolder.accountId, accountId))
+        .orderBy(asc(mailFolder.path))
+    )
+  )
+
+/** Rewinds the IMAP cursor so a second sync re-reads and must dedupe. */
+export const resetMailFolderCursor = async (accountId: string) => {
+  await runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx
+        .update(mailFolder)
+        .set({ lastUid: 0, uidValidity: null })
+        .where(eq(mailFolder.accountId, accountId))
+    )
+  )
+}
+
+export const mailMessageRowsFor = async (accountId: string) =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx
+        .select()
+        .from(mailMessage)
+        .where(eq(mailMessage.accountId, accountId))
+        .orderBy(asc(mailMessage.uid))
+    )
+  )
+
+export const telegramAccountRowsFor = async (userId: string) =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx
+        .select()
+        .from(telegramAccount)
+        .where(eq(telegramAccount.userId, userId))
+    )
+  )
 
 /** A fake runner that records every target and returns a clean result. */
 export const recordingRunner = (targets: Array<string>) => {

@@ -5,6 +5,7 @@ import "./env.ts"
 import { ApiLayer } from "./client.ts"
 import { acpCommand } from "./commands/acp.ts"
 import { applyCommand } from "./commands/apply.ts"
+import { contactsCommand } from "./commands/contacts.ts"
 import { crawlCommand } from "./commands/crawl.ts"
 import { dbCommand } from "./commands/db.ts"
 import { decisionCommand } from "./commands/decision.ts"
@@ -13,11 +14,13 @@ import { harnessCommand } from "./commands/harness.ts"
 import { hydrateCommand } from "./commands/hydrate.ts"
 import { inferenceCommand } from "./commands/inference.ts"
 import { lexiconCommand } from "./commands/lexicon.ts"
+import { mailCommand } from "./commands/mail.ts"
 import { presetCommand } from "./commands/preset.ts"
 import { proxyCommand } from "./commands/proxy.ts"
 import { queueCommand } from "./commands/queue.ts"
 import { scheduleCommand } from "./commands/schedule.ts"
 import { healthCommand } from "./commands/system.ts"
+import { telegramCommand } from "./commands/telegram.ts"
 import { vacancyCommand } from "./commands/vacancy.ts"
 import { writeCommand } from "./commands/write.ts"
 
@@ -77,6 +80,9 @@ root
       crawlCommand,
       hydrateCommand,
       scheduleCommand,
+      contactsCommand,
+      mailCommand,
+      telegramCommand,
       proxyCommand,
       acpCommand,
       inferenceCommand,

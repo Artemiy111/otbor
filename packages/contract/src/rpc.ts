@@ -1,23 +1,39 @@
 import { Schema } from "effect"
 import { Rpc, type RpcClient, type RpcClientError, RpcGroup } from "effect/rpc"
-import { CrawlFinishStatus, JobKind, KeywordMatchLocation, WritingLanguage } from "./enums.ts"
+import {
+  ContactKind,
+  ContactSource,
+  ConversationChannel,
+  CrawlFinishStatus,
+  JobKind,
+  KeywordMatchLocation,
+  SourceSyncKind,
+  WritingLanguage
+} from "./enums.ts"
 import {
   ApplicationId,
+  ContactId,
+  ConversationId,
   EmployerId,
   HhAccountId,
   HarnessId,
   HarnessJobId,
   KeywordId,
   LeaseId,
+  MailAccountId,
   PresetId,
   ScheduleId,
   SearchRunId,
+  TelegramAccountId,
   VacancyId
 } from "./ids.ts"
 import { ApiError } from "./errors.ts"
 import {
   ApplicationDetail,
   ApplicationRecord,
+  ContactRecord,
+  ConversationDetail,
+  ConversationSummary,
   CrawlRun,
   CrawlSchedule,
   DecisionRecord,
@@ -31,10 +47,14 @@ import {
   HydrationTarget,
   KitRecord,
   LexiconKeyword,
+  MailAccountRecord,
   PresetFilter,
   PresetPreview,
   PresetRecord,
   QueueStats,
+  SyncResult,
+  TelegramAccountRecord,
+  TelegramLoginStatusValue,
   TitleGateResult,
   TitleVerdictRecord,
   VacancyDetail,
@@ -201,9 +221,12 @@ export const SchedulesList = Rpc.make("SchedulesList", {
 export const ScheduleUpsert = Rpc.make("ScheduleUpsert", {
   payload: Schema.Struct({
     id: Schema.optional(ScheduleId),
+    /** Defaults to `search`; the source kinds dispatch to their own runners. */
+    kind: Schema.optional(SourceSyncKind),
     targetId: Schema.String,
     intervalMinutes: Schema.Int,
-    enabled: Schema.optional(Schema.Boolean)
+    enabled: Schema.optional(Schema.Boolean),
+    options: Schema.optional(Schema.Record(Schema.String, Schema.Unknown))
   }),
   success: CrawlSchedule,
   error: ApiError
@@ -220,6 +243,151 @@ export const ScheduleRunNow = Rpc.make("ScheduleRunNow", {
   success: Schema.Struct({
     accepted: Schema.Boolean,
     schedule: CrawlSchedule
+  }),
+  error: ApiError
+})
+
+/* -------------------------------------------------------------------------- */
+/* Contacts and conversations                                                 */
+/* -------------------------------------------------------------------------- */
+
+export const ContactsList = Rpc.make("ContactsList", {
+  payload: Schema.Struct({
+    query: Schema.optional(Schema.String),
+    kind: Schema.optional(ContactKind),
+    source: Schema.optional(ContactSource),
+    limit: Schema.optional(Schema.Int),
+    offset: Schema.optional(Schema.Int)
+  }),
+  success: Schema.Struct({
+    items: Schema.Array(ContactRecord),
+    total: Schema.Int
+  }),
+  error: ApiError
+})
+
+export const ContactRemove = Rpc.make("ContactRemove", {
+  payload: Schema.Struct({ id: ContactId }),
+  success: Schema.Struct({ id: ContactId, deleted: Schema.Boolean }),
+  error: ApiError
+})
+
+export const ConversationsList = Rpc.make("ConversationsList", {
+  payload: Schema.Struct({
+    channel: Schema.optional(ConversationChannel),
+    query: Schema.optional(Schema.String),
+    limit: Schema.optional(Schema.Int)
+  }),
+  success: Schema.Array(ConversationSummary),
+  error: ApiError
+})
+
+export const ConversationGet = Rpc.make("ConversationGet", {
+  payload: Schema.Struct({ id: ConversationId }),
+  success: ConversationDetail,
+  error: ApiError
+})
+
+/* -------------------------------------------------------------------------- */
+/* Mail                                                                       */
+/* -------------------------------------------------------------------------- */
+
+export const MailAccountsList = Rpc.make("MailAccountsList", {
+  success: Schema.Array(MailAccountRecord),
+  error: ApiError
+})
+
+export const MailAccountUpsert = Rpc.make("MailAccountUpsert", {
+  payload: Schema.Struct({
+    id: Schema.optional(MailAccountId),
+    label: Schema.String,
+    address: Schema.String,
+    host: Schema.String,
+    port: Schema.Int,
+    secure: Schema.optional(Schema.Boolean),
+    username: Schema.String,
+    /** App password. Omitted keeps the stored secret; never returned. */
+    password: Schema.optional(Schema.String),
+    includeSent: Schema.optional(Schema.Boolean),
+    backfillDays: Schema.optional(Schema.Int),
+    enabled: Schema.optional(Schema.Boolean)
+  }),
+  success: MailAccountRecord,
+  error: ApiError
+})
+
+export const MailAccountRemove = Rpc.make("MailAccountRemove", {
+  payload: Schema.Struct({ id: MailAccountId }),
+  success: Schema.Struct({ id: MailAccountId, deleted: Schema.Boolean }),
+  error: ApiError
+})
+
+export const MailAccountTest = Rpc.make("MailAccountTest", {
+  payload: Schema.Struct({ id: MailAccountId }),
+  success: Schema.Struct({
+    ok: Schema.Boolean,
+    address: Schema.String,
+    folders: Schema.Int,
+    messages: Schema.NullOr(Schema.Int)
+  }),
+  error: ApiError
+})
+
+/** Synchronous on purpose: a manual sync is short and the operator waits. */
+export const MailSyncNow = Rpc.make("MailSyncNow", {
+  payload: Schema.Struct({ id: MailAccountId }),
+  success: SyncResult,
+  error: ApiError
+})
+
+/* -------------------------------------------------------------------------- */
+/* Telegram                                                                   */
+/* -------------------------------------------------------------------------- */
+
+export const TelegramAccountsList = Rpc.make("TelegramAccountsList", {
+  success: Schema.Array(TelegramAccountRecord),
+  error: ApiError
+})
+
+export const TelegramAccountUpsert = Rpc.make("TelegramAccountUpsert", {
+  payload: Schema.Struct({
+    id: Schema.optional(TelegramAccountId),
+    label: Schema.String,
+    apiId: Schema.Int,
+    apiHash: Schema.String,
+    phone: Schema.optional(Schema.String)
+  }),
+  success: TelegramAccountRecord,
+  error: ApiError
+})
+
+export const TelegramAccountRemove = Rpc.make("TelegramAccountRemove", {
+  payload: Schema.Struct({ id: TelegramAccountId }),
+  success: Schema.Struct({ id: TelegramAccountId, deleted: Schema.Boolean }),
+  error: ApiError
+})
+
+export const TelegramSyncNow = Rpc.make("TelegramSyncNow", {
+  payload: Schema.Struct({ id: TelegramAccountId }),
+  success: SyncResult,
+  error: ApiError
+})
+
+/** Starts a QR login in a detached fiber and returns the first QR payload. */
+export const TelegramLoginQr = Rpc.make("TelegramLoginQr", {
+  payload: Schema.Struct({ id: TelegramAccountId }),
+  success: Schema.Struct({
+    qrUrl: Schema.String,
+    expiresAt: Schema.String
+  }),
+  error: ApiError
+})
+
+export const TelegramLoginStatus = Rpc.make("TelegramLoginStatus", {
+  payload: Schema.Struct({ id: TelegramAccountId }),
+  success: Schema.Struct({
+    status: TelegramLoginStatusValue,
+    error: Schema.optional(Schema.NullOr(Schema.String))
   }),
   error: ApiError
 })
@@ -570,6 +738,21 @@ export const OtborRpcs = RpcGroup.make(
   ScheduleUpsert,
   ScheduleRemove,
   ScheduleRunNow,
+  ContactsList,
+  ContactRemove,
+  ConversationsList,
+  ConversationGet,
+  MailAccountsList,
+  MailAccountUpsert,
+  MailAccountRemove,
+  MailAccountTest,
+  MailSyncNow,
+  TelegramAccountsList,
+  TelegramAccountUpsert,
+  TelegramAccountRemove,
+  TelegramSyncNow,
+  TelegramLoginQr,
+  TelegramLoginStatus,
   TitlesPreview,
   TitlesSetUserVerdict,
   LexiconList,

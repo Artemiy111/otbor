@@ -1,16 +1,27 @@
 import { OtborRpcs } from "@otbor/contract"
 import { Effect, Layer } from "effect"
 import { ApplicationService } from "../services/ApplicationService.ts"
+import { ContactService } from "../services/ContactService.ts"
+import { ConversationService } from "../services/ConversationService.ts"
 import { CorpusService } from "../services/CorpusService.ts"
 import { CrawlRunner } from "../services/CrawlRunner.ts"
 import { CrawlService } from "../services/CrawlService.ts"
 import { DecisionService } from "../services/DecisionService.ts"
+import { EmployerHydrator } from "../services/EmployerHydrator.ts"
 import { GateService } from "../services/GateService.ts"
+import { HydrationRunner } from "../services/HydrationRunner.ts"
 import { InferenceService } from "../services/InferenceService.ts"
+import { MailGatewayProvider } from "../services/MailGatewayProvider.ts"
+import { MailService } from "../services/MailService.ts"
+import { MailSync } from "../services/MailSync.ts"
 import { PresetService } from "../services/PresetService.ts"
 import { QueueService } from "../services/QueueService.ts"
+import { ScheduleDispatcher } from "../services/ScheduleDispatcher.ts"
 import { ScheduleService } from "../services/ScheduleService.ts"
 import { SystemService } from "../services/SystemService.ts"
+import { TelegramGatewayProvider } from "../services/TelegramGatewayProvider.ts"
+import { TelegramService } from "../services/TelegramService.ts"
+import { TelegramSync } from "../services/TelegramSync.ts"
 import { WritingService } from "../services/WritingService.ts"
 
 /**
@@ -31,6 +42,10 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const presets = yield* PresetService
     const queue = yield* QueueService
     const schedules = yield* ScheduleService
+    const contacts = yield* ContactService
+    const conversations = yield* ConversationService
+    const mail = yield* MailService
+    const telegram = yield* TelegramService
 
     return {
       SystemHealth: () => system.health(),
@@ -53,6 +68,24 @@ export const OtborHandlers = OtborRpcs.toLayer(
       ScheduleUpsert: (payload) => schedules.upsert(payload),
       ScheduleRemove: ({ id }) => schedules.remove(id),
       ScheduleRunNow: ({ id }) => schedules.runNow(id),
+
+      ContactsList: (payload) => contacts.list(payload),
+      ContactRemove: ({ id }) => contacts.remove(id),
+      ConversationsList: (payload) => conversations.list(payload),
+      ConversationGet: ({ id }) => conversations.get(id),
+
+      MailAccountsList: () => mail.list(),
+      MailAccountUpsert: (payload) => mail.upsert(payload),
+      MailAccountRemove: ({ id }) => mail.remove(id),
+      MailAccountTest: ({ id }) => mail.test(id),
+      MailSyncNow: ({ id }) => mail.syncNow(id),
+
+      TelegramAccountsList: () => telegram.list(),
+      TelegramAccountUpsert: (payload) => telegram.upsert(payload),
+      TelegramAccountRemove: ({ id }) => telegram.remove(id),
+      TelegramSyncNow: ({ id }) => telegram.syncNow(id),
+      TelegramLoginQr: ({ id }) => telegram.loginQr(id),
+      TelegramLoginStatus: ({ id }) => telegram.loginStatus(id),
 
       TitlesPreview: ({ title }) => gate.preview(title),
       TitlesSetUserVerdict: ({ title, verdict, roleFamily }) =>
@@ -108,11 +141,35 @@ const crawlServices = Layer.merge(CorpusService.layer, CrawlService.layer)
 const crawlRunner = CrawlRunner.layer.pipe(Layer.provide(crawlServices))
 const crawlStack = Layer.mergeAll(crawlServices, crawlRunner)
 
+/** Source sync services: real transports, credentials from local storage. */
+const mailSync = MailSync.layer.pipe(Layer.provide(MailGatewayProvider.layer))
+const telegramSync = TelegramSync.layer.pipe(Layer.provide(TelegramGatewayProvider.layer))
+const hydration = HydrationRunner.layer.pipe(Layer.provide(crawlStack))
+const employers = EmployerHydrator.layer
+
+const sourceStack = Layer.mergeAll(
+  crawlStack,
+  hydration,
+  employers,
+  mailSync,
+  telegramSync
+)
+
+const dispatcher = ScheduleDispatcher.layer.pipe(Layer.provide(sourceStack))
+const scheduleService = ScheduleService.layer.pipe(Layer.provide(dispatcher))
+const mailService = MailService.layer.pipe(Layer.provide(mailSync))
+const telegramService = TelegramService.layer.pipe(Layer.provide(telegramSync))
+
 /** All services, with their database and user dependencies satisfied. */
 export const OtborServices = Layer.mergeAll(
   SystemService.layer,
-  crawlStack,
-  ScheduleService.layer.pipe(Layer.provide(crawlStack)),
+  sourceStack,
+  dispatcher,
+  scheduleService,
+  mailService,
+  telegramService,
+  ContactService.layer,
+  ConversationService.layer,
   InferenceService.layer,
   WritingService.layer,
   DecisionService.layer,

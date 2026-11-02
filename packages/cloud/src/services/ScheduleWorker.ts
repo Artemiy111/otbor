@@ -2,14 +2,15 @@ import type { ApiError } from "@otbor/contract"
 import { Effect } from "effect"
 import { Database } from "../db/Database.ts"
 import * as ScheduleRepository from "../repositories/ScheduleRepository.ts"
-import { CrawlRunner, type CrawlRunnerResult } from "./CrawlRunner.ts"
+import { ScheduleDispatcher, type ScheduleDispatchResult } from "./ScheduleDispatcher.ts"
 
 export interface ScheduleRunOutcome {
   readonly scheduleId: string
   readonly targetId: string
+  readonly kind: string
   readonly ok: boolean
   readonly error: string | null
-  readonly result?: CrawlRunnerResult
+  readonly result?: ScheduleDispatchResult
 }
 
 export interface DueScheduleOptions {
@@ -17,8 +18,14 @@ export interface DueScheduleOptions {
   readonly limit?: number
 }
 
-const errorMessage = (error: ApiError): string =>
-  "message" in error && typeof error.message === "string" ? error.message : error._tag
+const errorMessage = (error: ApiError): string => {
+  if (error._tag === "NotFound") return `${error.entity} not found: ${error.id}`
+  if (error._tag === "Conflict") return `${error.entity}: ${error.message}`
+  if ("message" in error && typeof error.message === "string" && error.message.trim() !== "") {
+    return error.message
+  }
+  return error._tag
+}
 
 /**
  * One worker tick: claim due schedules and run them one at a time.
@@ -26,7 +33,7 @@ const errorMessage = (error: ApiError): string =>
  * Claiming uses the owner connection with `FOR UPDATE SKIP LOCKED`, and
  * `next_run_at` is advanced in the same transaction, so a second worker
  * process cannot pick up the same interval and a crash cannot replay it.
- * Each crawl is isolated: a failure is written to `last_error` and the loop
+ * Each kind is isolated: a failure is written to `last_error` and the loop
  * continues with the next schedule.
  */
 export const runDueSchedules = (
@@ -34,11 +41,11 @@ export const runDueSchedules = (
 ): Effect.Effect<
   ReadonlyArray<ScheduleRunOutcome>,
   never,
-  Database | CrawlRunner
+  Database | ScheduleDispatcher
 > =>
   Effect.gen(function*() {
     const database = yield* Database
-    const runner = yield* CrawlRunner
+    const dispatcher = yield* ScheduleDispatcher
 
     const recordError = (scheduleId: string, error: string | null) =>
       database
@@ -64,48 +71,45 @@ export const runDueSchedules = (
     const outcomes: Array<ScheduleRunOutcome> = []
 
     for (const schedule of due) {
-      const outcome = yield* runner
-        .run({
-          userId: schedule.userId,
-          url: schedule.targetId,
-          maxPages: 1
-        })
-        .pipe(
-          Effect.matchEffect({
-            onFailure: (error: ApiError) =>
-              recordError(schedule.id, errorMessage(error)).pipe(
-                Effect.as({
-                  scheduleId: schedule.id,
-                  targetId: schedule.targetId,
-                  ok: false,
-                  error: errorMessage(error)
-                } satisfies ScheduleRunOutcome)
-              ),
-            onSuccess: (result: CrawlRunnerResult) =>
-              recordError(schedule.id, result.error).pipe(
-                Effect.as({
-                  scheduleId: schedule.id,
-                  targetId: schedule.targetId,
-                  ok: result.error === null,
-                  error: result.error,
-                  result
-                } satisfies ScheduleRunOutcome)
-              )
-          }),
-          // A defect must not stop the remaining schedules either.
-          Effect.catchCause((cause) =>
-            Effect.gen(function*() {
-              yield* Effect.logError(`schedule ${schedule.id}: crawl crashed`, cause)
-              yield* recordError(schedule.id, "crawl crashed")
-              return {
+      const outcome = yield* dispatcher.run(schedule).pipe(
+        Effect.matchEffect({
+          onFailure: (error: ApiError) =>
+            recordError(schedule.id, errorMessage(error)).pipe(
+              Effect.as({
                 scheduleId: schedule.id,
                 targetId: schedule.targetId,
+                kind: schedule.kind,
                 ok: false,
-                error: "crawl crashed"
-              } satisfies ScheduleRunOutcome
-            })
-          )
+                error: errorMessage(error)
+              } satisfies ScheduleRunOutcome)
+            ),
+          onSuccess: (result: ScheduleDispatchResult) =>
+            recordError(schedule.id, result.error).pipe(
+              Effect.as({
+                scheduleId: schedule.id,
+                targetId: schedule.targetId,
+                kind: schedule.kind,
+                ok: result.ok,
+                error: result.error,
+                result
+              } satisfies ScheduleRunOutcome)
+            )
+        }),
+        // A defect must not stop the remaining schedules either.
+        Effect.catchCause((cause) =>
+          Effect.gen(function*() {
+            yield* Effect.logError(`schedule ${schedule.id}: runner crashed`, cause)
+            yield* recordError(schedule.id, "runner crashed")
+            return {
+              scheduleId: schedule.id,
+              targetId: schedule.targetId,
+              kind: schedule.kind,
+              ok: false,
+              error: "runner crashed"
+            } satisfies ScheduleRunOutcome
+          })
         )
+      )
 
       outcomes.push(outcome)
     }

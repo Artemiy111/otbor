@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test"
+import { ScheduleKind, SourceSyncKind } from "@otbor/contract"
+import { Schema } from "effect"
 import { failureReason } from "../src/services/CrawlRunner.ts"
 import { toCrawlSchedule, type StoredSchedule } from "../src/repositories/ScheduleRepository.ts"
 
@@ -59,6 +61,7 @@ describe("schedule mapping", () => {
       kind: "search",
       targetId: row.targetId,
       intervalMinutes: 60,
+      options: {},
       enabled: true,
       nextRunAt: "2026-11-02T12:00:00.000Z",
       lastRunAt: null,
@@ -66,5 +69,51 @@ describe("schedule mapping", () => {
       createdAt: "2026-11-01T10:00:00.000Z",
       updatedAt: "2026-11-01T10:00:00.000Z"
     })
+  })
+
+  test("source kinds keep their options on the wire", () => {
+    const row: StoredSchedule = {
+      id: "0190f0aa-0000-7000-8000-000000000002",
+      userId: "local-user",
+      kind: "vacancy_hydration",
+      targetId: "global",
+      intervalMinutes: 360,
+      options: { limit: 25, delayMs: 1000 },
+      enabled: true,
+      nextRunAt: null,
+      lastRunAt: null,
+      lastError: "blocked",
+      createdAt: new Date("2026-11-01T10:00:00.000Z"),
+      updatedAt: new Date("2026-11-01T10:00:00.000Z")
+    }
+
+    expect(toCrawlSchedule(row)).toMatchObject({
+      kind: "vacancy_hydration",
+      targetId: "global",
+      options: { limit: 25, delayMs: 1000 },
+      lastError: "blocked"
+    })
+  })
+})
+
+describe("schedule kinds", () => {
+  test("every dispatchable kind is accepted, anything else is not", () => {
+    const kinds: ReadonlyArray<ScheduleKind> = [
+      "search",
+      "source",
+      "vacancy_hydration",
+      "employer_hydration",
+      "mail_sync",
+      "telegram_sync",
+      "hh_chat_sync"
+    ]
+
+    for (const kind of kinds) {
+      expect(Schema.decodeUnknownSync(ScheduleKind)(kind)).toBe(kind)
+      expect(Schema.decodeUnknownSync(SourceSyncKind)(kind)).toBe(kind)
+    }
+
+    expect(() => Schema.decodeUnknownSync(ScheduleKind)("vacancy")).toThrow()
+    expect(() => Schema.decodeUnknownSync(ScheduleKind)("")).toThrow()
   })
 })

@@ -30,6 +30,10 @@ export const LeaseId = UuidV7.pipe(Schema.brand("LeaseId"))
 export const ScheduleId = UuidV7.pipe(Schema.brand("ScheduleId"))
 export const SearchQueryId = UuidV7.pipe(Schema.brand("SearchQueryId"))
 export const SearchRunId = UuidV7.pipe(Schema.brand("SearchRunId"))
+export const ContactId = UuidV7.pipe(Schema.brand("ContactId"))
+export const ConversationId = UuidV7.pipe(Schema.brand("ConversationId"))
+export const MailAccountId = UuidV7.pipe(Schema.brand("MailAccountId"))
+export const TelegramAccountId = UuidV7.pipe(Schema.brand("TelegramAccountId"))
 
 export type UserId = typeof UserId.Type
 export type HhAccountId = typeof HhAccountId.Type
@@ -49,6 +53,10 @@ export type LeaseId = typeof LeaseId.Type
 export type ScheduleId = typeof ScheduleId.Type
 export type SearchQueryId = typeof SearchQueryId.Type
 export type SearchRunId = typeof SearchRunId.Type
+export type ContactId = typeof ContactId.Type
+export type ConversationId = typeof ConversationId.Type
+export type MailAccountId = typeof MailAccountId.Type
+export type TelegramAccountId = typeof TelegramAccountId.Type
 
 /** External ids stay strings: a vendor may reuse them or make them negative. */
 export const HhVacancyId = Schema.String.pipe(Schema.brand("HhVacancyId"))
