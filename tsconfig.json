@@ -8,6 +8,7 @@
       "@otbor/crawler": ["./packages/crawler/src/index.ts"],
       "@otbor/acp": ["./packages/acp/src/index.ts"],
       "@otbor/harness": ["./packages/harness/src/index.ts"],
+      "@otbor/telegram": ["./packages/telegram/src/index.ts"],
       "@otbor/cloud": ["./packages/cloud/src/index.ts"]
     }
   },
