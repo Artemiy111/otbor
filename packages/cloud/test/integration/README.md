@@ -51,6 +51,12 @@ the first run creates it, exactly as `bun run db:migrate` does.
    `vacancy_search_hit` by (query, vacancy), `CrawlFinish` stores
    done/stopped/error with `finished_at`, and a second run of the same URL
    reuses the query and keeps its own cursor.
+8. **Crawl schedules** — `ScheduleUpsert`/`SchedulesList`/`ScheduleRemove` are
+   user-scoped, `ScheduleRunNow` accepts without waiting and moves
+   `next_run_at`, the worker claims only enabled, due `search` rows and
+   advances them before running, and a failing crawl records `last_error`
+   without stopping the next schedule. Schedule crawls use a fake
+   `CrawlRunner`, so the suite never calls hh.ru.
 
 ## Notes
 

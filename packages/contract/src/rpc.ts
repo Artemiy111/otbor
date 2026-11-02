@@ -9,6 +9,7 @@ import {
   HarnessJobId,
   KeywordId,
   LeaseId,
+  ScheduleId,
   SearchRunId,
   VacancyId
 } from "./ids.ts"
@@ -17,6 +18,7 @@ import {
   ApplicationDetail,
   ApplicationRecord,
   CrawlRun,
+  CrawlSchedule,
   DecisionRecord,
   EmployerDetail,
   EmployerSummary,
@@ -176,6 +178,46 @@ export const CrawlFinish = Rpc.make("CrawlFinish", {
 export const CrawlStatus = Rpc.make("CrawlStatus", {
   payload: Schema.Struct({ runId: SearchRunId }),
   success: CrawlRun,
+  error: ApiError
+})
+
+/* -------------------------------------------------------------------------- */
+/* Crawl schedules                                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Schedules are user-owned and run by the worker on their interval.
+ * `ScheduleRunNow` only accepts the request: the crawl itself runs in a
+ * detached fiber, so the RPC returns before a slow hh.ru page does.
+ */
+export const SchedulesList = Rpc.make("SchedulesList", {
+  success: Schema.Array(CrawlSchedule),
+  error: ApiError
+})
+
+export const ScheduleUpsert = Rpc.make("ScheduleUpsert", {
+  payload: Schema.Struct({
+    id: Schema.optional(ScheduleId),
+    targetId: Schema.String,
+    intervalMinutes: Schema.Int,
+    enabled: Schema.optional(Schema.Boolean)
+  }),
+  success: CrawlSchedule,
+  error: ApiError
+})
+
+export const ScheduleRemove = Rpc.make("ScheduleRemove", {
+  payload: Schema.Struct({ id: ScheduleId }),
+  success: Schema.Struct({ id: ScheduleId, deleted: Schema.Boolean }),
+  error: ApiError
+})
+
+export const ScheduleRunNow = Rpc.make("ScheduleRunNow", {
+  payload: Schema.Struct({ id: ScheduleId }),
+  success: Schema.Struct({
+    accepted: Schema.Boolean,
+    schedule: CrawlSchedule
+  }),
   error: ApiError
 })
 
@@ -504,6 +546,10 @@ export const OtborRpcs = RpcGroup.make(
   CrawlSavePage,
   CrawlFinish,
   CrawlStatus,
+  SchedulesList,
+  ScheduleUpsert,
+  ScheduleRemove,
+  ScheduleRunNow,
   TitlesPreview,
   TitlesSetUserVerdict,
   LexiconList,
