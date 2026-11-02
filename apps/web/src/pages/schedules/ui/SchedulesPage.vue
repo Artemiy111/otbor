@@ -504,7 +504,7 @@ const columns: ColumnDef<CrawlSchedule>[] = [
   <section>
     <PageHeader
       title="Обход"
-      description="Расписания поиска и синхронизации источников. Worker сам запускает те, чей срок наступил."
+      description="Расписания источников. Вид «Поиск» обходит страницу поиска hh.ru по указанному URL и сохраняет найденные вакансии в корпус; «Гидрация» догружает описания и работодателей. Запустите «Запустить сейчас», чтобы получить первую порцию, или дождитесь интервала."
     >
       <template #actions>
         <RefreshButton :loading="query.isLoading.value" @refresh="query.refetch()" />

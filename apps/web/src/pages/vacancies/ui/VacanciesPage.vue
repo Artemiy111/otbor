@@ -223,7 +223,7 @@ const refresh = () => {
       filter-label="Поиск"
       filter-placeholder="Название, компания или город"
       empty-title="Вакансий не найдено"
-      empty-description="Измените запрос, проверку заголовка или включите архивные вакансии."
+      empty-description="Измените запрос, проверку заголовка или включите архивные. Если корпус пуст, создайте расписание поиска на странице «Обход» и запустите его."
       @update:visible-rows="visibleRows = $event"
     >
       <template #toolbar>
