@@ -6,26 +6,26 @@ const emit = defineEmits<{ "update:modelValue": [value: string] }>()
 </script>
 
 <template>
-  <div class="flex items-center gap-2">
-    <Label for="queue-status-filter" class="text-muted-foreground">Status</Label>
+  <div class="space-y-1.5">
+    <Label for="queue-status-filter" class="text-xs text-muted-foreground">Статус</Label>
     <Select
       :model-value="props.modelValue"
       @update:model-value="(value) => emit('update:modelValue', String(value))"
     >
-      <SelectTrigger id="queue-status-filter" class="w-[170px]">
+      <SelectTrigger id="queue-status-filter" class="w-[230px]">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="all">All statuses</SelectItem>
-        <SelectItem value="pending">pending</SelectItem>
-        <SelectItem value="leased">leased</SelectItem>
-        <SelectItem value="running">running</SelectItem>
-        <SelectItem value="done">done</SelectItem>
-        <SelectItem value="failed">failed</SelectItem>
-        <SelectItem value="dead">dead</SelectItem>
-        <SelectItem value="needs_human">needs_human</SelectItem>
-        <SelectItem value="needs_reconcile">needs_reconcile</SelectItem>
-        <SelectItem value="cancelled">cancelled</SelectItem>
+        <SelectItem value="all">Все статусы</SelectItem>
+        <SelectItem value="pending">Ожидает (pending)</SelectItem>
+        <SelectItem value="leased">Взят в работу (leased)</SelectItem>
+        <SelectItem value="running">Выполняется (running)</SelectItem>
+        <SelectItem value="done">Готово (done)</SelectItem>
+        <SelectItem value="failed">Ошибка (failed)</SelectItem>
+        <SelectItem value="dead">Исчерпан (dead)</SelectItem>
+        <SelectItem value="needs_human">Нужен человек (needs_human)</SelectItem>
+        <SelectItem value="needs_reconcile">Нужна сверка (needs_reconcile)</SelectItem>
+        <SelectItem value="cancelled">Отменён (cancelled)</SelectItem>
       </SelectContent>
     </Select>
   </div>

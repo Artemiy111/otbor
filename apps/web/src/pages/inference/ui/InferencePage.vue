@@ -3,7 +3,7 @@ import { computed, onUnmounted, ref, watch } from "vue"
 import { useQuery } from "@pinia/colada"
 import { InferenceResult, type HarnessJob } from "@otbor/contract"
 import { Option, Schema } from "effect"
-import { CircleAlert } from "lucide-vue-next"
+import { CircleAlert } from "@lucide/vue"
 import { inferenceApi, inferenceKeys } from "@/entities/inference"
 import { InferenceEnqueueForm } from "@/features/inference-enqueue"
 import { describeError, formatDate } from "@/shared/lib"
@@ -14,6 +14,7 @@ import {
   Badge,
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
   StatusBadge
@@ -47,11 +48,7 @@ const notice = ref<string | null>(null)
 let timer: ReturnType<typeof setTimeout> | null = null
 let startedAt = 0
 
-const {
-  data: jobData,
-  error: queryError,
-  refetch
-} = useQuery({
+const { data: jobData, error: queryError, refetch } = useQuery({
   key: () => inferenceKeys.job(jobId.value ?? "none"),
   query: () => inferenceApi.get(jobId.value as string),
   enabled: () => jobId.value !== null
@@ -80,13 +77,13 @@ const statusHint = computed(() => {
   switch (job.value?.status) {
     case "failed":
     case "dead":
-      return "The harness reported a terminal failure. The Queue page keeps the job and its result payload."
+      return "Harness сообщил окончательную ошибку. Задание и его результат остались на странице «Очередь»."
     case "needs_human":
-      return "The harness needs an operator. Check the Queue page before retrying."
+      return "Заданию нужен оператор. Проверьте страницу «Очередь», прежде чем повторять."
     case "needs_reconcile":
-      return "The cloud is reconciling this job. Check the Queue page."
+      return "Облако сверяет результат задания. Проверьте страницу «Очередь»."
     case "cancelled":
-      return "This job was cancelled."
+      return "Задание отменено."
     default:
       return ""
   }
@@ -117,10 +114,10 @@ const tick = () => {
   if (waited >= POLL_TIMEOUT_MS) {
     stopPolling()
     notice.value =
-      `No answer after ${Math.round(POLL_TIMEOUT_MS / 1_000)} s. ` +
+      `Ответа нет ${Math.round(POLL_TIMEOUT_MS / 1_000)} с. ` +
       (job.value?.status === "pending" || job.value?.status === "leased"
-        ? "The job is still waiting for an inference harness. Start one with `bun run harness`."
-        : "The job has not reached a terminal status yet. Check the Queue page.")
+        ? "Задание всё ещё ждёт harness генерации. Запустите его командой `bun run harness`."
+        : "Задание ещё не достигло конечного статуса. Проверьте страницу «Очередь».")
     return
   }
 
@@ -174,31 +171,30 @@ onUnmounted(stopPolling)
 <template>
   <section>
     <PageHeader
-      title="Inference"
-      description="One ACP prompt in the harness queue. The cloud never calls a model directly."
+      title="Генерация"
+      description="Один ACP-запрос в очереди harness. Облако никогда не вызывает модель напрямую."
     >
       <template #actions>
         <span v-if="polling" class="text-xs text-muted-foreground">
-          polling · {{ elapsedSeconds }} s
+          опрос · {{ elapsedSeconds }} с
         </span>
       </template>
     </PageHeader>
 
     <Alert v-if="notice" variant="warning" class="mb-4">
       <CircleAlert />
-      <AlertTitle>Waiting stopped</AlertTitle>
+      <AlertTitle>Ожидание остановлено</AlertTitle>
       <AlertDescription>{{ notice }}</AlertDescription>
     </Alert>
 
     <Alert v-if="errorText" variant="destructive" class="mb-4">
       <CircleAlert />
-      <AlertTitle>Inference unavailable</AlertTitle>
+      <AlertTitle>Генерация недоступна</AlertTitle>
       <AlertDescription>
         <p>{{ errorText }}</p>
         <p class="mt-1 text-xs opacity-80">
-          The page uses the same <code>/rpc</code> group as the CLI. Start the server with
-          <code>bun run server</code>, and make sure a harness is running with
-          <code>bun run harness</code>.
+          Страница использует ту же группу <code>/rpc</code>, что и CLI. Запустите сервер
+          командой <code>bun run server</code>, а harness — командой <code>bun run harness</code>.
         </p>
       </AlertDescription>
     </Alert>
@@ -207,23 +203,24 @@ onUnmounted(stopPolling)
 
     <template v-if="job">
       <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Job" :value="job.id" mono />
-        <StatCard label="Status">
-          <StatusBadge :value="job.status" />
+        <StatCard label="Задание" :value="job.id" mono />
+        <StatCard label="Статус">
+          <StatusBadge :value="job.status" raw />
         </StatCard>
-        <StatCard label="Attempts" :value="`${job.attempts} / ${job.maxAttempts}`" />
-        <StatCard label="Created" :value="formatDate(job.createdAt)" />
+        <StatCard label="Попытки" :value="`${job.attempts} / ${job.maxAttempts}`" />
+        <StatCard label="Создано" :value="formatDate(job.createdAt)" />
       </div>
 
       <Alert v-if="statusHint" variant="warning" class="mt-4">
         <CircleAlert />
-        <AlertTitle>Inference {{ job.status }}</AlertTitle>
+        <AlertTitle>Статус: {{ job.status }}</AlertTitle>
         <AlertDescription>{{ statusHint }}</AlertDescription>
       </Alert>
 
       <Card v-if="result" class="mt-4">
         <CardHeader>
-          <CardTitle>Answer</CardTitle>
+          <CardTitle>Ответ</CardTitle>
+          <CardDescription>Текст, записанный harness в результат задания.</CardDescription>
         </CardHeader>
         <CardContent>
           <div class="mb-3 flex flex-wrap gap-1.5">
@@ -231,7 +228,7 @@ onUnmounted(stopPolling)
               {{ result.model }}
             </Badge>
             <Badge v-if="result.durationMs !== undefined" variant="outline">
-              {{ result.durationMs }} ms
+              {{ result.durationMs }} мс
             </Badge>
           </div>
           <pre
@@ -240,7 +237,7 @@ onUnmounted(stopPolling)
 
           <template v-if="usageText !== ''">
             <h3 class="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Usage
+              Использование
             </h3>
             <pre
               class="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-3 text-[11px]"
@@ -250,7 +247,7 @@ onUnmounted(stopPolling)
       </Card>
 
       <p v-else-if="polling" class="mt-4 text-sm text-muted-foreground">
-        Waiting for the harness to write a result…
+        Ждём, когда harness запишет результат…
       </p>
     </template>
   </section>

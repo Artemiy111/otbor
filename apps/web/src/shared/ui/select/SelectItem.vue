@@ -7,7 +7,7 @@ import {
   useForwardProps,
   type SelectItemProps
 } from "reka-ui"
-import { Check } from "lucide-vue-next"
+import { Check } from "@lucide/vue"
 import { cn } from "@/shared/lib"
 
 const props = defineProps<SelectItemProps & { class?: HTMLAttributes["class"] }>()

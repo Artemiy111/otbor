@@ -1,9 +1,16 @@
 <script setup lang="ts">
+import { computed } from "vue"
 import { useQuery } from "@pinia/colada"
-import { CircleAlert } from "lucide-vue-next"
+import { CircleAlert } from "@lucide/vue"
 import { applicationApi, applicationKeys } from "@/entities/application"
 import { RefreshButton } from "@/features/refresh-button"
-import { describeError, formatDate, formatPriority } from "@/shared/lib"
+import {
+  decisionReasonLabel,
+  describeError,
+  formatDate,
+  formatPriority,
+  vacancyPath
+} from "@/shared/lib"
 import {
   Alert,
   AlertDescription,
@@ -12,6 +19,7 @@ import {
   Button,
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
   EmptyState,
@@ -29,9 +37,22 @@ import { StatCard } from "@/widgets/stat-card"
 
 const props = defineProps<{ id: string }>()
 
-const { data, isPending, isLoading, error, refetch } = useQuery({
+const query = useQuery({
   key: () => applicationKeys.detail(props.id),
   query: () => applicationApi.get(props.id)
+})
+
+const data = computed(() => query.data.value)
+
+const subtitle = computed(() => {
+  const application = data.value?.application
+  if (application === undefined) return undefined
+  return [
+    application.employerName ?? "Компания не указана",
+    application.resumeId ? `резюме ${application.resumeId}` : null
+  ]
+    .filter((part): part is string => typeof part === "string" && part !== "")
+    .join(" · ")
 })
 
 const cost = (value: number | null | undefined): string =>
@@ -41,33 +62,27 @@ const cost = (value: number | null | undefined): string =>
 <template>
   <section>
     <PageHeader
-      :title="data?.application.vacancyTitle ?? data?.application.vacancyId ?? 'Application'"
-      :description="
-        data
-          ? [data.application.employerName ?? 'unknown employer', data.application.resumeId ? `resume ${data.application.resumeId}` : null]
-              .filter(Boolean)
-              .join(' · ')
-          : undefined
-      "
+      :title="data?.application.vacancyTitle ?? 'Отклик'"
+      :description="subtitle"
       back-to="#/applications"
-      back-label="Applications"
+      back-label="Отклики"
     >
       <template #actions>
-        <StatusBadge v-if="data" :value="data.application.state" />
+        <StatusBadge v-if="data" :value="data.application.state" raw />
         <Button v-if="data" as-child variant="outline" size="sm">
-          <a :href="`#/vacancies/${data.application.vacancyId}`">Vacancy</a>
+          <a :href="vacancyPath(data.application.vacancyId)">Вакансия</a>
         </Button>
-        <RefreshButton :loading="isLoading" @refresh="refetch()" />
+        <RefreshButton :loading="query.isLoading.value" @refresh="query.refetch()" />
       </template>
     </PageHeader>
 
-    <Alert v-if="error" variant="destructive" class="mb-4">
+    <Alert v-if="query.error.value" variant="destructive" class="mb-4">
       <CircleAlert />
-      <AlertTitle>Could not load application</AlertTitle>
-      <AlertDescription>{{ describeError(error) }}</AlertDescription>
+      <AlertTitle>Не удалось загрузить отклик</AlertTitle>
+      <AlertDescription>{{ describeError(query.error.value) }}</AlertDescription>
     </Alert>
 
-    <div v-if="isPending" class="space-y-4">
+    <div v-if="query.isPending.value" class="space-y-4">
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Skeleton v-for="index in 4" :key="index" class="h-24 w-full" />
       </div>
@@ -77,34 +92,35 @@ const cost = (value: number | null | undefined): string =>
 
     <template v-else-if="data">
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Account" :value="data.application.hhAccountId" mono />
-        <StatCard label="Created" :value="formatDate(data.application.createdAt)" />
-        <StatCard label="Updated" :value="formatDate(data.application.updatedAt)" />
-        <StatCard label="Attempts" :value="data.attempts.length" />
+        <StatCard label="Аккаунт" :value="data.application.hhAccountId" mono />
+        <StatCard label="Создан" :value="formatDate(data.application.createdAt)" />
+        <StatCard label="Обновлён" :value="formatDate(data.application.updatedAt)" />
+        <StatCard label="Попыток" :value="data.attempts.length" />
       </div>
 
       <Card class="mt-4">
         <CardHeader>
-          <CardTitle>Attempts</CardTitle>
+          <CardTitle>Попытки</CardTitle>
+          <CardDescription>Что harness сообщил после каждой попытки.</CardDescription>
         </CardHeader>
         <CardContent class="p-0">
           <Table v-if="data.attempts.length > 0">
             <TableHeader>
               <TableRow>
-                <TableHead>Seq</TableHead>
-                <TableHead>Stage</TableHead>
-                <TableHead>Exit</TableHead>
-                <TableHead>Harness</TableHead>
-                <TableHead>Started</TableHead>
-                <TableHead>Finished</TableHead>
+                <TableHead>№</TableHead>
+                <TableHead>Этап</TableHead>
+                <TableHead>Итог</TableHead>
+                <TableHead>Исполнитель</TableHead>
+                <TableHead>Начат</TableHead>
+                <TableHead>Завершён</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               <TableRow v-for="attempt in data.attempts" :key="attempt.id">
                 <TableCell>{{ attempt.seq }}</TableCell>
-                <TableCell><StatusBadge :value="attempt.stage" /></TableCell>
+                <TableCell><StatusBadge :value="attempt.stage" raw /></TableCell>
                 <TableCell>
-                  <StatusBadge v-if="attempt.exit" :value="attempt.exit.tag" />
+                  <StatusBadge v-if="attempt.exit" :value="attempt.exit.tag" raw />
                   <span v-else class="text-muted-foreground">—</span>
                   <div v-if="attempt.exit?.message" class="mt-1 text-xs text-muted-foreground">
                     {{ attempt.exit.message }}
@@ -120,31 +136,32 @@ const cost = (value: number | null | undefined): string =>
               </TableRow>
             </TableBody>
           </Table>
-          <EmptyState v-else title="No attempts recorded" />
+          <EmptyState v-else title="Попыток нет" description="Harness ещё не брал этот отклик." />
         </CardContent>
       </Card>
 
       <Card class="mt-4">
         <CardHeader>
-          <CardTitle>Kit</CardTitle>
+          <CardTitle>Комплект отклика</CardTitle>
+          <CardDescription>Письмо и ответы на вопросы формы.</CardDescription>
         </CardHeader>
         <CardContent>
           <template v-if="data.kit">
             <div class="mb-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <Badge variant="outline" class="font-mono">form {{ data.kit.formHash }}</Badge>
-              <Badge variant="outline" class="font-mono">model {{ data.kit.model ?? "—" }}</Badge>
-              <Badge variant="outline" class="font-mono">cost {{ cost(data.kit.costUsd) }}</Badge>
+              <Badge variant="outline" class="font-mono">форма {{ data.kit.formHash }}</Badge>
+              <Badge variant="outline" class="font-mono">модель {{ data.kit.model ?? "—" }}</Badge>
+              <Badge variant="outline" class="font-mono">стоимость {{ cost(data.kit.costUsd) }}</Badge>
             </div>
 
             <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Letter
+              Письмо
             </h3>
             <pre
               class="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/30 p-4 text-xs leading-relaxed text-muted-foreground"
-            >{{ data.kit.letter ?? "No cover letter." }}</pre>
+            >{{ data.kit.letter ?? "Письмо не подготовлено." }}</pre>
 
             <h3 class="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Answers
+              Ответы
             </h3>
             <div v-if="data.kit.answers.length > 0" class="space-y-2">
               <div
@@ -156,23 +173,28 @@ const cost = (value: number | null | undefined): string =>
                 <div class="whitespace-pre-wrap text-sm">{{ answer.answer }}</div>
               </div>
             </div>
-            <p v-else class="text-sm text-muted-foreground">No form answers.</p>
+            <p v-else class="text-sm text-muted-foreground">Ответов на вопросы нет.</p>
           </template>
-          <p v-else class="text-sm text-muted-foreground">Kit has not been prepared.</p>
+          <EmptyState
+            v-else
+            title="Комплект не подготовлен"
+            description="Письмо и ответы появятся после генерации."
+          />
         </CardContent>
       </Card>
 
       <Card v-if="data.decision" class="mt-4">
         <CardHeader>
-          <CardTitle>Decision</CardTitle>
+          <CardTitle>Решение</CardTitle>
+          <CardDescription>Вердикт, из которого создан отклик.</CardDescription>
         </CardHeader>
         <CardContent>
           <div class="flex flex-wrap items-center gap-2">
-            <StatusBadge :value="data.decision.verdict" />
-            <StatusBadge :value="data.decision.gate" />
-            <Badge variant="outline">fit {{ data.decision.fit }}</Badge>
+            <StatusBadge :value="data.decision.verdict" raw />
+            <StatusBadge :value="data.decision.gate" raw />
+            <Badge variant="outline">соответствие {{ data.decision.fit }}</Badge>
             <Badge variant="outline" class="font-mono">
-              priority {{ formatPriority(data.decision.priority) }}
+              приоритет {{ formatPriority(data.decision.priority) }}
             </Badge>
             <span class="text-xs text-muted-foreground">
               {{ formatDate(data.decision.createdAt) }}
@@ -183,9 +205,10 @@ const cost = (value: number | null | undefined): string =>
               v-for="reason in data.decision.reasons"
               :key="reason.code + (reason.detail ?? '')"
               variant="secondary"
-              class="font-mono text-[10px] font-normal"
+              class="font-normal"
+              :title="reason.code"
             >
-              {{ reason.code }}<template v-if="reason.detail">: {{ reason.detail }}</template>
+              {{ decisionReasonLabel(reason.code) }}<template v-if="reason.detail">: {{ reason.detail }}</template>
             </Badge>
           </div>
         </CardContent>

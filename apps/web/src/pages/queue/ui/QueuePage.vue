@@ -1,11 +1,19 @@
 <script setup lang="ts">
 import { computed, ref } from "vue"
 import { useQuery } from "@pinia/colada"
-import { CircleAlert } from "lucide-vue-next"
+import { CircleAlert } from "@lucide/vue"
 import { queueJobApi, queueJobKeys } from "@/entities/queue-job"
 import { QueueStatusFilter } from "@/features/queue-filter"
 import { RefreshButton } from "@/features/refresh-button"
-import { describeError, formatAge, formatDate, payloadPreview, payloadText } from "@/shared/lib"
+import {
+  describeError,
+  formatAge,
+  formatDate,
+  jobKindLabel,
+  jobStageLabel,
+  payloadPreview,
+  payloadText
+} from "@/shared/lib"
 import {
   Alert,
   AlertDescription,
@@ -48,25 +56,25 @@ const cards = computed(() => {
   const value = stats.value
   if (value === undefined) return []
   return [
-    { label: "pending", value: value.pending },
-    { label: "leased", value: value.leased },
-    { label: "running", value: value.running },
-    { label: "done", value: value.done },
-    { label: "failed", value: value.failed },
-    { label: "dead", value: value.dead },
-    { label: "needs human", value: value.needsHuman },
-    { label: "needs reconcile", value: value.needsReconcile }
+    { label: "Ожидают", value: value.pending },
+    { label: "Взяты", value: value.leased },
+    { label: "Выполняются", value: value.running },
+    { label: "Готовы", value: value.done },
+    { label: "С ошибкой", value: value.failed },
+    { label: "Исчерпаны", value: value.dead },
+    { label: "Нужен человек", value: value.needsHuman },
+    { label: "Нужна сверка", value: value.needsReconcile }
   ]
 })
-
-const isRefreshing = computed(
-  () => statsQuery.isLoading.value || jobsQuery.isLoading.value
-)
 
 const errorText = computed(() => {
   const failure = jobsQuery.error.value ?? statsQuery.error.value
   return failure === null ? null : describeError(failure)
 })
+
+const isRefreshing = computed(
+  () => statsQuery.isLoading.value || jobsQuery.isLoading.value
+)
 
 const refresh = () => {
   void Promise.all([statsQuery.refetch(), jobsQuery.refetch()])
@@ -76,8 +84,8 @@ const refresh = () => {
 <template>
   <section>
     <PageHeader
-      title="Queue"
-      description="Harness jobs. Leases are exclusive; the cloud reconciles every exit."
+      title="Очередь"
+      description="Задания harness. Аренда эксклюзивна, а каждый итог облако сверяет само."
     >
       <template #actions>
         <RefreshButton :loading="isRefreshing" @refresh="refresh" />
@@ -86,21 +94,21 @@ const refresh = () => {
 
     <Alert v-if="errorText" variant="destructive" class="mb-4">
       <CircleAlert />
-      <AlertTitle>Could not read the queue</AlertTitle>
+      <AlertTitle>Не удалось прочитать очередь</AlertTitle>
       <AlertDescription>{{ errorText }}</AlertDescription>
     </Alert>
 
-    <div v-if="statsQuery.isPending" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    <div v-if="statsQuery.isPending.value" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
       <Skeleton v-for="index in 5" :key="index" class="h-24 w-full" />
     </div>
     <div v-else-if="stats" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
       <StatCard v-for="card in cards" :key="card.label" :label="card.label" :value="card.value" />
-      <StatCard label="oldest pending" :value="formatAge(stats.oldestPendingAgeSeconds)" />
+      <StatCard label="Старейшее ожидание" :value="formatAge(stats.oldestPendingAgeSeconds)" />
     </div>
 
-    <div class="mb-4 mt-4 flex flex-wrap items-center gap-3">
+    <div class="mb-4 mt-4 flex flex-wrap items-end gap-3">
       <QueueStatusFilter v-model="status" />
-      <span class="text-sm text-muted-foreground">{{ jobs.length }} jobs shown</span>
+      <span class="pb-2 text-xs text-muted-foreground">Заданий: {{ jobs.length }}</span>
     </div>
 
     <Card>
@@ -108,20 +116,20 @@ const refresh = () => {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Kind</TableHead>
-              <TableHead>Stage</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Priority</TableHead>
-              <TableHead>Attempts</TableHead>
-              <TableHead>Lease</TableHead>
-              <TableHead>Run at</TableHead>
-              <TableHead>Payload</TableHead>
-              <TableHead>Result</TableHead>
+              <TableHead>Тип</TableHead>
+              <TableHead>Этап</TableHead>
+              <TableHead>Статус</TableHead>
+              <TableHead>Приоритет</TableHead>
+              <TableHead>Попытки</TableHead>
+              <TableHead>Аренда</TableHead>
+              <TableHead>Запуск</TableHead>
+              <TableHead>Задание</TableHead>
+              <TableHead>Результат</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            <template v-if="jobsQuery.isPending">
-              <TableRow v-for="index in 6" :key="index">
+            <template v-if="jobsQuery.isPending.value">
+              <TableRow v-for="index in 8" :key="index">
                 <TableCell :colspan="9">
                   <Skeleton class="h-4 w-full" />
                 </TableCell>
@@ -131,18 +139,18 @@ const refresh = () => {
             <TableRow v-else-if="jobs.length === 0">
               <TableCell :colspan="9">
                 <EmptyState
-                  title="No jobs match this filter"
-                  description="New browser and inference work appears here after it is enqueued."
+                  title="Заданий нет"
+                  description="Новая работа браузера и генерации появится здесь после постановки в очередь."
                 />
               </TableCell>
             </TableRow>
 
             <TableRow v-for="job in jobs" :key="job.id">
-              <TableCell>{{ job.kind }}</TableCell>
-              <TableCell>{{ job.stage }}</TableCell>
-              <TableCell><StatusBadge :value="job.status" /></TableCell>
-              <TableCell class="font-mono">{{ job.priority }}</TableCell>
-              <TableCell>{{ job.attempts }} / {{ job.maxAttempts }}</TableCell>
+              <TableCell>{{ jobKindLabel(job.kind) }}</TableCell>
+              <TableCell>{{ jobStageLabel(job.stage) }}</TableCell>
+              <TableCell><StatusBadge :value="job.status" raw /></TableCell>
+              <TableCell class="font-mono tabular-nums">{{ job.priority }}</TableCell>
+              <TableCell class="tabular-nums">{{ job.attempts }} / {{ job.maxAttempts }}</TableCell>
               <TableCell class="text-muted-foreground">
                 <template v-if="job.leaseUntil">
                   <div class="font-mono text-xs">{{ job.leaseId }}</div>

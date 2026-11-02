@@ -4,11 +4,15 @@ export type Route =
   | { readonly name: "health" }
   | { readonly name: "vacancies" }
   | { readonly name: "vacancy"; readonly id: string }
+  | { readonly name: "companies" }
+  | { readonly name: "company"; readonly id: string }
+  | { readonly name: "keywords" }
   | { readonly name: "decisions" }
   | { readonly name: "applications" }
   | { readonly name: "application"; readonly id: string }
   | { readonly name: "queue" }
   | { readonly name: "inference" }
+  | { readonly name: "presets" }
 
 const parse = (): Route => {
   const raw = window.location.hash.replace(/^#\/?/, "")
@@ -17,6 +21,10 @@ const parse = (): Route => {
   switch (head) {
     case "vacancies":
       return id === "" ? { name: "vacancies" } : { name: "vacancy", id }
+    case "companies":
+      return id === "" ? { name: "companies" } : { name: "company", id }
+    case "keywords":
+      return { name: "keywords" }
     case "decisions":
       return { name: "decisions" }
     case "applications":
@@ -25,6 +33,8 @@ const parse = (): Route => {
       return { name: "queue" }
     case "inference":
       return { name: "inference" }
+    case "presets":
+      return { name: "presets" }
     case "health":
       return { name: "health" }
     default:
@@ -36,17 +46,20 @@ const parse = (): Route => {
 export const route = ref<Route>(parse())
 
 if (window.location.hash === "") {
-  window.location.hash = "#/health"
+  window.location.hash = "#/vacancies"
 }
 
 window.addEventListener("hashchange", () => {
   route.value = parse()
 })
 
+/** Detail pages keep their parent list item active in the sidebar. */
 export const activeSection = computed<string>(() => {
   switch (route.value.name) {
     case "vacancy":
       return "vacancies"
+    case "company":
+      return "companies"
     case "application":
       return "applications"
     default:

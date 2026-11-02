@@ -1,4 +1,4 @@
-import type { ApplicationDetail, ApplicationRecord, ApplicationId } from "@otbor/contract"
+import type { ApplicationDetail, ApplicationId, ApplicationRecord } from "@otbor/contract"
 import { call } from "@/shared/api"
 
 export interface ApplicationListInput {

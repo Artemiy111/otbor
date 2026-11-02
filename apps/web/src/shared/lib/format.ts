@@ -30,6 +30,14 @@ export const formatSalary = (
 export const formatPriority = (value: number): string =>
   Number.isFinite(value) ? value.toFixed(2) : "—"
 
+export const formatRating = (value: number | null | undefined): string =>
+  value === null || value === undefined || !Number.isFinite(value)
+    ? "—"
+    : value.toFixed(1)
+
+export const formatPercent = (value: number | null | undefined): string =>
+  value === null || value === undefined || !Number.isFinite(value) ? "—" : `${value}%`
+
 export const formatAge = (seconds: number): string => {
   if (!Number.isFinite(seconds) || seconds <= 0) return "0 с"
   if (seconds < 60) return `${Math.round(seconds)} с`
