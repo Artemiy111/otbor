@@ -327,19 +327,20 @@ export const registerHarness = async (
 export const leaseNext = async (
   userId: string,
   harnessId: string,
+  token: string,
   accounts: ReadonlyArray<string>
 ) =>
   runAs(
     userId,
     Effect.gen(function*() {
       const queue = yield* QueueService
-      return yield* queue.leaseNext({ harnessId, kinds: ["browser"], accounts })
+      return yield* queue.leaseNext({ harnessId, token, kinds: ["browser"], accounts })
     })
   )
 
 export const heartbeatJob = async (
   userId: string,
-  input: { harnessId: string; jobId: string; leaseId: string; epoch: number }
+  input: { harnessId: string; token: string; jobId: string; leaseId: string; epoch: number }
 ) =>
   runAs(
     userId,
@@ -353,6 +354,7 @@ export const completeJob = async (
   userId: string,
   input: {
     harnessId: string
+    token: string
     jobId: string
     leaseId: string
     epoch: number
@@ -371,6 +373,7 @@ export const completeJobFailure = async (
   userId: string,
   input: {
     harnessId: string
+    token: string
     jobId: string
     leaseId: string
     epoch: number

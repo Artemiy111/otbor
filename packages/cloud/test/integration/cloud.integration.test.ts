@@ -249,21 +249,21 @@ if (!integrationEnabled || serverUrl === null) {
       expect(await harnessAccountRows(third)).toHaveLength(0)
 
       // Even when the caller asks for every account, a harness only pulls its own.
-      const alphaLease = await leaseNext(tenant.userId, alpha.id, [
+      const alphaLease = await leaseNext(tenant.userId, alpha.id, alpha.token!, [
         tenant.accountId,
         second,
         third
       ])
       expect(alphaLease.job?.id).toBe(jobSecond.id)
 
-      const betaLease = await leaseNext(tenant.userId, beta.id, [
+      const betaLease = await leaseNext(tenant.userId, beta.id, beta.token!, [
         tenant.accountId,
         second,
         third
       ])
       expect(betaLease.job?.id).toBe(jobFirst.id)
 
-      const unbound = await leaseNext(tenant.userId, alpha.id, [third])
+      const unbound = await leaseNext(tenant.userId, alpha.id, alpha.token!, [third])
       expect(unbound.job).toBeNull()
       expect((await findJob(jobThird.id))?.status).toBe("pending")
     })
@@ -284,13 +284,14 @@ if (!integrationEnabled || serverUrl === null) {
         maxAttempts: 3
       })
 
-      const first = await leaseNext(tenant.userId, h.id, [tenant.accountId])
+      const first = await leaseNext(tenant.userId, h.id, h.token!, [tenant.accountId])
       expect(first.job?.id).toBe(job.id)
       expect(first.job?.leaseEpoch).toBe(1)
       const firstLeaseId = first.job!.leaseId!
 
       const beat = await heartbeatJob(tenant.userId, {
         harnessId: h.id,
+        token: h.token!,
         jobId: job.id,
         leaseId: firstLeaseId,
         epoch: first.job!.leaseEpoch
@@ -300,6 +301,7 @@ if (!integrationEnabled || serverUrl === null) {
       // A worker that lost the lease cannot complete with a newer epoch.
       const staleEpoch = await completeJobFailure(tenant.userId, {
         harnessId: h.id,
+        token: h.token!,
         jobId: job.id,
         leaseId: firstLeaseId,
         epoch: first.job!.leaseEpoch + 1,
@@ -314,13 +316,14 @@ if (!integrationEnabled || serverUrl === null) {
       expect((await findJob(job.id))?.status).toBe("pending")
       expect((await findJob(job.id))?.leaseId).toBeNull()
 
-      const second = await leaseNext(tenant.userId, h.id, [tenant.accountId])
+      const second = await leaseNext(tenant.userId, h.id, h.token!, [tenant.accountId])
       expect(second.job?.id).toBe(job.id)
       expect(second.job?.leaseEpoch).toBe(2)
 
       // The previous holder's lease and epoch are now stale.
       const staleLease = await completeJobFailure(tenant.userId, {
         harnessId: h.id,
+        token: h.token!,
         jobId: job.id,
         leaseId: firstLeaseId,
         epoch: first.job!.leaseEpoch,
@@ -330,6 +333,7 @@ if (!integrationEnabled || serverUrl === null) {
 
       const done = await completeJob(tenant.userId, {
         harnessId: h.id,
+        token: h.token!,
         jobId: job.id,
         leaseId: second.job!.leaseId!,
         epoch: second.job!.leaseEpoch,
@@ -350,7 +354,7 @@ if (!integrationEnabled || serverUrl === null) {
         maxAttempts: 1
       })
 
-      const leased = await leaseNext(tenant.userId, h.id, [tenant.accountId])
+      const leased = await leaseNext(tenant.userId, h.id, h.token!, [tenant.accountId])
       expect(leased.job?.id).toBe(job.id)
 
       await expireJobLease(job.id)
@@ -398,7 +402,7 @@ if (!integrationEnabled || serverUrl === null) {
       expect(await countJobs(appId, "submit")).toBe(1)
 
       const h = await registerHarness(tenant.userId, [tenant.accountId])
-      const submitLease = await leaseNext(tenant.userId, h.id, [tenant.accountId])
+      const submitLease = await leaseNext(tenant.userId, h.id, h.token!, [tenant.accountId])
       expect(submitLease.job?.id).toBe(first.id)
       expect(submitLease.job?.stage).toBe("submit")
       expect((await findApplication(appId))?.state).toBe("submitting")
@@ -407,6 +411,7 @@ if (!integrationEnabled || serverUrl === null) {
       // reconcile instead of marking it submitted.
       const clicked = await completeJob(tenant.userId, {
         harnessId: h.id,
+        token: h.token!,
         jobId: submitLease.job!.id,
         leaseId: submitLease.job!.leaseId!,
         epoch: submitLease.job!.leaseEpoch,
@@ -428,12 +433,13 @@ if (!integrationEnabled || serverUrl === null) {
       expect(new Date(reconcileRow.runAt).getTime()).toBeGreaterThan(Date.now())
 
       await makeJobRunnable(reconcileRow.id)
-      const reconcileLease = await leaseNext(tenant.userId, h.id, [tenant.accountId])
+      const reconcileLease = await leaseNext(tenant.userId, h.id, h.token!, [tenant.accountId])
       expect(String(reconcileLease.job?.id)).toBe(String(reconcileRow.id))
       expect(reconcileLease.job?.stage).toBe("reconcile")
 
       const confirmed = await completeJob(tenant.userId, {
         harnessId: h.id,
+        token: h.token!,
         jobId: reconcileLease.job!.id,
         leaseId: reconcileLease.job!.leaseId!,
         epoch: reconcileLease.job!.leaseEpoch,
@@ -470,12 +476,13 @@ if (!integrationEnabled || serverUrl === null) {
       })
 
       const h = await registerHarness(tenant.userId, [tenant.accountId])
-      const submitLease = await leaseNext(tenant.userId, h.id, [tenant.accountId])
+      const submitLease = await leaseNext(tenant.userId, h.id, h.token!, [tenant.accountId])
       expect(submitLease.job?.stage).toBe("submit")
 
       // The harness is untrusted: "submitted" is not success.
       const trusted = await completeJob(tenant.userId, {
         harnessId: h.id,
+        token: h.token!,
         jobId: submitLease.job!.id,
         leaseId: submitLease.job!.leaseId!,
         epoch: submitLease.job!.leaseEpoch,

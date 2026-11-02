@@ -1,8 +1,15 @@
 import type { HarnessRegistration, JobKind } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
+import { hashesEqual } from "../auth/harnessToken.ts"
 import type { Executor, RepoEffect } from "../db/Database.ts"
 import { harness, harnessAccount } from "../db/tables.ts"
+
+/**
+ * A harness as storage knows it. The plaintext token is deliberately absent:
+ * only `HarnessRegister` can hand it to the caller, and it is never read back.
+ */
+export type HarnessRecord = Omit<HarnessRegistration, "token">
 
 export const register = (
   tx: Executor,
@@ -11,8 +18,10 @@ export const register = (
     readonly name: string
     readonly kinds: ReadonlyArray<JobKind>
     readonly accounts: ReadonlyArray<string>
+    /** SHA-256 of the freshly generated device token. */
+    readonly tokenHash: string
   }
-): RepoEffect<HarnessRegistration> =>
+): RepoEffect<HarnessRecord> =>
   Effect.gen(function*() {
     const [row] = yield* tx
       .insert(harness)
@@ -20,11 +29,18 @@ export const register = (
         userId: input.userId,
         name: input.name,
         kinds: input.kinds,
+        tokenHash: input.tokenHash,
         lastSeenAt: new Date()
       })
       .onConflictDoUpdate({
         target: [harness.userId, harness.name],
-        set: { kinds: sql`excluded.kinds`, lastSeenAt: sql`now()`, updatedAt: sql`now()` }
+        // Re-registering rotates the token: the old device stops working.
+        set: {
+          kinds: sql`excluded.kinds`,
+          tokenHash: sql`excluded.token_hash`,
+          lastSeenAt: sql`now()`,
+          updatedAt: sql`now()`
+        }
       })
       .returning()
 
@@ -58,6 +74,36 @@ export const register = (
     }
   })
 
+/**
+ * The only authentication a harness has: the row must exist for the current
+ * user (RLS), the id must match, and the stored hash must equal the hash of the
+ * presented token. A revoked harness has a null hash and therefore fails.
+ */
+export const authenticate = (
+  tx: Executor,
+  harnessId: string,
+  tokenHash: string
+): RepoEffect<boolean> =>
+  tx
+    .select({ tokenHash: harness.tokenHash })
+    .from(harness)
+    .where(sql`${harness.id} = ${harnessId}`)
+    .limit(1)
+    .pipe(
+      Effect.map(
+        (rows) => rows.length === 1 && hashesEqual(rows[0]!.tokenHash, tokenHash)
+      )
+    )
+
+/** Clears the token hash; the device token can never match again. */
+export const revoke = (tx: Executor, harnessId: string): RepoEffect<boolean> =>
+  tx
+    .update(harness)
+    .set({ tokenHash: null })
+    .where(sql`${harness.id} = ${harnessId}`)
+    .returning({ id: harness.id })
+    .pipe(Effect.map((rows) => rows.length > 0))
+
 export const touch = (tx: Executor, harnessId: string): RepoEffect<void> =>
   tx
     .update(harness)
@@ -75,7 +121,7 @@ export const accountsFor = (tx: Executor, harnessId: string): RepoEffect<Readonl
 export const find = (
   tx: Executor,
   harnessId: string
-): RepoEffect<HarnessRegistration | null> =>
+): RepoEffect<HarnessRecord | null> =>
   Effect.gen(function*() {
     const [row] = yield* tx.select().from(harness).where(sql`${harness.id} = ${harnessId}`).limit(1)
     if (row === undefined) return null

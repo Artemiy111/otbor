@@ -1,3 +1,4 @@
+export * from "./auth/harnessToken.ts"
 export * from "./db/Database.ts"
 export * from "./db/migrate.ts"
 export * from "./db/tables.ts"
