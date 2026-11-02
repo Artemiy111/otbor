@@ -284,7 +284,7 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                     vacancyId: updated.vacancyId,
                     canonicalUrl: vacancy.canonicalUrl,
                     resumeId: updated.resumeId ?? null,
-                    kitId: kit.id
+                    kit
                   })
                 }
 

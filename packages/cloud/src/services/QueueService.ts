@@ -345,7 +345,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                             vacancyId: vacancy.id,
                             canonicalUrl: vacancy.canonicalUrl,
                             resumeId: application.resumeId ?? null,
-                            kitId: kit.id
+                            kit
                           })
                           message = "prepared; submit queued"
                         } else {

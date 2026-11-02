@@ -1,4 +1,4 @@
-import type { JobStage } from "@otbor/contract"
+import type { JobStage, KitRecord } from "@otbor/contract"
 import { Effect } from "effect"
 import type { DatabaseError, Executor } from "../db/Database.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
@@ -57,14 +57,22 @@ export const prepareJob = (
 
 export const submitJob = (
   tx: Executor,
-  input: JobTarget & { readonly kitId: string }
+  input: JobTarget & { readonly kit: KitRecord }
 ) => {
+  // The kit crosses to the edge with the job. The harness can fill a form and
+  // click, but the cloud keeps the only copy of "what was sent" and refuses a
+  // second submit for the same application.
   const payload = {
     applicationId: input.applicationId,
     vacancyId: input.vacancyId,
     canonicalUrl: input.canonicalUrl,
     resumeId: input.resumeId,
-    kitId: input.kitId
+    kitId: input.kit.id,
+    kit: {
+      formHash: input.kit.formHash,
+      letter: input.kit.letter ?? null,
+      answers: input.kit.answers
+    }
   }
 
   return QueueRepository.enqueue(tx, {

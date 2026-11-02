@@ -39,6 +39,30 @@ export const toJob = (row: JobRow): HarnessJob => ({
   createdAt: row.created_at.toISOString()
 })
 
+/**
+ * Drizzle selects come back with the schema's camelCase field names, raw SQL
+ * with the column names. `toJob` speaks columns, so Drizzle rows are adapted
+ * here instead of at five call sites.
+ */
+const fromSelect = (row: typeof harnessJob.$inferSelect): JobRow => ({
+  id: row.id,
+  user_id: row.userId,
+  hh_account_id: row.hhAccountId,
+  application_id: row.applicationId,
+  stage: row.stage,
+  kind: row.kind,
+  payload: row.payload,
+  status: row.status,
+  priority: row.priority,
+  run_at: row.runAt,
+  attempts: row.attempts,
+  max_attempts: row.maxAttempts,
+  lease_id: row.leaseId,
+  lease_epoch: row.leaseEpoch,
+  lease_until: row.leaseUntil,
+  created_at: row.createdAt
+})
+
 export interface EnqueueInput {
   readonly userId: string
   readonly hhAccountId: string | null
@@ -76,7 +100,7 @@ export const enqueue = (tx: Executor, input: EnqueueInput): RepoEffect<HarnessJo
       .where(sql`${harnessJob.idempotencyKey} = ${input.idempotencyKey}`)
       .limit(1)
 
-    return toJob(row as unknown as JobRow)
+    return toJob(fromSelect(row!))
   })
 
 export interface ClaimInput {
@@ -332,7 +356,7 @@ export const list = (
     )
     .orderBy(sql`${harnessJob.createdAt} desc`)
     .limit(Math.min(Math.max(options.limit ?? 50, 1), 200))
-    .pipe(Effect.map((rows) => rows.map((row) => toJob(row as unknown as JobRow))))
+    .pipe(Effect.map((rows) => rows.map((row) => toJob(fromSelect(row)))))
 
 export const cancelForApplication = (
   tx: Executor,
@@ -360,7 +384,7 @@ export const findById = (tx: Executor, id: string): RepoEffect<HarnessJob | null
     .limit(1)
     .pipe(
       Effect.map((rows) =>
-        rows[0] === undefined ? null : toJob(rows[0] as unknown as JobRow)
+        rows[0] === undefined ? null : toJob(fromSelect(rows[0]))
       )
     )
 
@@ -401,7 +425,7 @@ export const latestFor = (
     .limit(1)
     .pipe(
       Effect.map((rows) =>
-        rows[0] === undefined ? null : toJob(rows[0] as unknown as JobRow)
+        rows[0] === undefined ? null : toJob(fromSelect(rows[0]))
       )
     )
 
@@ -428,7 +452,7 @@ export const context = (tx: Executor, id: string): RepoEffect<JobContext | null>
         const row = rows[0]
         if (row === undefined) return null
         return {
-          job: toJob(row as unknown as JobRow),
+          job: toJob(fromSelect(row)),
           userId: row.userId,
           hhAccountId: row.hhAccountId,
           applicationId: row.applicationId,

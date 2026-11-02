@@ -266,7 +266,7 @@ const rowSelection = {
 export const findByExternal = (tx: Executor, source: string, externalId: string) => {
   const statement = sql`
     select ${sql.join(
-      Object.entries(rowSelection).map(([key, value]) => sql`${value} as ${sql.identifier(snake(key))}`),
+      Object.entries(rowSelection).map(([key, value]) => sql`${value} as ${sql.identifier(key)}`),
       sql`, `
     )}
     from vacancy
@@ -278,9 +278,6 @@ export const findByExternal = (tx: Executor, source: string, externalId: string)
     Effect.map((result) => (result.rows[0] as unknown as VacancyRow | undefined) ?? null)
   )
 }
-
-const snake = (key: string): string =>
-  key.replace(/[A-Z]/g, (char) => `_${char.toLowerCase()}`)
 
 export interface VacancyFilter {
   readonly limit?: number
@@ -306,7 +303,7 @@ export const list = (tx: Executor, filter: VacancyFilter = {}) => {
   return Effect.gen(function*() {
     const rows = yield* tx.execute(sql`
       select ${sql.join(
-        Object.entries(rowSelection).map(([key, value]) => sql`${value} as ${sql.identifier(snake(key))}`),
+        Object.entries(rowSelection).map(([key, value]) => sql`${value} as ${sql.identifier(key)}`),
         sql`, `
       )}
       from vacancy
@@ -333,7 +330,7 @@ export const findById = (tx: Executor, id: string) =>
   tx
     .execute(sql`
       select ${sql.join(
-        Object.entries(rowSelection).map(([key, value]) => sql`${value} as ${sql.identifier(snake(key))}`),
+        Object.entries(rowSelection).map(([key, value]) => sql`${value} as ${sql.identifier(key)}`),
         sql`, `
       )}
       from vacancy
