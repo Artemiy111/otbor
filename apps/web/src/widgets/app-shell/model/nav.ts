@@ -1,5 +1,6 @@
 import type { Component } from "vue"
 import {
+  Ban,
   BookOpen,
   Briefcase,
   Building,
@@ -41,7 +42,8 @@ export const navSections: ReadonlyArray<NavSection> = [
     items: [
       { id: "vacancies", label: "Вакансии", href: "/vacancies", icon: Briefcase },
       { id: "companies", label: "Компании", href: "/companies", icon: Building },
-      { id: "keywords", label: "Ключевые слова", href: "/keywords", icon: BookOpen }
+      { id: "keywords", label: "Ключевые слова", href: "/keywords", icon: BookOpen },
+      { id: "blacklist", label: "Чёрный список", href: "/blacklist", icon: Ban }
     ]
   },
   {

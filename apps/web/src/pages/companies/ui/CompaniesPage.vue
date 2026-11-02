@@ -25,14 +25,22 @@ const PAGE_SIZE = 50
 const appliedQuery = ref("")
 const draft = ref("")
 const offset = ref(0)
+const includeBlacklisted = ref(false)
 
 const query = useQuery({
-  key: () => companyKeys.list({ query: appliedQuery.value, offset: offset.value }),
+  key: () =>
+    companyKeys.list({
+      query: appliedQuery.value,
+      offset: offset.value,
+      includeBlacklisted: includeBlacklisted.value,
+      hhAccountId: ""
+    }),
   query: () =>
     companyApi.list({
       query: appliedQuery.value === "" ? undefined : appliedQuery.value,
       limit: PAGE_SIZE,
-      offset: offset.value
+      offset: offset.value,
+      includeBlacklisted: includeBlacklisted.value
     })
 })
 
@@ -125,6 +133,23 @@ const columns: ColumnDef<EmployerSummary>[] = [
     }
   },
   {
+    id: "blacklisted",
+    accessorFn: (row) => row.blacklisted,
+    header: sortableHeader<EmployerSummary>("Чёрный список"),
+    cell: ({ row }) => {
+      const layers = row.original.blacklistLayers ?? []
+      if (!row.original.blacklisted) {
+        return h("span", { class: "text-xs text-muted-foreground" }, "—")
+      }
+      return h("div", { class: "flex flex-wrap gap-1" }, [
+        h(Badge, { variant: "destructive", class: "text-[10px]" }, () => "Заблокирована"),
+        ...layers.map((layer) =>
+          h(Badge, { key: layer, variant: "outline", class: "text-[10px]" }, () => layer)
+        )
+      ])
+    }
+  },
+  {
     accessorKey: "vacancyCount",
     header: sortableHeader<EmployerSummary>("Вакансии", "right"),
     cell: ({ row }) =>
@@ -158,6 +183,10 @@ const columns: ColumnDef<EmployerSummary>[] = [
           />
         </div>
       </div>
+      <label class="flex items-center gap-2 text-sm">
+        <input v-model="includeBlacklisted" type="checkbox" class="size-4 rounded border-input accent-primary" />
+        Показывать заблокированные
+      </label>
       <Button type="submit" :disabled="query.isLoading.value">Найти</Button>
       <Button type="button" variant="outline" :disabled="query.isLoading.value" @click="reset">
         Сбросить

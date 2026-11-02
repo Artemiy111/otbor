@@ -80,6 +80,7 @@ const initialFilter = props.preset?.filter
 const title = ref(props.preset?.title ?? "")
 const kind = ref<PresetKind>(props.preset?.kind ?? "explore")
 const includeArchived = ref(initialFilter?.includeArchived === true)
+const includeBlacklisted = ref(initialFilter?.includeBlacklisted === true)
 const location = ref<KeywordMatchLocation>(initialFilter?.location ?? "any")
 const formError = ref<string | null>(null)
 
@@ -247,6 +248,7 @@ const buildFilter = (): PresetFilter =>
       .map(buildRule)
       .filter((rule): rule is PresetRule => rule !== null),
     ...(includeArchived.value ? { includeArchived: true } : {}),
+    ...(includeBlacklisted.value ? { includeBlacklisted: true } : {}),
     ...(location.value === "any" ? {} : { location: location.value }),
     ...(keywordIds.value === undefined ? {} : { keywordIds: keywordIds.value })
   })
@@ -386,6 +388,16 @@ onMounted(() => {
               :disabled="props.saving"
             />
             Показывать архивные
+          </label>
+
+          <label class="flex items-center gap-2 text-sm md:col-span-2">
+            <input
+              v-model="includeBlacklisted"
+              type="checkbox"
+              class="size-4 rounded border-input accent-primary"
+              :disabled="props.saving"
+            />
+            Показывать заблокированные
           </label>
 
           <p

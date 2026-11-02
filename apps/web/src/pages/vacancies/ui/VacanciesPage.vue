@@ -37,6 +37,7 @@ const LOAD_LIMIT = 200
 
 const gate = ref("all")
 const archived = ref("active")
+const includeBlacklisted = ref(false)
 
 const gateCache = new Map<string, GateVerdict>()
 
@@ -44,14 +45,16 @@ const listQuery = useQuery({
   key: () =>
     vacancyKeys.list({
       gate: gate.value,
-      includeArchived: archived.value === "all"
+      includeArchived: archived.value === "all",
+      includeBlacklisted: includeBlacklisted.value
     }),
   query: () =>
     vacancyApi.list({
       limit: LOAD_LIMIT,
       offset: 0,
       gate: gate.value === "all" ? undefined : gate.value,
-      includeArchived: archived.value === "all"
+      includeArchived: archived.value === "all",
+      includeBlacklisted: includeBlacklisted.value
     })
 })
 
@@ -115,6 +118,9 @@ const columns: ColumnDef<VacancySummary>[] = [
             h("span", null, seniorityLabel(vacancy.seniority)),
             vacancy.archived
               ? h(Badge, { variant: "neutral", class: "text-[10px]" }, () => "архив")
+              : null,
+            vacancy.blacklisted
+              ? h(Badge, { variant: "destructive", class: "text-[10px]" }, () => "заблокирована")
               : null
           ]
         )
@@ -234,6 +240,10 @@ const refresh = () => {
             </SelectContent>
           </Select>
         </div>
+        <label class="flex items-center gap-2 text-sm">
+          <input v-model="includeBlacklisted" type="checkbox" class="size-4 rounded border-input accent-primary" />
+          Показывать заблокированные
+        </label>
       </template>
 
       <template #summary="{ table }">

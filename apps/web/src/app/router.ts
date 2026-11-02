@@ -17,6 +17,7 @@ export type Route =
   | { readonly name: "contacts" }
   | { readonly name: "mail" }
   | { readonly name: "telegram" }
+  | { readonly name: "blacklist" }
 
 const parse = (): Route => {
   const raw = window.location.pathname.replace(/^\/+|\/+$/g, "")
@@ -47,6 +48,8 @@ const parse = (): Route => {
       return { name: "mail" }
     case "telegram":
       return { name: "telegram" }
+    case "blacklist":
+      return { name: "blacklist" }
     case "health":
       return { name: "health" }
     default:

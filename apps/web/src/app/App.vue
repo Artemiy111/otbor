@@ -2,6 +2,7 @@
 import { computed } from "vue"
 import { ApplicationDetailPage } from "@/pages/application-detail"
 import { ApplicationsPage } from "@/pages/applications"
+import { BlacklistPage } from "@/pages/blacklist"
 import { CompaniesPage } from "@/pages/companies"
 import { CompanyDetailPage } from "@/pages/company-detail"
 import { ContactsPage } from "@/pages/contacts"
@@ -44,5 +45,6 @@ const applicationId = computed(() =>
     <ContactsPage v-else-if="route.name === 'contacts'" />
     <MailPage v-else-if="route.name === 'mail'" />
     <TelegramPage v-else-if="route.name === 'telegram'" />
+    <BlacklistPage v-else-if="route.name === 'blacklist'" />
   </AppShell>
 </template>
