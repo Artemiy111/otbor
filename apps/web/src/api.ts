@@ -1,6 +1,7 @@
 import {
   RPC_PATH,
   type ApplicationId,
+  type HarnessJobId,
   type OtborApi,
   OtborRpcs,
   type VacancyId
@@ -54,7 +55,15 @@ export const api = {
 
   queueStats: () => call((client) => client.QueueStatsGet()),
   queueJobs: (input: { readonly status?: string; readonly limit?: number }) =>
-    call((client) => client.QueueJobsList(input))
+    call((client) => client.QueueJobsList(input)),
+
+  inferenceEnqueue: (input: {
+    readonly prompt: string
+    readonly system?: string
+    readonly model?: string
+  }) => call((client) => client.InferenceEnqueue(input)),
+  inferenceGet: (id: string) =>
+    call((client) => client.InferenceGet({ id: id as HarnessJobId }))
 }
 
 /** Domain errors have a tag first and sometimes no `message` getter. */

@@ -8,6 +8,7 @@ export type Route =
   | { readonly name: "applications" }
   | { readonly name: "application"; readonly id: string }
   | { readonly name: "queue" }
+  | { readonly name: "inference" }
 
 const parse = (): Route => {
   const raw = window.location.hash.replace(/^#\/?/, "")
@@ -22,6 +23,8 @@ const parse = (): Route => {
       return id === "" ? { name: "applications" } : { name: "application", id }
     case "queue":
       return { name: "queue" }
+    case "inference":
+      return { name: "inference" }
     case "health":
       return { name: "health" }
     default:

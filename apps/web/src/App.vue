@@ -6,6 +6,7 @@ import ApplicationDetailView from "./views/ApplicationDetailView.vue"
 import ApplicationsView from "./views/ApplicationsView.vue"
 import DecisionsView from "./views/DecisionsView.vue"
 import HealthView from "./views/HealthView.vue"
+import InferenceView from "./views/InferenceView.vue"
 import QueueView from "./views/QueueView.vue"
 import VacanciesView from "./views/VacanciesView.vue"
 import VacancyDetailView from "./views/VacancyDetailView.vue"
@@ -15,7 +16,8 @@ const nav = [
   { label: "Vacancies", hash: "#/vacancies", section: "vacancies" },
   { label: "Decisions", hash: "#/decisions", section: "decisions" },
   { label: "Applications", hash: "#/applications", section: "applications" },
-  { label: "Queue", hash: "#/queue", section: "queue" }
+  { label: "Queue", hash: "#/queue", section: "queue" },
+  { label: "Inference", hash: "#/inference", section: "inference" }
 ] as const
 
 const section = computed(() => {
@@ -69,6 +71,7 @@ const applicationId = computed(() => (route.value.name === "application" ? route
       <ApplicationsView v-else-if="route.name === 'applications'" />
       <ApplicationDetailView v-else-if="route.name === 'application'" :id="applicationId" />
       <QueueView v-else-if="route.name === 'queue'" />
+      <InferenceView v-else-if="route.name === 'inference'" />
     </main>
   </div>
 </template>
