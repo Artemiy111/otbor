@@ -1,4 +1,5 @@
 export { cn } from "./cn"
+export { contactHref } from "./contacts"
 export { describeError } from "./error"
 export {
   formatAge,
@@ -21,11 +22,15 @@ export {
 } from "./links"
 export {
   applicationStateLabel,
+  contactKindLabel,
+  contactSourceLabel,
+  conversationChannelLabel,
   decisionReasonLabel,
   jobKindLabel,
   jobStageLabel,
   presetKindLabel,
   roleFamilyLabel,
+  scheduleKindLabel,
   seniorityLabel,
   statusLabel,
   statusRaw,

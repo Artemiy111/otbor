@@ -142,6 +142,9 @@ const LABELS: Record<string, string> = {
   office: "Офис",
   stopped: "Остановлен",
   error: "Ошибка",
+  idle: "Не подключён",
+  authorized: "Авторизован",
+  auth_failed: "Ошибка авторизации",
 
   skill_match: "Совпадение навыков",
   salary: "Зарплата",
@@ -206,3 +209,48 @@ export const jobStageLabel = (value: string): string =>
             : value
 
 export const applicationStateLabel = (value: string): string => statusLabel(value)
+
+/** Contacts and conversations use their own vocabularies, not queue tokens. */
+const CONTACT_KIND_LABELS: Record<string, string> = {
+  email: "Email",
+  telegram: "Telegram",
+  phone: "Телефон",
+  hh_chat: "Чат hh",
+  other: "Другое"
+}
+
+export const contactKindLabel = (value: string): string =>
+  CONTACT_KIND_LABELS[value] ?? value
+
+const CONTACT_SOURCE_LABELS: Record<string, string> = {
+  hh_vacancy: "Вакансия hh",
+  mail: "Почта",
+  telegram: "Telegram",
+  hh_chat: "Чат hh",
+  manual: "Вручную"
+}
+
+export const contactSourceLabel = (value: string): string =>
+  CONTACT_SOURCE_LABELS[value] ?? value
+
+const CONVERSATION_CHANNEL_LABELS: Record<string, string> = {
+  mail: "Почта",
+  telegram: "Telegram",
+  hh_chat: "Чат hh"
+}
+
+export const conversationChannelLabel = (value: string): string =>
+  CONVERSATION_CHANNEL_LABELS[value] ?? value
+
+const SCHEDULE_KIND_LABELS: Record<string, string> = {
+  search: "Поиск hh",
+  source: "Источник hh",
+  vacancy_hydration: "Гидратация вакансий",
+  employer_hydration: "Гидратация компаний",
+  mail_sync: "Синхронизация почты",
+  telegram_sync: "Синхронизация Telegram",
+  hh_chat_sync: "Чаты hh"
+}
+
+export const scheduleKindLabel = (value: string): string =>
+  SCHEDULE_KIND_LABELS[value] ?? value

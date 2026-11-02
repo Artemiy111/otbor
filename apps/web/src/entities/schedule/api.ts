@@ -1,11 +1,13 @@
-import type { CrawlSchedule, ScheduleId } from "@otbor/contract"
+import type { CrawlSchedule, ScheduleId, SourceSyncKind } from "@otbor/contract"
 import { call } from "@/shared/api"
 
 export interface ScheduleUpsertInput {
   readonly id?: string
+  readonly kind?: SourceSyncKind
   readonly targetId: string
   readonly intervalMinutes: number
   readonly enabled?: boolean
+  readonly options?: Record<string, unknown>
 }
 
 export interface ScheduleRemoveResult {

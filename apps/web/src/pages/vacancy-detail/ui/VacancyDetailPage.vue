@@ -3,12 +3,16 @@ import { computed } from "vue"
 import { useQuery } from "@pinia/colada"
 import { CircleAlert, ExternalLink } from "@lucide/vue"
 import { applicationApi, applicationKeys } from "@/entities/application"
+import { contactApi, contactKeys } from "@/entities/contact"
 import { decisionApi, decisionKeys } from "@/entities/decision"
 import { vacancyApi, vacancyKeys } from "@/entities/vacancy"
 import { RefreshButton } from "@/features/refresh-button"
 import {
   applicationPath,
   companyPath,
+  contactHref,
+  contactKindLabel,
+  contactSourceLabel,
   decisionsPath,
   describeError,
   formatDate,
@@ -63,7 +67,13 @@ const applicationsQuery = useQuery({
   query: () => applicationApi.list({ limit: 200 })
 })
 
+const contactsQuery = useQuery({
+  key: () => contactKeys.vacancy(props.id),
+  query: () => contactApi.list({ vacancyId: props.id, limit: 50 })
+})
+
 const data = computed(() => vacancyQuery.data.value)
+const contacts = computed(() => contactsQuery.data.value?.items ?? [])
 const decisions = computed(() =>
   (decisionsQuery.data.value ?? []).filter((decision) => decision.vacancyId === props.id)
 )
@@ -93,6 +103,7 @@ const refresh = () => {
   void vacancyQuery.refetch()
   void decisionsQuery.refetch()
   void applicationsQuery.refetch()
+  void contactsQuery.refetch()
 }
 </script>
 
@@ -172,6 +183,7 @@ const refresh = () => {
       <Tabs default-value="description" class="mt-4">
         <TabsList>
           <TabsTrigger value="description">Описание</TabsTrigger>
+          <TabsTrigger value="contacts">Контакты ({{ contacts.length }})</TabsTrigger>
           <TabsTrigger value="skills">Навыки ({{ data.skills.length }})</TabsTrigger>
           <TabsTrigger value="keywords">Ключевые слова ({{ data.keywords.length }})</TabsTrigger>
           <TabsTrigger value="links">
@@ -193,6 +205,68 @@ const refresh = () => {
                 class="max-h-[560px] overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/30 p-4 text-xs leading-relaxed text-muted-foreground"
               >{{ data.descriptionText }}</pre>
               <EmptyState v-else title="Описание не разобрано" description="Запустите догрузку вакансии." />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="contacts">
+          <Card>
+            <CardHeader>
+              <CardTitle>Контакты</CardTitle>
+              <CardDescription>
+                Способы связи, найденные в тексте вакансии. Общий список — в разделе «Контакты».
+              </CardDescription>
+            </CardHeader>
+            <CardContent class="p-0">
+              <Table v-if="contacts.length > 0">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Контакт</TableHead>
+                    <TableHead>Источник</TableHead>
+                    <TableHead>Доказательство</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow v-for="contact in contacts" :key="contact.id">
+                    <TableCell>
+                      <a
+                        v-if="contactHref(contact)"
+                        :href="contactHref(contact) ?? undefined"
+                        :target="/^https?:/i.test(contactHref(contact) ?? '') ? '_blank' : undefined"
+                        :rel="/^https?:/i.test(contactHref(contact) ?? '') ? 'noreferrer' : undefined"
+                        class="break-all font-medium text-sky-300 underline-offset-4 hover:underline"
+                      >
+                        {{ contact.value }}
+                      </a>
+                      <span v-else class="break-all font-medium">{{ contact.value }}</span>
+                      <div class="text-xs text-muted-foreground">
+                        {{ contactKindLabel(contact.kind) }}
+                        <template v-if="contact.personName">
+                          · {{ contact.personName }}
+                        </template>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{{ contactSourceLabel(contact.source) }}</Badge>
+                    </TableCell>
+                    <TableCell class="max-w-[420px]">
+                      <span class="block truncate text-xs text-muted-foreground" :title="contact.evidence ?? undefined">
+                        {{ contact.evidence ?? "—" }}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+              <EmptyState
+                v-else
+                title="Контактов нет"
+                description="В тексте вакансии контактов нет."
+              />
+              <div class="border-t border-border p-3">
+                <Button as-child variant="outline" size="sm">
+                  <a href="#/contacts">Все контакты</a>
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
