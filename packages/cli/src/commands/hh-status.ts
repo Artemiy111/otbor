@@ -47,5 +47,19 @@ export const hhStatusCommand = Command.make(
     })
     const anonymous = /"userType":\s*"anonymous"/.test(html)
     yield* Console.log(`Проверка hh.ru: ${response.status} ${anonymous ? "(аноним — сессия недействительна)" : "(авторизован)"}`)
+
+    const profileRes = yield* Effect.tryPromise({
+      try: () => fetch("https://hh.ru/applicant/profile/me", {
+        headers: { Cookie: cookieHeader, "User-Agent": "Mozilla/5.0" },
+        redirect: "follow"
+      }),
+      catch: () => null as any
+    })
+    if (profileRes && profileRes.ok) {
+      const profileHtml = yield* Effect.tryPromise({ try: () => profileRes.text(), catch: () => "" })
+      const fn = profileHtml.match(/firstName&quot;:&quot;([^&]+)&quot;/)?.[1]
+      const ln = profileHtml.match(/lastName&quot;:&quot;([^&]+)&quot;/)?.[1]
+      if (fn || ln) yield* Console.log(`Аккаунт: ${fn ?? ""} ${ln ?? ""}`.trim())
+    }
   })
 ).pipe(Command.withDescription("Check hh.ru session status"))
