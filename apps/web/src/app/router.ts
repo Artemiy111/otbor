@@ -13,6 +13,7 @@ export type Route =
   | { readonly name: "queue" }
   | { readonly name: "inference" }
   | { readonly name: "presets" }
+  | { readonly name: "schedules" }
 
 const parse = (): Route => {
   const raw = window.location.hash.replace(/^#\/?/, "")
@@ -35,6 +36,8 @@ const parse = (): Route => {
       return { name: "inference" }
     case "presets":
       return { name: "presets" }
+    case "schedules":
+      return { name: "schedules" }
     case "health":
       return { name: "health" }
     default:

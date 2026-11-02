@@ -3,6 +3,7 @@ import {
   BookOpen,
   Briefcase,
   Building,
+  CalendarClock,
   Gavel,
   HeartPulse,
   ListChecks,
@@ -54,7 +55,8 @@ export const navSections: ReadonlyArray<NavSection> = [
     items: [
       { id: "queue", label: "Очередь", href: "#/queue", icon: ListChecks },
       { id: "inference", label: "Генерация", href: "#/inference", icon: Sparkles },
-      { id: "presets", label: "Пресеты", href: "#/presets", icon: SlidersHorizontal }
+      { id: "presets", label: "Пресеты", href: "#/presets", icon: SlidersHorizontal },
+      { id: "schedules", label: "Обход", href: "#/schedules", icon: CalendarClock }
     ]
   }
 ]

@@ -1,2 +1,7 @@
-export { presetApi, type PresetListInput } from "./api"
+export {
+  presetApi,
+  type PresetListInput,
+  type PresetRemoveResult,
+  type PresetUpsertInput
+} from "./api"
 export { presetKeys } from "./model"
