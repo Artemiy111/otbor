@@ -107,7 +107,7 @@ OpenCode; `inference run --model` применяется через
 
 ```bash
 otbor write letter <application-id> --tone "спокойно и по делу" --length short
-otbor write letter <application-id> --save
+otbor write letter <application-id> --language ru --save
 
 otbor write answers <application-id> --question "Почему мы?" --save
 cat questions.txt | otbor write answers <application-id>
@@ -116,7 +116,8 @@ otbor write resume ./resume.txt --target-role "Platform Engineer"
 cat resume.txt | otbor write resume --target-role "SRE"
 ```
 
-`--save` для письма и ответов обновляет существующий kit заявки через
+`--language auto|ru|en` выбирает язык промпта; без флага язык определяется по
+тексту вакансии или резюме. `--save` для письма и ответов обновляет существующий kit заявки через
 `ApplicationsSetKit`, сохраняя форму (`formHash`) и остальные поля. Без kit
 ничего не создаётся. Подробности и ограничения: [docs/writing.md](docs/writing.md).
 
