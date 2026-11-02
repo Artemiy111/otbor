@@ -16,6 +16,7 @@ import { QueuePage } from "@/pages/queue"
 import { SchedulesPage } from "@/pages/schedules"
 import { SearchPage } from "@/pages/search"
 import { TelegramPage } from "@/pages/telegram"
+import HhAccountsPage from "@/pages/hh-accounts"
 import { VacanciesPage } from "@/pages/vacancies"
 import { VacancyDetailPage } from "@/pages/vacancy-detail"
 import { AppShell } from "@/widgets/app-shell"
@@ -47,6 +48,7 @@ const applicationId = computed(() =>
     <ContactsPage v-else-if="route.name === 'contacts'" />
     <MailPage v-else-if="route.name === 'mail'" />
     <TelegramPage v-else-if="route.name === 'telegram'" />
+    <HhAccountsPage v-else-if="route.name === 'accounts'" />
     <BlacklistPage v-else-if="route.name === 'blacklist'" />
   </AppShell>
 </template>

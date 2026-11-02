@@ -18,6 +18,7 @@ export type Route =
   | { readonly name: "contacts" }
   | { readonly name: "mail" }
   | { readonly name: "telegram" }
+  | { readonly name: "accounts" }
   | { readonly name: "blacklist" }
 
 const parse = (): Route => {
@@ -51,6 +52,8 @@ const parse = (): Route => {
       return { name: "mail" }
     case "telegram":
       return { name: "telegram" }
+    case "accounts":
+      return { name: "accounts" }
     case "blacklist":
       return { name: "blacklist" }
     case "health":

@@ -14,7 +14,8 @@ import {
   Search,
   Send,
   SlidersHorizontal,
-  Sparkles
+  Sparkles,
+  User
 } from "@lucide/vue"
 
 export interface NavItem {
@@ -35,7 +36,10 @@ export const navSections: ReadonlyArray<NavSection> = [
   {
     id: "overview",
     label: "Обзор",
-    items: [{ id: "health", label: "Здоровье", href: "/health", icon: HeartPulse }]
+    items: [
+      { id: "health", label: "Здоровье", href: "/health", icon: HeartPulse },
+      { id: "accounts", label: "Аккаунты hh", href: "/accounts", icon: User }
+    ]
   },
   {
     id: "corpus",
