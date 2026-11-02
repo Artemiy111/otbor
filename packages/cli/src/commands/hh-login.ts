@@ -77,7 +77,27 @@ export const hhLoginCommand = Command.make(
       catch: (error) => new Error(`storageState failed: ${error}`)
     })
 
-    const path = storagePath(profile)
+    // Fetch profile from hh.ru to identify account automatically
+    const profileHtml = yield* Effect.tryPromise({
+      try: async () => {
+        const res = await context.request.get("https://hh.ru/applicant/profile/me")
+        return await res.text()
+      },
+      catch: () => ""
+    })
+    const homeHtml = yield* Effect.tryPromise({
+      try: async () => {
+        const res = await context.request.get("https://hh.ru/")
+        return await res.text()
+      },
+      catch: () => ""
+    })
+    const firstName = profileHtml.match(/firstName&quot;:&quot;([^&]+)&quot;/)?.[1]?.replace(/&quot;/g, "") ?? null
+    const lastName = profileHtml.match(/lastName&quot;:&quot;([^&]+)&quot;/)?.[1]?.replace(/&quot;/g, "") ?? null
+    const hhid = homeHtml.match(/"hhid":\s*"([^"]+)"/)?.[1] ?? null
+    const resolvedProfile = hhid ? `hh_${hhid}` : (firstName && lastName ? `${firstName}_${lastName}`.toLowerCase() : "default")
+
+    const path = storagePath(resolvedProfile)
     yield* Effect.tryPromise({
       try: async () => {
         await mkdir(path.replace(/\/[^/]+$/, ""), { recursive: true })
@@ -87,22 +107,17 @@ export const hhLoginCommand = Command.make(
     })
 
     yield* Effect.tryPromise({ try: () => context.close(), catch: () => new Error("close failed") })
-    yield* Console.log(`Сессия сохранена: ${path}`)
 
-    if (account !== "") {
-      const api = yield* Api
-      const accounts = yield* api.HhAccountsList()
-      const existing = accounts.find((a) => a.id === account)
-      if (existing !== undefined) {
-        yield* api.HhAccountUpsert({
-          id: account as any,
-          label: existing.label,
-          sessionProfile: profile
-        })
-        yield* Console.log(`Профиль ${profile} привязан к аккаунту ${existing.label} (${account}).`)
-      } else {
-        yield* Console.log(`Аккаунт ${account} не найден; профиль не привязан.`)
-      }
-    }
+    const label = [firstName, lastName].filter(Boolean).join(" ") || (hhid ? `hh ${hhid}` : "hh account")
+    const api = yield* Api
+    const createdAccount = yield* api.HhAccountUpsert({
+      label,
+      sessionProfile: resolvedProfile,
+      firstName: firstName ?? undefined,
+      lastName: lastName ?? undefined,
+      isDefault: true
+    })
+    yield* Console.log(`Сессия сохранена: ${path}`)
+    yield* Console.log(`Аккаунт: ${createdAccount.label} (${createdAccount.id})`)
   })
 ).pipe(Command.withDescription("Log in to hh.ru and save session"))
