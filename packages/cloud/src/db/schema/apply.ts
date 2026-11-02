@@ -90,6 +90,9 @@ export const searchRun = pgTable("search_run", {
   nextPage: integer("next_page"),
   pagesDone: integer("pages_done").notNull().default(0),
   found: integer("found").notNull().default(0),
+  inserted: integer("inserted").notNull().default(0),
+  updated: integer("updated").notNull().default(0),
+  skipped: integer("skipped").notNull().default(0),
   error: text("error"),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
   finishedAt: timestamp("finished_at", { withTimezone: true })

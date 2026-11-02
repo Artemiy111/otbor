@@ -217,6 +217,9 @@ export class CrawlRunner extends Context.Service<CrawlRunner, CrawlRunnerShape>(
           nextPage: outcome.nextPage,
           pagesDone: outcome.pagesDone,
           found: outcome.found,
+          inserted: outcome.inserted,
+          updated: outcome.updated,
+          skipped: outcome.skipped,
           error
         })
 

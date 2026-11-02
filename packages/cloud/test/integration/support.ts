@@ -905,6 +905,9 @@ export const crawlFinish = async (
     readonly pagesDone: number
     readonly found: number
     readonly error?: string | null
+    readonly inserted?: number
+    readonly updated?: number
+    readonly skipped?: number
   }
 ) =>
   runAs(
@@ -912,6 +915,23 @@ export const crawlFinish = async (
     Effect.gen(function*() {
       const crawl = yield* CrawlService
       return yield* crawl.finish(input)
+    })
+  )
+
+export const crawlRunsList = async (
+  userId: string,
+  input: {
+    readonly queryId?: string
+    readonly url?: string
+    readonly limit?: number
+    readonly offset?: number
+  } = {}
+) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const crawl = yield* CrawlService
+      return yield* crawl.listRuns(input)
     })
   )
 

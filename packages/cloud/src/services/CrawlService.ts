@@ -27,6 +27,16 @@ export interface CrawlFinishInput {
   readonly pagesDone: number
   readonly found: number
   readonly error?: string | null
+  readonly inserted?: number
+  readonly updated?: number
+  readonly skipped?: number
+}
+
+export interface CrawlRunsListInput {
+  readonly queryId?: string
+  readonly url?: string
+  readonly limit?: number
+  readonly offset?: number
 }
 
 export interface CrawlServiceShape {
@@ -34,6 +44,10 @@ export interface CrawlServiceShape {
   readonly savePage: (input: CrawlSavePageInput) => Effect.Effect<CrawlRun, ApiError>
   readonly finish: (input: CrawlFinishInput) => Effect.Effect<CrawlRun, ApiError>
   readonly status: (runId: string) => Effect.Effect<CrawlRun, ApiError>
+  readonly listRuns: (input: CrawlRunsListInput) => Effect.Effect<
+    { items: ReadonlyArray<CrawlRun>; total: number },
+    ApiError
+  >
 }
 
 /**
@@ -117,7 +131,10 @@ export class CrawlService extends Context.Service<CrawlService, CrawlServiceShap
                 pagesDone: input.pagesDone,
                 found: input.found,
                 nextPage: input.nextPage,
-                error: input.error
+                error: input.error,
+                inserted: input.inserted,
+                updated: input.updated,
+                skipped: input.skipped
               })
 
               return yield* SearchRepository.findRun(tx, input.runId)
@@ -142,7 +159,24 @@ export class CrawlService extends Context.Service<CrawlService, CrawlServiceShap
         return SearchRepository.toCrawlRun(row)
       })
 
-      return CrawlService.of({ start, savePage, finish, status })
+      const listRuns = Effect.fn("CrawlService.listRuns")(function*(input: CrawlRunsListInput) {
+        const result = yield* database
+          .asUser(currentUser.userId, (tx) =>
+            SearchRepository.listRuns(tx, {
+              queryId: input.queryId,
+              url: input.url,
+              limit: input.limit,
+              offset: input.offset
+            })
+          )
+          .pipe(Effect.mapError(toStorageError("crawl.listRuns")))
+        return {
+          items: result.items.map(SearchRepository.toCrawlRun),
+          total: result.total
+        }
+      })
+
+      return CrawlService.of({ start, savePage, finish, status, listRuns })
     })
   )
 }
