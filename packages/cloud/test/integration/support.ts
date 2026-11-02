@@ -1,7 +1,15 @@
 import { randomUUID } from "node:crypto"
-import type { HarnessExit, JobKind, JobStage, KitRecord, UserId } from "@otbor/contract"
+import type {
+  CrawlFinishStatus,
+  HarnessExit,
+  JobKind,
+  JobStage,
+  KitRecord,
+  UserId,
+  VacancyId
+} from "@otbor/contract"
 import { PgClient } from "@effect/sql-pg"
-import { eq, sql } from "drizzle-orm"
+import { asc, eq, sql } from "drizzle-orm"
 import { Effect, Layer, Logger, Redacted } from "effect"
 import { Database, type DatabaseError, type Executor } from "../../src/db/Database.ts"
 import { runMigrations } from "../../src/db/migrate.ts"
@@ -10,12 +18,16 @@ import {
   application,
   harnessJob,
   hhAccount,
+  searchQuery,
+  searchRun,
   users,
-  vacancy
+  vacancy,
+  vacancySearchHit
 } from "../../src/db/tables.ts"
 import * as ApplicationRepository from "../../src/repositories/ApplicationRepository.ts"
 import * as HarnessRepository from "../../src/repositories/HarnessRepository.ts"
 import * as QueueRepository from "../../src/repositories/QueueRepository.ts"
+import { CrawlService, type CrawlSavePageInput } from "../../src/services/CrawlService.ts"
 import { CurrentUser } from "../../src/services/CurrentUser.ts"
 import {
   InferenceService,
@@ -122,13 +134,16 @@ export const layerFor = (userId: string) => {
   return Layer.merge(
     shared,
     Layer.merge(
-      QueueService.layer.pipe(Layer.provide(shared)),
-      InferenceService.layer.pipe(Layer.provide(shared))
+      Layer.merge(
+        QueueService.layer.pipe(Layer.provide(shared)),
+        InferenceService.layer.pipe(Layer.provide(shared))
+      ),
+      CrawlService.layer.pipe(Layer.provide(shared))
     )
   )
 }
 
-type Requirements = Database | QueueService | InferenceService
+type Requirements = Database | QueueService | InferenceService | CrawlService
 
 export const runAs = <A, E>(
   userId: string,
@@ -453,6 +468,70 @@ export const getInferenceFailure = async (userId: string, id: string) =>
   )
 
 /* -------------------------------------------------------------------------- */
+/* Crawl calls                                                                */
+/* -------------------------------------------------------------------------- */
+
+export const crawlStart = async (
+  userId: string,
+  input: { readonly url: string; readonly startPage?: number; readonly title?: string }
+) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const crawl = yield* CrawlService
+      return yield* crawl.start(input)
+    })
+  )
+
+/** `vacancyIds` is typed loosely on purpose: the seeds hand back plain UUIDs. */
+export type CrawlSavePageTestInput = Omit<CrawlSavePageInput, "vacancyIds"> & {
+  readonly vacancyIds: ReadonlyArray<string>
+}
+
+const crawlSavePageEffect = (input: CrawlSavePageTestInput) =>
+  Effect.gen(function*() {
+    const crawl = yield* CrawlService
+    return yield* crawl.savePage({
+      ...input,
+      vacancyIds: input.vacancyIds as ReadonlyArray<VacancyId>
+    })
+  })
+
+export const crawlSavePage = (userId: string, input: CrawlSavePageTestInput) =>
+  runAs(userId, crawlSavePageEffect(input))
+
+export const crawlSavePageFailure = (userId: string, input: CrawlSavePageTestInput) =>
+  runAsFailure(userId, crawlSavePageEffect(input))
+
+export const crawlFinish = async (
+  userId: string,
+  input: {
+    readonly runId: string
+    readonly status: CrawlFinishStatus
+    readonly nextPage: number
+    readonly pagesDone: number
+    readonly found: number
+    readonly error?: string | null
+  }
+) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const crawl = yield* CrawlService
+      return yield* crawl.finish(input)
+    })
+  )
+
+export const crawlStatus = async (userId: string, runId: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const crawl = yield* CrawlService
+      return yield* crawl.status(runId)
+    })
+  )
+
+/* -------------------------------------------------------------------------- */
 /* Owner reads and writes used by assertions                                  */
 /* -------------------------------------------------------------------------- */
 
@@ -599,6 +678,62 @@ export const jobRowsForApplication = async (applicationId: string) =>
         })
         .from(harnessJob)
         .where(eq(harnessJob.applicationId, applicationId))
+    )
+  )
+
+export const findSearchQuery = async (normalizedUrl: string) =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx
+        .select({
+          id: searchQuery.id,
+          url: searchQuery.url,
+          normalizedUrl: searchQuery.normalizedUrl,
+          title: searchQuery.title,
+          textQuery: searchQuery.textQuery
+        })
+        .from(searchQuery)
+        .where(eq(searchQuery.normalizedUrl, normalizedUrl))
+        .limit(1)
+        .pipe(Effect.map((rows) => rows[0] ?? null))
+    )
+  )
+
+export const searchRunRowsFor = async (queryId: string) =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx
+        .select({
+          id: searchRun.id,
+          queryId: searchRun.queryId,
+          status: searchRun.status,
+          nextPage: searchRun.nextPage,
+          pagesDone: searchRun.pagesDone,
+          found: searchRun.found,
+          error: searchRun.error,
+          finishedAt: searchRun.finishedAt
+        })
+        .from(searchRun)
+        .where(eq(searchRun.queryId, queryId))
+        .orderBy(asc(searchRun.id))
+    )
+  )
+
+export const searchHitsFor = async (queryId: string) =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx
+        .select({
+          queryId: vacancySearchHit.queryId,
+          vacancyId: vacancySearchHit.vacancyId,
+          position: vacancySearchHit.position
+        })
+        .from(vacancySearchHit)
+        .where(eq(vacancySearchHit.queryId, queryId))
+        .orderBy(asc(vacancySearchHit.position), asc(vacancySearchHit.vacancyId))
     )
   )
 

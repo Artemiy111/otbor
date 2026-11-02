@@ -46,6 +46,30 @@ describe("otbor cli help", () => {
       expect(help.out).toContain(flag)
     }
   })
+
+  test("root help lists the harness protocol", () => {
+    const help = cli("--help")
+    expect(help.code).toBe(0)
+    expect(help.out).toContain("harness")
+  })
+
+  test("harness help lists register and run", () => {
+    const help = cli("harness", "--help")
+    expect(help.code).toBe(0)
+    for (const command of ["register", "run", "lease", "heartbeat", "complete", "revoke"]) {
+      expect(help.out).toContain(command)
+    }
+  })
+
+  test("harness run documents the saved-registration flags", () => {
+    const help = cli("harness", "run", "--help")
+    expect(help.code).toBe(0)
+    for (const flag of ["--harness", "--token", "--api-url", "--kind", "--account", "--wait", "--once"]) {
+      expect(help.out).toContain(flag)
+    }
+    // The command documents that the saved registration is a fallback.
+    expect(help.out).toContain("saved registration")
+  })
 })
 
 /**
