@@ -57,6 +57,15 @@ guide doesn't cover, search through the source code in `node_modules/effect/src`
 - Persistence schemas are derived with `drizzle-orm/effect-schema`.
 - Migrations are hand-written SQL applied by `effect/sql/Migrator`, because
   RLS, triggers, partial indexes and `uuidv7()` are part of the schema.
+- ACP is driven through the official `@agentclientprotocol/sdk` (v1 stable),
+  never hand-rolled JSON-RPC. Protocol work lives in `packages/acp`; the agent
+  process is owned by `packages/harness`.
+- Never run `opencode acp` inside the repository checkout: a nested agent can
+  discover the project config. Use `OTBOR_ACP_CWD` outside the repo (default
+  `/tmp/otbor-acp`) and honor `OTBOR_ACP_CHILD=1`.
+- Inference is a queue job with `stage = "inference"` and `kind = "inference"`.
+  The prompt lives in `payload`, the answer in `HarnessJob.result`; the cloud
+  never calls a model directly.
 - Use `Effect.fn` in services and `Effect.fnUntraced` in hot paths.
 - The operator CLI is also a binary: `packages/cli/bin/otbor` is the executable,
   and `bun run link` (or `cd packages/cli && bun link`) installs `otbor` into
