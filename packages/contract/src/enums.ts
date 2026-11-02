@@ -124,6 +124,7 @@ export const DecisionReasonCode = Schema.Literals([
   "role_unknown",
   "role_rejected",
   "blocked_hidden",
+  "blocked_blacklist",
   "blocked_applied",
   "blocked_archived",
   "blocked_employer_cooldown",
@@ -241,3 +242,20 @@ export type MessageDirection = typeof MessageDirection.Type
 export const MessageKind = Schema.Literals(["text", "media", "service"])
 
 export type MessageKind = typeof MessageKind.Type
+
+/**
+ * A blacklist layer. Layers stack as labels: `app` applies to every hh account,
+ * `hh_account` only to one, `hh_native` mirrors the account's own hidden list.
+ * None of them deletes or permanently forbids a corpus row.
+ */
+export const BlacklistScope = Schema.Literals(["app", "hh_account", "hh_native"])
+
+export type BlacklistScope = typeof BlacklistScope.Type
+
+export const BlacklistTarget = Schema.Literals(["vacancy", "employer"])
+
+export type BlacklistTarget = typeof BlacklistTarget.Type
+
+export const BlacklistSource = Schema.Literals(["user", "hh_hidden"])
+
+export type BlacklistSource = typeof BlacklistSource.Type

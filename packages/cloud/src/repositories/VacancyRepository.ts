@@ -1,4 +1,5 @@
 import type {
+  BlacklistScope,
   EmployerDraft,
   HydrationTarget,
   SalaryDraft,
@@ -9,6 +10,7 @@ import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
 import { employer, vacancy, vacancyResponseSample, vacancySkill, vacancySnapshot } from "../db/tables.ts"
+import * as BlacklistRepository from "./BlacklistRepository.ts"
 
 export interface VacancyRow {
   readonly id: string
@@ -17,6 +19,7 @@ export interface VacancyRow {
   readonly canonicalUrl: string
   readonly title: string
   readonly employerId: string | null
+  readonly employerExternalId: string | null
   readonly employerName: string | null
   readonly employerRating: number | null
   readonly areaName: string | null
@@ -33,27 +36,33 @@ export interface VacancyRow {
   readonly descriptionHtml: string | null
   readonly workFormats: ReadonlyArray<string>
   readonly skills: ReadonlyArray<string>
+  readonly blacklistLayers?: ReadonlyArray<BlacklistScope> | null
 }
 
-export const toSummary = (row: VacancyRow): VacancySummary => ({
-  id: row.id as VacancySummary["id"],
-  source: row.source,
-  externalId: row.externalId,
-  canonicalUrl: row.canonicalUrl,
-  title: row.title,
-  employerId: row.employerId as VacancySummary["employerId"],
-  employerName: row.employerName,
-  employerRating: row.employerRating,
-  areaName: row.areaName,
-  salaryFrom: row.salaryFrom,
-  salaryTo: row.salaryTo,
-  salaryCurrency: row.salaryCurrency,
-  seniority: row.seniority as VacancySummary["seniority"],
-  publishedAt: row.publishedAt?.toISOString() ?? null,
-  archived: row.archived,
-  createdAt: row.createdAt.toISOString(),
-  lastSeenAt: row.lastSeenAt.toISOString()
-})
+export const toSummary = (row: VacancyRow): VacancySummary => {
+  const blacklistLayers = [...(row.blacklistLayers ?? [])]
+  return {
+    id: row.id as VacancySummary["id"],
+    source: row.source,
+    externalId: row.externalId,
+    canonicalUrl: row.canonicalUrl,
+    title: row.title,
+    employerId: row.employerId as VacancySummary["employerId"],
+    employerName: row.employerName,
+    employerRating: row.employerRating,
+    areaName: row.areaName,
+    salaryFrom: row.salaryFrom,
+    salaryTo: row.salaryTo,
+    salaryCurrency: row.salaryCurrency,
+    seniority: row.seniority as VacancySummary["seniority"],
+    publishedAt: row.publishedAt?.toISOString() ?? null,
+    archived: row.archived,
+    createdAt: row.createdAt.toISOString(),
+    lastSeenAt: row.lastSeenAt.toISOString(),
+    blacklisted: blacklistLayers.length > 0,
+    blacklistLayers
+  }
+}
 
 /**
  * A search card is a stub: no description HTML and at most a short snippet.
@@ -294,6 +303,7 @@ export const rowSelection = {
   canonicalUrl: vacancy.canonicalUrl,
   title: vacancy.title,
   employerId: vacancy.employerId,
+  employerExternalId: employer.externalId,
   employerName: employer.name,
   employerRating: employer.rating,
   areaName: vacancy.areaName,
@@ -309,6 +319,7 @@ export const rowSelection = {
   descriptionText: vacancy.descriptionText,
   descriptionHtml: vacancy.descriptionHtml,
   workFormats: vacancy.workFormats,
+  blacklistLayers: sql<ReadonlyArray<string>>`'[]'::json`,
   skills: sql<ReadonlyArray<string>>`coalesce((
     select json_agg(s.term order by s.position nulls last)
     from vacancy_skill s where s.vacancy_id = ${vacancy.id}
@@ -386,6 +397,14 @@ export interface VacancyFilter {
   readonly offset?: number
   readonly includeArchived?: boolean
   readonly gate?: string
+  /**
+   * Default `false`: hide rows matched by an applicable blacklist layer.
+   * `true` keeps them and labels the summary instead.
+   */
+  readonly includeBlacklisted?: boolean
+  readonly hhAccountId?: string
+  /** Set by the service; RLS already scopes `hidden_target` to this user. */
+  readonly userId?: string
 }
 
 export const list = (tx: Executor, filter: VacancyFilter = {}) => {
@@ -402,15 +421,31 @@ export const list = (tx: Executor, filter: VacancyFilter = {}) => {
             and tv.verdict = ${filter.gate}
         )`
 
+  const blacklistInput = {
+    userId: filter.userId,
+    hhAccountId: filter.hhAccountId ?? null,
+    employerExternalId: sql`employer.external_id`,
+    vacancyExternalId: sql`vacancy.external_id`
+  }
+  const blacklistClause =
+    filter.includeBlacklisted === true
+      ? sql`true`
+      : sql`not ${BlacklistRepository.matchExistsSql(blacklistInput)}`
+
+  const selection = {
+    ...rowSelection,
+    blacklistLayers: BlacklistRepository.layersSql(blacklistInput)
+  }
+
   return Effect.gen(function*() {
     const rows = yield* tx.execute(sql`
       select ${sql.join(
-        Object.entries(rowSelection).map(([key, value]) => sql`${value} as ${sql.identifier(key)}`),
+        Object.entries(selection).map(([key, value]) => sql`${value} as ${sql.identifier(key)}`),
         sql`, `
       )}
       from vacancy
       left join employer on employer.id = vacancy.employer_id
-      where ${archivedClause} and ${gateClause}
+      where ${archivedClause} and ${gateClause} and ${blacklistClause}
       order by vacancy.published_at desc nulls last, vacancy.created_at desc
       limit ${limit} offset ${offset}
     `)
@@ -418,7 +453,8 @@ export const list = (tx: Executor, filter: VacancyFilter = {}) => {
     const total = yield* tx.execute(sql`
       select count(*)::int as count
       from vacancy
-      where ${archivedClause} and ${gateClause}
+      left join employer on employer.id = vacancy.employer_id
+      where ${archivedClause} and ${gateClause} and ${blacklistClause}
     `)
 
     return {

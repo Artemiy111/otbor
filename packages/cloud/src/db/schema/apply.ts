@@ -155,16 +155,27 @@ export const hiddenTarget = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    hhAccountId: uuid("hh_account_id")
-      .notNull()
-      .references(() => hhAccount.id, { onDelete: "cascade" }),
+    /** Null for `app` rows; always set for `hh_account`/`hh_native` rows. */
+    hhAccountId: uuid("hh_account_id").references(() => hhAccount.id, { onDelete: "cascade" }),
+    scope: text("scope").notNull().default("hh_account"),
     type: text("type").notNull(),
     externalId: text("external_id").notNull(),
     name: text("name"),
-    createdAt: createdAt()
+    source: text("source").notNull().default("user"),
+    reason: text("reason"),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt()
   },
   (table) => [
-    uniqueIndex("hidden_target_unique_idx").on(table.hhAccountId, table.type, table.externalId)
+    // Legacy index kept for rows written before scopes were introduced.
+    uniqueIndex("hidden_target_unique_idx").on(table.hhAccountId, table.type, table.externalId),
+    uniqueIndex("hidden_target_app_unique_idx")
+      .on(table.userId, table.type, table.externalId)
+      .where(sql`scope = 'app'`),
+    uniqueIndex("hidden_target_account_scope_unique_idx")
+      .on(table.hhAccountId, table.type, table.externalId)
+      .where(sql`scope in ('hh_account', 'hh_native')`)
   ]
 )
 

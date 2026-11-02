@@ -1,6 +1,7 @@
 import { OtborRpcs } from "@otbor/contract"
 import { Effect, Layer } from "effect"
 import { ApplicationService } from "../services/ApplicationService.ts"
+import { BlacklistService } from "../services/BlacklistService.ts"
 import { ContactService } from "../services/ContactService.ts"
 import { ConversationService } from "../services/ConversationService.ts"
 import { CorpusService } from "../services/CorpusService.ts"
@@ -46,6 +47,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const conversations = yield* ConversationService
     const mail = yield* MailService
     const telegram = yield* TelegramService
+    const blacklist = yield* BlacklistService
 
     return {
       SystemHealth: () => system.health(),
@@ -54,10 +56,21 @@ export const OtborHandlers = OtborRpcs.toLayer(
       VacanciesGet: ({ id }) => corpus.get(id),
       EmployersList: (payload) => corpus.employers(payload),
       EmployersGet: ({ id }) => corpus.employer(id),
+      BlacklistList: (payload) => blacklist.list(payload),
+      BlacklistUpsert: (payload) => blacklist.upsert(payload),
+      BlacklistRemove: ({ id }) =>
+        blacklist.remove(id).pipe(Effect.map((deleted) => ({ id, deleted }))),
+      BlacklistImportHh: (payload) => blacklist.importHh(payload),
       VacanciesUpsert: ({ drafts }) => corpus.ingest(drafts),
       VacanciesHydrationTargets: (payload) => corpus.hydrationTargets(payload),
-      VacanciesEvaluate: ({ vacancyId, resumeId, fit }) =>
-        decisions.evaluate({ vacancyId, resumeId, fit }),
+      VacanciesEvaluate: ({ vacancyId, resumeId, fit, includeBlacklisted, hhAccountId }) =>
+        decisions.evaluate({
+          vacancyId,
+          resumeId,
+          fit,
+          includeBlacklisted,
+          hhAccountId
+        }),
 
       CrawlStart: (payload) => crawl.start(payload),
       CrawlSavePage: (payload) => crawl.savePage(payload),
@@ -169,6 +182,7 @@ export const OtborServices = Layer.mergeAll(
   scheduleService,
   mailService,
   telegramService,
+  BlacklistService.layer,
   ContactService.layer,
   ConversationService.layer,
   InferenceService.layer,

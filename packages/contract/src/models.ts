@@ -2,6 +2,9 @@ import { Schema } from "effect"
 import {
   ApplicationState,
   AttemptStage,
+  BlacklistScope,
+  BlacklistSource,
+  BlacklistTarget,
   ContactKind,
   ContactSource,
   ConversationChannel,
@@ -28,6 +31,7 @@ import {
 import {
   ApplicationId,
   AttemptId,
+  BlacklistId,
   ContactId,
   ConversationId,
   DecisionId,
@@ -125,7 +129,11 @@ export const VacancySummary = Schema.Struct({
   publishedAt: Schema.optional(Schema.NullOr(Schema.String)),
   archived: Schema.Boolean,
   createdAt: Schema.String,
-  lastSeenAt: Schema.String
+  lastSeenAt: Schema.String,
+  /** A label, not a ban: the row is still in the corpus and can be shown. */
+  blacklisted: Schema.Boolean,
+  /** Which layers matched: app, the selected hh account, or hh native hiding. */
+  blacklistLayers: Schema.Array(BlacklistScope)
 })
 
 export type VacancySummary = typeof VacancySummary.Type
@@ -141,7 +149,9 @@ export const EmployerSummary = Schema.Struct({
   siteUrl: Schema.optional(Schema.NullOr(Schema.String)),
   logoUrl: Schema.optional(Schema.NullOr(Schema.String)),
   industries: Schema.Array(Schema.String),
-  vacancyCount: Schema.Int
+  vacancyCount: Schema.Int,
+  blacklisted: Schema.Boolean,
+  blacklistLayers: Schema.Array(BlacklistScope)
 })
 
 export type EmployerSummary = typeof EmployerSummary.Type
@@ -152,6 +162,27 @@ export const EmployerDetail = Schema.Struct({
 })
 
 export type EmployerDetail = typeof EmployerDetail.Type
+
+/**
+ * One blacklist row. `scope = app` has no account; account and native rows do.
+ * The record is a visibility filter and a label — it never removes a vacancy
+ * or an employer from the corpus.
+ */
+export const BlacklistRecord = Schema.Struct({
+  id: BlacklistId,
+  scope: BlacklistScope,
+  hhAccountId: Schema.optional(Schema.NullOr(HhAccountId)),
+  targetType: BlacklistTarget,
+  externalId: Schema.String,
+  name: Schema.optional(Schema.NullOr(Schema.String)),
+  source: BlacklistSource,
+  reason: Schema.optional(Schema.NullOr(Schema.String)),
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+  lastSeenAt: Schema.optional(Schema.NullOr(Schema.String))
+})
+
+export type BlacklistRecord = typeof BlacklistRecord.Type
 
 export const KeywordMatchRecord = Schema.Struct({
   keywordId: KeywordId,
@@ -710,7 +741,12 @@ export const PresetFilter = Schema.Struct({
   keywordIds: Schema.optional(Schema.Array(KeywordId)),
   /** Where a keyword must appear: title, body, HH skills, or text+skills. */
   location: Schema.optional(KeywordMatchLocation),
-  includeArchived: Schema.optional(Schema.Boolean)
+  includeArchived: Schema.optional(Schema.Boolean),
+  /**
+   * By default a preset excludes app-level blacklisted companies; `true`
+   * explicitly includes them so the preset can drive auto-applies.
+   */
+  includeBlacklisted: Schema.optional(Schema.Boolean)
 })
 
 export type PresetFilter = typeof PresetFilter.Type
@@ -742,7 +778,8 @@ export const parsePresetFilter = (input: unknown): PresetFilter => {
     ...(decoded.location === undefined || decoded.location === "any"
       ? {}
       : { location: decoded.location }),
-    ...(decoded.includeArchived === true ? { includeArchived: true } : {})
+    ...(decoded.includeArchived === true ? { includeArchived: true } : {}),
+    ...(decoded.includeBlacklisted === true ? { includeBlacklisted: true } : {})
   }
 }
 

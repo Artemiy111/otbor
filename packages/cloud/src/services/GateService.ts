@@ -141,7 +141,8 @@ export class GateService extends Context.Service<GateService, GateServiceShape>(
               LexiconRepository.list(tx, {
                 query: options.query,
                 limit: options.limit,
-                filter
+                filter,
+                userId: currentUser.userId
               })
             )
             .pipe(Effect.mapError(toStorageError("lexicon.list")))

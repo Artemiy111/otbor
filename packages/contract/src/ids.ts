@@ -34,6 +34,7 @@ export const ContactId = UuidV7.pipe(Schema.brand("ContactId"))
 export const ConversationId = UuidV7.pipe(Schema.brand("ConversationId"))
 export const MailAccountId = UuidV7.pipe(Schema.brand("MailAccountId"))
 export const TelegramAccountId = UuidV7.pipe(Schema.brand("TelegramAccountId"))
+export const BlacklistId = UuidV7.pipe(Schema.brand("BlacklistId"))
 
 export type UserId = typeof UserId.Type
 export type HhAccountId = typeof HhAccountId.Type
@@ -57,6 +58,7 @@ export type ContactId = typeof ContactId.Type
 export type ConversationId = typeof ConversationId.Type
 export type MailAccountId = typeof MailAccountId.Type
 export type TelegramAccountId = typeof TelegramAccountId.Type
+export type BlacklistId = typeof BlacklistId.Type
 
 /** External ids stay strings: a vendor may reuse them or make them negative. */
 export const HhVacancyId = Schema.String.pipe(Schema.brand("HhVacancyId"))

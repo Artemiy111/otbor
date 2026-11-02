@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto"
 import type {
+  BlacklistScope,
+  BlacklistTarget,
   CrawlFinishStatus,
   HarnessExit,
   JobKind,
@@ -25,7 +27,9 @@ import {
   conversation,
   conversationMessage,
   conversationVacancy,
+  employer,
   harnessJob,
+  hiddenTarget,
   hhAccount,
   keyword,
   keywordAlias,
@@ -52,6 +56,8 @@ import * as ScheduleRepository from "../../src/repositories/ScheduleRepository.t
 import { ContactService } from "../../src/services/ContactService.ts"
 import { ConversationService } from "../../src/services/ConversationService.ts"
 import { CorpusService } from "../../src/services/CorpusService.ts"
+import { BlacklistService } from "../../src/services/BlacklistService.ts"
+import { DecisionService } from "../../src/services/DecisionService.ts"
 import { CrawlRunner, type CrawlRunnerResult } from "../../src/services/CrawlRunner.ts"
 import { CrawlService, type CrawlSavePageInput } from "../../src/services/CrawlService.ts"
 import { CurrentUser } from "../../src/services/CurrentUser.ts"
@@ -231,6 +237,9 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
     telegramService,
     ContactService.layer.pipe(Layer.provide(shared)),
     ConversationService.layer.pipe(Layer.provide(shared)),
+    // These services already depend only on Database + CurrentUser.
+    BlacklistService.layer.pipe(Layer.provide(shared)),
+    DecisionService.layer.pipe(Layer.provide(shared)),
     QueueService.layer.pipe(Layer.provide(shared)),
     InferenceService.layer.pipe(Layer.provide(shared)),
     GateService.layer.pipe(Layer.provide(shared)),
@@ -258,6 +267,8 @@ type Requirements =
   | ConversationService
   | HydrationRunner
   | EmployerHydrator
+  | BlacklistService
+  | DecisionService
 
 export const runAs = <A, E>(
   userId: string,
@@ -437,6 +448,74 @@ export const seedVacancyWithExternal = async (
     )
   )
 
+export const seedEmployer = async (externalId: string, name: string): Promise<string> =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx
+        .insert(employer)
+        .values({ source: "hh", externalId, name })
+        .onConflictDoUpdate({
+          target: [employer.source, employer.externalId],
+          set: { name: sql`excluded.name` }
+        })
+        .returning({ id: employer.id })
+        .pipe(Effect.map((rows) => rows[0]!.id))
+    )
+  )
+
+/** A vacancy attached to a named company, so employer-level layers can match. */
+export const seedVacancyForEmployer = async (input: {
+  readonly label: string
+  readonly title: string
+  readonly employerExternalId: string
+  readonly employerName: string
+}): Promise<{ readonly vacancyId: string; readonly employerId: string; readonly externalId: string }> =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      Effect.gen(function*() {
+        const [employerRow] = yield* tx
+          .insert(employer)
+          .values({
+            source: "hh",
+            externalId: input.employerExternalId,
+            name: input.employerName
+          })
+          .onConflictDoUpdate({
+            target: [employer.source, employer.externalId],
+            set: { name: sql`excluded.name` }
+          })
+          .returning({ id: employer.id })
+
+        const externalId = unique(`v-${input.label}`)
+        const [row] = yield* tx
+          .insert(vacancy)
+          .values({
+            source: "hh",
+            externalId,
+            canonicalUrl: `https://hh.ru/vacancy/${externalId}`,
+            title: input.title,
+            employerId: employerRow!.id,
+            salaryFrom: 300_000,
+            salaryTo: 400_000,
+            salaryCurrency: "RUB",
+            workFormats: ["remote"],
+            seniority: "senior",
+            descriptionText: "Kubernetes, Terraform, Linux",
+            contentHash: randomUUID()
+          })
+          .returning({ id: vacancy.id })
+
+        return {
+          vacancyId: row!.id,
+          employerId: employerRow!.id,
+          externalId
+        }
+      })
+    )
+  )
+
 export const seedVacancySkill = async (
   vacancyId: string,
   term: string,
@@ -454,7 +533,6 @@ export const seedVacancySkill = async (
     )
   )
 }
-
 export const seedKeyword = async (term: string): Promise<string> =>
   runAs(
     "owner",
@@ -538,6 +616,7 @@ export const seedPreset = async (
       readonly gate?: "match" | "unknown" | "reject"
       readonly keywordIds?: ReadonlyArray<string>
       readonly includeArchived?: boolean
+      readonly includeBlacklisted?: boolean
     }
   }
 ): Promise<string> => {
@@ -884,6 +963,158 @@ export const presetPreview = (userId: string, filter: PresetFilter) =>
     Effect.gen(function*() {
       const presets = yield* PresetService
       return yield* presets.preview(filter)
+    })
+  )
+
+/* -------------------------------------------------------------------------- */
+/* Blacklist calls                                                            */
+/* -------------------------------------------------------------------------- */
+
+export const blacklistList = (
+  userId: string,
+  filter: {
+    readonly scope?: BlacklistScope
+    readonly hhAccountId?: string
+    readonly targetType?: BlacklistTarget
+    readonly query?: string
+    readonly limit?: number
+    readonly offset?: number
+  } = {}
+) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const blacklist = yield* BlacklistService
+      return yield* blacklist.list(filter)
+    })
+  )
+
+export const blacklistUpsert = (
+  userId: string,
+  input: {
+    readonly id?: string
+    readonly scope: BlacklistScope
+    readonly hhAccountId?: string
+    readonly targetType: BlacklistTarget
+    readonly externalId: string
+    readonly name?: string
+    readonly reason?: string
+  }
+) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const blacklist = yield* BlacklistService
+      return yield* blacklist.upsert(input)
+    })
+  )
+
+export const blacklistUpsertFailure = (
+  userId: string,
+  input: {
+    readonly scope: BlacklistScope
+    readonly hhAccountId?: string
+    readonly targetType: BlacklistTarget
+    readonly externalId: string
+  }
+) =>
+  runAsFailure(
+    userId,
+    Effect.gen(function*() {
+      const blacklist = yield* BlacklistService
+      return yield* blacklist.upsert(input)
+    })
+  )
+
+export const blacklistRemove = (userId: string, id: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const blacklist = yield* BlacklistService
+      return yield* blacklist.remove(id)
+    })
+  )
+
+export const blacklistImportHh = (
+  userId: string,
+  input: {
+    readonly hhAccountId: string
+    readonly entries: ReadonlyArray<{
+      readonly targetType: BlacklistTarget
+      readonly externalId: string
+      readonly name?: string
+    }>
+  }
+) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const blacklist = yield* BlacklistService
+      return yield* blacklist.importHh(input)
+    })
+  )
+
+export const hiddenTargetRowsFor = async (userId: string) =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx.select().from(hiddenTarget).where(eq(hiddenTarget.userId, userId))
+    )
+  )
+
+/* -------------------------------------------------------------------------- */
+/* Corpus and decision reads                                                  */
+/* -------------------------------------------------------------------------- */
+
+export const corpusList = (
+  userId: string,
+  filter: {
+    readonly includeBlacklisted?: boolean
+    readonly hhAccountId?: string
+    readonly includeArchived?: boolean
+    readonly limit?: number
+  } = {}
+) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const corpus = yield* CorpusService
+      return yield* corpus.list(filter)
+    })
+  )
+
+export const employersList = (
+  userId: string,
+  filter: {
+    readonly includeBlacklisted?: boolean
+    readonly hhAccountId?: string
+    readonly query?: string
+    readonly limit?: number
+  } = {}
+) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const corpus = yield* CorpusService
+      return yield* corpus.employers(filter)
+    })
+  )
+
+export const evaluateVacancy = (
+  userId: string,
+  input: {
+    readonly vacancyId: string
+    readonly includeBlacklisted?: boolean
+    readonly hhAccountId?: string
+    readonly resumeId?: string
+    readonly fit?: number
+  }
+) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const decisions = yield* DecisionService
+      return yield* decisions.evaluate(input)
     })
   )
 

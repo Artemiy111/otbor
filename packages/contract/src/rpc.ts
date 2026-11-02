@@ -1,6 +1,8 @@
 import { Schema } from "effect"
 import { Rpc, type RpcClient, type RpcClientError, RpcGroup } from "effect/rpc"
 import {
+  BlacklistScope,
+  BlacklistTarget,
   ContactKind,
   ContactSource,
   ConversationChannel,
@@ -12,6 +14,7 @@ import {
 } from "./enums.ts"
 import {
   ApplicationId,
+  BlacklistId,
   ContactId,
   ConversationId,
   EmployerId,
@@ -31,6 +34,7 @@ import { ApiError } from "./errors.ts"
 import {
   ApplicationDetail,
   ApplicationRecord,
+  BlacklistRecord,
   ContactRecord,
   ConversationDetail,
   ConversationSummary,
@@ -89,7 +93,11 @@ export const VacanciesList = Rpc.make("VacanciesList", {
     limit: Schema.optional(Schema.Int),
     offset: Schema.optional(Schema.Int),
     gate: Schema.optional(Schema.String),
-    includeArchived: Schema.optional(Schema.Boolean)
+    includeArchived: Schema.optional(Schema.Boolean),
+    /** Default `false`: blacklist layers hide rows from the default view. */
+    includeBlacklisted: Schema.optional(Schema.Boolean),
+    /** Selects the account whose blacklist layers apply to this page. */
+    hhAccountId: Schema.optional(HhAccountId)
   }),
   success: Schema.Struct({
     items: Schema.Array(VacancySummary),
@@ -108,7 +116,10 @@ export const EmployersList = Rpc.make("EmployersList", {
   payload: Schema.Struct({
     query: Schema.optional(Schema.String),
     limit: Schema.optional(Schema.Int),
-    offset: Schema.optional(Schema.Int)
+    offset: Schema.optional(Schema.Int),
+    /** The companies page toggle: `true` shows blacklisted employers. */
+    includeBlacklisted: Schema.optional(Schema.Boolean),
+    hhAccountId: Schema.optional(HhAccountId)
   }),
   success: Schema.Struct({
     items: Schema.Array(EmployerSummary),
@@ -120,6 +131,71 @@ export const EmployersList = Rpc.make("EmployersList", {
 export const EmployersGet = Rpc.make("EmployersGet", {
   payload: Schema.Struct({ id: EmployerId }),
   success: EmployerDetail,
+  error: ApiError
+})
+
+/* -------------------------------------------------------------------------- */
+/* Blacklist                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The blacklist is a soft filter: listing with `includeBlacklisted` shows the
+ * same corpus rows, marked instead of removed. `scope` is optional so the UI
+ * can present app, account and native tabs over one call.
+ */
+export const BlacklistList = Rpc.make("BlacklistList", {
+  payload: Schema.Struct({
+    scope: Schema.optional(BlacklistScope),
+    hhAccountId: Schema.optional(HhAccountId),
+    targetType: Schema.optional(BlacklistTarget),
+    query: Schema.optional(Schema.String),
+    limit: Schema.optional(Schema.Int),
+    offset: Schema.optional(Schema.Int)
+  }),
+  success: Schema.Struct({
+    items: Schema.Array(BlacklistRecord),
+    total: Schema.Int
+  }),
+  error: ApiError
+})
+
+export const BlacklistUpsert = Rpc.make("BlacklistUpsert", {
+  payload: Schema.Struct({
+    id: Schema.optional(BlacklistId),
+    scope: BlacklistScope,
+    hhAccountId: Schema.optional(HhAccountId),
+    targetType: BlacklistTarget,
+    externalId: Schema.String,
+    name: Schema.optional(Schema.String),
+    reason: Schema.optional(Schema.String)
+  }),
+  success: BlacklistRecord,
+  error: ApiError
+})
+
+export const BlacklistRemove = Rpc.make("BlacklistRemove", {
+  payload: Schema.Struct({ id: BlacklistId }),
+  success: Schema.Struct({ id: BlacklistId, deleted: Schema.Boolean }),
+  error: ApiError
+})
+
+/** Import hh's own hidden list; absent entries are never deleted. */
+export const BlacklistImportHh = Rpc.make("BlacklistImportHh", {
+  payload: Schema.Struct({
+    hhAccountId: HhAccountId,
+    entries: Schema.Array(
+      Schema.Struct({
+        targetType: BlacklistTarget,
+        externalId: Schema.String,
+        name: Schema.optional(Schema.String)
+      })
+    )
+  }),
+  success: Schema.Struct({
+    imported: Schema.Int,
+    updated: Schema.Int,
+    skipped: Schema.Int
+  }),
   error: ApiError
 })
 
@@ -147,7 +223,11 @@ export const VacanciesEvaluate = Rpc.make("VacanciesEvaluate", {
     vacancyId: VacancyId,
     /** Fit is computed per resume; when omitted the account default is used. */
     resumeId: Schema.optional(Schema.String),
-    fit: Schema.optional(Schema.Int)
+    fit: Schema.optional(Schema.Int),
+    /** Default `false`: a blacklist match is a `blocked_blacklist` skip. */
+    includeBlacklisted: Schema.optional(Schema.Boolean),
+    /** Explicit account; omitted uses the user's default hh account. */
+    hhAccountId: Schema.optional(HhAccountId)
   }),
   success: DecisionRecord,
   error: ApiError
@@ -737,6 +817,10 @@ export const OtborRpcs = RpcGroup.make(
   VacanciesGet,
   EmployersList,
   EmployersGet,
+  BlacklistList,
+  BlacklistUpsert,
+  BlacklistRemove,
+  BlacklistImportHh,
   VacanciesUpsert,
   VacanciesHydrationTargets,
   VacanciesEvaluate,

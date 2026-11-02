@@ -69,7 +69,9 @@ export class PresetService extends Context.Service<PresetService, PresetServiceS
       const preview: PresetServiceShape["preview"] = (filter) =>
         database
           .asUser(currentUser.userId, (tx) =>
-            PresetRepository.preview(tx, parsePresetFilter(filter))
+            PresetRepository.preview(tx, parsePresetFilter(filter), {
+              userId: currentUser.userId
+            })
           )
           .pipe(Effect.mapError(toStorageError("preset.preview")))
 

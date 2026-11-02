@@ -31,6 +31,10 @@ describe("preset filter parsing", () => {
     expect(parsePresetFilter({ location: "text_or_skills" })).toEqual({
       location: "text_or_skills"
     })
+    expect(parsePresetFilter({ includeBlacklisted: true })).toEqual({
+      includeBlacklisted: true
+    })
+    expect(parsePresetFilter({ includeBlacklisted: false })).toEqual({})
   })
 
   test("an unknown gate is rejected instead of silently ignored", () => {

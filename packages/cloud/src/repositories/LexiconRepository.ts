@@ -5,6 +5,7 @@ import { sql, type SQL } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
 import { keyword, keywordAlias, vacancyKeyword } from "../db/tables.ts"
+import * as BlacklistRepository from "./BlacklistRepository.ts"
 
 interface Entry {
   readonly id: string
@@ -229,12 +230,30 @@ const ruleClause = (rule: PresetRule, filter: PresetFilter): SQL => {
  * vacancies" filter. `vacancy` is in scope in both correlated subqueries, and
  * `title_verdict` keys are normalized exactly like `VacancyRepository.list`.
  */
-export const vacancyFilterSql = (filter: PresetFilter): SQL => {
+export interface VacancyFilterContext {
+  /** Enables the default app-layer blacklist exclusion for presets. */
+  readonly userId?: string
+}
+
+export const vacancyFilterSql = (
+  filter: PresetFilter,
+  context: VacancyFilterContext = {}
+): SQL => {
   const clauses: Array<SQL> = [sql`true`]
 
   const hasArchivedRule = (filter.rules ?? []).some((rule) => rule.field === "archived")
   if (filter.includeArchived !== true && !hasArchivedRule) {
     clauses.push(sql`not vacancy.archived`)
+  }
+
+  // A preset hides app-level blacklisted companies unless it opts in. Account
+  // and hh-native layers stay out of a shared preset preview.
+  if (filter.includeBlacklisted !== true && context.userId !== undefined) {
+    clauses.push(sql`not ${BlacklistRepository.appBlacklistExistsSql({
+      userId: context.userId,
+      employerExternalId: sql`(select e_bl.external_id from employer e_bl where e_bl.id = vacancy.employer_id)`,
+      vacancyExternalId: sql`vacancy.external_id`
+    })}`)
   }
 
   const text = filter.text?.trim()
@@ -257,14 +276,18 @@ export const vacancyFilterSql = (filter: PresetFilter): SQL => {
   return sql.join(clauses, sql` and `)
 }
 
-const vacancyCountSql = (filter: PresetFilter, keywordId: SQL): SQL => {
+const vacancyCountSql = (
+  filter: PresetFilter,
+  keywordId: SQL,
+  context: VacancyFilterContext
+): SQL => {
   const location = locationSql(filter.location, "vk")
   return sql`(
     select count(distinct vk.vacancy_id)::int
     from vacancy_keyword vk
     join vacancy on vacancy.id = vk.vacancy_id
     where vk.keyword_id = ${keywordId}
-      and ${vacancyFilterSql(filter)}
+      and ${vacancyFilterSql(filter, context)}
       ${location === null ? sql`` : sql`and ${location}`}
   )`
 }
@@ -347,6 +370,8 @@ export interface LexiconListOptions {
    * `vacancyCount` still counts active vacancies.
    */
   readonly filter?: PresetFilter
+  /** The preset's owner; enables the app-layer blacklist default. */
+  readonly userId?: string
 }
 
 export const list = (
@@ -360,6 +385,7 @@ export const list = (
       : `%${normalizeTerm(options.query)}%`
 
     const filter = options.filter ?? {}
+    const context = { userId: options.userId }
     const ids = filter.keywordIds ?? []
     const keywordClause = ids.length === 0
       ? sql`true`
@@ -377,7 +403,7 @@ export const list = (
             from vacancy_keyword vk_filter
             join vacancy on vacancy.id = vk_filter.vacancy_id
             where vk_filter.keyword_id = k.id
-              and ${vacancyFilterSql(filter)}
+              and ${vacancyFilterSql(filter, context)}
               ${locationFilter === null ? sql`` : sql`and ${locationFilter}`}
           )`
         })()
@@ -399,7 +425,7 @@ export const list = (
       )
       select matching.id, matching.term, matching.normalized_term, matching.enabled,
              a.id as alias_id, a.alias, a.normalized_alias, a.typo,
-             ${vacancyCountSql(filter, sql`matching.id`)} as vacancy_count
+             ${vacancyCountSql(filter, sql`matching.id`, context)} as vacancy_count
       from matching
       left join keyword_alias a on a.keyword_id = matching.id
       order by matching.term, a.alias
