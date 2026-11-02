@@ -1,8 +1,10 @@
 import type { HarnessId, HarnessJobId, HhAccountId, JobKind, LeaseId } from "@otbor/contract"
 import { HarnessExitTag, JobKind as JobKindSchema } from "@otbor/contract"
+import { HarnessGateway, parseHarnessConfig, runHarness } from "@otbor/harness"
 import { Config, Console, Effect, Option } from "effect"
 import { Command, Flag } from "effect/cli"
 import { Api } from "../client.ts"
+import { readHarnessState, writeHarnessState } from "../harness-state.ts"
 
 const kindFlag = Flag.Literals("kind", JobKindSchema.literals).pipe(
   Flag.withDescription("Job kind the harness handles (repeatable, default: all)"),
@@ -25,9 +27,13 @@ const register = Command.make(
   {
     name: Flag.String("name").pipe(Flag.withDescription("Stable harness name")),
     kinds: kindFlag,
-    accounts: accountFlag
+    accounts: accountFlag,
+    save: Flag.Boolean("save").pipe(
+      Flag.withDescription("Save the harness id and token in ~/.otbor/harness.json"),
+      Flag.withDefault(false)
+    )
   },
-  Effect.fn(function*({ name, kinds, accounts }) {
+  Effect.fn(function*({ name, kinds, accounts, save }) {
     const api = yield* Api
     const registration = yield* api.HarnessRegister({
       name,
@@ -41,8 +47,90 @@ const register = Command.make(
     yield* Console.log(
       "Store this token now: it is shown once and cannot be recovered. Re-register to rotate it."
     )
+
+    if (save && registration.token !== null) {
+      const path = writeHarnessState({
+        id: registration.id,
+        name: registration.name,
+        token: registration.token,
+        apiUrl: process.env.OTBOR_API_URL,
+        kinds: registration.kinds,
+        accounts: registration.accounts
+      })
+      yield* Console.log(`saved:    ${path}`)
+    }
   })
 ).pipe(Command.withDescription("Register this machine's harness"))
+
+const run = Command.make(
+  "run",
+  {
+    harness: Flag.String("harness").pipe(
+      Flag.withDescription("Harness id (or use the saved registration)"),
+      Flag.optional
+    ),
+    token: Flag.String("token").pipe(
+      Flag.withDescription("Device token (or use the saved registration / OTBOR_HARNESS_TOKEN)"),
+      Flag.optional
+    ),
+    apiUrl: Flag.String("api-url").pipe(
+      Flag.withDescription("Cloud RPC URL"),
+      Flag.optional
+    ),
+    kinds: kindFlag,
+    accounts: accountFlag,
+    wait: Flag.Int("wait").pipe(
+      Flag.withDescription("Lease long-poll, 0–30 seconds"),
+      Flag.optional
+    ),
+    once: Flag.Boolean("once").pipe(
+      Flag.withDescription("Read one lease and exit"),
+      Flag.withDefault(false)
+    )
+  },
+  Effect.fn(function*({ harness, token, apiUrl, kinds, accounts, wait, once }) {
+    const saved = readHarnessState()
+    const harnessId = Option.getOrElse(
+      harness,
+      () => saved?.id ?? process.env.OTBOR_HARNESS_ID ?? ""
+    )
+    const deviceToken = Option.getOrElse(
+      token,
+      () => saved?.token ?? process.env.OTBOR_HARNESS_TOKEN ?? ""
+    )
+    const url = Option.getOrElse(
+      apiUrl,
+      () => saved?.apiUrl ?? process.env.OTBOR_API_URL ?? "http://127.0.0.1:3001/rpc"
+    )
+    const accountIds = accounts.length > 0 ? accounts : (saved?.accounts ?? [])
+    const waitSeconds = Option.getOrElse(
+      wait,
+      () => Number(process.env.OTBOR_HARNESS_WAIT_SECONDS ?? 30)
+    )
+
+    if (harnessId === "" || deviceToken === "") {
+      return yield* Effect.fail(
+        new Error(
+          "Harness id and token are required. Run `otbor harness register --save ...` first, " +
+            "or pass --harness/--token."
+        )
+      )
+    }
+
+    const config = yield* parseHarnessConfig({
+      OTBOR_API_URL: url,
+      OTBOR_HARNESS_ID: harnessId,
+      OTBOR_HARNESS_TOKEN: deviceToken,
+      OTBOR_HARNESS_KINDS: kinds.join(","),
+      OTBOR_HARNESS_ACCOUNTS: accountIds.join(","),
+      OTBOR_HARNESS_WAIT_SECONDS: String(waitSeconds)
+    })
+
+    yield* runHarness({ ...config, once }).pipe(
+      Effect.provide(HarnessGateway.layer(config.apiUrl))
+    )
+  })
+).pipe(Command.withDescription("Run the local edge harness loop"))
 
 const lease = Command.make(
   "lease",
@@ -164,6 +252,6 @@ const revoke = Command.make(
 ).pipe(Command.withDescription("Clear a harness token so its device cannot continue"))
 
 export const harnessCommand = Command.make("harness").pipe(
-  Command.withSubcommands([register, lease, heartbeat, complete, revoke]),
+  Command.withSubcommands([register, run, lease, heartbeat, complete, revoke]),
   Command.withDescription("The edge harness protocol")
 )

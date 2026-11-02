@@ -78,20 +78,24 @@ inference`, payload `InferencePayload`:
 
 Все поля кроме `prompt` необязательны.
 
-1. Зарегистрировать устройство и сохранить токен (показывается один раз):
+1. Зарегистрировать устройство. Токен показывается один раз и сохраняется в
+   локальный конфиг CLI:
 
 ```bash
-otbor harness register --name inference-mac --kind inference
-export OTBOR_HARNESS_TOKEN=...      # токен из вывода register
+otbor harness register --name inference-mac --kind inference --save
 ```
 
-2. Забирать работу (long-poll до 30 секунд):
+2. Запустить воркер из CLI:
 
 ```bash
-otbor harness lease --harness <id> --kind inference --wait 30
+otbor harness run
+otbor harness run --once
 ```
 
-3. Выполнить `payload.prompt` через ACP-клиент и отчитаться
+`otbor harness run` сам делает long-poll, heartbeat и complete. Ручные
+`otbor harness lease/heartbeat/complete` остаются для отладки протокола.
+
+3. Воркер выполняет `payload.prompt` через ACP-клиент и отчитывается
    `HarnessComplete` с `exit.tag = "prepared"`. Результат кладётся в
    `exit.artifacts` и сохраняется в `HarnessJob.result`:
 

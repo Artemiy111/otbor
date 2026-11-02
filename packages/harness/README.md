@@ -5,30 +5,19 @@ through ACP, heartbeats while the agent works, and reports one typed
 `HarnessExit` with `HarnessComplete`. It is a client of the same `OtborRpcs`
 group as the operator CLI and uses the same HTTP NDJSON transport.
 
-## Install and run
+## Run
+
+This package is the harness library. Operators run it through the main CLI:
 
 ```sh
-bun run link:harness     # installs otbor-harness into ~/.bun/bin
-otbor-harness
+otbor harness register --name local --kind inference --account <id> --save
+otbor harness run
+otbor harness run --once
 ```
 
-Or directly from the repository:
-
-```sh
-bun run harness
-```
-
-## Configuration
-
-| Variable | Required | Default | Meaning |
-| --- | --- | --- | --- |
-| `OTBOR_API_URL` | no | `http://127.0.0.1:3001/rpc` | Cloud RPC endpoint |
-| `OTBOR_HARNESS_ID` | yes | — | Harness id from `otbor harness register` |
-| `OTBOR_HARNESS_TOKEN` | yes | — | Device token shown once at registration |
-| `OTBOR_HARNESS_KINDS` | no | `inference` | Comma separated `inference` / `browser` |
-| `OTBOR_HARNESS_ACCOUNTS` | no | registered accounts | Comma separated `hh_account` ids |
-| `OTBOR_HARNESS_WAIT_SECONDS` | no | `30` | Lease long-poll, `0..30` |
-| `OTBOR_HARNESS_ONCE` | no | `false` | Read one lease, then exit |
+The saved registration lives in `~/.otbor/harness.json` (0600). CLI flags
+`--harness`, `--token` and `--api-url` override it; `OTBOR_HARNESS_ID` and
+`OTBOR_HARNESS_TOKEN` remain supported as environment fallbacks for automation.
 
 The ACP agent itself is configured by the `@otbor/acp` package:
 `OTBOR_ACP_BIN` (default `opencode`), `OTBOR_ACP_CWD` and

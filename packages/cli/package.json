@@ -20,6 +20,7 @@
     "@otbor/contract": "workspace:*",
     "@otbor/crawler": "workspace:*",
     "@otbor/domain": "workspace:*",
+    "@otbor/harness": "workspace:*",
     "@otbor/hh": "workspace:*",
     "dotenv": "^17.0.0",
     "drizzle-orm": "1.0.0-rc.5",

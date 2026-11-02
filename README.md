@@ -34,7 +34,6 @@ CLI устанавливается как бинарник:
 
 ```bash
 bun run link          # otbor -> ~/.bun/bin/otbor
-bun run link:harness  # otbor-harness -> ~/.bun/bin/otbor-harness
 otbor --help
 ```
 
@@ -60,28 +59,29 @@ otbor proxy test
 
 ## Очередь и harness
 
-Регистрация устройства выдаёт токен один раз:
+Регистрация устройства выдаёт токен один раз и сохраняет локальную
+конфигурацию CLI:
 
 ```bash
 otbor harness register \
   --name local \
   --kind browser \
   --kind inference \
-  --account <hh-account-id>
+  --account <hh-account-id> \
+  --save
 ```
 
-Сохранить токен в `OTBOR_HARNESS_TOKEN` (или `~/.otbor/harness.env`) и запустить
-воркер:
+Токен и harness id лежат в `~/.otbor/harness.json` (0600). Дальше воркер
+запускается из того же CLI, без shell-обёрток:
 
 ```bash
-OTBOR_HARNESS_ID=<harness-id> \
-OTBOR_HARNESS_TOKEN=<token> \
-OTBOR_HARNESS_KINDS=inference \
-otbor-harness
+otbor harness run                 # долгоживущий цикл
+otbor harness run --once          # один lease и выход
+otbor harness run --once --wait 2 # один короткий long-poll
 ```
 
-`otbor-harness` забирает `inference`-задания, запускает `opencode acp`, шлёт
-heartbeat и возвращает текст, модель, usage и `providerResponse` в
+`otbor harness run` забирает `inference`-задания, запускает `opencode acp`,
+шлёт heartbeat и возвращает текст, модель, usage и `providerResponse` в
 `HarnessJob.result`. Browser-исполнитель пока отвечает `blocked`.
 
 ## ACP и inference

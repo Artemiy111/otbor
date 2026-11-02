@@ -37,13 +37,16 @@ const makeJob = (overrides: Record<string, unknown> = {}) =>
     ...overrides
   })
 
-const makeConfig = (overrides: Record<string, string | undefined> = {}) =>
+const makeConfig = (
+  overrides: Record<string, string | undefined> = {},
+  once = false
+) =>
   Effect.runPromise(
     parseHarnessConfig({
       OTBOR_HARNESS_ID: HARNESS_ID,
       OTBOR_HARNESS_TOKEN: "device-token",
       ...overrides
-    })
+    }).pipe(Effect.map((config) => ({ ...config, once })))
   )
 
 const gatewayLayer = (overrides: Partial<HarnessGatewayShape>) =>
@@ -189,7 +192,7 @@ describe("runJob", () => {
 
 describe("runHarness", () => {
   test("once mode leases one job, completes it and returns", async () => {
-    const config = await makeConfig({ OTBOR_HARNESS_ONCE: "true" })
+    const config = await makeConfig({}, true)
     const job = makeJob({ kind: "browser", stage: "prepare" })
     const exits = await Effect.runPromise(Ref.make<ReadonlyArray<HarnessExit>>([]))
     let leases = 0
@@ -218,7 +221,7 @@ describe("runHarness", () => {
   })
 
   test("once mode returns after an empty lease without completing anything", async () => {
-    const config = await makeConfig({ OTBOR_HARNESS_ONCE: "1" })
+    const config = await makeConfig({}, true)
     let leases = 0
 
     await Effect.runPromise(

@@ -3,20 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "bin": {
-    "otbor-harness": "./bin/otbor-harness"
-  },
   "exports": {
     ".": "./src/index.ts"
   },
   "types": "./src/index.ts",
   "scripts": {
-    "start": "bun src/main.ts",
     "test": "bun test",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@effect/platform-node": "4.1.0",
     "@otbor/acp": "workspace:*",
     "@otbor/contract": "workspace:*",
     "effect": "4.1.0"

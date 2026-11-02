@@ -55,32 +55,6 @@ const commaList = (
   return items.length === 0 ? fallback : items
 }
 
-const booleanValue = (
-  value: string | undefined,
-  name: string
-): Effect.Effect<boolean, HarnessConfigError> => {
-  if (value === undefined) return Effect.succeed(false)
-  switch (value.trim().toLowerCase()) {
-    case "":
-    case "0":
-    case "false":
-    case "no":
-    case "off":
-      return Effect.succeed(false)
-    case "1":
-    case "true":
-    case "yes":
-    case "on":
-      return Effect.succeed(true)
-    default:
-      return Effect.fail(
-        new HarnessConfigError({
-          message: `${name} must be one of true/false, 1/0, yes/no, on/off`
-        })
-      )
-  }
-}
-
 const waitSecondsValue = (
   value: string | undefined
 ): Effect.Effect<number, HarnessConfigError> => {
@@ -109,7 +83,6 @@ export const parseHarnessConfig = Effect.fn("Harness.parseConfig")(
     const apiUrl = env.OTBOR_API_URL?.trim()
     const harnessId = yield* required(env, "OTBOR_HARNESS_ID")
     const token = yield* required(env, "OTBOR_HARNESS_TOKEN")
-    const once = yield* booleanValue(env.OTBOR_HARNESS_ONCE, "OTBOR_HARNESS_ONCE")
     const waitSeconds = yield* waitSecondsValue(env.OTBOR_HARNESS_WAIT_SECONDS)
 
     const decoded = yield* Schema.decodeUnknownEffect(HarnessConfig)({
@@ -119,7 +92,7 @@ export const parseHarnessConfig = Effect.fn("Harness.parseConfig")(
       kinds: commaList(env.OTBOR_HARNESS_KINDS, ["inference"]),
       accounts: commaList(env.OTBOR_HARNESS_ACCOUNTS, []),
       waitSeconds,
-      once
+      once: false
     }).pipe(
       Effect.mapError(
         (error) =>

@@ -194,9 +194,9 @@ const leaseOnce = (config: HarnessConfig) =>
   })
 
 /**
- * Long-poll for work until stopped. `OTBOR_HARNESS_ONCE` reads exactly one
- * lease per invocation (including an empty answer), which keeps tests and
- * one-shot cron jobs simple.
+ * Long-poll for work until stopped. `config.once` reads exactly one lease per
+ * invocation (including an empty answer), which keeps tests and one-shot cron
+ * jobs simple.
  */
 export const runHarness = Effect.fn("Harness.runHarness")(function*(
   config: HarnessConfig

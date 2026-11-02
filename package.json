@@ -11,7 +11,6 @@
     "server": "bun packages/cloud/src/server.ts",
     "worker": "bun packages/cloud/src/worker.ts",
     "cli": "bun packages/cli/src/main.ts",
-    "harness": "bun packages/harness/src/main.ts",
     "web": "bun run --cwd apps/web dev",
     "web:build": "bun run --cwd apps/web build",
     "mcp": "bun packages/cloud/src/mcp.ts",
@@ -22,7 +21,6 @@
     "db:reset": "bun run cli db reset",
     "db:seed": "bun run cli db seed",
     "link": "cd packages/cli && bun link",
-    "link:harness": "cd packages/harness && bun link",
     "test": "bun test",
     "test:integration": "OTBOR_TEST_DATABASE_URL=${OTBOR_TEST_DATABASE_URL:-postgres://otbor:otbor@localhost:55432/postgres} bun test packages/cloud/test/integration",
     "typecheck": "tsc -p tsconfig.json && bun run --cwd apps/web typecheck"

@@ -51,6 +51,7 @@
         "@otbor/contract": "workspace:*",
         "@otbor/crawler": "workspace:*",
         "@otbor/domain": "workspace:*",
+        "@otbor/harness": "workspace:*",
         "@otbor/hh": "workspace:*",
         "dotenv": "^17.0.0",
         "drizzle-orm": "1.0.0-rc.5",
@@ -113,11 +114,7 @@
     "packages/harness": {
       "name": "@otbor/harness",
       "version": "0.1.0",
-      "bin": {
-        "otbor-harness": "./bin/otbor-harness",
-      },
       "dependencies": {
-        "@effect/platform-node": "4.1.0",
         "@otbor/acp": "workspace:*",
         "@otbor/contract": "workspace:*",
         "effect": "4.1.0",

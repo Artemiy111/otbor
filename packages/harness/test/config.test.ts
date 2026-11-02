@@ -103,15 +103,4 @@ describe("parseHarnessConfig", () => {
     expect(accepted.waitSeconds).toBe(30)
   })
 
-  test("parses boolean spellings for OTBOR_HARNESS_ONCE", async () => {
-    for (const value of ["1", "true", "TRUE", "yes", "on"]) {
-      expect((await parse({ ...baseEnv, OTBOR_HARNESS_ONCE: value })).once).toBe(true)
-    }
-    for (const value of ["0", "false", "no", "off", " "]) {
-      expect((await parse({ ...baseEnv, OTBOR_HARNESS_ONCE: value })).once).toBe(false)
-    }
-
-    const error = await parseError({ ...baseEnv, OTBOR_HARNESS_ONCE: "maybe" })
-    expect(error.message).toContain("OTBOR_HARNESS_ONCE")
-  })
 })
