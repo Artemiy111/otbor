@@ -22,7 +22,13 @@ export const blacklistScrapeCommand = Command.make(
   },
   Effect.fn(function*({ profile, account }) {
     const api = yield* Api
-    const path = storagePath(profile)
+    let resolvedProfile = profile
+    if (account !== "") {
+      const accounts = yield* api.HhAccountsList()
+      const acc = accounts.find((a) => a.id === account)
+      if (acc?.sessionProfile) resolvedProfile = acc.sessionProfile
+    }
+    const path = storagePath(resolvedProfile)
 
     const state = yield* Effect.tryPromise({
       try: async () => {

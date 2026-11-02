@@ -1,3 +1,4 @@
+import { Api } from "../client.ts"
 import { Console, Effect } from "effect"
 import { Command, Flag } from "effect/cli"
 import { chromium } from "playwright"
@@ -11,6 +12,10 @@ const storagePath = (name: string) => join(profileDir(name), "storage-state.json
 export const hhLoginCommand = Command.make(
   "login",
   {
+    account: Flag.String("account").pipe(
+      Flag.withDescription("hh account id to bind session to"),
+      Flag.withDefault("")
+    ),
     profile: Flag.String("profile").pipe(
       Flag.withDescription("Profile name for this hh.ru account"),
       Flag.withDefault("default")
@@ -20,7 +25,7 @@ export const hhLoginCommand = Command.make(
       Flag.withDefault(600)
     )
   },
-  Effect.fn(function*({ profile, timeout }) {
+  Effect.fn(function*({ account, profile, timeout }) {
     const profileDirPath = profileDir(profile)
     const context = yield* Effect.tryPromise({
       try: () => chromium.launchPersistentContext(profileDirPath, {
@@ -83,5 +88,21 @@ export const hhLoginCommand = Command.make(
 
     yield* Effect.tryPromise({ try: () => context.close(), catch: () => new Error("close failed") })
     yield* Console.log(`Сессия сохранена: ${path}`)
+
+    if (account !== "") {
+      const api = yield* Api
+      const accounts = yield* api.HhAccountsList()
+      const existing = accounts.find((a) => a.id === account)
+      if (existing !== undefined) {
+        yield* api.HhAccountUpsert({
+          id: account as any,
+          label: existing.label,
+          sessionProfile: profile
+        })
+        yield* Console.log(`Профиль ${profile} привязан к аккаунту ${existing.label} (${account}).`)
+      } else {
+        yield* Console.log(`Аккаунт ${account} не найден; профиль не привязан.`)
+      }
+    }
   })
 ).pipe(Command.withDescription("Log in to hh.ru and save session"))

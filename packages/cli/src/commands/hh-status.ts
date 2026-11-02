@@ -1,3 +1,4 @@
+import { Api } from "../client.ts"
 import { Console, Effect } from "effect"
 import { Command, Flag } from "effect/cli"
 import { readFile } from "node:fs/promises"
@@ -10,12 +11,23 @@ const storagePath = (name: string) => join(profileDir(name), "storage-state.json
 export const hhStatusCommand = Command.make(
   "status",
   {
+    account: Flag.String("account").pipe(
+      Flag.withDescription("hh account id"),
+      Flag.withDefault("")
+    ),
     profile: Flag.String("profile").pipe(
       Flag.withDescription("Profile name for this hh.ru account"),
       Flag.withDefault("default")
     ),},
-  Effect.fn(function*({ profile }) {
-    const path = storagePath(profile)
+  Effect.fn(function*({ account, profile }) {
+    let resolvedProfile = profile
+    if (account !== "") {
+      const api = yield* Api
+      const accounts = yield* api.HhAccountsList()
+      const acc = accounts.find((a) => a.id === account)
+      if (acc?.sessionProfile) resolvedProfile = acc.sessionProfile
+    }
+    const path = storagePath(resolvedProfile)
     let state: any
     try {
       const text = yield* Effect.tryPromise({ try: () => readFile(path, "utf8"), catch: () => new Error("missing") })
