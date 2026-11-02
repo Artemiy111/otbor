@@ -1,5 +1,5 @@
 import type { CrawlFinishStatus, CrawlRun, VacancyId } from "@otbor/contract"
-import { eq } from "drizzle-orm"
+import { eq, or, desc, sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor } from "../db/Database.ts"
 import { searchQuery, searchRun, vacancySearchHit } from "../db/tables.ts"
@@ -19,6 +19,9 @@ export interface StoredSearchRun {
   readonly nextPage: number | null
   readonly pagesDone: number
   readonly found: number
+  readonly inserted: number
+  readonly updated: number
+  readonly skipped: number
   readonly error: string | null
   readonly startedAt: Date
   readonly finishedAt: Date | null
@@ -32,6 +35,9 @@ const runSelection = {
   nextPage: searchRun.nextPage,
   pagesDone: searchRun.pagesDone,
   found: searchRun.found,
+  inserted: searchRun.inserted,
+  updated: searchRun.updated,
+  skipped: searchRun.skipped,
   error: searchRun.error,
   startedAt: searchRun.startedAt,
   finishedAt: searchRun.finishedAt
@@ -45,6 +51,9 @@ export const toCrawlRun = (row: StoredSearchRun): CrawlRun => ({
   nextPage: row.nextPage ?? 0,
   pagesDone: row.pagesDone,
   found: row.found,
+  inserted: row.inserted,
+  updated: row.updated,
+  skipped: row.skipped,
   error: row.error,
   startedAt: row.startedAt.toISOString(),
   finishedAt: row.finishedAt?.toISOString() ?? null
@@ -85,6 +94,9 @@ export interface FinishRunInput {
   readonly found: number
   readonly nextPage: number
   readonly error?: string | null
+  readonly inserted?: number
+  readonly updated?: number
+  readonly skipped?: number
 }
 
 export const finishRunFields = (input: FinishRunInput, finishedAt: Date = new Date()) => ({
@@ -92,6 +104,11 @@ export const finishRunFields = (input: FinishRunInput, finishedAt: Date = new Da
   pagesDone: nonNegativeInt(input.pagesDone),
   found: nonNegativeInt(input.found),
   nextPage: nonNegativeInt(input.nextPage),
+  ...(input.inserted === undefined
+    ? {}
+    : { inserted: nonNegativeInt(input.inserted) }),
+  ...(input.updated === undefined ? {} : { updated: nonNegativeInt(input.updated) }),
+  ...(input.skipped === undefined ? {} : { skipped: nonNegativeInt(input.skipped) }),
   error: input.error === undefined || input.error === null || input.error === ""
     ? null
     : input.error,
@@ -192,3 +209,60 @@ export const findRun = (tx: Executor, runId: string) =>
     .where(eq(searchRun.id, runId))
     .limit(1)
     .pipe(Effect.map((rows) => rows[0] ?? null))
+
+export const listRuns = (
+  tx: Executor,
+  params: {
+    readonly queryId?: string
+    readonly url?: string
+    readonly limit?: number
+    readonly offset?: number
+  } = {}
+) =>
+  Effect.gen(function*() {
+    let resolvedQueryId = params.queryId
+    if (params.url !== undefined && params.url !== "") {
+      const rows = yield* tx
+        .select({ id: searchQuery.id })
+        .from(searchQuery)
+        .where(
+          or(
+            eq(searchQuery.normalizedUrl, params.url),
+            eq(searchQuery.url, params.url)
+          )
+        )
+        .limit(1)
+      if (rows.length === 0) {
+        return { items: [] as ReadonlyArray<StoredSearchRun>, total: 0 }
+      }
+      resolvedQueryId = rows[0]!.id
+    }
+
+    const whereClause =
+      resolvedQueryId !== undefined && resolvedQueryId !== null && resolvedQueryId !== ""
+        ? eq(searchRun.queryId, resolvedQueryId)
+        : sql`true`
+
+    const limit = Math.max(0, Math.trunc(params.limit ?? 50))
+    const offset = Math.max(0, Math.trunc(params.offset ?? 0))
+
+    const items = yield* tx
+      .select(runSelection)
+      .from(searchRun)
+      .innerJoin(searchQuery, eq(searchRun.queryId, searchQuery.id))
+      .where(whereClause)
+      .orderBy(desc(searchRun.startedAt), desc(searchRun.id))
+      .limit(limit)
+      .offset(offset)
+
+    const countRows = yield* tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(searchRun)
+      .where(whereClause)
+
+    const total = Number(countRows[0]?.count ?? 0)
+    return {
+      items: items as ReadonlyArray<StoredSearchRun>,
+      total
+    }
+  })

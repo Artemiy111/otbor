@@ -242,6 +242,9 @@ export const CrawlRun = Schema.Struct({
   nextPage: Schema.Int,
   pagesDone: Schema.Int,
   found: Schema.Int,
+  inserted: Schema.Int,
+  updated: Schema.Int,
+  skipped: Schema.Int,
   error: Schema.optional(Schema.NullOr(Schema.String)),
   startedAt: Schema.String,
   finishedAt: Schema.optional(Schema.NullOr(Schema.String))

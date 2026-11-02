@@ -65,6 +65,7 @@ import {
   corpusList,
   countJobs,
   crawlFinish,
+  crawlRunsList,
   crawlSavePage,
   crawlSavePageFailure,
   crawlStart,
@@ -1032,6 +1033,37 @@ if (!integrationEnabled || serverUrl === null) {
       expect(storedError?.error).toBe("captcha on page 2")
       expect(storedError?.finishedAt).not.toBeNull()
       expect(rows.find((row) => row.id === doneRun.runId)?.finishedAt).not.toBeNull()
+    })
+
+    test("CrawlRunsList returns completed runs with counts", async () => {
+      const tenant = await seedTenant("crawl-runs-list")
+      const url = searchUrl("counts")
+
+      const run = await crawlStart(tenant.userId, { url })
+      const finished = await crawlFinish(tenant.userId, {
+        runId: run.runId,
+        status: "done",
+        nextPage: 3,
+        pagesDone: 3,
+        found: 60,
+        inserted: 40,
+        updated: 10,
+        skipped: 10
+      })
+      expect(finished.inserted).toBe(40)
+      expect(finished.updated).toBe(10)
+      expect(finished.skipped).toBe(10)
+
+      const listed = await crawlRunsList(tenant.userId, { url })
+      expect(listed.total).toBeGreaterThanOrEqual(1)
+      const item = listed.items.find((r) => r.runId === run.runId)
+      expect(item).toBeDefined()
+      expect(item?.inserted).toBe(40)
+      expect(item?.updated).toBe(10)
+      expect(item?.skipped).toBe(10)
+
+      const byQuery = await crawlRunsList(tenant.userId, { queryId: run.queryId })
+      expect(byQuery.items.some((r) => r.runId === run.runId)).toBe(true)
     })
 
     test("a second run of the same URL reuses the query and keeps its own cursor", async () => {

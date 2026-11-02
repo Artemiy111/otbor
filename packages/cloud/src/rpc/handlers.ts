@@ -76,6 +76,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
       CrawlSavePage: (payload) => crawl.savePage(payload),
       CrawlFinish: (payload) => crawl.finish(payload),
       CrawlStatus: ({ runId }) => crawl.status(runId),
+      CrawlRunsList: (payload) => crawl.listRuns(payload),
 
       SchedulesList: () => schedules.list(),
       ScheduleUpsert: (payload) => schedules.upsert(payload),

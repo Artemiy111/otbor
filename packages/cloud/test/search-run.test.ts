@@ -66,6 +66,22 @@ describe("search run bookkeeping", () => {
         finishedAt
       ).error
     ).toBeNull()
+
+    // Ingestion counters are persisted when provided.
+    expect(
+      finishRunFields(
+        {
+          status: "done",
+          pagesDone: 5,
+          found: 100,
+          nextPage: 5,
+          inserted: 40,
+          updated: 10,
+          skipped: 10
+        },
+        finishedAt
+      )
+    ).toMatchObject({ inserted: 40, updated: 10, skipped: 10 })
   })
 
   test("hits dedupe cards and keep their page position", () => {
@@ -85,6 +101,9 @@ describe("search run bookkeeping", () => {
       nextPage: null,
       pagesDone: 0,
       found: 0,
+      inserted: 0,
+      updated: 0,
+      skipped: 0,
       error: null,
       startedAt: new Date("2026-11-02T10:00:00.000Z"),
       finishedAt: null

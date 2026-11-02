@@ -27,6 +27,7 @@ import {
   PresetId,
   ScheduleId,
   SearchRunId,
+  SearchQueryId,
   TelegramAccountId,
   VacancyId
 } from "./ids.ts"
@@ -272,6 +273,9 @@ export const CrawlFinish = Rpc.make("CrawlFinish", {
     nextPage: Schema.Int,
     pagesDone: Schema.Int,
     found: Schema.Int,
+    inserted: Schema.optional(Schema.Int),
+    updated: Schema.optional(Schema.Int),
+    skipped: Schema.optional(Schema.Int),
     error: Schema.optional(Schema.NullOr(Schema.String))
   }),
   success: CrawlRun,
@@ -284,6 +288,19 @@ export const CrawlStatus = Rpc.make("CrawlStatus", {
   error: ApiError
 })
 
+export const CrawlRunsList = Rpc.make("CrawlRunsList", {
+  payload: Schema.Struct({
+    queryId: Schema.optional(SearchQueryId),
+    url: Schema.optional(Schema.String),
+    limit: Schema.optional(Schema.Int),
+    offset: Schema.optional(Schema.Int)
+  }),
+  success: Schema.Struct({
+    items: Schema.Array(CrawlRun),
+    total: Schema.Int
+  }),
+  error: ApiError
+})
 /* -------------------------------------------------------------------------- */
 /* Crawl schedules                                                            */
 /* -------------------------------------------------------------------------- */
@@ -828,6 +845,7 @@ export const OtborRpcs = RpcGroup.make(
   CrawlSavePage,
   CrawlFinish,
   CrawlStatus,
+  CrawlRunsList,
   SchedulesList,
   ScheduleUpsert,
   ScheduleRemove,
