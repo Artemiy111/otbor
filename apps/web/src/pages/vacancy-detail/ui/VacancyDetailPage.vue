@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, ref, watch } from "vue"
 import { useQuery } from "@pinia/colada"
 import { CircleAlert, ExternalLink } from "@lucide/vue"
 import { applicationApi, applicationKeys } from "@/entities/application"
@@ -105,6 +105,34 @@ const refresh = () => {
   void applicationsQuery.refetch()
   void contactsQuery.refetch()
 }
+
+const hydrating = ref(false)
+const autoHydrate = async () => {
+  const detail = vacancyQuery.data.value
+  if (detail === undefined || hydrating.value) return
+  if (detail.descriptionText.trim() !== "") return
+  hydrating.value = true
+  try {
+    const result = await vacancyApi.hydrate(props.id)
+    if (result.hydrated) {
+      await vacancyQuery.refetch()
+      void contactsQuery.refetch()
+    }
+  } catch {
+    // Hydration is best-effort; the stub stays visible if it fails.
+  } finally {
+    hydrating.value = false
+  }
+}
+watch(
+  () => vacancyQuery.data.value,
+  (detail) => {
+    if (detail !== undefined && detail.descriptionText.trim() === "") {
+      void autoHydrate()
+    }
+  },
+  { immediate: true }
+)
 </script>
 
 <template>
