@@ -17,6 +17,10 @@ import * as ApplicationRepository from "../../src/repositories/ApplicationReposi
 import * as HarnessRepository from "../../src/repositories/HarnessRepository.ts"
 import * as QueueRepository from "../../src/repositories/QueueRepository.ts"
 import { CurrentUser } from "../../src/services/CurrentUser.ts"
+import {
+  InferenceService,
+  type EnqueueInferenceInput
+} from "../../src/services/InferenceService.ts"
 import { submitJob } from "../../src/services/jobs.ts"
 import { QueueService } from "../../src/services/QueueService.ts"
 
@@ -115,10 +119,16 @@ export const layerFor = (userId: string) => {
     Database.layer,
     Layer.succeed(CurrentUser, { userId: userId as UserId })
   )
-  return Layer.merge(shared, QueueService.layer.pipe(Layer.provide(shared)))
+  return Layer.merge(
+    shared,
+    Layer.merge(
+      QueueService.layer.pipe(Layer.provide(shared)),
+      InferenceService.layer.pipe(Layer.provide(shared))
+    )
+  )
 }
 
-type Requirements = Database | QueueService
+type Requirements = Database | QueueService | InferenceService
 
 export const runAs = <A, E>(
   userId: string,
@@ -183,6 +193,18 @@ export const addAccount = async (userId: string, label: string): Promise<string>
     )
   )
   return accountId
+}
+
+/** Flips the user's default account without a service in between. */
+export const setDefaultAccount = async (userId: string, accountId: string): Promise<void> => {
+  await runAs(
+    userId,
+    ownerTx((tx) =>
+      tx.execute(
+        sql`update hh_account set is_default = (id = ${accountId}) where user_id = ${userId}`
+      )
+    )
+  )
 }
 
 export const seedVacancy = async (label: string): Promise<string> => {
@@ -314,13 +336,14 @@ export const enqueueSubmitJob = async (input: {
 export const registerHarness = async (
   userId: string,
   accounts: ReadonlyArray<string>,
-  name = unique("harness")
+  name = unique("harness"),
+  kinds: ReadonlyArray<JobKind> = ["browser"]
 ) =>
   runAs(
     userId,
     Effect.gen(function*() {
       const queue = yield* QueueService
-      return yield* queue.register({ name, kinds: ["browser"], accounts })
+      return yield* queue.register({ name, kinds, accounts })
     })
   )
 
@@ -328,13 +351,14 @@ export const leaseNext = async (
   userId: string,
   harnessId: string,
   token: string,
-  accounts: ReadonlyArray<string>
+  accounts: ReadonlyArray<string>,
+  kinds: ReadonlyArray<JobKind> = ["browser"]
 ) =>
   runAs(
     userId,
     Effect.gen(function*() {
       const queue = yield* QueueService
-      return yield* queue.leaseNext({ harnessId, token, kinds: ["browser"], accounts })
+      return yield* queue.leaseNext({ harnessId, token, kinds, accounts })
     })
   )
 
@@ -389,6 +413,37 @@ export const completeJobFailure = async (
   )
 
 /* -------------------------------------------------------------------------- */
+/* Inference calls                                                            */
+/* -------------------------------------------------------------------------- */
+
+export const enqueueInference = async (userId: string, input: EnqueueInferenceInput) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const inference = yield* InferenceService
+      return yield* inference.enqueue(input)
+    })
+  )
+
+export const getInference = async (userId: string, id: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const inference = yield* InferenceService
+      return yield* inference.get(id)
+    })
+  )
+
+export const getInferenceFailure = async (userId: string, id: string) =>
+  runAsFailure(
+    userId,
+    Effect.gen(function*() {
+      const inference = yield* InferenceService
+      return yield* inference.get(id)
+    })
+  )
+
+/* -------------------------------------------------------------------------- */
 /* Owner reads and writes used by assertions                                  */
 /* -------------------------------------------------------------------------- */
 
@@ -396,6 +451,20 @@ export const findJob = async (jobId: string) =>
   runAs(
     "owner",
     ownerTx((tx) => QueueRepository.findById(tx, jobId))
+  )
+
+/** The account a job is pinned to; `HarnessJob` itself does not expose it. */
+export const jobAccountId = async (jobId: string) =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx
+        .select({ hhAccountId: harnessJob.hhAccountId })
+        .from(harnessJob)
+        .where(eq(harnessJob.id, jobId))
+        .limit(1)
+        .pipe(Effect.map((rows) => rows[0]?.hhAccountId ?? null))
+    )
   )
 
 export const countJobs = async (applicationId: string, stage: JobStage) =>
@@ -523,3 +592,43 @@ export const jobRowsForApplication = async (applicationId: string) =>
         .where(eq(harnessJob.applicationId, applicationId))
     )
   )
+
+/* -------------------------------------------------------------------------- */
+/* Raw job rows                                                               */
+/* -------------------------------------------------------------------------- */
+
+export interface RawJobInput {
+  readonly userId: string
+  readonly stage: string
+  readonly kind?: string
+  /** Written to the `result` column; omitted leaves it null. */
+  readonly result?: unknown
+}
+
+/**
+ * Inserts straight into `harness_jobs`, bypassing the repositories and their
+ * defaults. This is how the migration's stage check and the `result` column are
+ * exercised without a service in between.
+ */
+const rawJobInsert = (input: RawJobInput) =>
+  ownerTx((tx) =>
+    tx
+      .execute(sql`
+        insert into harness_jobs (user_id, stage, kind, payload, result, idempotency_key)
+        values (
+          ${input.userId},
+          ${input.stage},
+          ${input.kind ?? "inference"},
+          '{}'::jsonb,
+          ${input.result === undefined ? null : JSON.stringify(input.result)}::jsonb,
+          ${unique("raw-job")}
+        )
+        returning id
+      `)
+      .pipe(Effect.map((result) => (result.rows[0] as { id: string }).id))
+  )
+
+export const insertRawJob = async (input: RawJobInput) => runAs(input.userId, rawJobInsert(input))
+
+export const insertRawJobFailure = async (input: RawJobInput) =>
+  runAsFailure(input.userId, rawJobInsert(input))
