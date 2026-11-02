@@ -17,7 +17,7 @@ export const hhLoginCommand = Command.make(
   },
   Effect.fn(function*({ timeout }) {
     const browser = yield* Effect.tryPromise({
-      try: () => chromium.launch({ headless: false, executablePath: "/opt/homebrew/bin/chromium" }),
+      try: () => chromium.launch({ headless: false, executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" }),
       catch: (error) => new Error(`browser launch failed: ${error}`)
     })
     const context = yield* Effect.tryPromise({

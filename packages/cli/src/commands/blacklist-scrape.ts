@@ -28,7 +28,7 @@ export const blacklistScrapeCommand = Command.make(
     })
 
     const browser = yield* Effect.tryPromise({
-      try: () => chromium.launch({ headless: true, executablePath: "/opt/homebrew/bin/chromium" }),
+      try: () => chromium.launch({ headless: true, executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" }),
       catch: (error) => new Error(`browser launch failed: ${error}`)
     })
     const context = yield* Effect.tryPromise({
