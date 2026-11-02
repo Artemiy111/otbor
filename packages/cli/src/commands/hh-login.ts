@@ -5,20 +5,25 @@ import { mkdir, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 
-const storagePath = () => process.env.OTBOR_HH_STORAGE_STATE?.trim() || join(homedir(), ".otbor", "hh", "storage-state.json")
+const profileDir = (name: string) => join(homedir(), ".otbor", "hh", "accounts", name)
+const storagePath = (name: string) => join(profileDir(name), "storage-state.json")
 
 export const hhLoginCommand = Command.make(
   "login",
   {
+    profile: Flag.String("profile").pipe(
+      Flag.withDescription("Profile name for this hh.ru account"),
+      Flag.withDefault("default")
+    ),
     timeout: Flag.Int("timeout").pipe(
       Flag.withDescription("Login wait timeout, seconds"),
       Flag.withDefault(600)
     )
   },
-  Effect.fn(function*({ timeout }) {
-    const profileDir = join(homedir(), ".otbor", "hh", "profile")
+  Effect.fn(function*({ profile, timeout }) {
+    const profileDirPath = profileDir(profile)
     const context = yield* Effect.tryPromise({
-      try: () => chromium.launchPersistentContext(profileDir, {
+      try: () => chromium.launchPersistentContext(profileDirPath, {
         headless: false,
         executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
         ignoreDefaultArgs: ["--no-sandbox"]
@@ -67,7 +72,7 @@ export const hhLoginCommand = Command.make(
       catch: (error) => new Error(`storageState failed: ${error}`)
     })
 
-    const path = storagePath()
+    const path = storagePath(profile)
     yield* Effect.tryPromise({
       try: async () => {
         await mkdir(path.replace(/\/[^/]+$/, ""), { recursive: true })
