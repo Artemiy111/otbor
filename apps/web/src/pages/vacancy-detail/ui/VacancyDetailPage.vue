@@ -74,6 +74,47 @@ const contactsQuery = useQuery({
 
 const data = computed(() => vacancyQuery.data.value)
 const contacts = computed(() => contactsQuery.data.value?.items ?? [])
+
+const highlightKeywords = ref(true)
+
+const keywordTotals = computed(() => {
+  const totals = new Map<string, number>()
+  for (const keyword of data.value?.keywords ?? []) {
+    const count = keyword.titleCount + keyword.bodyCount
+    totals.set(keyword.term, (totals.get(keyword.term) ?? 0) + count)
+  }
+  return totals
+})
+
+const sortedKeywords = computed(() =>
+  [...(data.value?.keywords ?? [])]
+    .map((keyword) => {
+      const total = keywordTotals.value.get(keyword.term) ?? 0
+      const count = keyword.titleCount + keyword.bodyCount
+      return {
+        ...keyword,
+        total,
+        share: total > 0 ? Math.round((count / total) * 100) : 0
+      }
+    })
+    .sort(
+      (a, b) =>
+        a.term.localeCompare(b.term, "ru") ||
+        b.titleCount + b.bodyCount - (a.titleCount + a.bodyCount)
+    )
+)
+
+const highlightedDescription = computed(() => {
+  const text = data.value?.descriptionText ?? ""
+  if (text.trim() === "" || !highlightKeywords.value) return null
+  const forms = [...new Set((data.value?.keywords ?? []).map((item) => item.matchedForm).filter(Boolean))]
+    .sort((a, b) => b.length - a.length)
+  if (forms.length === 0) return null
+  const escaped = (value: string) =>
+    value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  const pattern = new RegExp(`(${forms.map((form) => form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "giu")
+  return escaped(text).replace(pattern, (match) => `<mark class="rounded bg-amber-200/60 px-0.5 text-foreground dark:bg-amber-400/30">${match}</mark>`)
+})
 const decisions = computed(() =>
   (decisionsQuery.data.value ?? []).filter((decision) => decision.vacancyId === props.id)
 )
@@ -228,10 +269,21 @@ watch(
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <pre
-                v-if="data.descriptionText.trim() !== ''"
-                class="max-h-[560px] overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/30 p-4 text-xs leading-relaxed text-muted-foreground"
-              >{{ data.descriptionText }}</pre>
+              <div class="mb-2 flex items-center gap-2">
+               <label class="flex items-center gap-2 text-xs text-muted-foreground">
+                 <input v-model="highlightKeywords" type="checkbox" class="size-4 rounded border-input accent-primary" />
+                 Подсветить ключевые слова
+               </label>
+             </div>
+             <div
+               v-if="highlightedDescription !== null"
+               class="max-h-[560px] overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/30 p-4 text-xs leading-relaxed text-muted-foreground"
+               v-html="highlightedDescription"
+             />
+             <pre
+               v-else-if="data.descriptionText.trim() !== ''"
+               class="max-h-[560px] overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/30 p-4 text-xs leading-relaxed text-muted-foreground"
+             >{{ data.descriptionText }}</pre>
               <EmptyState v-else title="Описание не разобрано" description="Запустите догрузку вакансии." />
             </CardContent>
           </Card>
@@ -325,7 +377,7 @@ watch(
               </CardDescription>
             </CardHeader>
             <CardContent class="p-0">
-              <Table v-if="data.keywords.length > 0">
+              <Table v-if="sortedKeywords.length > 0">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Термин</TableHead>
@@ -333,10 +385,11 @@ watch(
                     <TableHead>В заголовке</TableHead>
                     <TableHead>В тексте</TableHead>
                     <TableHead>В навыках</TableHead>
+                    <TableHead>Доля</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow v-for="keyword in data.keywords" :key="keyword.keywordId">
+                  <TableRow v-for="keyword in sortedKeywords" :key="keyword.keywordId + keyword.matchedForm">
                     <TableCell class="font-medium">{{ keyword.term }}</TableCell>
                     <TableCell>
                       {{ keyword.matchedForm }}
@@ -345,6 +398,7 @@ watch(
                     <TableCell>{{ formatNumber(keyword.titleCount) }}</TableCell>
                     <TableCell>{{ formatNumber(keyword.bodyCount) }}</TableCell>
                     <TableCell>{{ keyword.inSkills ? "да" : "—" }}</TableCell>
+                    <TableCell>{{ keyword.share }}%</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
