@@ -47,9 +47,9 @@ export const hhLoginCommand = Command.make(
       const names = cookies.map((c) => c.name).join(", ")
       yield* Console.log(`[check] url=${url} cookies=${names}`)
 
-      const hasToken = cookies.some((c) => c.name === "hhtoken" || c.name === "hhul")
+      const hasUserToken = cookies.some((c) => c.name === "hhul")
       const onAccount = /hh\.ru\/(applicant|vacancy|resume)/.test(url) && !url.includes("/login")
-      if (hasToken || onAccount) {
+      if (hasUserToken || onAccount) {
         loggedIn = true
         break
       }
