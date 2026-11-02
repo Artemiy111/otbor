@@ -458,8 +458,11 @@ const storeMessage = (
       if (created) linked += 1
     }
 
+    const isNoReplyAddress = (address: string): boolean =>
+      /no[-_]?reply|do[-_]?not[-_]?reply|noreply/i.test(address)
+
     const contactCandidates = [
-      ...(sender === null
+      ...(sender === null || isNoReplyAddress(sender.address)
         ? []
         : [
             {
@@ -474,7 +477,9 @@ const storeMessage = (
               isBot: false
             }
           ]),
-      ...extraction.contacts.map((contact) => ({
+      ...extraction.contacts
+        .filter((contact) => !(contact.kind === "email" && isNoReplyAddress(contact.value)))
+        .map((contact) => ({
         kind: contact.kind === "other" ? ("other" as const) : contact.kind,
         value: contact.value,
         raw: contact.raw,
