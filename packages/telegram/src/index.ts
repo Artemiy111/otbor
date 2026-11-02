@@ -1,5 +1,4 @@
 export * from "./types.ts"
 export * from "./storage.ts"
 export * from "./messages.ts"
-export * from "./gateway.ts"
 export * from "./fake.ts"

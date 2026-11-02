@@ -184,9 +184,60 @@ export const CrawlFinishStatus = Schema.Literals(["done", "stopped", "error"])
 export type CrawlFinishStatus = typeof CrawlFinishStatus.Type
 
 /**
- * What a schedule points at. Only saved searches are crawlable today; the
- * database check also allows `source`, which has no runner yet.
+ * What a schedule points at. `search` crawls an hh search URL; the source
+ * kinds run one bounded sync of their own: hydration passes, a mail or
+ * Telegram account, or an hh chat (which needs the browser harness).
  */
-export const ScheduleKind = Schema.Literals(["search"])
+export const ScheduleKind = Schema.Literals([
+  "search",
+  "source",
+  "vacancy_hydration",
+  "employer_hydration",
+  "mail_sync",
+  "telegram_sync",
+  "hh_chat_sync"
+])
 
 export type ScheduleKind = typeof ScheduleKind.Type
+
+/** A schedule that syncs a source rather than crawling a saved search. */
+export const SourceSyncKind = Schema.Literals([
+  "search",
+  "source",
+  "vacancy_hydration",
+  "employer_hydration",
+  "mail_sync",
+  "telegram_sync",
+  "hh_chat_sync"
+])
+
+export type SourceSyncKind = typeof SourceSyncKind.Type
+
+/** What a contact is: a way to reach a person, not the person themselves. */
+export const ContactKind = Schema.Literals(["email", "telegram", "phone", "hh_chat", "other"])
+
+export type ContactKind = typeof ContactKind.Type
+
+/** Where the contact was found. `manual` is the only hand-entered source. */
+export const ContactSource = Schema.Literals([
+  "hh_vacancy",
+  "mail",
+  "telegram",
+  "hh_chat",
+  "manual"
+])
+
+export type ContactSource = typeof ContactSource.Type
+
+/** A channel a conversation happens in. */
+export const ConversationChannel = Schema.Literals(["mail", "telegram", "hh_chat"])
+
+export type ConversationChannel = typeof ConversationChannel.Type
+
+export const MessageDirection = Schema.Literals(["in", "out"])
+
+export type MessageDirection = typeof MessageDirection.Type
+
+export const MessageKind = Schema.Literals(["text", "media", "service"])
+
+export type MessageKind = typeof MessageKind.Type

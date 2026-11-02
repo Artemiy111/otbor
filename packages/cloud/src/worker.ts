@@ -7,13 +7,21 @@ import { CrawlRunner } from "./services/CrawlRunner.ts"
 import { CrawlService } from "./services/CrawlService.ts"
 import { CorpusService } from "./services/CorpusService.ts"
 import { CurrentUser } from "./services/CurrentUser.ts"
+import { EmployerHydrator } from "./services/EmployerHydrator.ts"
+import { HydrationRunner } from "./services/HydrationRunner.ts"
+import { MailGatewayProvider } from "./services/MailGatewayProvider.ts"
+import { MailSync } from "./services/MailSync.ts"
+import { ScheduleDispatcher } from "./services/ScheduleDispatcher.ts"
 import { runDueSchedules } from "./services/ScheduleWorker.ts"
+import { TelegramGatewayProvider } from "./services/TelegramGatewayProvider.ts"
+import { TelegramSync } from "./services/TelegramSync.ts"
 
 /**
- * The worker is the only process that repairs leases and runs crawl schedules.
+ * The worker is the only process that repairs leases and runs schedules.
  * It does not execute harness jobs: those belong to edge harnesses. It
  * reclaims what a dead performer left behind, keeps the account leases honest,
- * and turns a due `schedule` row into one bounded search crawl.
+ * and turns a due `schedule` row into one bounded crawl, hydration or source
+ * sync.
  */
 const sweep = Effect.gen(function*() {
   const database = yield* Database
@@ -41,8 +49,21 @@ const crawlServices = Layer.merge(CrawlService.layer, CorpusService.layer).pipe(
   Layer.provide(base)
 )
 const crawlRunner = CrawlRunner.layer.pipe(Layer.provide(Layer.merge(base, crawlServices)))
+const crawlStack = Layer.mergeAll(crawlServices, crawlRunner)
 
-const WorkerServices = Layer.mergeAll(base, crawlServices, crawlRunner)
+const mailSync = MailSync.layer.pipe(
+  Layer.provide(Layer.merge(base, MailGatewayProvider.layer))
+)
+const telegramSync = TelegramSync.layer.pipe(
+  Layer.provide(Layer.merge(base, TelegramGatewayProvider.layer))
+)
+const hydration = HydrationRunner.layer.pipe(Layer.provide(Layer.merge(base, crawlStack)))
+const employers = EmployerHydrator.layer.pipe(Layer.provide(base))
+
+const sourceStack = Layer.mergeAll(crawlStack, hydration, employers, mailSync, telegramSync)
+const dispatcher = ScheduleDispatcher.layer.pipe(Layer.provide(Layer.merge(base, sourceStack)))
+
+const WorkerServices = Layer.mergeAll(base, sourceStack, dispatcher)
 
 const program = Effect.gen(function*() {
   const sweepSeconds = yield* Config.Number("WORKER_SWEEP_SECONDS").pipe(Config.withDefault(15))
@@ -51,7 +72,7 @@ const program = Effect.gen(function*() {
   )
 
   yield* Effect.logInfo(
-    `Lease sweeper started (every ${sweepSeconds}s); crawl schedules every ${scheduleSeconds}s`
+    `Lease sweeper started (every ${sweepSeconds}s); schedules every ${scheduleSeconds}s`
   )
 
   const sweepLoop = sweep.pipe(Effect.repeat(Schedule.spaced(`${sweepSeconds} seconds`)))

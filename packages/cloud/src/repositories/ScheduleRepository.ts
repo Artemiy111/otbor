@@ -30,6 +30,7 @@ export const toCrawlSchedule = (row: StoredSchedule): CrawlSchedule => ({
   kind: row.kind as CrawlSchedule["kind"],
   targetId: row.targetId,
   intervalMinutes: row.intervalMinutes,
+  options: row.options,
   enabled: row.enabled,
   nextRunAt: row.nextRunAt?.toISOString() ?? null,
   lastRunAt: row.lastRunAt?.toISOString() ?? null,
@@ -98,11 +99,27 @@ export const find = (
       )
     )
 
+export const findStored = (
+  tx: Executor,
+  id: string,
+  userId: string
+): RepoEffect<StoredSchedule | null> =>
+  tx
+    .select()
+    .from(schedule)
+    .where(sql`${schedule.id} = ${id} and ${schedule.userId} = ${userId}`)
+    .limit(1)
+    .pipe(
+      Effect.map((rows) => (rows[0] === undefined ? null : fromSelect(rows[0])))
+    )
+
 export interface UpsertScheduleInput {
   readonly userId: string
   readonly id?: string | null
+  readonly kind: string
   readonly targetId: string
   readonly intervalMinutes: number
+  readonly options?: Record<string, unknown>
   readonly enabled: boolean
   readonly now?: Date
 }
@@ -131,9 +148,10 @@ export const upsert = (
         const [row] = yield* tx
           .update(schedule)
           .set({
-            kind: "search",
+            kind: input.kind,
             targetId: input.targetId,
             intervalMinutes: minutes(input.intervalMinutes),
+            options: input.options ?? existing.options,
             enabled: input.enabled,
             nextRunAt,
             lastError: input.enabled && existing.enabled ? existing.lastError : null,
@@ -149,9 +167,10 @@ export const upsert = (
       .insert(schedule)
       .values({
         userId: input.userId,
-        kind: "search",
+        kind: input.kind,
         targetId: input.targetId,
         intervalMinutes: minutes(input.intervalMinutes),
+        options: input.options ?? {},
         enabled: input.enabled,
         nextRunAt: input.enabled ? now : null,
         lastError: null
@@ -178,8 +197,8 @@ export interface DueOptions {
 }
 
 /**
- * Due schedules, locked for the caller's transaction. Only `search` rows with
- * an owner are crawlable; system rows (`user_id is null`) are not.
+ * Due schedules, locked for the caller's transaction. Every kind with an owner
+ * is dispatchable; system rows (`user_id is null`) are not.
  */
 export const due = (
   tx: Executor,
@@ -193,7 +212,6 @@ export const due = (
       select *
       from schedule
       where enabled
-        and kind = 'search'
         and user_id is not null
         and next_run_at is not null
         and next_run_at <= ${now}

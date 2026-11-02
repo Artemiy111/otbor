@@ -1,3 +1,5 @@
+export * from "./contacts.ts"
+export * from "./conversations.ts"
 export * from "./decision.ts"
 export * from "./gate.ts"
 export * from "./lexicon.ts"

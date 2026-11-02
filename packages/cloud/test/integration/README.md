@@ -57,6 +57,15 @@ the first run creates it, exactly as `bun run db:migrate` does.
    advances them before running, and a failing crawl records `last_error`
    without stopping the next schedule. Schedule crawls use a fake
    `CrawlRunner`, so the suite never calls hh.ru.
+9. **Sources** — contacts extracted from an ingested vacancy are owner-scoped
+   and removable; mail accounts are CRUD, `FakeMailGateway` sync stitches
+   threads by In-Reply-To, links an hh vacancy and is idempotent by RFC
+   Message-ID; Telegram accounts are CRUD, `FakeTelegramGateway` sync stores
+   private dialogs and watermarks, and QR login persists a session; the worker
+   dispatches `mail_sync`, `telegram_sync` and `vacancy_hydration` schedules
+   and records the typed `hh_chat_sync` error without stopping the next one.
+   Mail and Telegram credentials are written to temporary
+   `OTBOR_MAIL_DIR` / `OTBOR_TELEGRAM_DIR` directories only.
 
 ## Notes
 

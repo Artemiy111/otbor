@@ -2,6 +2,9 @@ import { Schema } from "effect"
 import {
   ApplicationState,
   AttemptStage,
+  ContactKind,
+  ContactSource,
+  ConversationChannel,
   CrawlRunStatus,
   DecisionReasonCode,
   DecisionVerdict,
@@ -12,6 +15,8 @@ import {
   JobStatus,
   KeywordMatchLocation,
   LetterPolicy,
+  MessageDirection,
+  MessageKind,
   PresetKind,
   ScheduleKind,
   Seniority,
@@ -23,6 +28,8 @@ import {
 import {
   ApplicationId,
   AttemptId,
+  ContactId,
+  ConversationId,
   DecisionId,
   EmployerId,
   HarnessId,
@@ -32,11 +39,13 @@ import {
   KeywordId,
   KitId,
   LeaseId,
+  MailAccountId,
   PresetId,
   ResumeId,
   ScheduleId,
   SearchQueryId,
   SearchRunId,
+  TelegramAccountId,
   UserId,
   VacancyId
 } from "./ids.ts"
@@ -226,6 +235,8 @@ export const CrawlSchedule = Schema.Struct({
   kind: ScheduleKind,
   targetId: Schema.String,
   intervalMinutes: Schema.Int,
+  /** Per-kind knobs (`limit`, `delayMs`, `dialogs`, `messages`, …). */
+  options: Schema.Record(Schema.String, Schema.Unknown),
   enabled: Schema.Boolean,
   nextRunAt: Schema.NullOr(Schema.String),
   lastRunAt: Schema.NullOr(Schema.String),
@@ -235,6 +246,142 @@ export const CrawlSchedule = Schema.Struct({
 })
 
 export type CrawlSchedule = typeof CrawlSchedule.Type
+
+/* -------------------------------------------------------------------------- */
+/* Sources: contacts and conversations                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One way to reach a person. The same `kind`+`value` is unique per user, so a
+ * second sighting updates evidence and confidence instead of adding a row.
+ */
+export const ContactSummary = Schema.Struct({
+  id: ContactId,
+  personName: Schema.NullOr(Schema.String),
+  personRole: Schema.NullOr(Schema.String),
+  kind: ContactKind,
+  value: Schema.String,
+  url: Schema.NullOr(Schema.String),
+  source: ContactSource,
+  confidence: Schema.NullOr(Schema.Number),
+  isBot: Schema.Boolean,
+  vacancyId: Schema.NullOr(VacancyId),
+  lastSeenAt: Schema.String
+})
+
+export type ContactSummary = typeof ContactSummary.Type
+
+export const ContactRecord = Schema.Struct({
+  ...ContactSummary.fields,
+  evidence: Schema.NullOr(Schema.String),
+  employerId: Schema.NullOr(EmployerId),
+  firstSeenAt: Schema.String
+})
+
+export type ContactRecord = typeof ContactRecord.Type
+
+export const ConversationSummary = Schema.Struct({
+  id: ConversationId,
+  channel: ConversationChannel,
+  /** Mail account / Telegram account id, as text so a channel can be rerouted. */
+  accountId: Schema.String,
+  externalId: Schema.String,
+  title: Schema.NullOr(Schema.String),
+  url: Schema.NullOr(Schema.String),
+  personName: Schema.NullOr(Schema.String),
+  personRole: Schema.NullOr(Schema.String),
+  lastMessageAt: Schema.NullOr(Schema.String),
+  unreadCount: Schema.Int,
+  archived: Schema.Boolean,
+  /** Text of the newest stored message, for list previews. */
+  lastMessage: Schema.NullOr(Schema.String),
+  /** The vacancy the thread is about, when one was linked. */
+  vacancyId: Schema.NullOr(VacancyId)
+})
+
+export type ConversationSummary = typeof ConversationSummary.Type
+
+export const ConversationMessageRecord = Schema.Struct({
+  id: Schema.String,
+  externalId: Schema.String,
+  direction: MessageDirection,
+  sentAt: Schema.String,
+  kind: MessageKind,
+  text: Schema.NullOr(Schema.String),
+  readAt: Schema.NullOr(Schema.String)
+})
+
+export type ConversationMessageRecord = typeof ConversationMessageRecord.Type
+
+export const ConversationDetail = Schema.Struct({
+  conversation: ConversationSummary,
+  messages: Schema.Array(ConversationMessageRecord)
+})
+
+export type ConversationDetail = typeof ConversationDetail.Type
+
+/* -------------------------------------------------------------------------- */
+/* Sources: accounts                                                          */
+/* -------------------------------------------------------------------------- */
+
+export const MailAccountRecord = Schema.Struct({
+  id: MailAccountId,
+  label: Schema.String,
+  address: Schema.String,
+  host: Schema.String,
+  port: Schema.Int,
+  secure: Schema.Boolean,
+  username: Schema.String,
+  includeSent: Schema.Boolean,
+  backfillDays: Schema.Int,
+  status: Schema.String,
+  enabled: Schema.Boolean,
+  lastSyncAt: Schema.NullOr(Schema.String),
+  lastError: Schema.NullOr(Schema.String),
+  createdAt: Schema.String,
+  updatedAt: Schema.String
+})
+
+export type MailAccountRecord = typeof MailAccountRecord.Type
+
+export const TelegramAccountRecord = Schema.Struct({
+  id: TelegramAccountId,
+  label: Schema.String,
+  tgUserId: Schema.NullOr(Schema.String),
+  username: Schema.NullOr(Schema.String),
+  phoneMasked: Schema.NullOr(Schema.String),
+  status: Schema.String,
+  enabled: Schema.Boolean,
+  lastSyncAt: Schema.NullOr(Schema.String),
+  lastError: Schema.NullOr(Schema.String),
+  createdAt: Schema.String,
+  updatedAt: Schema.String
+})
+
+export type TelegramAccountRecord = typeof TelegramAccountRecord.Type
+
+/** Outcome of one bounded source sync; counters, never row dumps. */
+export const SyncResult = Schema.Struct({
+  processed: Schema.Int,
+  inserted: Schema.Int,
+  updated: Schema.Int,
+  skipped: Schema.Int,
+  contacts: Schema.Int,
+  linked: Schema.Int,
+  errors: Schema.Array(Schema.String)
+})
+
+export type SyncResult = typeof SyncResult.Type
+
+/** Status of a detached QR login, polled by the CLI. */
+export const TelegramLoginStatusValue = Schema.Literals([
+  "idle",
+  "pending",
+  "authorized",
+  "error"
+])
+
+export type TelegramLoginStatusValue = typeof TelegramLoginStatusValue.Type
 
 /* -------------------------------------------------------------------------- */
 /* Gate, lexicon, decisions                                                   */

@@ -10,11 +10,12 @@ import type {
   VacancySummary
 } from "@otbor/contract"
 import { NotFound } from "@otbor/contract"
-import { gateTitle, matchLexicon, titleCacheKey } from "@otbor/domain"
+import { extractContactsFromText, gateTitle, matchLexicon, titleCacheKey } from "@otbor/domain"
 import { Effect, Context, Layer } from "effect"
 import type { Executor } from "../db/Database.ts"
 import { Database } from "../db/Database.ts"
 import { CurrentUser } from "./CurrentUser.ts"
+import * as ContactRepository from "../repositories/ContactRepository.ts"
 import * as LexiconRepository from "../repositories/LexiconRepository.ts"
 import * as DecisionRepository from "../repositories/DecisionRepository.ts"
 import * as EmployerRepository from "../repositories/EmployerRepository.ts"
@@ -48,7 +49,7 @@ const contentHash = (draft: VacancyDraft): string =>
     areaName: draft.areaName ?? null
   })
 
-const persistDraft = (tx: Executor, draft: VacancyDraft) =>
+const persistDraft = (tx: Executor, draft: VacancyDraft, contactUserId: string) =>
   Effect.gen(function*() {
     const source = draft.source ?? "hh"
     const existing = yield* VacancyRepository.findByExternal(tx, source, draft.externalId)
@@ -100,12 +101,29 @@ const persistDraft = (tx: Executor, draft: VacancyDraft) =>
     })
     yield* LexiconRepository.replaceMatches(tx, vacancyId, matches)
 
+    // HR contact details are extracted from the vacancy text, never invented.
+    const extraction = extractContactsFromText(
+      [effective.title, effective.descriptionText ?? ""].filter(Boolean).join("\n")
+    )
+    if (extraction.contacts.length > 0) {
+      yield* ContactRepository.upsertMany(tx, {
+        userId: contactUserId,
+        contacts: extraction.contacts,
+        source: "hh_vacancy",
+        vacancyId,
+        employerId: employerRow?.[0]?.id ?? null
+      })
+    }
+
     const row = yield* VacancyRepository.findById(tx, vacancyId)
     return { status: existing === null ? ("inserted" as const) : ("updated" as const), row: row! }
   })
 
 export interface CorpusServiceShape {
-  readonly ingest: (drafts: ReadonlyArray<VacancyDraft>) => Effect.Effect<IngestResult, ApiError>
+  readonly ingest: (
+    drafts: ReadonlyArray<VacancyDraft>,
+    options?: { readonly userId?: string }
+  ) => Effect.Effect<IngestResult, ApiError>
   readonly list: (filter: VacancyRepository.VacancyFilter) => Effect.Effect<
     { readonly items: ReadonlyArray<VacancySummary>; readonly total: number },
     ApiError
@@ -131,11 +149,13 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
       const database = yield* Database
       const currentUser = yield* CurrentUser
 
-      const ingest: CorpusServiceShape["ingest"] = (drafts) =>
+      const ingest: CorpusServiceShape["ingest"] = (drafts, options = {}) =>
         Effect.gen(function*() {
           if (drafts.length === 0) {
             return { inserted: 0, updated: 0, skipped: 0, items: [] }
           }
+
+          const contactUserId = options.userId ?? currentUser.userId
 
           return yield* database
             .asOwner((tx) =>
@@ -146,7 +166,7 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
                 const items: Array<VacancySummary> = []
 
                 for (const draft of drafts) {
-                  const result = yield* persistDraft(tx, draft)
+                  const result = yield* persistDraft(tx, draft, contactUserId)
                   if (result.status === "inserted") inserted += 1
                   else if (result.status === "updated") updated += 1
                   else skipped += 1
