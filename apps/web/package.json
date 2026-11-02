@@ -10,13 +10,14 @@
     "typecheck": "vue-tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json"
   },
   "dependencies": {
+    "@lucide/vue": "^1.66.0",
     "@otbor/contract": "workspace:*",
     "@pinia/colada": "^1.4.9",
     "@tailwindcss/vite": "^4.3.3",
+    "@vueuse/core": "^15.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "effect": "4.1.0",
-    "lucide-vue-next": "^1.0.0",
     "pinia": "^4.1.0",
     "reka-ui": "^2.11.0",
     "tailwind-merge": "^3.7.0",

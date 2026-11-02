@@ -1,9 +1,11 @@
 # @otbor/web
 
 Operator UI for the local single-user mode. It uses Vue 3 + Vite, Tailwind CSS
-v4 and shadcn-vue-style components. It speaks the same `effect/rpc` `OtborRpcs`
-group, over the same `RPC_PATH` and NDJSON serialization, as `@otbor/cli`. There
-is no second API surface and no login screen.
+v4, shadcn-vue components and `@lucide/vue`. It speaks the same `effect/rpc`
+`OtborRpcs` group, over the same `RPC_PATH` and NDJSON serialization, as
+`@otbor/cli`. There is no second API surface and no login screen. Interface text
+is Russian; raw contract tokens (`needs_human`, `submitted`, ...) stay visible
+only where they help debugging.
 
 ## Run
 
@@ -15,18 +17,23 @@ bun run server
 bun run web
 ```
 
-Open http://127.0.0.1:5173. The UI is hash-routed:
+Open http://127.0.0.1:5173. The UI is hash-routed, so a static build needs no
+server-side fallback:
 
 | Hash | Screen |
 | --- | --- |
 | `#/health` | `SystemHealth` |
-| `#/vacancies` | corpus list, gate from `TitlesPreview` |
-| `#/vacancies/:id` | vacancy detail, keywords, description |
+| `#/vacancies` | corpus list: search, gate, salary, company, area, date |
+| `#/vacancies/:id` | vacancy detail, skills, lexicon matches, description, links |
+| `#/companies` | employers with rating, industries and vacancy count |
+| `#/companies/:id` | employer profile and its vacancies |
+| `#/keywords` | lexicon terms, aliases and enabled state |
 | `#/decisions` | stored decisions with verdict/gate/priority |
 | `#/applications` | application list |
 | `#/applications/:id` | kit, attempts, linked decision |
 | `#/queue` | queue stats and harness jobs |
 | `#/inference` | enqueue one ACP inference job and poll its result |
+| `#/presets` | saved explore/apply filters |
 
 Inference is the only write. Every other screen is read-only; it consumes the
 same RPC methods as before.
@@ -41,15 +48,20 @@ exposes an `index.ts`.
 src/
   app/        entry, hash router, layout styles
   pages/      one route per page
-  widgets/    app shell (sidebar/header), page header, stat card
+  widgets/    app shell and sidebar, page header, stat card
   features/   filters, refresh, inference enqueue mutation
   entities/   RPC calls and query keys per domain object
   shared/     RPC client, shadcn-vue UI primitives, formatting helpers
 ```
 
+The sidebar is built from the shadcn-vue `Sidebar` primitives (collapsible icon
+rail, grouped sections, mobile sheet) with hh branding. Detail routes map back
+to their list section, so `#/vacancies/:id` keeps «Вакансии» active.
+
 Server state is owned by Pinia + `@pinia/colada`: `useQuery` for reads and
 `useMutation` for `InferenceEnqueue`, with entity-scoped query keys and cache
-invalidation for the queue and inference queries.
+invalidation for the queue and inference queries. Company, keyword and preset
+entities use the same pattern.
 
 ## Configuration
 

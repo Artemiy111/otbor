@@ -9,7 +9,7 @@ withDefaults(
   {
     description: undefined,
     backTo: undefined,
-    backLabel: "Back"
+    backLabel: "Назад"
   }
 )
 </script>

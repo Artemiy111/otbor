@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { RefreshCw } from "lucide-vue-next"
+import { RefreshCw } from "@lucide/vue"
 import { cn } from "@/shared/lib"
 import { Button } from "@/shared/ui"
 
@@ -10,7 +10,7 @@ const props = withDefaults(
   }>(),
   {
     loading: false,
-    label: "Refresh"
+    label: "Обновить"
   }
 )
 
@@ -20,6 +20,6 @@ const emit = defineEmits<{ refresh: [] }>()
 <template>
   <Button variant="outline" size="sm" :disabled="props.loading" @click="emit('refresh')">
     <RefreshCw :class="cn('h-4 w-4', props.loading && 'animate-spin')" />
-    {{ props.loading ? "Loading…" : props.label }}
+    {{ props.loading ? "Обновление…" : props.label }}
   </Button>
 </template>

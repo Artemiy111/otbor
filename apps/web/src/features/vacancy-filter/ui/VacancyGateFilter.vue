@@ -6,20 +6,20 @@ const emit = defineEmits<{ "update:modelValue": [value: string] }>()
 </script>
 
 <template>
-  <div class="flex items-center gap-2">
-    <Label for="vacancy-gate-filter" class="text-muted-foreground">Gate</Label>
+  <div class="space-y-1.5">
+    <Label for="vacancy-gate-filter" class="text-xs text-muted-foreground">Гейт</Label>
     <Select
       :model-value="props.modelValue"
       @update:model-value="(value) => emit('update:modelValue', String(value))"
     >
-      <SelectTrigger id="vacancy-gate-filter" class="w-[150px]">
+      <SelectTrigger id="vacancy-gate-filter" class="w-[190px]">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="all">All gates</SelectItem>
-        <SelectItem value="match">match</SelectItem>
-        <SelectItem value="unknown">unknown</SelectItem>
-        <SelectItem value="reject">reject</SelectItem>
+        <SelectItem value="all">Все вердикты</SelectItem>
+        <SelectItem value="match">Подходит (match)</SelectItem>
+        <SelectItem value="unknown">Неясно (unknown)</SelectItem>
+        <SelectItem value="reject">Отклонено (reject)</SelectItem>
       </SelectContent>
     </Select>
   </div>

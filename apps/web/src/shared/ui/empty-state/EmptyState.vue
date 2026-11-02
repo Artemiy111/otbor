@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Inbox } from "lucide-vue-next"
+import { Inbox } from "@lucide/vue"
 
 withDefaults(
   defineProps<{
@@ -7,7 +7,7 @@ withDefaults(
     description?: string
   }>(),
   {
-    title: "Nothing here",
+    title: "Пусто",
     description: undefined
   }
 )

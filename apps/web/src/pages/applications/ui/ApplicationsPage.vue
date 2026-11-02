@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { ref } from "vue"
+import { computed, ref } from "vue"
 import { useQuery } from "@pinia/colada"
-import { CircleAlert } from "lucide-vue-next"
+import { CircleAlert } from "@lucide/vue"
 import { applicationApi, applicationKeys } from "@/entities/application"
 import { ApplicationStateFilter } from "@/features/application-filter"
 import { RefreshButton } from "@/features/refresh-button"
-import { describeError, formatDate } from "@/shared/lib"
+import {
+  applicationPath,
+  describeError,
+  formatDate,
+  vacancyPath
+} from "@/shared/lib"
 import {
   Alert,
   AlertDescription,
@@ -26,7 +31,7 @@ import { PageHeader } from "@/widgets/page-header"
 
 const state = ref("all")
 
-const { data, isPending, isLoading, error, refetch } = useQuery({
+const query = useQuery({
   key: () => applicationKeys.list(state.value),
   query: () =>
     applicationApi.list({
@@ -34,28 +39,30 @@ const { data, isPending, isLoading, error, refetch } = useQuery({
       state: state.value === "all" ? undefined : state.value
     })
 })
+
+const applications = computed(() => query.data.value ?? [])
 </script>
 
 <template>
   <section>
     <PageHeader
-      title="Applications"
-      description="One durable workflow per application. The cloud, not the harness, owns state."
+      title="Отклики"
+      description="Один устойчивый процесс на отклик. Состоянием владеет облако, а не harness."
     >
       <template #actions>
-        <RefreshButton :loading="isLoading" @refresh="refetch()" />
+        <RefreshButton :loading="query.isLoading.value" @refresh="query.refetch()" />
       </template>
     </PageHeader>
 
-    <div class="mb-4 flex flex-wrap items-center gap-3">
+    <div class="mb-4 flex flex-wrap items-end gap-3">
       <ApplicationStateFilter v-model="state" />
-      <span class="text-sm text-muted-foreground">{{ data?.length ?? 0 }} shown</span>
+      <span class="pb-2 text-xs text-muted-foreground">Показано: {{ applications.length }}</span>
     </div>
 
-    <Alert v-if="error" variant="destructive" class="mb-4">
+    <Alert v-if="query.error.value" variant="destructive" class="mb-4">
       <CircleAlert />
-      <AlertTitle>Could not list applications</AlertTitle>
-      <AlertDescription>{{ describeError(error) }}</AlertDescription>
+      <AlertTitle>Не удалось загрузить отклики</AlertTitle>
+      <AlertDescription>{{ describeError(query.error.value) }}</AlertDescription>
     </Alert>
 
     <Card>
@@ -63,40 +70,50 @@ const { data, isPending, isLoading, error, refetch } = useQuery({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>State</TableHead>
-              <TableHead>Vacancy</TableHead>
-              <TableHead>Employer</TableHead>
-              <TableHead>Account</TableHead>
-              <TableHead>Updated</TableHead>
+              <TableHead>Состояние</TableHead>
+              <TableHead>Вакансия</TableHead>
+              <TableHead>Компания</TableHead>
+              <TableHead>Аккаунт</TableHead>
+              <TableHead>Обновлён</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            <template v-if="isPending">
-              <TableRow v-for="index in 6" :key="index">
+            <template v-if="query.isPending.value">
+              <TableRow v-for="index in 8" :key="index">
                 <TableCell :colspan="5">
                   <Skeleton class="h-4 w-full" />
                 </TableCell>
               </TableRow>
             </template>
 
-            <TableRow v-else-if="data && data.length === 0">
+            <TableRow v-else-if="applications.length === 0">
               <TableCell :colspan="5">
                 <EmptyState
-                  title="No applications match this filter"
-                  description="Applications appear here once a decision is promoted to a workflow."
+                  title="Откликов не найдено"
+                  description="Отклик появится здесь, когда решение станет рабочим процессом."
                 />
               </TableCell>
             </TableRow>
 
-            <TableRow v-for="application in data ?? []" :key="application.id">
-              <TableCell><StatusBadge :value="application.state" /></TableCell>
+            <TableRow v-for="application in applications" :key="application.id">
               <TableCell>
+                <StatusBadge :value="application.state" raw />
+                <div v-if="application.streamId" class="mt-1 text-xs text-muted-foreground">
+                  поток <code class="font-mono">{{ application.streamId }}</code>
+                </div>
+              </TableCell>
+              <TableCell class="max-w-[380px]">
                 <a
-                  :href="`#/applications/${application.id}`"
+                  :href="applicationPath(application.id)"
                   class="font-medium text-foreground transition-colors hover:text-primary"
                 >
                   {{ application.vacancyTitle ?? application.vacancyId }}
                 </a>
+                <div class="text-xs text-muted-foreground">
+                  <a :href="vacancyPath(application.vacancyId)" class="hover:text-foreground">
+                    вакансия
+                  </a>
+                </div>
               </TableCell>
               <TableCell>{{ application.employerName ?? "—" }}</TableCell>
               <TableCell class="font-mono text-xs">{{ application.hhAccountId }}</TableCell>
