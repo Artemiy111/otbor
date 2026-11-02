@@ -10,6 +10,7 @@ import { InferencePage } from "@/pages/inference"
 import { KeywordsPage } from "@/pages/keywords"
 import { PresetsPage } from "@/pages/presets"
 import { QueuePage } from "@/pages/queue"
+import { SchedulesPage } from "@/pages/schedules"
 import { VacanciesPage } from "@/pages/vacancies"
 import { VacancyDetailPage } from "@/pages/vacancy-detail"
 import { AppShell } from "@/widgets/app-shell"
@@ -36,5 +37,6 @@ const applicationId = computed(() =>
     <QueuePage v-else-if="route.name === 'queue'" />
     <InferencePage v-else-if="route.name === 'inference'" />
     <PresetsPage v-else-if="route.name === 'presets'" />
+    <SchedulesPage v-else-if="route.name === 'schedules'" />
   </AppShell>
 </template>
