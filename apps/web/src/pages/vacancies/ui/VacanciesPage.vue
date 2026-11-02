@@ -161,7 +161,7 @@ const columns: ColumnDef<VacancySummary>[] = [
     id: "gate",
     enableSorting: false,
     enableGlobalFilter: false,
-    header: "Гейт",
+    header: "Проверка",
     cell: ({ row }) => {
       const verdict = gateFor(row.original.title)
       if (verdict !== null) return h(StatusBadge, { value: verdict })
@@ -194,7 +194,7 @@ const refresh = () => {
   <section>
     <PageHeader
       title="Вакансии"
-      description="Корпус вакансий глазами гейта: заголовок, компания, зарплата, город и вердикт."
+      description="Корпус вакансий: заголовок, компания, зарплата, город и детерминированная проверка заголовка."
     >
       <template #actions>
         <RefreshButton :loading="isLoading" @refresh="refresh" />
@@ -217,7 +217,7 @@ const refresh = () => {
       filter-label="Поиск"
       filter-placeholder="Название, компания или город"
       empty-title="Вакансий не найдено"
-      empty-description="Измените запрос, фильтр гейта или включите архивные вакансии."
+      empty-description="Измените запрос, проверку заголовка или включите архивные вакансии."
       @update:visible-rows="visibleRows = $event"
     >
       <template #toolbar>
@@ -237,6 +237,10 @@ const refresh = () => {
       </template>
 
       <template #summary="{ table }">
+        <p class="mb-3 text-xs text-muted-foreground">
+          Проверка заголовка — правило, не ИИ: «подходит» значит, что заголовок похож на
+          DevOps/SRE-роль, «неясно» уходит в тихий список, «отклонено» — жёсткий минус.
+        </p>
         <p class="mb-3 text-xs text-muted-foreground">
           Найдено {{ table.getFilteredRowModel().rows.length }} из {{ total }} · страница
           {{ table.getState().pagination.pageIndex + 1 }} из

@@ -87,7 +87,7 @@ const columns: ColumnDef<DecisionRecord>[] = [
   {
     id: "gate",
     accessorFn: (row) => statusLabel(row.gate),
-    header: sortableHeader<DecisionRecord>("Гейт"),
+    header: sortableHeader<DecisionRecord>("Проверка"),
     cell: ({ row }) => h(StatusBadge, { value: row.original.gate, raw: true })
   },
   {

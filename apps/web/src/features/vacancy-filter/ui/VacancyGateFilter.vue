@@ -7,12 +7,12 @@ const emit = defineEmits<{ "update:modelValue": [value: string] }>()
 
 <template>
   <div class="space-y-1.5">
-    <Label for="vacancy-gate-filter" class="text-xs text-muted-foreground">Гейт</Label>
+    <Label for="vacancy-gate-filter" class="text-xs text-muted-foreground">Проверка заголовка</Label>
     <Select
       :model-value="props.modelValue"
       @update:model-value="(value) => emit('update:modelValue', String(value))"
     >
-      <SelectTrigger id="vacancy-gate-filter" class="w-[190px]">
+      <SelectTrigger id="vacancy-gate-filter" class="w-[230px]">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
