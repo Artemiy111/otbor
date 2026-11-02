@@ -1,4 +1,4 @@
-import { parsePresetFilter } from "@otbor/contract"
+import { parsePresetFilter, type PresetId } from "@otbor/contract"
 import { Console, Effect, FileSystem, Option } from "effect"
 import { Command, Flag } from "effect/cli"
 import { Api } from "../client.ts"
@@ -67,7 +67,19 @@ const upsert = Command.make(
   })
 ).pipe(Command.withDescription("Create or update a preset"))
 
+const remove = Command.make(
+  "remove",
+  {
+    id: Flag.String("id").pipe(Flag.withDescription("Preset id"))
+  },
+  Effect.fn(function*({ id }) {
+    const api = yield* Api
+    const result = yield* api.PresetsRemove({ id: id as PresetId })
+    yield* Console.log(result.deleted ? `removed ${result.id}` : `not found ${result.id}`)
+  })
+).pipe(Command.withDescription("Delete a user preset"))
+
 export const presetCommand = Command.make("preset").pipe(
-  Command.withSubcommands([list, upsert]),
+  Command.withSubcommands([list, upsert, remove]),
   Command.withDescription("Search and apply presets")
 )

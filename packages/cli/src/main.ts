@@ -16,6 +16,7 @@ import { lexiconCommand } from "./commands/lexicon.ts"
 import { presetCommand } from "./commands/preset.ts"
 import { proxyCommand } from "./commands/proxy.ts"
 import { queueCommand } from "./commands/queue.ts"
+import { scheduleCommand } from "./commands/schedule.ts"
 import { healthCommand } from "./commands/system.ts"
 import { vacancyCommand } from "./commands/vacancy.ts"
 import { writeCommand } from "./commands/write.ts"
@@ -75,6 +76,7 @@ root
       presetCommand,
       crawlCommand,
       hydrateCommand,
+      scheduleCommand,
       proxyCommand,
       acpCommand,
       inferenceCommand,
