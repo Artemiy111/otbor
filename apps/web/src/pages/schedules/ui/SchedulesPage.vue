@@ -47,7 +47,9 @@ const telegramAccountsQuery = useQuery({
   query: () => telegramAccountApi.list()
 })
 
-const schedules = computed<ReadonlyArray<CrawlSchedule>>(() => query.data.value ?? [])
+const schedules = computed<ReadonlyArray<CrawlSchedule>>(() =>
+  (query.data.value ?? []).filter((schedule) => schedule.kind !== "search")
+)
 const mailAccounts = computed(() => mailAccountsQuery.data.value ?? [])
 const telegramAccounts = computed(() => telegramAccountsQuery.data.value ?? [])
 
@@ -147,8 +149,8 @@ onUnmounted(() => {
 
 const resetForm = () => {
   editingId.value = null
-  kind.value = "search"
-  target.value = ""
+  kind.value = "vacancy_hydration"
+  target.value = "global"
   interval.value = "30"
   enabled.value = true
   limit.value = ""
@@ -504,7 +506,7 @@ const columns: ColumnDef<CrawlSchedule>[] = [
   <section>
     <PageHeader
       title="Обход"
-      description="Расписания источников. Вид «Поиск» обходит страницу поиска hh.ru по указанному URL и сохраняет найденные вакансии в корпус; «Гидрация» догружает описания и работодателей. Запустите «Запустить сейчас», чтобы получить первую порцию, или дождитесь интервала."
+      description="Расписания источников: гидратация вакансий и компаний, синхронизация почты и Telegram. Поиск новых вакансий настраивается на странице «Поиск». Запустите «Запустить сейчас», чтобы получить первую порцию, или дождитесь интервала."
     >
       <template #actions>
         <RefreshButton :loading="query.isLoading.value" @refresh="query.refetch()" />
@@ -553,7 +555,7 @@ const columns: ColumnDef<CrawlSchedule>[] = [
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="search">Поиск hh</SelectItem>
+                  
                   <SelectItem value="vacancy_hydration">Гидратация вакансий</SelectItem>
                   <SelectItem value="employer_hydration">Гидратация компаний</SelectItem>
                   <SelectItem value="mail_sync">Синхронизация почты</SelectItem>
