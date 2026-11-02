@@ -112,7 +112,7 @@ const refresh = () => {
     <PageHeader
       :title="data?.vacancy.title ?? 'Вакансия'"
       :description="subtitle"
-      back-to="#/vacancies"
+      back-to="/vacancies"
       back-label="Вакансии"
     >
       <template #actions>
@@ -264,7 +264,7 @@ const refresh = () => {
               />
               <div class="border-t border-border p-3">
                 <Button as-child variant="outline" size="sm">
-                  <a href="#/contacts">Все контакты</a>
+                  <a href="/contacts">Все контакты</a>
                 </Button>
               </div>
             </CardContent>

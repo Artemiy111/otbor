@@ -64,7 +64,7 @@ const cost = (value: number | null | undefined): string =>
     <PageHeader
       :title="data?.application.vacancyTitle ?? 'Отклик'"
       :description="subtitle"
-      back-to="#/applications"
+      back-to="/applications"
       back-label="Отклики"
     >
       <template #actions>

@@ -630,7 +630,7 @@ const columns: ColumnDef<CrawlSchedule>[] = [
               >
                 Нет доступных аккаунтов.
                 <a
-                  :href="kind === 'mail_sync' ? '#/mail' : '#/telegram'"
+                  :href="kind === 'mail_sync' ? '/mail' : '/telegram'"
                   class="underline underline-offset-4"
                 >
                   Добавьте аккаунт

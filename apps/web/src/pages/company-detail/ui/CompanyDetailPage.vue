@@ -66,7 +66,7 @@ const errorText = computed(() =>
     <PageHeader
       :title="employer?.name ?? 'Компания'"
       :description="subtitle"
-      back-to="#/companies"
+      back-to="/companies"
       back-label="Компании"
     >
       <template #actions>

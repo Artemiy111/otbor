@@ -30,7 +30,7 @@ const closeMobile = () => {
   <Sidebar collapsible="icon">
     <SidebarHeader class="border-b border-sidebar-border">
       <a
-        href="#/vacancies"
+        href="/vacancies"
         class="flex items-center gap-2 px-1 py-0.5"
         aria-label="Отбор на hh.ru — на главную"
         @click="closeMobile"

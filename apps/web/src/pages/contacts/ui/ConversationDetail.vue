@@ -135,7 +135,7 @@ const errorText = computed(() =>
 
       <footer class="border-t border-border p-3">
         <Button as-child variant="outline" size="sm">
-          <a href="#/contacts">Все контакты</a>
+          <a href="/contacts">Все контакты</a>
         </Button>
         <span class="ml-2 text-xs text-muted-foreground">
           Отправка сообщений из интерфейса недоступна.

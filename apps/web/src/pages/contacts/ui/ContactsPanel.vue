@@ -335,10 +335,10 @@ const columns: ColumnDef<ContactRecord>[] = [
         >
           <div class="mt-2 flex flex-wrap items-center justify-center gap-2">
             <Button as-child variant="outline" size="sm">
-              <a href="#/mail"><Mail />Почта</a>
+              <a href="/mail"><Mail />Почта</a>
             </Button>
             <Button as-child variant="outline" size="sm">
-              <a href="#/telegram"><Send />Telegram</a>
+              <a href="/telegram"><Send />Telegram</a>
             </Button>
           </div>
         </EmptyState>

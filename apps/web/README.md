@@ -22,18 +22,18 @@ server-side fallback:
 
 | Hash | Screen |
 | --- | --- |
-| `#/health` | `SystemHealth` |
-| `#/vacancies` | corpus list: search, gate, salary, company, area, date |
-| `#/vacancies/:id` | vacancy detail, skills, lexicon matches, description, links |
-| `#/companies` | employers with rating, industries and vacancy count |
-| `#/companies/:id` | employer profile and its vacancies |
-| `#/keywords` | lexicon terms, aliases and enabled state |
-| `#/decisions` | stored decisions with verdict/gate/priority |
-| `#/applications` | application list |
-| `#/applications/:id` | kit, attempts, linked decision |
-| `#/queue` | queue stats and harness jobs |
-| `#/inference` | enqueue one ACP inference job and poll its result |
-| `#/presets` | saved explore/apply filters |
+| `/health` | `SystemHealth` |
+| `/vacancies` | corpus list: search, gate, salary, company, area, date |
+| `/vacancies/:id` | vacancy detail, skills, lexicon matches, description, links |
+| `/companies` | employers with rating, industries and vacancy count |
+| `/companies/:id` | employer profile and its vacancies |
+| `/keywords` | lexicon terms, aliases and enabled state |
+| `/decisions` | stored decisions with verdict/gate/priority |
+| `/applications` | application list |
+| `/applications/:id` | kit, attempts, linked decision |
+| `/queue` | queue stats and harness jobs |
+| `/inference` | enqueue one ACP inference job and poll its result |
+| `/presets` | saved explore/apply filters |
 
 Inference is the only write. Every other screen is read-only; it consumes the
 same RPC methods as before.
@@ -56,7 +56,7 @@ src/
 
 The sidebar is built from the shadcn-vue `Sidebar` primitives (collapsible icon
 rail, grouped sections, mobile sheet) with hh branding. Detail routes map back
-to their list section, so `#/vacancies/:id` keeps «Вакансии» active.
+to their list section, so `/vacancies/:id` keeps «Вакансии» active.
 
 Server state is owned by Pinia + `@pinia/colada`: `useQuery` for reads and
 `useMutation` for `InferenceEnqueue`, with entity-scoped query keys and cache

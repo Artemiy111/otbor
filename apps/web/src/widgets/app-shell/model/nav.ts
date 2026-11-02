@@ -33,42 +33,42 @@ export const navSections: ReadonlyArray<NavSection> = [
   {
     id: "overview",
     label: "Обзор",
-    items: [{ id: "health", label: "Здоровье", href: "#/health", icon: HeartPulse }]
+    items: [{ id: "health", label: "Здоровье", href: "/health", icon: HeartPulse }]
   },
   {
     id: "corpus",
     label: "Корпус",
     items: [
-      { id: "vacancies", label: "Вакансии", href: "#/vacancies", icon: Briefcase },
-      { id: "companies", label: "Компании", href: "#/companies", icon: Building },
-      { id: "keywords", label: "Ключевые слова", href: "#/keywords", icon: BookOpen }
+      { id: "vacancies", label: "Вакансии", href: "/vacancies", icon: Briefcase },
+      { id: "companies", label: "Компании", href: "/companies", icon: Building },
+      { id: "keywords", label: "Ключевые слова", href: "/keywords", icon: BookOpen }
     ]
   },
   {
     id: "selection",
     label: "Отбор",
     items: [
-      { id: "decisions", label: "Решения", href: "#/decisions", icon: Gavel },
-      { id: "applications", label: "Отклики", href: "#/applications", icon: Send },
-      { id: "contacts", label: "Контакты", href: "#/contacts", icon: Contact }
+      { id: "decisions", label: "Решения", href: "/decisions", icon: Gavel },
+      { id: "applications", label: "Отклики", href: "/applications", icon: Send },
+      { id: "contacts", label: "Контакты", href: "/contacts", icon: Contact }
     ]
   },
   {
     id: "sources",
     label: "Источники",
     items: [
-      { id: "mail", label: "Почта", href: "#/mail", icon: Mail },
-      { id: "telegram", label: "Telegram", href: "#/telegram", icon: MessageCircle },
-      { id: "schedules", label: "Обход", href: "#/schedules", icon: CalendarClock }
+      { id: "mail", label: "Почта", href: "/mail", icon: Mail },
+      { id: "telegram", label: "Telegram", href: "/telegram", icon: MessageCircle },
+      { id: "schedules", label: "Обход", href: "/schedules", icon: CalendarClock }
     ]
   },
   {
     id: "automation",
     label: "Автоматизация",
     items: [
-      { id: "queue", label: "Очередь", href: "#/queue", icon: ListChecks },
-      { id: "inference", label: "Генерация", href: "#/inference", icon: Sparkles },
-      { id: "presets", label: "Пресеты", href: "#/presets", icon: SlidersHorizontal }
+      { id: "queue", label: "Очередь", href: "/queue", icon: ListChecks },
+      { id: "inference", label: "Генерация", href: "/inference", icon: Sparkles },
+      { id: "presets", label: "Пресеты", href: "/presets", icon: SlidersHorizontal }
     ]
   }
 ]
