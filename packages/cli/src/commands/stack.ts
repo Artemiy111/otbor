@@ -273,6 +273,37 @@ const startDetached = (spec: ServiceSpec): string => {
   }
 }
 
+/**
+ * A port held by a process `otbor up` did not start (an old `bun run server`,
+ * a stray vite) would make the new child die on bind while /health keeps
+ * answering from the old build. Refuse instead of reporting a false "up".
+ */
+const portOwner = async (port: number): Promise<string> => {
+  const result = await run("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"])
+  const pid = result.out.trim().split("\n")[0]?.trim()
+  if (result.code !== 0 || pid === undefined || pid === "") return "another process"
+  const ps = await run("ps", ["-p", pid, "-o", "command="])
+  return `pid ${pid}${ps.code === 0 && ps.out.trim() !== "" ? ` (${ps.out.trim()})` : ""}`
+}
+
+const ensurePortsFree = Effect.fn("stack.ensurePortsFree")(function*(specs: ReadonlyArray<ServiceSpec>) {
+  const urls = endpoints()
+  const ports: Array<{ readonly name: ServiceName; readonly host: string; readonly port: number }> = []
+  for (const spec of specs) {
+    if (spec.name === "server") ports.push({ name: "server", host: urls.host === "0.0.0.0" ? "127.0.0.1" : urls.host, port: urls.port })
+    if (spec.name === "web") ports.push({ name: "web", host: "127.0.0.1", port: urls.webPort })
+  }
+  for (const { name, host, port } of ports) {
+    if (livePid(name) !== null) continue
+    const busy = yield* Effect.promise(() => tcpOpen(host, port))
+    if (!busy) continue
+    const owner = yield* Effect.promise(() => portOwner(port))
+    return yield* new StackError({
+      message: `${name}: port ${port} is already in use by ${owner}, which otbor up did not start. Stop it first (or set PORT).`
+    })
+  }
+})
+
 // ---------------------------------------------------------------- up
 
 const up = Command.make(
@@ -303,6 +334,7 @@ const up = Command.make(
 
     const specs = serviceSpecs(repoRoot, { web: !noWeb, harness })
     const names = specs.map((spec) => spec.name)
+    yield* ensurePortsFree(specs)
 
     if (!detach) {
       yield* runForeground(specs)
@@ -320,6 +352,14 @@ const up = Command.make(
     if (!healthy) {
       return yield* new StackError({
         message: `API did not answer ${urls.health} within 60s. See ${logFilePath("server")}.`
+      })
+    }
+    const dead = specs.filter((spec) => livePid(spec.name) === null)
+    if (dead.length > 0) {
+      return yield* new StackError({
+        message: `exited right after start: ${dead
+          .map((spec) => `${spec.name} (see ${logFilePath(spec.name)})`)
+          .join(", ")}`
       })
     }
     yield* Console.log(banner(urls, names))
@@ -416,6 +456,9 @@ const statusChecks = Effect.fn("stack.statusChecks")(function*() {
 
   const harnessSaved = existsSync(harnessStatePath())
   const harnessPid = livePid("harness")
+  const serverPid = livePid("server")
+  const webPid = livePid("web")
+  const foreign = " (not started by otbor up)"
 
   const checks: Array<Check> = [
     {
@@ -425,18 +468,18 @@ const statusChecks = Effect.fn("stack.statusChecks")(function*() {
     },
     {
       name: "api",
-      state: !health ? "fail" : rpc === null ? "warn" : rpc.database ? "ok" : "warn",
+      state: !health ? "fail" : rpc === null || serverPid === null ? "warn" : rpc.database ? "ok" : "warn",
       detail: !health
         ? `${urls.health} not answering`
         : rpc === null
           ? "/health ok, SystemHealth RPC failed"
-          : `${rpc.status} v${rpc.version}, database ${rpc.database ? "ok" : "down"}`
+          : `${rpc.status} v${rpc.version}, database ${rpc.database ? "ok" : "down"}${serverPid === null ? foreign : ""}`
     },
     pidCheck("worker"),
     {
       name: "web",
-      state: web ? "ok" : "fail",
-      detail: web ? urls.web : `port ${urls.webPort} closed`
+      state: !web ? "fail" : webPid === null ? "warn" : "ok",
+      detail: web ? `${urls.web}${webPid === null ? foreign : ""}` : `port ${urls.webPort} closed`
     },
     {
       name: "harness",
