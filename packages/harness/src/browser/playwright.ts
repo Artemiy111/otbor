@@ -1,5 +1,6 @@
 import type {
   HarnessExit,
+  NegotiationsSyncJobPayload,
   PrepareJobPayload,
   ReconcileJobPayload,
   ReconcilePage,
@@ -13,8 +14,10 @@ import {
   LETTER_ATTACH_SELECTOR,
   LETTER_SELECTOR,
   MAX_NEGOTIATION_PAGES,
+  MAX_SYNC_PAGES,
   RELOCATION_SELECTOR,
   SUBMIT_SELECTOR,
+  negotiationsSyncExit,
   negotiationsUrl,
   postClickExit,
   prepareExit,
@@ -22,7 +25,8 @@ import {
   responseUrl,
   submitPreflight,
   vacancyUrl,
-  wantsMoreNegotiations
+  wantsMoreNegotiations,
+  wantsMoreSyncPages
 } from "./core.ts"
 import { BrowserExecutor, type SubmitRequest } from "./executor.ts"
 import { DEFAULT_CHROME_PATH, hhProfileDir } from "./profile.ts"
@@ -46,6 +50,8 @@ export interface PlaywrightOptions {
   readonly afterClickMs?: number
   /** Negotiation pages a reconcile reads before giving up. */
   readonly maxNegotiationPages?: number
+  /** Pause between negotiations pages of a sync, so a long list is read politely. */
+  readonly syncDelayMs?: number
 }
 
 const defaults = {
@@ -361,7 +367,50 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
       )
     )
 
-  return BrowserExecutor.of({ prepare, submit, reconcile })
+  /**
+   * Opens negotiations pages 0..N in order, with a pause between them, and
+   * returns what it saw. Navigation only; nothing on the page is clicked.
+   */
+  const negotiationsSync = (payload: NegotiationsSyncJobPayload): Effect.Effect<HarnessExit> =>
+    withPage(payload.sessionProfile, (page) =>
+      Effect.gen(function*() {
+        const pages: Array<ReconcilePage> = []
+        const limit = Math.min(payload.maxPages ?? MAX_SYNC_PAGES, MAX_SYNC_PAGES)
+        for (let index = 0; index < limit; index += 1) {
+          if (index > 0) yield* sleep(config.syncDelayMs ?? 1_500)
+          yield* attempt(() =>
+            page.goto(negotiationsUrl(baseUrl, index), {
+              waitUntil: "domcontentloaded",
+              timeout: config.navigationTimeoutMs
+            })
+          )
+          const deadline = Date.now() + config.settleMs
+          let html = ""
+          while (true) {
+            const read = yield* content(page)
+            if (read !== null) {
+              html = read
+              const kind = classifyResponsePage(html, page.url())
+              if (kind === "login" || kind === "captcha" || html.includes("HH-Lux-InitialState")) break
+            }
+            if (Date.now() >= deadline) break
+            yield* sleep(250)
+          }
+          pages.push({ url: page.url(), html })
+          if (!wantsMoreSyncPages(html, index)) break
+        }
+        return negotiationsSyncExit(pages)
+      })
+    ).pipe(
+      Effect.catch((error) =>
+        Effect.succeed<HarnessExit>({ tag: "transport", message: error.message })
+      ),
+      Effect.catchDefect((defect) =>
+        Effect.succeed<HarnessExit>({ tag: "transport", message: String(defect) })
+      )
+    )
+
+  return BrowserExecutor.of({ prepare, submit, reconcile, negotiationsSync })
 }
 
 export const PlaywrightBrowserExecutor = {

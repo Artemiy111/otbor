@@ -3,6 +3,7 @@ import {
   type HarnessExit,
   type HarnessExitTag,
   type KitAnswer,
+  NegotiationsSyncEvidence,
   PrepareArtifacts,
   ReconcileEvidence,
   type ResponseForm,
@@ -13,6 +14,7 @@ import { type AnswerHint, validateAnswers } from "@otbor/domain"
 import {
   classifyResponsePage,
   isSubmitSuccess,
+  type NegotiationTopic,
   pageExcerpt,
   parseNegotiations,
   readResponseStatus,
@@ -533,4 +535,69 @@ export const reconcileArtifacts = (
     ...("reading" in verdict && verdict.reading !== undefined ? { reading: verdict.reading } : {}),
     ...pages
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Negotiations sync                                                          */
+/* -------------------------------------------------------------------------- */
+
+export type NegotiationsSyncVerdict =
+  /** The pages were read: these topics are what hh holds for the account. */
+  | {
+      readonly _tag: "read"
+      readonly topics: ReadonlyArray<NegotiationTopic>
+      readonly pages: number
+      /** Every page readable and the list read to its end (empty or last page). */
+      readonly complete: boolean
+    }
+  | { readonly _tag: "human"; readonly reason: string }
+  | { readonly _tag: "retry"; readonly reason: string }
+
+/**
+ * Reads a `negotiations_sync` exit. The harness only delivers pages; whether a
+ * page holds responses is the cloud's reading. Pages are read in order and
+ * reading stops at the first unreadable one: what was read before it is still
+ * real evidence (an import only adds), but `complete` is then false. No page
+ * readable at all is a retry, never an empty list.
+ */
+export const judgeNegotiationsSync = (exit: HarnessExit): NegotiationsSyncVerdict => {
+  if (exit.tag === "session_expired") {
+    return { _tag: "human", reason: "hh session expired; log in again" }
+  }
+  if (exit.tag === "captcha") return { _tag: "human", reason: "hh asked for a captcha" }
+  if (exit.tag !== "reconciled") {
+    return { _tag: "retry", reason: `negotiations sync came without page evidence (${exit.tag})` }
+  }
+
+  const decoded = Schema.decodeUnknownOption(NegotiationsSyncEvidence)(exit.artifacts)
+  if (Option.isNone(decoded)) {
+    return { _tag: "retry", reason: "negotiations sync evidence is not readable" }
+  }
+  const pages = decoded.value.pages
+  for (const page of pages) {
+    const kind = classifyResponsePage(page.html, page.url)
+    if (kind === "login") return { _tag: "human", reason: "hh session expired; log in again" }
+    if (kind === "captcha") return { _tag: "human", reason: "hh asked for a captcha" }
+  }
+
+  const topics = new Map<string, NegotiationTopic>()
+  let readPages = 0
+  let complete = false
+  for (const raw of pages) {
+    const page = parseNegotiations(raw.html)
+    if (!page.readable) break
+    readPages += 1
+    for (const topic of page.topics) {
+      if (!topics.has(topic.vacancyId)) topics.set(topic.vacancyId, topic)
+    }
+    if (page.topics.length === 0 || (page.pageCount !== null && readPages >= page.pageCount)) {
+      complete = true
+      break
+    }
+  }
+
+  if (readPages === 0) {
+    return { _tag: "retry", reason: "no negotiations page was readable" }
+  }
+  return { _tag: "read", topics: [...topics.values()], pages: readPages, complete }
 }

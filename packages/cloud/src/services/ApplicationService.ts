@@ -98,6 +98,7 @@ const recentSubmits = (tx: Executor, hhAccountId: string, excludeId: string) =>
       from application
       where hh_account_id = ${hhAccountId}
         and id <> ${excludeId}
+        and origin = 'otbor'
         and state in ('queued', 'submitting', 'submitted')
         and coalesce(intent_at, submitted_at) > now() - interval '24 hours'
     `)

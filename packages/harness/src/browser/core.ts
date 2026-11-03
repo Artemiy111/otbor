@@ -1,6 +1,7 @@
 import type {
   FormAnswer,
   HarnessExit,
+  NegotiationsSyncEvidence,
   PrepareArtifacts,
   ReconcileEvidence,
   ReconcilePage,
@@ -357,6 +358,43 @@ export const reconcileExit = (
       url: page.url,
       // The list lives in the page's initial state; the rest of the page is
       // not evidence and can be large.
+      html: initialStateFragment(page.html) ?? page.html.slice(0, 20_000)
+    }))
+  }
+  return { tag: "reconciled", artifacts: { ...evidence } }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Negotiations sync                                                          */
+/* -------------------------------------------------------------------------- */
+
+/** Pages of the negotiations list a sync reads at most (hh shows 20 per page). */
+export const MAX_SYNC_PAGES = 25
+
+/**
+ * Whether the sync opens the next page after reading page `index`. Only saves
+ * requests: it stops at an empty or unreadable page, or at the page count hh
+ * reports. The cloud decides whether the list was read to its end.
+ */
+export const wantsMoreSyncPages = (html: string, index: number): boolean => {
+  const page = parseNegotiations(html)
+  if (!page.readable || page.topics.length === 0) return false
+  return page.pageCount === null || index + 1 < page.pageCount
+}
+
+/**
+ * The sync exit: the pages that were read, as evidence. Login and captcha are
+ * reported as such; otherwise the harness says only `reconciled` ("I looked").
+ */
+export const negotiationsSyncExit = (pages: ReadonlyArray<ReconcilePage>): HarnessExit => {
+  for (const page of pages) {
+    const kind = classifyResponsePage(page.html, page.url)
+    if (kind === "login") return { tag: "session_expired", message: "hh redirected to the login page" }
+    if (kind === "captcha") return { tag: "captcha", message: "hh asked for a captcha" }
+  }
+  const evidence: NegotiationsSyncEvidence = {
+    pages: pages.map((page) => ({
+      url: page.url,
       html: initialStateFragment(page.html) ?? page.html.slice(0, 20_000)
     }))
   }

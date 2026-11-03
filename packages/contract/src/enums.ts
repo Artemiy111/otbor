@@ -59,6 +59,11 @@ export const ApplicationState = Schema.Literals([
 
 export type ApplicationState = typeof ApplicationState.Type
 
+/** Who made the application: otbor, or the operator by hand on hh.ru (read back by the sync). */
+export const ApplicationOrigin = Schema.Literals(["otbor", "imported"])
+
+export type ApplicationOrigin = typeof ApplicationOrigin.Type
+
 /**
  * Language of a writing prompt. `auto` detects it from the vacancy text for
  * application-based calls and from the input text for a resume rewrite.
@@ -81,7 +86,14 @@ export const JobStatus = Schema.Literals([
 
 export type JobStatus = typeof JobStatus.Type
 
-export const JobStage = Schema.Literals(["prepare", "submit", "reconcile", "session", "inference"])
+export const JobStage = Schema.Literals([
+  "prepare",
+  "submit",
+  "reconcile",
+  "session",
+  "inference",
+  "negotiations_sync"
+])
 
 export type JobStage = typeof JobStage.Type
 

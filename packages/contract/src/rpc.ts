@@ -51,6 +51,7 @@ import {
   ConversationSummary,
   CrawlRun,
   CrawlSchedule,
+  NegotiationsSyncStatus,
   DecisionRecord,
   EvaluateBatchResult,
   ScheduleRun,
@@ -412,6 +413,23 @@ export const ScheduleRunsList = Rpc.make("ScheduleRunsList", {
     items: Schema.Array(ScheduleRun),
     total: Schema.Int
   }),
+  error: ApiError
+})
+
+/**
+ * Reads the account's negotiations list from hh.ru and imports responses made
+ * by hand. `NegotiationsSyncRun` only enqueues the browser job (it never waits
+ * for hh.ru); `NegotiationsSyncStatus` reads the last job's outcome.
+ */
+export const NegotiationsSyncRun = Rpc.make("NegotiationsSyncRun", {
+  payload: Schema.Struct({ hhAccountId: HhAccountId }),
+  success: NegotiationsSyncStatus,
+  error: ApiError
+})
+
+export const NegotiationsSyncStatusGet = Rpc.make("NegotiationsSyncStatus", {
+  payload: Schema.Struct({ hhAccountId: HhAccountId }),
+  success: NegotiationsSyncStatus,
   error: ApiError
 })
 
@@ -1098,6 +1116,8 @@ export const OtborRpcs = RpcGroup.make(
   ScheduleUpsert,
   ScheduleRemove,
   ScheduleRunNow,
+  NegotiationsSyncRun,
+  NegotiationsSyncStatusGet,
   ScheduleRunsList,
   ContactsList,
   ContactRemove,

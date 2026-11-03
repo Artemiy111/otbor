@@ -1,4 +1,4 @@
-import type { HarnessExit, PrepareJobPayload, ReconcileJobPayload, SubmitJobPayload } from "@otbor/contract"
+import type { HarnessExit, NegotiationsSyncJobPayload, PrepareJobPayload, ReconcileJobPayload, SubmitJobPayload } from "@otbor/contract"
 import { Context, Effect, Layer } from "effect"
 
 /**
@@ -25,6 +25,11 @@ export interface BrowserExecutorShape {
    * decides whether a response exists.
    */
   readonly reconcile: (payload: ReconcileJobPayload) => Effect.Effect<HarnessExit>
+  /**
+   * Reads the negotiations list pages 0..N in the account's session and returns
+   * them as evidence. Navigation only; the cloud parses and imports.
+   */
+  readonly negotiationsSync: (payload: NegotiationsSyncJobPayload) => Effect.Effect<HarnessExit>
 }
 
 export class BrowserExecutor extends Context.Service<BrowserExecutor, BrowserExecutorShape>()(
@@ -42,7 +47,11 @@ export class BrowserExecutor extends Context.Service<BrowserExecutor, BrowserExe
           (() => Effect.succeed<HarnessExit>({ tag: "blocked", message: "fake executor: submit" })),
         reconcile:
           handlers.reconcile ??
-          (() => Effect.succeed<HarnessExit>({ tag: "blocked", message: "fake executor: reconcile" }))
+          (() => Effect.succeed<HarnessExit>({ tag: "blocked", message: "fake executor: reconcile" })),
+        negotiationsSync:
+          handlers.negotiationsSync ??
+          (() =>
+            Effect.succeed<HarnessExit>({ tag: "blocked", message: "fake executor: negotiations sync" }))
       })
     )
 }

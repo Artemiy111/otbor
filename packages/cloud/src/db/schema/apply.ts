@@ -243,6 +243,10 @@ export const application = pgTable(
     streamId: uuid("stream_id").references(() => stream.id, { onDelete: "set null" }),
     decisionId: uuid("decision_id").references(() => decision.id, { onDelete: "set null" }),
     state: text("state").notNull().default("draft"),
+    /** `otbor` made it; `imported` was made by hand on hh.ru and read back. */
+    origin: text("origin").notNull().default("otbor"),
+    hhStatus: text("hh_status"),
+    hhRespondedAt: timestamp("hh_responded_at", { withTimezone: true }),
     intentAt: timestamp("intent_at", { withTimezone: true }),
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
     lastError: text("last_error"),
