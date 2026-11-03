@@ -1,6 +1,7 @@
 import type { ApiError } from "@otbor/contract"
 import { InvalidInput } from "@otbor/contract"
 import {
+  classifyCrawlBlock,
   ensureEngine,
   fetchHtml,
   loadProxyConfig,
@@ -11,6 +12,27 @@ import { Cause, Context, Effect, Layer } from "effect"
 import { Database } from "../db/Database.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
 import { CorpusService } from "./CorpusService.ts"
+import { externalIdFromReference, vacancyPageUrl } from "./vacancyReference.ts"
+
+export interface VacancyPage {
+  readonly status: number
+  readonly url: string
+  readonly html: string
+}
+
+/** How a vacancy page is downloaded; replaced by a fixture in tests. */
+export const VacancyPageFetch = Context.Reference<
+  (url: string, proxy: string | null) => Promise<VacancyPage>
+>("otbor/cloud/VacancyPageFetch", {
+  defaultValue: () => (url, proxy) => fetchHtml(url, { proxy })
+})
+
+export interface FetchedVacancy {
+  readonly vacancyId: string
+  readonly externalId: string
+  readonly title: string
+  readonly alreadyKnown: boolean
+}
 
 export interface HydrationRunOptions {
   /** How many stored stubs to fetch in this pass. */
@@ -40,6 +62,14 @@ export interface HydrationRunnerShape {
     userId: string,
     id: string
   ) => Effect.Effect<boolean, ApiError>
+  /**
+   * Manual mode: make sure one vacancy (hh URL or external id) is in the
+   * corpus. One GET of the public vacancy page; nothing else is requested.
+   */
+  readonly fetchByReference: (
+    userId: string,
+    reference: string
+  ) => Effect.Effect<FetchedVacancy, ApiError>
 }
 
 /**
@@ -311,7 +341,78 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
         return success
       })
 
-      return HydrationRunner.of({ run, hydrateOne })
+      const fetchByReference = Effect.fn("HydrationRunner.fetchByReference")(function*(
+        userId: string,
+        reference: string
+      ) {
+        const externalId = externalIdFromReference(reference)
+        if (externalId === null) {
+          return yield* new InvalidInput({
+            message: `cannot read "${reference}" as an hh.ru vacancy URL (https://hh.ru/vacancy/<id>) or external id`
+          })
+        }
+
+        const known = yield* database
+          .asUser(userId, (tx) => VacancyRepository.findByExternal(tx, "hh", externalId))
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new InvalidInput({
+                  message: `vacancy lookup ${externalId}: ${cause instanceof Error ? cause.message : String(cause)}`
+                })
+            )
+          )
+        if (
+          known !== null &&
+          !VacancyRepository.needsHydration({
+            descriptionHtml: known.descriptionHtml,
+            descriptionText: known.descriptionText
+          })
+        ) {
+          return { vacancyId: known.id, externalId, title: known.title, alreadyKnown: true }
+        }
+
+        // Looked up per call, so a test can swap the downloader for one request.
+        const fetchPage = yield* VacancyPageFetch
+        const config = yield* prepareProxy()
+        const url = vacancyPageUrl(externalId)
+        const proxy = yield* Effect.try({
+          try: () => proxyForUrl(config, url),
+          catch: (error) =>
+            new InvalidInput({ message: error instanceof Error ? error.message : String(error) })
+        })
+        const response = yield* Effect.tryPromise({
+          try: () => fetchPage(url, proxy),
+          catch: (error) =>
+            new InvalidInput({
+              message: `fetch ${url}: ${error instanceof Error ? error.message : String(error)}`
+            })
+        })
+        if (response.status !== 200) {
+          return yield* new InvalidInput({ message: `fetch ${url}: HTTP ${response.status}` })
+        }
+        const block = classifyCrawlBlock(response.status, response.html)
+        if (block !== null) {
+          return yield* new InvalidInput({ message: `fetch ${url}: hh.ru answered with ${String(block)}` })
+        }
+        const draft = yield* extractVacancy(response.html, { url: response.url || url }).pipe(
+          Effect.mapError((error) => new InvalidInput({ message: `parse ${url}: ${error.message}` }))
+        )
+        if (draft.externalId !== externalId) {
+          return yield* new InvalidInput({
+            message: `fetch ${url}: the page is vacancy ${draft.externalId}, not ${externalId}`
+          })
+        }
+        const saved = yield* corpus.ingest([draft], { userId })
+        const item = saved.items[0]
+        if (item === undefined) {
+          return yield* new InvalidInput({ message: `ingest ${externalId}: nothing was stored` })
+        }
+        yield* Effect.logInfo(`vacancy fetched on demand: ${externalId}`)
+        return { vacancyId: item.id, externalId, title: item.title, alreadyKnown: known !== null }
+      })
+
+      return HydrationRunner.of({ run, hydrateOne, fetchByReference })
     })
   )
 }

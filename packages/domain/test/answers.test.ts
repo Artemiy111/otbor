@@ -361,6 +361,17 @@ describe("validateAnswers", () => {
     expect(codes([valid[0]!, ans("2", { text: "300000" }), valid[2]!])).toEqual([])
   })
 
+  test("a hard hint with blockers yields to the user's own answer, and only to it", () => {
+    const blocked = hints.map((hint) =>
+      hint.questionId === "2" ? { ...hint, blockers: ["upper_bound_below_minimum"] as unknown as typeof hint.blockers } : hint
+    )
+    const check = (answer: FormAnswer) =>
+      validateAnswers(form, [valid[0]!, answer, valid[2]!], blocked).map((error) => `${error.code}:${error.questionId}`)
+    expect(check(ans("2", { text: "от 250000", source: "human" }))).toEqual([])
+    expect(check(ans("2", { text: "от 250000", source: "model" }))).toEqual(["hard_hint_overridden:2"])
+    expect(check(ans("2", { text: "от 250000", source: "human", needsHuman: true }))).toEqual(["hard_hint_overridden:2"])
+  })
+
   test("option not on the form", () => {
     expect(codes([valid[0]!, valid[1]!, ans("4", { optionIds: ["zzz"] })])).toEqual(["unknown_option:4"])
   })

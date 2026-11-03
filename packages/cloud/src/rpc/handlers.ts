@@ -111,6 +111,12 @@ export const OtborHandlers = OtborRpcs.toLayer(
       VacanciesUpsert: ({ drafts }) => corpus.ingest(drafts),
       VacanciesHydrationTargets: (payload) => corpus.hydrationTargets(payload),
       VacanciesHydrateOne: ({ id }) => hydrateAndEvaluate(id),
+      VacancyFetch: ({ reference }) =>
+        Effect.gen(function*() {
+          const user = yield* CurrentUser
+          const fetched = yield* hydrationRunner.fetchByReference(user.userId, reference)
+          return { ...fetched, vacancyId: fetched.vacancyId as VacancyId }
+        }),
       VacancyHydrate: ({ id }) => hydrateAndEvaluate(id),
       HydrationStats: () => hydrationStats.stats(),
       EmployersHydrationTargets: (payload) => hydrationStats.employerTargets(payload),
@@ -184,6 +190,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
       ApplicationsList: (payload) => applications.list(payload),
       ApplicationsGet: ({ id }) => applications.get(id),
       ApplicationsCreateFromDecision: (payload) => applications.createFromDecision(payload),
+      ApplicationsCreateManual: (payload) => applications.createManual(payload),
       ApplicationsApprove: ({ id }) => applications.approve(id),
       ApplicationsSkip: (payload) => applications.skip(payload),
       ApplicationsRetry: ({ id }) => applications.retry(id),

@@ -13,10 +13,11 @@ import type {
 } from "@otbor/contract"
 import { describeKitAnswer } from "@otbor/contract"
 import { Effect } from "effect"
-import { accountsFor } from "./accounts.ts"
+import { accountsFor, pickAccount } from "./accounts.ts"
 import { Api } from "./api.ts"
 import { guard, ToolFailure } from "./errors.ts"
 import {
+  accountDirectory,
   accountName,
   accountRef,
   applicationBrief,
@@ -28,7 +29,7 @@ import {
   truncate,
   vacancyBrief
 } from "./shapes.ts"
-import { formView } from "./apply.ts"
+import { formView, STYLE_RULES } from "./apply.ts"
 import { OtborReadToolkit, type TopItem } from "./tools.ts"
 
 const DECISION_PAGE = 200
@@ -95,6 +96,85 @@ export const resolveVacancyId = (rpc: OtborApi, reference: string) =>
 
 const money = (amount: number | null | undefined, currency: string | null | undefined) =>
   amount == null ? null : `${amount}${currency ? ` ${currency}` : ""}`
+
+const HH_REFERENCE = /vacancy\/\d+|^\d+$/
+
+/**
+ * Manual mode: a vacancy by hh URL or external id is fetched into the corpus
+ * when it is not there yet (one public page, done by the cloud); a UUID or a
+ * prefix can only name something already stored.
+ */
+export const resolveOrFetchVacancy = (rpc: OtborApi, reference: string) =>
+  Effect.gen(function*() {
+    const ref = reference.trim()
+    if (!HH_REFERENCE.test(ref)) {
+      return { vacancyId: yield* resolveVacancyId(rpc, ref), fetched: false }
+    }
+    const fetched = yield* rpc.VacancyFetch({ reference: ref }).pipe(
+      Effect.catchTag("InvalidInput", (error) =>
+        fail(
+          `could not get vacancy "${ref}" into the corpus: ${error.message}. ` +
+            "Ask the operator to run `otbor vacancy fetch <url>` (or `otbor crawl <search url> --hydrate`) and retry."
+        )
+      )
+    )
+    return { vacancyId: fetched.vacancyId, fetched: !fetched.alreadyKnown }
+  })
+
+/** The resume an application for this account should use: the named one, else the first active one. */
+export const pickResume = (rpc: OtborApi, hhAccountId: HhAccountId, explicit: string | undefined) =>
+  Effect.gen(function*() {
+    const resumes = yield* rpc.ResumesList({ hhAccountId })
+    if (explicit !== undefined && explicit.trim() !== "") {
+      const wanted = explicit.trim().toLowerCase()
+      const found = resumes.find((r) => r.id.toLowerCase() === wanted) ??
+        resumes.find((r) => wanted.length >= 4 && r.id.toLowerCase().startsWith(wanted))
+      if (found === undefined) {
+        return yield* fail(`resume "${explicit}" is not one of this account's resumes; see resumes_list`)
+      }
+      return found
+    }
+    return resumes.find((r) => r.isActive) ?? undefined
+  })
+
+/** A resume with the operator's enrichment merged in; shared by resume_get and cover_letter_context. */
+export const loadResume = (rpc: OtborApi, id: ResumeId, maxChars: number) =>
+  Effect.gen(function*() {
+    const resume = yield* rpc.ResumeGet({ id })
+    const enrichment = yield* rpc.ResumeEnrichmentGet({ resumeId: id }).pipe(
+      Effect.catch(() => Effect.succeed(null))
+    )
+    const text = truncate(resume.text, maxChars)
+    const about = truncate(resume.about, maxChars)
+    return {
+      id: resume.id,
+      hhAccountId: resume.hhAccountId,
+      title: resume.title,
+      skills: resume.skills,
+      workFormats: resume.workFormats,
+      salary: money(resume.salaryAmount, resume.salaryCurrency),
+      status: resume.status ?? null,
+      isActive: resume.isActive,
+      experienceEntries: resume.experience.length,
+      about: about.text,
+      text: text.text,
+      truncated: text.truncated || about.truncated,
+      enrichment: enrichment === null
+        ? null
+        : {
+          comment: enrichment.comment,
+          salaryMin: enrichment.salaryMin ?? null,
+          salaryExpectation: enrichment.salaryExpectation ?? null,
+          currency: enrichment.currency ?? null,
+          experience: enrichment.experience.map((e) => ({
+            key: e.key,
+            employmentType: e.employmentType ?? null,
+            comment: e.comment ?? null,
+            leaveReason: e.leaveReason ?? null
+          }))
+        }
+    }
+  })
 
 export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*() {
   const api = yield* Api
@@ -386,40 +466,108 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
 
     resume_get: Effect.fn("mcp.resume_get")(function*(params) {
       const maxChars = clamp(params.maxChars, 3000, 20000, 200)
-      const id = params.id as ResumeId
-      const resume = yield* run(rpc.ResumeGet({ id }))
-      const enrichment = yield* run(rpc.ResumeEnrichmentGet({ resumeId: id })).pipe(
-        Effect.catch(() => Effect.succeed(null))
-      )
-      const text = truncate(resume.text, maxChars)
-      const about = truncate(resume.about, maxChars)
+      return yield* run(loadResume(rpc, params.id as ResumeId, maxChars))
+    }),
+
+    cover_letter_context: Effect.fn("mcp.cover_letter_context")(function*(params) {
+      const maxChars = clamp(params.maxChars, 4000, 20000, 200)
+      const accounts = yield* run(rpc.HhAccountsList())
+      const account = yield* pickAccount(accounts, params.account)
+      const directory = accountDirectory(accounts)
+
+      const { vacancyId, fetched } = yield* run(resolveOrFetchVacancy(rpc, params.vacancy))
+      const detail = yield* run(rpc.VacanciesGet({ id: vacancyId }))
+      const v = detail.vacancy
+      const description = truncate(detail.descriptionText, maxChars)
+
+      const employer = v.employerId == null
+        ? null
+        : yield* run(rpc.EmployersGet({ id: v.employerId as EmployerId })).pipe(
+          Effect.map((e) => employerBrief(e.employer)),
+          Effect.catch(() => Effect.succeed(null))
+        )
+
+      const resumeRecord = yield* run(pickResume(rpc, account.id, undefined))
+      const resume = resumeRecord === undefined
+        ? null
+        : yield* run(loadResume(rpc, resumeRecord.id, 3000))
+
+      const known = yield* run(rpc.ApplicationsList({ hhAccountId: account.id, limit: 500 }))
+      const existing = known.find((a) => a.vacancyId === vacancyId)
+      const applicationDetail = existing === undefined
+        ? undefined
+        : yield* run(rpc.ApplicationsGet({ id: existing.id }))
+      const view = applicationDetail === undefined ? undefined : formView(applicationDetail)
+      const letter = applicationDetail?.kit?.letter == null ? null : truncate(applicationDetail.kit.letter, 1500)
+
+      const warnings: Array<string> = []
+      if (existing?.state === "submitted") {
+        warnings.push(
+          `an application for this vacancy was already submitted from this account (${existing.origin ?? "otbor"}); do not apply again`
+        )
+      } else if (existing?.state === "skipped") {
+        warnings.push(
+          "an application for this vacancy exists in state skipped and cannot be prepared again from here; tell the user"
+        )
+      }
+      if (v.blacklisted) warnings.push("the employer is on the blacklist (ignored in manual mode); mention it to the user")
+      if (v.archived) warnings.push("the vacancy is archived on hh.ru; applying may not be possible")
+      if (detail.titleVerdict === "reject") warnings.push("the title gate rejects this title (ignored in manual mode)")
+      if (resume === null) {
+        warnings.push("this account has no active resume stored, so there is nothing to write from and answer hints are weaker: ask the user")
+      } else if (resume.enrichment === null) {
+        warnings.push("the resume has no operator enrichment; ask the user for facts it does not state (salary, relocation, start date)")
+      }
+      if (description.truncated) warnings.push("the description is trimmed; raise maxChars if you need the rest")
+
+      const next = existing === undefined
+        ? "call application_prepare_manual with the same vacancy and account"
+        : existing.state === "submitted"
+        ? "already submitted; nothing to do"
+        : "an application exists; call application_form for its form and kit, then continue with kit_set"
+
       return {
-        id: resume.id,
-        hhAccountId: resume.hhAccountId,
-        title: resume.title,
-        skills: resume.skills,
-        workFormats: resume.workFormats,
-        salary: money(resume.salaryAmount, resume.salaryCurrency),
-        status: resume.status ?? null,
-        isActive: resume.isActive,
-        experienceEntries: resume.experience.length,
-        about: about.text,
-        text: text.text,
-        truncated: text.truncated || about.truncated,
-        enrichment: enrichment === null
+        vacancy: {
+          brief: vacancyBrief(v),
+          externalId: v.externalId,
+          experience: v.experienceCode ?? null,
+          employmentForm: v.employmentForm ?? null,
+          description: description.text,
+          descriptionLength: detail.descriptionText.length,
+          truncated: description.truncated,
+          skills: detail.skills,
+          fetchedNow: fetched
+        },
+        employer,
+        account: accountRef(directory, account.id),
+        resume: resume === null
           ? null
           : {
-            comment: enrichment.comment,
-            salaryMin: enrichment.salaryMin ?? null,
-            salaryExpectation: enrichment.salaryExpectation ?? null,
-            currency: enrichment.currency ?? null,
-            experience: enrichment.experience.map((e) => ({
-              key: e.key,
-              employmentType: e.employmentType ?? null,
-              comment: e.comment ?? null,
-              leaveReason: e.leaveReason ?? null
-            }))
-          }
+            id: resume.id,
+            title: resume.title,
+            skills: resume.skills,
+            workFormats: resume.workFormats,
+            salary: resume.salary,
+            about: resume.about,
+            text: resume.text,
+            truncated: resume.truncated,
+            enrichment: resume.enrichment
+          },
+        application: existing === undefined || view === undefined
+          ? null
+          : {
+            brief: applicationBrief(existing, directory),
+            prepare: view.prepare.status === "prepared"
+              ? "prepared"
+              : `${view.prepare.status}${view.prepare.detail === null ? "" : `: ${view.prepare.detail}`}`,
+            questions: view.questions.length,
+            letter: letter?.text ?? null,
+            letterTruncated: letter?.truncated ?? false,
+            kitReadyToApprove: view.kit.readyToApprove
+          },
+        styleRules: STYLE_RULES,
+        warnings,
+        next
       }
     }),
 

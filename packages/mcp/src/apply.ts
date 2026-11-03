@@ -11,6 +11,20 @@ import { Schema } from "effect"
 
 const NullableString = Schema.NullOr(Schema.String)
 
+/**
+ * The rules for everything sent to an employer, in one place: returned by
+ * `cover_letter_context` and enforced by `kit_set` where a machine can check.
+ */
+export const STYLE_RULES: ReadonlyArray<string> = [
+  "No em dash or other long dash, no emoji, no exclamation mark, in the letter and in every text answer (kit_set rejects them).",
+  "Truthful: use only facts from the resume and its enrichment; never invent experience, employers, numbers or tools. If the resume does not support a claim, leave it out or ask the user.",
+  "Specific: tie two or three concrete things from the resume to what the vacancy asks for; no generic praise, no filler.",
+  "Write in the language of the vacancy. Keep the letter short (a few short paragraphs) and plain.",
+  "Form answers: honor maxLength; answer choice questions with option ids, not labels; hints with hard: true are answered exactly as hinted.",
+  "A question with a hint that has blockers, and every code question, needs the user's own answer: ask them and save it with source \"human\". Never write code answers yourself.",
+  "Salary and relocation or other personal-fact questions follow the resume enrichment; if it is silent, ask the user."
+]
+
 export const FormQuestionView = Schema.Struct({
   id: Schema.String,
   kind: Schema.String,

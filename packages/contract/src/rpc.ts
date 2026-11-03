@@ -246,6 +246,24 @@ export const VacanciesHydrateOne = Rpc.make("VacanciesHydrateOne", {
   error: ApiError
 })
 
+/**
+ * Manual mode: make sure ONE vacancy is in the corpus. `reference` is an
+ * hh.ru vacancy URL or an external id. A known, fully hydrated vacancy is
+ * returned as is; otherwise the cloud fetches the public vacancy page through
+ * the configured proxy and ingests it (a single GET, never a search).
+ */
+export const VacancyFetch = Rpc.make("VacancyFetch", {
+  payload: Schema.Struct({ reference: Schema.String }),
+  success: Schema.Struct({
+    vacancyId: VacancyId,
+    externalId: Schema.String,
+    title: Schema.String,
+    /** false when this call fetched and stored the page. */
+    alreadyKnown: Schema.Boolean
+  }),
+  error: ApiError
+})
+
 export const VacancyHydrate = Rpc.make("VacancyHydrate", {
   payload: Schema.Struct({ id: VacancyId }),
   success: Schema.Struct({ hydrated: Schema.Boolean }),
@@ -817,6 +835,22 @@ export const ApplicationsCreateFromDecision = Rpc.make("ApplicationsCreateFromDe
   error: ApiError
 })
 
+/**
+ * Manual mode: an application the operator chose, without a decision. Policy
+ * (gate, verdict, blacklist, fit) is not consulted; at most one application per
+ * (account, vacancy) still holds, so an existing one is returned with
+ * `created: false`. Queues the same prepare job as a decision-based draft.
+ */
+export const ApplicationsCreateManual = Rpc.make("ApplicationsCreateManual", {
+  payload: Schema.Struct({
+    vacancyId: VacancyId,
+    hhAccountId: HhAccountId,
+    resumeId: Schema.optional(Schema.String)
+  }),
+  success: Schema.Struct({ application: ApplicationRecord, created: Schema.Boolean }),
+  error: ApiError
+})
+
 export const ApplicationsApprove = Rpc.make("ApplicationsApprove", {
   payload: Schema.Struct({ id: ApplicationId }),
   success: ApplicationRecord,
@@ -1128,6 +1162,7 @@ export const OtborRpcs = RpcGroup.make(
   VacanciesUpsert,
   VacanciesHydrationTargets,
   VacanciesHydrateOne,
+  VacancyFetch,
   VacancyHydrate,
   HydrationStatsRpc,
   EmployersHydrationTargets,
@@ -1179,6 +1214,7 @@ export const OtborRpcs = RpcGroup.make(
   ApplicationsList,
   ApplicationsGet,
   ApplicationsCreateFromDecision,
+  ApplicationsCreateManual,
   ApplicationsApprove,
   ApplicationsSkip,
   ApplicationsRetry,

@@ -2152,7 +2152,9 @@ if (!integrationEnabled || serverUrl === null) {
               errors: []
             } satisfies HydrationRunResult
           }),
-        hydrateOne: (_userId: string, _id: string) => Effect.succeed(true)
+        hydrateOne: (_userId: string, _id: string) => Effect.succeed(true),
+        fetchByReference: (_userId: string, _reference: string) =>
+          Effect.die("fetchByReference is not used by schedules")
       })
       const hydrationSchedule = await scheduleUpsert(tenant.userId, {
         kind: "vacancy_hydration",

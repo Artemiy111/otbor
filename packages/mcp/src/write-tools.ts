@@ -108,6 +108,34 @@ export const ApplicationPrepare = writeTool("application_prepare", {
   openWorld: true
 })
 
+export const ApplicationPrepareManual = writeTool("application_prepare_manual", {
+  description:
+    "Manual mode: start an application for a vacancy the operator chose, WITHOUT a decision. Policy (title gate, " +
+    "decision verdict, blacklist, fit) is bypassed; one application per (hh account, vacancy), the daily limit and " +
+    "kit validation still apply, and nothing is sent. `vacancy` is an hh.ru URL, an external id, a vacancy UUID or " +
+    "a UUID prefix (same resolution as vacancy_get); an hh URL or id that is not in the corpus yet is fetched once " +
+    "from its public page. Creates a DRAFT and queues the browser job that opens the hh.ru response form to read " +
+    "its questions (employer test included). Idempotent: an existing application for this vacancy and account is " +
+    "returned (existing: true). account defaults to the default/only account; resumeId defaults to the account's " +
+    "active resume (used for answer hints). Next: poll application_form until prepare.status is \"prepared\".",
+  parameters: Schema.Struct({
+    vacancy: Schema.String.annotate({ description: "hh.ru vacancy URL, hh external id, vacancy UUID or UUID prefix" }),
+    account: Schema.optional(Schema.String).annotate({
+      description: "hh account: id, id prefix or name/label (see accounts_list). Default: the default/only account"
+    }),
+    resumeId: Schema.optional(Schema.String).annotate({ description: "Resume id; default: the account's active resume" })
+  }),
+  success: Schema.Struct({
+    application: ApplicationBrief,
+    existing: Schema.Boolean,
+    vacancyFetched: Schema.Boolean,
+    resume: Schema.NullOr(Schema.Struct({ id: Schema.String, title: Schema.String })),
+    next: Schema.String
+  }),
+  idempotent: true,
+  openWorld: true
+})
+
 export const AnswerInput = Schema.Struct({
   questionId: Schema.String.annotate({ description: "Question id from application_form" }),
   optionIds: Schema.optional(Schema.Array(Schema.String)).annotate({
@@ -185,6 +213,7 @@ export const ApplicationSkip = writeTool("application_skip", {
 export const OtborWriteToolkit = Toolkit.make(
   FitSave,
   ApplicationPrepare,
+  ApplicationPrepareManual,
   KitSet,
   ApplicationApprove,
   ApplicationSkip

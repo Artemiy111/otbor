@@ -123,6 +123,15 @@ export interface CreateFromDecisionInput {
   readonly mode?: "drafts" | "auto"
 }
 
+export interface CreateManualInput {
+  readonly vacancyId: string
+  readonly hhAccountId: string
+  readonly resumeId?: string
+}
+
+/** Manual prepares jump the queue: the operator is waiting on this one. */
+export const MANUAL_PREPARE_PRIORITY = 1000
+
 export interface SetKitInput {
   readonly applicationId: string
   readonly formHash: string
@@ -143,6 +152,13 @@ export interface ApplicationServiceShape {
   readonly createFromDecision: (
     input: CreateFromDecisionInput
   ) => Effect.Effect<ApplicationRecord, ApiError>
+  /**
+   * Manual mode: no decision, no policy. Same one-per-(account, vacancy) rule
+   * and the same prepare job as `createFromDecision`; approve is unchanged.
+   */
+  readonly createManual: (
+    input: CreateManualInput
+  ) => Effect.Effect<{ readonly application: ApplicationRecord; readonly created: boolean }, ApiError>
   readonly approve: (id: string) => Effect.Effect<ApplicationRecord, ApiError>
   readonly skip: (input: { readonly id: string; readonly reason?: string }) => Effect.Effect<
     ApplicationRecord,
@@ -263,6 +279,44 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
               })
             )
             .pipe(Effect.mapError(toStorageError("application.create")))
+
+          return yield* unwrap(outcome)
+        })
+
+      const createManual: ApplicationServiceShape["createManual"] = (input) =>
+        Effect.gen(function*() {
+          const outcome = yield* database
+            .asUser(currentUser.userId, (tx) =>
+              Effect.gen(function*() {
+                if (!(yield* accountExists(tx, input.hhAccountId))) {
+                  return fail({ _tag: "not_found", entity: "HhAccount", id: input.hhAccountId })
+                }
+                const vacancy = yield* vacancyFor(tx, input.vacancyId)
+                if (vacancy === null) {
+                  return fail({ _tag: "not_found", entity: "Vacancy", id: input.vacancyId })
+                }
+
+                const created = yield* ApplicationRepository.create(tx, {
+                  userId: currentUser.userId,
+                  hhAccountId: input.hhAccountId,
+                  vacancyId: vacancy.id,
+                  resumeId: input.resumeId ?? null,
+                  streamId: null,
+                  decisionId: null,
+                  state: "draft"
+                })
+
+                if (created.created) {
+                  const sequence = yield* nextSequence(tx, created.record.id, "prepare")
+                  const target = yield* targetFor(tx, created.record)
+                  if (target !== null) {
+                    yield* prepareJob(tx, { ...target, priority: MANUAL_PREPARE_PRIORITY, sequence })
+                  }
+                }
+                return ok({ application: created.record, created: created.created })
+              })
+            )
+            .pipe(Effect.mapError(toStorageError("application.createManual")))
 
           return yield* unwrap(outcome)
         })
@@ -602,6 +656,7 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
         list,
         get,
         createFromDecision,
+        createManual,
         approve,
         skip,
         retry,
