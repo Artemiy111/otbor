@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <title>Отклик на вакансию</title>
+  </head>
+  <body>
+    <main>
+      <h1 data-qa="title">Отклик на вакансию</h1>
+      <p data-qa="test-description">Для отклика необходимо ответить на несколько вопросов работодателя</p>
+      <form id="RESPONSE_MODAL_FORM_ID" name="vacancy_response" method="POST">
+        <input type="hidden" name="_xsrf" value="test" />
+        <input type="hidden" name="uidPk" value="1" />
+        <input type="hidden" name="guid" value="test" />
+        <input type="hidden" name="startTime" value="1793139597" />
+        <input type="hidden" name="testRequired" value="true" />
+
+        <div data-qa="task-body">
+          <div data-qa="task-question">Вы имеете оконченное ТЕХНИЧЕСКОЕ высшее образование?</div>
+          <label data-qa="cell"><input name="task_387049547" type="radio" value="387049548" />Да</label>
+          <label data-qa="cell"><input name="task_387049547" type="radio" value="387049549" />Нет</label>
+          <label data-qa="cell"><input name="task_387049547" type="radio" value="387049550" />Да (не техническое)</label>
+        </div>
+
+        <div data-qa="task-body">
+          <div data-qa="task-question">Оформление на последнем месте работы было:</div>
+          <label data-qa="cell"><input name="task_387049551" type="radio" value="387049552" />ГПХ</label>
+          <label data-qa="cell"><input name="task_387049551" type="radio" value="387049553" />ИП</label>
+          <label data-qa="cell"><input name="task_387049551" type="radio" value="387049554" />ТК РФ, опыт прописан в трудовой книжке</label>
+        </div>
+
+        <div data-qa="task-body">
+          <div data-qa="task-question">В каком городе проживаете?</div>
+          <textarea name="task_387049555_text" rows="4"></textarea>
+        </div>
+
+        <div data-qa="task-body">
+          <div data-qa="task-question">Готовы рассматривать гибридный или офисный график работы?</div>
+          <label data-qa="cell"><input name="task_387049556" type="checkbox" value="387049557" />Да (офисный и гибридный)</label>
+          <label data-qa="cell"><input name="task_387049556" type="checkbox" value="387049558" />Да (гибридный)</label>
+          <label data-qa="cell"><input name="task_387049556" type="checkbox" value="387049559" />Нет (только удаленно)</label>
+        </div>
+
+        <div data-qa="task-body">
+          <div data-qa="task-question">Какой уровень заработной платы рассматриваете?</div>
+          <textarea name="task_387049560_text" rows="4"></textarea>
+        </div>
+
+        <button type="submit" data-qa="vacancy-response-submit-popup" disabled>Откликнуться</button>
+      </form>
+    </main>
+  </body>
+</html>
