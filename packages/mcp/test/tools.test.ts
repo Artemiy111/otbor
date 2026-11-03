@@ -1,0 +1,182 @@
+import type { DecisionRecord, OtborApi, VacancyDetail } from "@otbor/contract"
+import { describe, expect, test } from "bun:test"
+import { Effect, Layer } from "effect"
+import { McpProtocol, McpTest } from "effect/ai"
+import { Api, apiLayerFor } from "../src/api.ts"
+import { OtborReadHandlers } from "../src/handlers.ts"
+import { OtborToolkitRegistration } from "../src/server.ts"
+import { OtborReadToolkit } from "../src/tools.ts"
+
+
+const id = (n: number) => `0190c8f5-8c2b-7abc-8def-${n.toString().padStart(12, "0")}`
+
+const decision = (
+  n: number,
+  over: Partial<DecisionRecord> & { vacancyN: number }
+): DecisionRecord => ({
+  id: id(1000 + n),
+  userId: "u",
+  vacancyId: id(over.vacancyN),
+  vacancyTitle: `Vacancy ${over.vacancyN}`,
+  roleFamily: "backend",
+  verdict: "apply",
+  gate: "match",
+  fit: 70,
+  priority: 10,
+  reasons: [
+    { code: "skill_match", detail: "typescript", weight: 3 },
+    { code: "remote", weight: 8 }
+  ],
+  policyVersion: 1,
+  createdAt: "2026-01-01T00:00:00Z",
+  ...over
+} as unknown as DecisionRecord)
+
+const detail = (n: number): VacancyDetail => ({
+  vacancy: {
+    id: id(n),
+    source: "hh",
+    externalId: String(9000 + n),
+    canonicalUrl: `https://hh.ru/vacancy/${9000 + n}`,
+    title: `Vacancy ${n}`,
+    employerName: `Employer ${n}`,
+    salaryFrom: 100000,
+    salaryTo: 200000,
+    salaryCurrency: "RUR",
+    seniority: "senior",
+    workFormats: ["remote"],
+    archived: false,
+    createdAt: "2026-01-01T00:00:00Z",
+    lastSeenAt: "2026-01-01T00:00:00Z",
+    blacklisted: false,
+    blacklistLayers: []
+  },
+  descriptionText: "x".repeat(500),
+  skills: ["TypeScript"],
+  keywords: []
+} as unknown as VacancyDetail)
+
+const decisions = [
+  decision(1, { vacancyN: 1, priority: 20, fit: 60 }),
+  decision(2, { vacancyN: 2, priority: 90, fit: 85 }),
+  decision(3, { vacancyN: 3, priority: 50, fit: 40 }),
+  // older duplicate of vacancy 2 with a higher priority: the newest must win
+  decision(4, { vacancyN: 2, priority: 99, fit: 99 }),
+  decision(5, { vacancyN: 4, priority: 70, fit: 90, verdict: "skip" })
+]
+
+const seen: Array<unknown> = []
+const fake = {
+  DecisionsList: (payload: { verdict?: string; offset?: number }) => {
+    seen.push(payload)
+    return Effect.succeed(
+      (payload.offset ?? 0) > 0
+        ? []
+        : decisions.filter((d) => payload.verdict === undefined || d.verdict === payload.verdict)
+    )
+  },
+  VacanciesGet: ({ id: vacancyId }: { id: string }) => {
+    const n = Number(vacancyId.slice(-12))
+    return n === 3 ? Effect.fail({ _tag: "NotFound", entity: "vacancy", id: vacancyId }) : Effect.succeed(detail(n))
+  },
+  SystemHealth: () => Effect.succeed({ status: "ok", version: "t", database: true, now: "now" })
+} as unknown as OtborApi
+
+const FakeApi = Layer.succeed(Api, { rpc: fake, url: "http://fake/rpc" })
+
+const withClient = <A, E>(
+  layer: Layer.Layer<Api>,
+  use: (client: McpTest.Client) => Effect.Effect<A, E>
+) =>
+  Effect.runPromise(
+    Effect.gen(function*() {
+      const client = yield* McpTest.makeClient(
+        OtborToolkitRegistration.pipe(Layer.provide(layer)),
+        { protocols: [McpProtocol.v2025_11_25] }
+      )
+      return yield* use(client)
+    }).pipe(Effect.scoped) as Effect.Effect<A, never>
+  )
+
+describe("mcp tools", () => {
+  test("registers read-only tools with snake_case names", async () => {
+    const tools = await withClient(FakeApi, (c) => c.listTools())
+    const names = tools.tools.map((t) => t.name)
+    expect(names).toContain("vacancies_top")
+    expect(names).toContain("vacancy_get")
+    expect(names.every((n) => /^[a-z]+(_[a-z]+)*$/.test(n))).toBe(true)
+    expect(tools.tools.every((t) => t.annotations?.readOnlyHint === true)).toBe(true)
+    expect(tools.tools.every((t) => t.annotations?.destructiveHint === false)).toBe(true)
+  })
+
+  test("vacancies_top ranks by priority, dedupes per vacancy, defaults to apply", async () => {
+    seen.length = 0
+    const result = await withClient(FakeApi, (c) => c.callTool({ name: "vacancies_top", arguments: {} }))
+    expect(result.isError).toBeFalsy()
+    const out = result.structuredContent as {
+      items: Array<{ rank: number; vacancyId: string; title: string; employer: string | null; salary: string | null; reasons: Array<string>; url: string | null }>
+      considered: number
+    }
+    // vacancy 2 (newest decision wins: first in newest-first list is #2 priority 90), then 3, then 1
+    expect(out.items.map((i) => i.vacancyId)).toEqual([id(2), id(3), id(1)])
+    expect(out.items.map((i) => i.rank)).toEqual([1, 2, 3])
+    expect(out.considered).toBe(3)
+    expect((seen[0] as { verdict: string }).verdict).toBe("apply")
+    expect(out.items[0]?.employer).toBe("Employer 2")
+    expect(out.items[0]?.salary).toBe("100000-200000 RUR")
+    expect(out.items[0]?.url).toBe("https://hh.ru/vacancy/9002")
+    // strongest reason (remote, weight 8) first
+    expect(out.items[0]?.reasons[0]).toBe("remote (8)")
+    // vacancy 3 failed to load: falls back to the decision title, no crash
+    expect(out.items[1]?.title).toBe("Vacancy 3")
+    expect(out.items[1]?.employer).toBeNull()
+  })
+
+  test("vacancies_top honours limit, minFit and verdict", async () => {
+    const limited = await withClient(FakeApi, (c) =>
+      c.callTool({ name: "vacancies_top", arguments: { limit: 1 } }))
+    expect((limited.structuredContent as { items: Array<unknown> }).items).toHaveLength(1)
+
+    const fit = await withClient(FakeApi, (c) =>
+      c.callTool({ name: "vacancies_top", arguments: { minFit: 50 } }))
+    expect((fit.structuredContent as { items: Array<{ vacancyId: string }> }).items.map((i) => i.vacancyId))
+      .toEqual([id(2), id(1)])
+
+    const skip = await withClient(FakeApi, (c) =>
+      c.callTool({ name: "vacancies_top", arguments: { verdict: "skip" } }))
+    expect((skip.structuredContent as { items: Array<{ vacancyId: string }> }).items.map((i) => i.vacancyId))
+      .toEqual([id(4)])
+  })
+
+  test("system_health returns the api url", async () => {
+    const result = await withClient(FakeApi, (c) => c.callTool({ name: "system_health", arguments: {} }))
+    expect((result.structuredContent as { apiUrl: string }).apiUrl).toBe("http://fake/rpc")
+  })
+
+  test("typed API errors become a readable tool error", async () => {
+    const result = await withClient(FakeApi, (c) =>
+      c.callTool({ name: "vacancy_get", arguments: { id: id(3) } }))
+    expect(result.isError).toBe(true)
+    expect(JSON.stringify(result.content)).toContain("vacancy not found")
+  })
+
+  test("an unreachable API is a clear tool error, not a crash", async () => {
+    const url = "http://127.0.0.1:1/rpc"
+    const result = await withClient(apiLayerFor(url), (c) =>
+      Effect.gen(function*() {
+        const first = yield* c.callTool({ name: "vacancies_top", arguments: {} })
+        // the server must still answer afterwards
+        const second = yield* c.callTool({ name: "system_health", arguments: {} })
+        return { first, second }
+      }))
+    for (const r of [result.first, result.second]) {
+      expect(r.isError).toBe(true)
+      expect(JSON.stringify(r.content)).toContain(`otbor API is not reachable at ${url}; run \`otbor up\``)
+    }
+  })
+
+  test("toolkit exposes handlers for every tool", () => {
+    expect(Object.keys(OtborReadToolkit.tools).length).toBe(17)
+    void OtborReadHandlers
+  })
+})

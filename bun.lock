@@ -65,6 +65,7 @@
         "@otbor/domain": "workspace:*",
         "@otbor/harness": "workspace:*",
         "@otbor/hh": "workspace:*",
+        "@otbor/mcp": "workspace:*",
         "dotenv": "^17.0.0",
         "drizzle-orm": "1.0.0-rc.5",
         "effect": "4.1.0",
@@ -162,6 +163,18 @@
         "typescript": "6.0.3",
       },
     },
+    "packages/mcp": {
+      "name": "@otbor/mcp",
+      "version": "0.1.0",
+      "dependencies": {
+        "@effect/platform-node": "4.1.0",
+        "@otbor/contract": "workspace:*",
+        "effect": "4.1.0",
+      },
+      "devDependencies": {
+        "typescript": "6.0.3",
+      },
+    },
     "packages/telegram": {
       "name": "@otbor/telegram",
       "version": "0.1.0",
@@ -247,6 +260,8 @@
     "@otbor/hh": ["@otbor/hh@workspace:packages/hh"],
 
     "@otbor/mail": ["@otbor/mail@workspace:packages/mail"],
+
+    "@otbor/mcp": ["@otbor/mcp@workspace:packages/mcp"],
 
     "@otbor/telegram": ["@otbor/telegram@workspace:packages/telegram"],
 
