@@ -19,7 +19,13 @@ const readTool = <
   S extends Schema.Top = typeof Schema.Void
 >(
   name: Name,
-  options: { readonly description: string; readonly parameters?: P; readonly success: S }
+  options: {
+    readonly description: string
+    readonly parameters?: P
+    readonly success: S
+    /** Reaches hh.ru (a single public page) through the otbor cloud. */
+    readonly openWorld?: boolean
+  }
 ) =>
   Tool.make(name, {
     description: options.description,
@@ -30,7 +36,7 @@ const readTool = <
     .annotate(Tool.Readonly, true)
     .annotate(Tool.Destructive, false)
     .annotate(Tool.Idempotent, true)
-    .annotate(Tool.OpenWorld, false)
+    .annotate(Tool.OpenWorld, options.openWorld ?? false)
 
 const limit = (description: string) => Schema.optional(Schema.Int).annotate({ description })
 const text = (description: string) => Schema.optional(Schema.String).annotate({ description })
@@ -417,6 +423,76 @@ export const ApplicationForm = readTool("application_form", {
   success: Schema.Struct({ application: ApplicationBrief, form: FormView })
 })
 
+/* ------------------------------ manual mode -------------------------------- */
+
+export const CoverLetterContext = readTool("cover_letter_context", {
+  description:
+    "Everything needed to write a cover letter (and answer an employer test) for ONE vacancy the operator chose, " +
+    "in one call: the vacancy (description trimmed to maxChars), skills, the employer, the hh account's active " +
+    "resume with the operator's enrichment, the existing application, kit and form state if any, and the style " +
+    "rules. `vacancy` is an hh.ru URL, an external id, a vacancy UUID or a UUID prefix. If an hh URL or id is not " +
+    "in the corpus yet, the public vacancy page is fetched once and stored (no application is created and " +
+    "nothing is sent). Policy (title gate, decision, blacklist, fit) is NOT consulted: manual mode. `warnings` " +
+    "lists things worth telling the user (blacklisted employer, archived vacancy, already submitted). " +
+    "Next: application_prepare_manual.",
+  parameters: Schema.Struct({
+    vacancy: Schema.String.annotate({ description: "hh.ru vacancy URL, hh external id, vacancy UUID or UUID prefix" }),
+    account: Schema.optional(Schema.String).annotate({
+      description: "hh account: id, id prefix or name/label (see accounts_list). Default: the default/only account"
+    }),
+    maxChars: limit("Max description characters (default 4000, max 20000)")
+  }),
+  success: Schema.Struct({
+    vacancy: Schema.Struct({
+      brief: VacancyBrief,
+      externalId: Schema.String,
+      experience: NullableString,
+      employmentForm: NullableString,
+      description: Schema.String,
+      descriptionLength: Schema.Int,
+      truncated: Schema.Boolean,
+      skills: Schema.Array(Schema.String),
+      fetchedNow: Schema.Boolean
+    }),
+    employer: Schema.NullOr(EmployerBrief),
+    account: AccountRef,
+    resume: Schema.NullOr(Schema.Struct({
+      id: Schema.String,
+      title: Schema.String,
+      skills: Schema.Array(Schema.String),
+      workFormats: Schema.Array(Schema.String),
+      salary: NullableString,
+      about: Schema.String,
+      text: Schema.String,
+      truncated: Schema.Boolean,
+      enrichment: Schema.NullOr(Schema.Struct({
+        comment: Schema.String,
+        salaryMin: Schema.NullOr(Schema.Int),
+        salaryExpectation: Schema.NullOr(Schema.Int),
+        currency: NullableString,
+        experience: Schema.Array(Schema.Struct({
+          key: Schema.String,
+          employmentType: NullableString,
+          comment: NullableString,
+          leaveReason: NullableString
+        }))
+      }))
+    })),
+    application: Schema.NullOr(Schema.Struct({
+      brief: ApplicationBrief,
+      prepare: NullableString,
+      questions: Schema.Int,
+      letter: NullableString,
+      letterTruncated: Schema.Boolean,
+      kitReadyToApprove: Schema.Boolean
+    })),
+    styleRules: Schema.Array(Schema.String),
+    warnings: Schema.Array(Schema.String),
+    next: Schema.String
+  }),
+  openWorld: true
+})
+
 /* ------------------------- conversations and contacts ---------------------- */
 
 const ConversationBrief = Schema.Struct({
@@ -504,6 +580,7 @@ export const OtborReadToolkit = Toolkit.make(
   ApplicationsList,
   ApplicationGet,
   ApplicationForm,
+  CoverLetterContext,
   ConversationsList,
   ConversationGet,
   ContactsList,
@@ -525,6 +602,7 @@ How to use the read tools:
 - "best vacancies / what should I apply to": vacancies_top, then vacancy_get for details of the interesting ones.
 - "what does vacancy X need": vacancy_get (accepts an id, id prefix or hh.ru URL).
 - "what is waiting": applications_list with state draft or needs_human, then application_get.
+- "write a letter for this vacancy URL" (manual mode, the operator chose the vacancy): cover_letter_context gets everything in one call (see Manual mode below).
 - Accounts: applications and decisions belong to an hh account and show it as account {id, name}. Read tools take an optional \`account\` (id, id prefix or name/label, case-insensitive) and cover all accounts without it. Write tools use \`account\`, else the default account, else the only one; with several accounts and no default they fail and list them.
 - If a tool says the API is not reachable, tell the user to run \`otbor up\` and retry; use system_health to confirm.
 Outputs are compact and long texts are trimmed (check the truncated flag; raise maxChars if you need more).`
@@ -541,7 +619,15 @@ Applying (write tools). application_approve SENDS A REAL APPLICATION on hh.ru, o
 5. kit_set. All problems are returned together and nothing is saved until the kit is valid; fix them and call again.
 6. Show the user a summary per application (vacancy, employer, letter, answers) and ask whether to send. Only after the user agreed to THESE applications, call application_approve with confirm: true, one call per application. "Reply to the 10 best" is a request to prepare drafts and show them, not consent to send unseen text, unless the user explicitly said to send without review.
 7. Later: application_get shows queued -> submitting -> submitted and the attempts. Never approve again to "retry" a submit that is in flight or looks ambiguous; report it to the user. application_skip drops a draft you will not send.
-The server enforces a daily limit of submits per hh account (LimitExceeded): if it is hit, stop, tell the user when the next slot frees, and do not retry.`
+The server enforces a daily limit of submits per hh account (LimitExceeded): if it is hit, stop, tell the user when the next slot frees, and do not retry.
+
+Manual mode ("here is a vacancy URL, write the cover letter", and answer the employer test if there is one). The operator chose the vacancy, so policy is bypassed: title gate, decision verdict, blacklist and fit are NOT consulted (cover_letter_context only warns about them). Safety is not bypassed: one application per (account, vacancy), the daily submit limit, kit validation and the at-most-once submit all apply, and application_approve still needs the user's explicit confirmation. Sequence:
+1. cover_letter_context with vacancy (hh.ru URL, external id, UUID or prefix) and optionally account. One call returns the vacancy, skills, employer, the account's active resume with the operator's enrichment, any existing application and kit, the style rules and warnings. A vacancy that is not in the corpus yet is fetched once from its public hh.ru page. Read warnings to the user (already submitted, blacklisted employer, archived). If the call fails because the page cannot be fetched, tell the user to run \`otbor vacancy fetch <url>\` (or \`otbor crawl <search url> --hydrate\`) and retry.
+2. application_prepare_manual with the same vacancy and account. It creates the draft without a decision (idempotent: an existing application for that account and vacancy is returned) and queues the browser job that opens the response form.
+3. Poll application_form until prepare.status is "prepared". If the vacancy has an employer test or questions, they appear in form.questions (kind single/multiple/text/code, option ids, maxLength, required, hint). blocked, unreadable or skipped: stop and tell the user; an unreadable form (layout not recognized) must be filled in on hh.ru by hand.
+4. Write the letter and every answer yourself from cover_letter_context (or resume_get and vacancy_get), truthfully, specific to this vacancy, in the vacancy's language. Never invent experience, tools, numbers or employers; if the resume does not say it, ask the user. No em dash or other long dash, no emoji, no exclamation marks in the letter or in any text answer. Questions: hints with hard: true are answered exactly as hinted (kit_set fills them if you omit them); choice questions are answered with option ids, text with respect to maxLength; salary, relocation, start date and similar personal facts come from the resume enrichment or from the user, never guessed. A hint with blockers, and every code question (kind "code"), needs the USER'S OWN answer: show the question, ask, and save exactly what they wrote or confirmed with source "human". Do not write code answers yourself. Set needsHuman: true on anything you are unsure about.
+5. kit_set. All problems come back together and nothing is saved until the kit is valid; fix and call again.
+6. Show the user the vacancy, employer, the letter and each question with its answer, and ask whether to send. Only after they agree to THIS application, call application_approve with confirm: true, once. Never approve in the same turn as drafting unless the user already said to send without review.`
 
 export const serverInstructions = (readOnly: boolean): string =>
   readOnly ? `${READ_INSTRUCTIONS}\n\n${READONLY_NOTE}` : `${READ_INSTRUCTIONS}${WRITE_INSTRUCTIONS}`

@@ -117,7 +117,28 @@ const ingest = Command.make(
   })
 ).pipe(Command.withDescription("Parse saved hh.ru vacancy pages and store them"))
 
+const fetchOne = Command.make(
+  "fetch",
+  {
+    reference: Argument.String("vacancy").pipe(
+      Argument.withDescription("hh.ru vacancy URL or external id")
+    )
+  },
+  Effect.fn(function*({ reference }) {
+    const api = yield* Api
+    const result = yield* api.VacancyFetch({ reference })
+    yield* Console.log(
+      `${result.alreadyKnown ? "already in the corpus" : "fetched and stored"}: ${result.title}\n` +
+        `id:       ${result.vacancyId}\nexternal: ${result.externalId}`
+    )
+  })
+).pipe(
+  Command.withDescription(
+    "Fetch ONE hh.ru vacancy page (through the cloud and its proxy) into the corpus; used by the manual apply mode"
+  )
+)
+
 export const vacancyCommand = Command.make("vacancy").pipe(
-  Command.withSubcommands([list, get, ingest]),
+  Command.withSubcommands([list, get, ingest, fetchOne]),
   Command.withDescription("The vacancy corpus")
 )

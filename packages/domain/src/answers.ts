@@ -633,6 +633,10 @@ export const validateAnswers = (
     const question = questions.get(hint.questionId)
     const answer = byQuestion.get(hint.questionId)
     if (question === undefined || answer === undefined || !hasContent(answer)) continue
+    // A hint with blockers is not trustworthy (for example a salary below the
+    // stated minimum): the user's own answer replaces it instead of being
+    // forced back to it. Without this the user could never answer differently.
+    if (hint.blockers.length > 0 && answer.source === "human" && !answer.needsHuman) continue
     if (!matchesHint(answer, hint, hint.kind)) {
       push("hard_hint_overridden", hint.questionId, `a hard ${hint.kind} hint was changed`)
     }

@@ -75,6 +75,8 @@ const form = {
 
 interface Calls {
   create: Array<unknown>
+  manual: Array<{ vacancyId: string; hhAccountId: string; resumeId?: string }>
+  fetch: Array<{ reference: string }>
   setKit: Array<{ answers: ReadonlyArray<{ questionId: string }>; formHash: string; letter?: string | null }>
   approve: Array<unknown>
   save: Array<unknown>
@@ -85,8 +87,15 @@ const makeFake = (options: {
   detail?: Partial<ApplicationDetail>
   approveError?: unknown
   accounts?: ReadonlyArray<{ id: string; label: string; isDefault: boolean; firstName?: string; lastName?: string }>
+  /** Resumes of the account; default: one active resume. */
+  resumes?: ReadonlyArray<{ id: string; isActive: boolean }>
+  /** Vacancies the corpus already holds by external id; others count as fetched now. */
+  known?: ReadonlyArray<string>
+  fetchError?: unknown
+  /** What ApplicationsCreateManual reports when the application already exists. */
+  manualExisting?: ApplicationRecord
 }) => {
-  const calls: Calls = { create: [], setKit: [], approve: [], save: [] }
+  const calls: Calls = { create: [], manual: [], fetch: [], setKit: [], approve: [], save: [] }
   const applications = options.applications ?? []
   const rpc = {
     HhAccountsList: () =>
@@ -98,6 +107,78 @@ const makeFake = (options: {
       calls.create.push(payload)
       const n = Number(payload.decisionId.slice(-4)) - 1000
       return Effect.succeed(record(n, { createdAt: new Date().toISOString() }))
+    },
+    VacancyFetch: (payload: { reference: string }) => {
+      calls.fetch.push(payload)
+      if (options.fetchError !== undefined) return Effect.fail(options.fetchError)
+      const externalId = /(\d{4,})/.exec(payload.reference)?.[1] ?? "0"
+      return Effect.succeed({
+        vacancyId: id(7),
+        externalId,
+        title: "Vacancy 7",
+        alreadyKnown: (options.known ?? []).includes(externalId)
+      })
+    },
+    VacanciesGet: (payload: { id: string }) =>
+      Effect.succeed({
+        vacancy: {
+          id: payload.id,
+          source: "hh",
+          externalId: "9007",
+          canonicalUrl: "https://hh.ru/vacancy/9007",
+          title: "Vacancy 7",
+          employerName: "Employer 7",
+          employerId: id(70),
+          seniority: "senior",
+          workFormats: ["remote"],
+          archived: false,
+          blacklisted: true,
+          blacklistLayers: [],
+          createdAt: "2026-01-01T00:00:00Z",
+          lastSeenAt: "2026-01-01T00:00:00Z"
+        },
+        descriptionText: "Мы ищем разработчика. ".repeat(100),
+        skills: ["TypeScript"],
+        keywords: [],
+        titleVerdict: "reject"
+      }),
+    EmployersGet: () =>
+      Effect.succeed({
+        employer: { id: id(70), name: "Employer 7", industries: [], vacancyCount: 1, blacklisted: false },
+        vacancies: []
+      }),
+    ResumesList: () =>
+      Effect.succeed(
+        (options.resumes ?? [{ id: id(800), isActive: true }]).map((r) => ({
+          id: r.id,
+          hhAccountId: ACCOUNT,
+          title: "Backend",
+          skills: [],
+          workFormats: [],
+          isActive: r.isActive
+        }))
+      ),
+    ResumeGet: (payload: { id: string }) =>
+      Effect.succeed({
+        id: payload.id,
+        hhAccountId: ACCOUNT,
+        title: "Backend developer",
+        text: "Опыт: пять лет TypeScript.",
+        about: "Люблю надёжные системы",
+        skills: ["TypeScript"],
+        experience: [{}],
+        workFormats: ["remote"],
+        isActive: true
+      }),
+    ResumeEnrichmentGet: () =>
+      Effect.succeed({ comment: "Релокация не нужна", experience: [], salaryExpectation: 300000, currency: "RUR" }),
+    ApplicationsCreateManual: (payload: { vacancyId: string; hhAccountId: string; resumeId?: string }) => {
+      calls.manual.push(payload)
+      return Effect.succeed(
+        options.manualExisting === undefined
+          ? { application: record(7, { decisionId: null, state: "draft" }), created: true }
+          : { application: options.manualExisting, created: false }
+      )
     },
     ApplicationsGet: () =>
       Effect.succeed({
@@ -160,7 +241,7 @@ describe("write tools", () => {
   test("annotations: write tools are not read-only, only approve is destructive", async () => {
     const { layer } = makeFake({})
     const { tools } = await withClient(layer, (c) => c.listTools())
-    const write = ["fit_save", "application_prepare", "kit_set", "application_approve", "application_skip"]
+    const write = ["fit_save", "application_prepare", "application_prepare_manual", "kit_set", "application_approve", "application_skip"]
     for (const name of write) {
       const tool = tools.find((t) => t.name === name)
       expect(tool?.annotations?.readOnlyHint).toBe(false)
@@ -388,5 +469,224 @@ describe("write tools", () => {
     const { layer } = makeFake({})
     const result = await call(layer, "application_skip", { applicationId: id(2001), reason: "not interested" })
     expect(result.structuredContent).toMatchObject({ application: { state: "skipped" } })
+  })
+})
+
+describe("manual mode", () => {
+  test("application_prepare_manual fetches an unknown hh URL, bypasses policy and uses the active resume", async () => {
+    const { layer, calls } = makeFake({})
+    const result = await call(layer, "application_prepare_manual", { vacancy: "https://hh.ru/vacancy/9007?query=x" })
+    expect(result.isError).toBeFalsy()
+    const body = result.structuredContent as {
+      existing: boolean
+      vacancyFetched: boolean
+      resume: { id: string } | null
+      application: { state: string; decisionId: string | null }
+      next: string
+    }
+    expect(body).toMatchObject({ existing: false, vacancyFetched: true, application: { state: "draft", decisionId: null } })
+    expect(body.resume?.id).toBe(id(800))
+    expect(body.next).toContain("application_form")
+    expect(calls.fetch).toEqual([{ reference: "https://hh.ru/vacancy/9007?query=x" }])
+    expect(calls.manual).toEqual([{ vacancyId: id(7), hhAccountId: ACCOUNT, resumeId: id(800) }])
+    // never goes through the decision path
+    expect(calls.create).toHaveLength(0)
+  })
+
+  test("it is idempotent: an existing application is reported, not recreated", async () => {
+    const existing = record(7, { state: "submitted", decisionId: null })
+    const { layer, calls } = makeFake({ manualExisting: existing, known: ["9007"] })
+    const result = await call(layer, "application_prepare_manual", { vacancy: "9007" })
+    const body = result.structuredContent as { existing: boolean; vacancyFetched: boolean; next: string }
+    expect(body.existing).toBe(true)
+    expect(body.vacancyFetched).toBe(false)
+    expect(body.next).toContain("already submitted")
+    expect(calls.create).toHaveLength(0)
+  })
+
+  test("a UUID names only a stored vacancy and never triggers a fetch", async () => {
+    const { layer, calls } = makeFake({})
+    const result = await call(layer, "application_prepare_manual", { vacancy: id(7) })
+    expect(result.isError).toBeFalsy()
+    expect(calls.fetch).toHaveLength(0)
+    expect(calls.manual[0]?.vacancyId).toBe(id(7))
+  })
+
+  test("a failed fetch is a clear error naming the command to run", async () => {
+    const { layer, calls } = makeFake({
+      fetchError: { _tag: "InvalidInput", message: "fetch https://hh.ru/vacancy/9007: HTTP 403" }
+    })
+    const result = await call(layer, "application_prepare_manual", { vacancy: "9007" })
+    expect(result.isError).toBe(true)
+    expect(text(result)).toContain("otbor vacancy fetch")
+    expect(text(result)).toContain("HTTP 403")
+    expect(calls.manual).toHaveLength(0)
+  })
+
+  test("account is resolved with the shared resolver and several accounts are not guessed", async () => {
+    const OTHER = id(501)
+    const two = [
+      { id: ACCOUNT, label: "main", isDefault: false },
+      { id: OTHER, label: "side", isDefault: false }
+    ]
+    const { layer, calls } = makeFake({ accounts: two })
+    const ambiguous = await call(layer, "application_prepare_manual", { vacancy: id(7) })
+    expect(ambiguous.isError).toBe(true)
+    expect(text(ambiguous)).toContain("none is default")
+    const named = await call(layer, "application_prepare_manual", { vacancy: id(7), account: "side" })
+    expect(named.isError).toBeFalsy()
+    expect(calls.manual[0]?.hhAccountId).toBe(OTHER)
+  })
+
+  test("without an active resume it still prepares, with no resume id", async () => {
+    const { layer, calls } = makeFake({ resumes: [{ id: id(801), isActive: false }] })
+    const result = await call(layer, "application_prepare_manual", { vacancy: id(7) })
+    expect(result.isError).toBeFalsy()
+    expect(calls.manual[0]?.resumeId).toBeUndefined()
+    expect((result.structuredContent as { resume: unknown }).resume).toBeNull()
+  })
+
+  test("cover_letter_context gathers vacancy, resume, rules and warnings in one call", async () => {
+    const { layer, calls } = makeFake({})
+    const result = await call(layer, "cover_letter_context", { vacancy: "https://hh.ru/vacancy/9007", maxChars: 300 })
+    expect(result.isError).toBeFalsy()
+    const body = result.structuredContent as {
+      vacancy: { description: string; truncated: boolean; skills: Array<string>; fetchedNow: boolean }
+      employer: { name: string } | null
+      resume: { id: string; enrichment: { comment: string } | null } | null
+      application: unknown
+      styleRules: Array<string>
+      warnings: Array<string>
+      next: string
+    }
+    expect(body.vacancy.truncated).toBe(true)
+    expect(body.vacancy.description.length).toBeLessThanOrEqual(301)
+    expect(body.vacancy.fetchedNow).toBe(true)
+    expect(body.vacancy.skills).toEqual(["TypeScript"])
+    expect(body.employer?.name).toBe("Employer 7")
+    expect(body.resume?.id).toBe(id(800))
+    expect(body.resume?.enrichment?.comment).toBe("Релокация не нужна")
+    expect(body.application).toBeNull()
+    expect(body.styleRules.join(" ")).toContain("em dash")
+    expect(body.warnings.join(" ")).toContain("blacklist")
+    expect(body.warnings.join(" ")).toContain("title gate")
+    expect(body.next).toContain("application_prepare_manual")
+    // reading it creates nothing
+    expect(calls.manual).toHaveLength(0)
+    expect(calls.create).toHaveLength(0)
+  })
+
+  test("cover_letter_context shows an existing application with its form state", async () => {
+    const existing = record(7, { decisionId: null, state: "draft" })
+    const { layer } = makeFake({ applications: [existing], detail: { application: existing } })
+    const result = await call(layer, "cover_letter_context", { vacancy: id(7) })
+    const body = result.structuredContent as {
+      application: { prepare: string; questions: number; kitReadyToApprove: boolean } | null
+      next: string
+    }
+    expect(body.application).toMatchObject({ prepare: "prepared", questions: 3, kitReadyToApprove: false })
+    expect(body.next).toContain("application_form")
+  })
+
+  test("cover_letter_context warns when the vacancy was already submitted", async () => {
+    const existing = record(7, { decisionId: null, state: "submitted" })
+    const { layer } = makeFake({ applications: [existing], detail: { application: existing } })
+    const result = await call(layer, "cover_letter_context", { vacancy: id(7) })
+    const body = result.structuredContent as { warnings: Array<string>; next: string }
+    expect(body.warnings.join(" ")).toContain("already submitted")
+    expect(body.next).toContain("already submitted")
+  })
+
+  test("a test questionnaire is surfaced with its code question and hint blockers; kit_set demands the user", async () => {
+    const testForm = {
+      ...form,
+      form: {
+        ...form.form,
+        formHash: "hash-test",
+        questions: [
+          { id: "t1", kind: "text", text: "Ожидания по зарплате", required: true, options: [], maxLength: 100 },
+          {
+            id: "t2",
+            kind: "code",
+            text: "Напишите функцию на Python, которая разворачивает строку",
+            required: true,
+            options: [],
+            codeLanguage: "python"
+          }
+        ]
+      },
+      hints: [{
+        questionId: "t1",
+        kind: "salary",
+        text: "200 000",
+        hard: true,
+        confidence: 0.2,
+        note: null,
+        evidence: [],
+        blockers: ["upper_bound_below_minimum"]
+      }]
+    }
+    const { layer, calls } = makeFake({ detail: { form: testForm } as unknown as Partial<ApplicationDetail> })
+    const view = (await call(layer, "application_form", { applicationId: id(2001) })).structuredContent as {
+      form: {
+        questions: Array<{ id: string; kind: string; codeLanguage: string | null; hint: { blockers: Array<string>; hard: boolean } | null }>
+      }
+    }
+    expect(view.form.questions[1]).toMatchObject({ kind: "code", codeLanguage: "python", hint: null })
+    expect(view.form.questions[0]?.hint).toMatchObject({ hard: true, blockers: ["upper_bound_below_minimum"] })
+
+    const refused = await call(layer, "kit_set", {
+      applicationId: id(2001),
+      letter: "Здравствуйте. Коротко о себе.",
+      answers: [
+        { questionId: "t1", text: "250 000" },
+        { questionId: "t2", text: "def f(s): return s[::-1]" }
+      ]
+    })
+    expect(refused.isError).toBe(true)
+    expect(text(refused)).toContain("code_needs_human")
+    expect(text(refused)).toContain("hint_blocked")
+    expect(calls.setKit).toHaveLength(0)
+
+    const accepted = await call(layer, "kit_set", {
+      applicationId: id(2001),
+      letter: "Здравствуйте. Коротко о себе.",
+      answers: [
+        { questionId: "t1", text: "250 000", source: "human" },
+        { questionId: "t2", text: "def f(s): return s[::-1]", source: "human" }
+      ]
+    })
+    expect(accepted.isError).toBeFalsy()
+    expect(calls.setKit).toHaveLength(1)
+  })
+
+  test("approve is still gated by confirm and the server instructions describe the whole flow", async () => {
+    const { layer, calls } = makeFake({})
+    const refused = await call(layer, "application_approve", { applicationId: id(2001) })
+    expect(refused.isError).toBe(true)
+    expect(calls.approve).toHaveLength(0)
+
+    const instructions = serverInstructions(false)
+    for (const phrase of [
+      "Manual mode",
+      "cover_letter_context",
+      "application_prepare_manual",
+      "application_form",
+      "kit_set",
+      "application_approve",
+      "USER'S OWN answer",
+      "explicit"
+    ]) {
+      expect(instructions).toContain(phrase)
+    }
+    expect(serverInstructions(true)).not.toContain("application_prepare_manual")
+  })
+
+  test("cover_letter_context is a read tool (also in READ-ONLY), prepare_manual is a write tool", async () => {
+    const { layer } = makeFake({})
+    const { tools } = await withClient(layer, (c) => c.listTools(), registrationFor(true))
+    const context = tools.find((t) => t.name === "cover_letter_context")
+    expect(context?.annotations?.readOnlyHint).toBe(true)
+    expect(tools.find((t) => t.name === "application_prepare_manual")).toBeUndefined()
   })
 })

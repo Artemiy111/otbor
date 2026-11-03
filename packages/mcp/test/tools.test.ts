@@ -312,7 +312,7 @@ describe("mcp tools", () => {
   })
 
   test("toolkit exposes handlers for every tool", () => {
-    expect(Object.keys(OtborReadToolkit.tools).length).toBe(20)
+    expect(Object.keys(OtborReadToolkit.tools).length).toBe(21)
     void OtborReadHandlers
   })
 })

@@ -9,7 +9,7 @@ import { Effect } from "effect"
 import { Api } from "./api.ts"
 import { formatIssues, type KitIssue, prevalidateKit } from "./apply.ts"
 import { guard } from "./errors.ts"
-import { fail, resolveVacancyId } from "./handlers.ts"
+import { fail, pickResume, resolveOrFetchVacancy, resolveVacancyId } from "./handlers.ts"
 import { pickAccount } from "./accounts.ts"
 import { accountDirectory, applicationBrief } from "./shapes.ts"
 import { OtborWriteToolkit } from "./write-tools.ts"
@@ -133,6 +133,38 @@ export const OtborWriteHandlers = OtborWriteToolkit.toLayer(Effect.gen(function*
         next: existing
           ? "already exists; call application_form to see its form and kit"
           : "draft created; the browser harness is opening the form. Poll application_form until prepare.status is \"prepared\""
+      }
+    }),
+
+    application_prepare_manual: Effect.fn("mcp.application_prepare_manual")(function*(params) {
+      const accounts = yield* run(rpc.HhAccountsList())
+      const directory = accountDirectory(accounts)
+      const account = yield* pickAccount(accounts, params.account)
+
+      const { vacancyId, fetched } = yield* run(resolveOrFetchVacancy(rpc, params.vacancy))
+      const resume = yield* run(pickResume(rpc, account.id, params.resumeId))
+
+      const result = yield* run(rpc.ApplicationsCreateManual({
+        vacancyId,
+        hhAccountId: account.id,
+        ...(resume === undefined ? {} : { resumeId: resume.id })
+      }))
+      const state = result.application.state
+      const existing = !result.created
+      return {
+        application: applicationBrief(result.application, directory),
+        existing,
+        vacancyFetched: fetched,
+        resume: resume === undefined ? null : { id: resume.id, title: resume.title },
+        next: !existing
+          ? "draft created without a decision; the browser harness is opening the form. Poll application_form until prepare.status is \"prepared\""
+          : state === "submitted"
+          ? "already submitted for this vacancy and account; nothing to do"
+          : state === "skipped"
+          ? "an application for this vacancy exists in state skipped and cannot be prepared again from here; tell the user"
+          : state === "queued" || state === "submitting"
+          ? "the application is already being sent; do not change it, check application_get"
+          : "already exists; call application_form to see its form and kit"
       }
     }),
 
