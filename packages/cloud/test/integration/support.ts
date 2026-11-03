@@ -59,6 +59,8 @@ import { CorpusService } from "../../src/services/CorpusService.ts"
 import { BlacklistService } from "../../src/services/BlacklistService.ts"
 import { DecisionService } from "../../src/services/DecisionService.ts"
 import { EvaluationRunner } from "../../src/services/EvaluationRunner.ts"
+import { FitJudgeRunner } from "../../src/services/FitJudgeRunner.ts"
+import { FitJudgeService } from "../../src/services/FitJudgeService.ts"
 import { CrawlRunner, type CrawlRunnerResult } from "../../src/services/CrawlRunner.ts"
 import { CrawlService, type CrawlSavePageInput } from "../../src/services/CrawlService.ts"
 import { CurrentUser } from "../../src/services/CurrentUser.ts"
@@ -223,11 +225,13 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
     HydrationRunner.layer.pipe(Layer.provide(Layer.merge(shared, crawlStack)))
   const employers = EmployerHydrator.layer.pipe(Layer.provide(shared))
   const evaluation = EvaluationRunner.layer.pipe(Layer.provide(shared))
+  const fitRunner = FitJudgeRunner.layer.pipe(Layer.provide(shared))
   const sourceStack = Layer.mergeAll(
     crawlStack,
     hydration,
     employers,
     evaluation,
+    fitRunner,
     mailSync,
     telegramSync
   )
@@ -245,6 +249,7 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
     BlacklistService.layer.pipe(Layer.provide(shared)),
     ResumeService.layer.pipe(Layer.provide(shared)),
     DecisionService.layer.pipe(Layer.provide(shared)),
+    FitJudgeService.layer.pipe(Layer.provide(shared)),
     QueueService.layer.pipe(Layer.provide(shared)),
     InferenceService.layer.pipe(Layer.provide(shared)),
     GateService.layer.pipe(Layer.provide(shared)),
@@ -275,6 +280,8 @@ type Requirements =
   | BlacklistService
   | DecisionService
   | EvaluationRunner
+  | FitJudgeRunner
+  | FitJudgeService
   | ResumeService
 
 export const runAs = <A, E>(

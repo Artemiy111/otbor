@@ -11,6 +11,7 @@ import { contactsCommand } from "./commands/contacts.ts"
 import { crawlCommand } from "./commands/crawl.ts"
 import { dbCommand } from "./commands/db.ts"
 import { decisionCommand } from "./commands/decision.ts"
+import { fitCommand } from "./commands/fit.ts"
 import { gateCommand } from "./commands/gate.ts"
 import { harnessCommand } from "./commands/harness.ts"
 import { hydrateCommand } from "./commands/hydrate.ts"
@@ -81,6 +82,7 @@ root
       gateCommand,
       lexiconCommand,
       decisionCommand,
+      fitCommand,
       applyCommand,
       queueCommand,
       harnessCommand,

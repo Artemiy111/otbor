@@ -12,7 +12,8 @@ const kinds: ReadonlyArray<SourceSyncKind> = [
   "mail_sync",
   "telegram_sync",
   "hh_chat_sync",
-  "evaluate"
+  "evaluate",
+  "fit"
 ]
 
 const list = Command.make(

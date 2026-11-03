@@ -161,6 +161,13 @@ describe("decide", () => {
     expect(run({}, { fitOverride: -5 }).fit).toBe(0)
   })
 
+  test("the fit reason says where the number came from", () => {
+    const detail = (result: ReturnType<typeof run>) =>
+      result.reasons.find((reason) => reason.code === "fit")?.detail
+    expect(detail(run({}, { fitOverride: 66 }))).toBe("llm 66")
+    expect(detail(run({}))).toMatch(/^deterministic \d+$/)
+  })
+
   test("a title keyword requirement is enforced on the title only", () => {
     const result = run(
       { title: "DevOps engineer" },

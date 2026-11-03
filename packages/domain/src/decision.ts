@@ -373,7 +373,8 @@ export const decide = (input: DecideInput): DecisionResult => {
   )
   const priority = Math.round(fit * freshness * 100) / 100
 
-  const reasons: DecisionReason[] = [gateReason, reason("fit", `deterministic ${fit}`, fit / 100)]
+  const fitSource = input.fitOverride !== undefined ? "llm" : "deterministic"
+  const reasons: DecisionReason[] = [gateReason, reason("fit", `${fitSource} ${fit}`, fit / 100)]
 
   if (titleHits.length > 0) {
     reasons.push(reason("skill_match", `title: ${titleHits.join(", ")}`, titleHits.length))

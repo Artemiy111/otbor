@@ -100,6 +100,37 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
       return { ...health, apiUrl: api.url }
     }),
 
+    fit_get: Effect.fn("mcp.fit_get")(function*({ id, resumeId }) {
+      const vacancyId = yield* run(resolveVacancyId(rpc, id))
+      const record = yield* run(
+        rpc.FitJudgementGet({
+          vacancyId,
+          ...(resumeId === undefined ? {} : { resumeId: resumeId as ResumeId })
+        })
+      )
+      return {
+        vacancyId,
+        judgement: record === null
+          ? null
+          : {
+              status: record.status,
+              current: record.current,
+              source: record.source,
+              model: record.model,
+              resumeId: record.resumeId,
+              promptVersion: record.promptVersion,
+              fit: record.judgement?.fit ?? null,
+              confidence: record.judgement?.confidence ?? null,
+              verdict: record.judgement?.verdict ?? null,
+              reasons: record.judgement?.reasons ?? [],
+              disqualifiers: record.judgement?.disqualifiers ?? [],
+              quotes: record.judgement?.quotes ?? [],
+              error: record.error,
+              updatedAt: record.updatedAt
+            }
+      }
+    }),
+
     queue_stats: Effect.fn("mcp.queue_stats")(function*() {
       return yield* run(rpc.QueueStatsGet())
     }),

@@ -19,6 +19,7 @@ import * as HarnessRepository from "../repositories/HarnessRepository.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
 import { CurrentUser } from "./CurrentUser.ts"
+import { completeFitInference } from "./fitJudge.ts"
 import { nextSequence, reconcileJob, submitJob } from "./jobs.ts"
 import { toStorageError } from "./support.ts"
 
@@ -544,6 +545,17 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                     status: job.status,
                     accepted: false,
                     message: "stale lease"
+                  })
+                }
+
+                // A fit judgement may be waiting for this inference job: store
+                // it and re-decide the vacancy in the same transaction.
+                if (job.stage === "inference") {
+                  yield* completeFitInference(tx, ctx.userId, {
+                    id: job.id,
+                    status,
+                    result: jobResult,
+                    message
                   })
                 }
 

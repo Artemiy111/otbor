@@ -1,4 +1,4 @@
-import type { ApiError } from "@otbor/contract"
+import type { ApiError, PresetId, ResumeId } from "@otbor/contract"
 import { InvalidInput } from "@otbor/contract"
 import { Cause, Context, Effect, Layer } from "effect"
 import type { StoredSchedule } from "../repositories/ScheduleRepository.ts"
@@ -6,6 +6,7 @@ import { CrawlRunner, type CrawlRunnerResult } from "./CrawlRunner.ts"
 import { DEFAULT_BATCH, MAX_BATCH } from "./decisionEvaluation.ts"
 import { EmployerHydrator } from "./EmployerHydrator.ts"
 import { EvaluationRunner } from "./EvaluationRunner.ts"
+import { FitJudgeRunner } from "./FitJudgeRunner.ts"
 import { HydrationRunner } from "./HydrationRunner.ts"
 import { MailSync } from "./MailSync.ts"
 import { TelegramSync } from "./TelegramSync.ts"
@@ -92,6 +93,7 @@ export class ScheduleDispatcher extends Context.Service<
       const mail = yield* MailSync
       const telegram = yield* TelegramSync
       const evaluation = yield* EvaluationRunner
+      const fit = yield* FitJudgeRunner
 
       /**
        * Decides the vacancies a crawl or hydration pass just saved. It is a
@@ -207,6 +209,28 @@ export class ScheduleDispatcher extends Context.Service<
                   remaining: result.remaining,
                   byReason: result.byReason
                 }
+              }
+            }
+
+            case "fit": {
+              // Enqueues inference for the best decisions without a current
+              // judgement. The answers land through the harness completion
+              // path, so this tick only fills the queue. The target is the
+              // resume id, or `default`/`global` for the active resume.
+              const target = schedule.targetId.trim()
+              const named = target !== "" && target !== "default" && target !== "global"
+              const result = yield* fit.enqueue(schedule.userId, {
+                limit: intOption(options, "limit", 25, 1, 200),
+                onlyApply: options.onlyApply !== false,
+                force: options.force === true,
+                ...(named ? { resumeId: target as ResumeId } : {}),
+                ...(typeof options.presetId === "string" ? { presetId: options.presetId as PresetId } : {}),
+                ...(typeof options.model === "string" ? { model: options.model } : {})
+              })
+              return {
+                ok: true,
+                error: null,
+                detail: { enqueued: result.enqueued, remaining: result.remaining }
               }
             }
 

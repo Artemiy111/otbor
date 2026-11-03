@@ -26,6 +26,7 @@ import * as BlacklistRepository from "../repositories/BlacklistRepository.ts"
 import * as DecisionRepository from "../repositories/DecisionRepository.ts"
 import * as LexiconRepository from "../repositories/LexiconRepository.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
+import { currentFitFor } from "./fitInputs.ts"
 import { stableHash, toStorageError } from "./support.ts"
 
 const asWorkFormats = (values: ReadonlyArray<string>): ReadonlyArray<WorkFormat> =>
@@ -63,7 +64,7 @@ const toLexiconMatch = (match: LexiconRepository.StoredMatch): LexiconMatch => (
 })
 
 /** The default hh account of a user, when one exists. */
-const defaultHhAccount = (tx: Executor, userId: string) =>
+export const defaultHhAccount = (tx: Executor, userId: string) =>
   tx
     .execute(sql`
       select id from hh_account
@@ -111,7 +112,7 @@ interface Evaluated {
  * The decision cascade for one vacancy, inside a user-scoped transaction.
  * Single and batch evaluation both call this, so the cascade exists once.
  */
-const evaluateInTx = (
+export const evaluateInTx = (
   tx: Executor,
   userId: string,
   input: EvaluateInput,
@@ -168,6 +169,15 @@ const evaluateInTx = (
       ? null
       : BlacklistRepository.primaryMatch(layers)
 
+    // An explicit fit wins. Otherwise a current personal judgement (LLM or
+    // external agent) replaces the deterministic fit; a stale one is ignored,
+    // never recomputed here.
+    const llm = input.fit === undefined || input.fit === null
+      ? yield* currentFitFor(tx, userId, { id: row.id, contentHash: row.contentHash }, input.resumeId)
+      : null
+    const fit = input.fit ?? llm?.judgement.fit ?? null
+    const resumeId = input.resumeId ?? llm?.resumeId ?? null
+
     const policy: ApplyPolicy = DEFAULT_APPLY_POLICY
     const blocks = {
       hidden: false,
@@ -185,7 +195,8 @@ const evaluateInTx = (
       hidden: false,
       blacklist: blacklist === null ? null : `${blacklist.target}:${blacklist.scope}`,
       applied,
-      fit: input.fit ?? null,
+      fit,
+      fitJudgement: llm?.id,
       policy: policy.version
     })
 
@@ -195,14 +206,14 @@ const evaluateInTx = (
       keywords,
       blocks,
       policy,
-      fitOverride: input.fit ?? undefined,
+      fitOverride: fit ?? undefined,
       now: new Date()
     })
 
     const record = yield* DecisionRepository.persist(tx, {
       userId,
       hhAccountId,
-      resumeId: input.resumeId ?? null,
+      resumeId,
       vacancyId: row.id,
       verdict: decision.verdict,
       gate: decision.gate,

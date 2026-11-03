@@ -95,6 +95,35 @@ const fake = {
     const n = Number(vacancyId.slice(-12))
     return n === 3 ? Effect.fail({ _tag: "NotFound", entity: "vacancy", id: vacancyId }) : Effect.succeed(detail(n))
   },
+  FitJudgementGet: ({ vacancyId }: { vacancyId: string }) =>
+    Effect.succeed(
+      vacancyId.endsWith("000000000007")
+        ? null
+        : {
+            id: id(7000),
+            vacancyId,
+            resumeId: id(8000),
+            vacancyContentHash: "h",
+            resumeHash: "r",
+            promptVersion: "fit-v1",
+            source: "llm",
+            status: "done",
+            judgement: {
+              fit: 72,
+              confidence: 0.8,
+              verdict: "ok",
+              reasons: ["Kubernetes shown"],
+              disqualifiers: ["no Terraform"],
+              quotes: ["опыт Kubernetes"]
+            },
+            model: "m",
+            inferenceJobId: null,
+            error: null,
+            current: false,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-02T00:00:00Z"
+          }
+    ),
   SystemHealth: () => Effect.succeed({ status: "ok", version: "t", database: true, now: "now" })
 } as unknown as OtborApi
 
@@ -123,6 +152,20 @@ describe("mcp tools", () => {
     expect(names.every((n) => /^[a-z]+(_[a-z]+)*$/.test(n))).toBe(true)
     expect(tools.tools.every((t) => t.annotations?.readOnlyHint === true)).toBe(true)
     expect(tools.tools.every((t) => t.annotations?.destructiveHint === false)).toBe(true)
+  })
+
+  test("fit_get returns the judgement with its staleness, or null", async () => {
+    const found = await withClient(FakeApi, (c) => c.callTool({ name: "fit_get", arguments: { id: id(2) } }))
+    const body = found.structuredContent as {
+      judgement: { fit: number; current: boolean; disqualifiers: Array<string>; verdict: string } | null
+    }
+    expect(body.judgement?.fit).toBe(72)
+    expect(body.judgement?.current).toBe(false)
+    expect(body.judgement?.verdict).toBe("ok")
+    expect(body.judgement?.disqualifiers).toEqual(["no Terraform"])
+
+    const none = await withClient(FakeApi, (c) => c.callTool({ name: "fit_get", arguments: { id: id(7) } }))
+    expect((none.structuredContent as { judgement: unknown }).judgement).toBeNull()
   })
 
   test("vacancies_top ranks by priority, dedupes per vacancy, defaults to apply", async () => {
@@ -194,7 +237,7 @@ describe("mcp tools", () => {
   })
 
   test("toolkit exposes handlers for every tool", () => {
-    expect(Object.keys(OtborReadToolkit.tools).length).toBe(17)
+    expect(Object.keys(OtborReadToolkit.tools).length).toBe(18)
     void OtborReadHandlers
   })
 })

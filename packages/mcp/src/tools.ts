@@ -169,6 +169,38 @@ export const DecisionsList = readTool("decisions_list", {
   success: Schema.Struct({ items: Schema.Array(DecisionBrief), returned: Schema.Int })
 })
 
+export const FitGet = readTool("fit_get", {
+  description:
+    "The personal fit judgement for a vacancy: an LLM (or external agent) score of how well the resume matches " +
+    "this vacancy, with verdict, confidence, reasons, disqualifiers (missing must-haves) and verbatim quotes. " +
+    "`current` is false when the vacancy text, the resume or the prompt version changed since it was made; " +
+    "a stale judgement is shown but no longer drives the decision. `judgement` is null when none exists " +
+    "(`otbor fit enqueue` creates them). `id` may be a vacancy UUID, a UUID prefix, an hh.ru URL or an hh external id.",
+  parameters: Schema.Struct({
+    id: Schema.String.annotate({ description: "Vacancy id, id prefix, hh.ru URL or hh external id" }),
+    resumeId: text("Only the judgement for this resume (default: the newest)")
+  }),
+  success: Schema.Struct({
+    vacancyId: Schema.String,
+    judgement: Schema.NullOr(Schema.Struct({
+      status: Schema.String,
+      current: Schema.Boolean,
+      source: Schema.String,
+      model: NullableString,
+      resumeId: Schema.String,
+      promptVersion: Schema.String,
+      fit: Schema.NullOr(Schema.Int),
+      confidence: Schema.NullOr(Schema.Number),
+      verdict: NullableString,
+      reasons: Schema.Array(Schema.String),
+      disqualifiers: Schema.Array(Schema.String),
+      quotes: Schema.Array(Schema.String),
+      error: NullableString,
+      updatedAt: Schema.String
+    }))
+  })
+})
+
 /* --------------------------------- presets --------------------------------- */
 
 const PresetBrief = Schema.Struct({
@@ -409,6 +441,7 @@ export const OtborReadToolkit = Toolkit.make(
   VacanciesTop,
   VacancyGet,
   DecisionsList,
+  FitGet,
   PresetsList,
   PresetPreview,
   EmployersList,
@@ -429,7 +462,7 @@ export const SERVER_INSTRUCTIONS = `otbor is an hh.ru auto-apply control plane. 
 Domain model, in pipeline order:
 - vacancy: a job posting crawled from hh.ru (title, employer, salary, description, skills).
 - gate: a deterministic title check (match / unknown / reject). Only "match" vacancies can be applied to.
-- decision: the policy result for a vacancy: verdict (apply / draft / skip), fit (0-100 against the resume), priority (ranking score) and reasons (why). Reasons starting with "blocked_" explain a skip.
+- decision: the policy result for a vacancy: verdict (apply / draft / skip), fit (0-100 against the resume), priority (ranking score) and reasons (why). Reasons starting with "blocked_" explain a skip. The "fit" reason says whether the number is "deterministic" (keyword rules, saturates near 95-100) or "llm" (a personal judgement, see fit_get).
 - application: created from an apply/draft decision; states draft, queued, submitting, submitted, skipped, needs_human, failed. Submit is at-most-once; "waiting" usually means draft or needs_human.
 - kit: the cover letter and form answers prepared for an application.
 Also: presets (saved filters), employers (with blacklist state), resumes (with operator enrichment), conversations and contacts (replies from recruiters), schedules (crawls) and the harness queue.

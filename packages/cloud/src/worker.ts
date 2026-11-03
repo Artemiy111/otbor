@@ -9,6 +9,7 @@ import { CorpusService } from "./services/CorpusService.ts"
 import { CurrentUser } from "./services/CurrentUser.ts"
 import { EmployerHydrator } from "./services/EmployerHydrator.ts"
 import { EvaluationRunner } from "./services/EvaluationRunner.ts"
+import { FitJudgeRunner } from "./services/FitJudgeRunner.ts"
 import { HydrationRunner } from "./services/HydrationRunner.ts"
 import { MailGatewayProvider } from "./services/MailGatewayProvider.ts"
 import { MailSync } from "./services/MailSync.ts"
@@ -61,12 +62,14 @@ const telegramSync = TelegramSync.layer.pipe(
 const hydration = HydrationRunner.layer.pipe(Layer.provide(Layer.merge(base, crawlStack)))
 const employers = EmployerHydrator.layer.pipe(Layer.provide(base))
 const evaluation = EvaluationRunner.layer.pipe(Layer.provide(base))
+const fitRunner = FitJudgeRunner.layer.pipe(Layer.provide(base))
 
 const sourceStack = Layer.mergeAll(
   crawlStack,
   hydration,
   employers,
   evaluation,
+  fitRunner,
   mailSync,
   telegramSync
 )

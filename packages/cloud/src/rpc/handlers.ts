@@ -11,6 +11,8 @@ import { CrawlService } from "../services/CrawlService.ts"
 import { DecisionService } from "../services/DecisionService.ts"
 import { EmployerHydrator } from "../services/EmployerHydrator.ts"
 import { EvaluationRunner } from "../services/EvaluationRunner.ts"
+import { FitJudgeRunner } from "../services/FitJudgeRunner.ts"
+import { FitJudgeService } from "../services/FitJudgeService.ts"
 import { GateService } from "../services/GateService.ts"
 import { HhAccountService } from "../services/HhAccountService.ts"
 import { HydrationRunner } from "../services/HydrationRunner.ts"
@@ -44,6 +46,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const inference = yield* InferenceService
     const writing = yield* WritingService
     const decisions = yield* DecisionService
+    const fitJudge = yield* FitJudgeService
     const gate = yield* GateService
     const applications = yield* ApplicationService
     const presets = yield* PresetService
@@ -155,6 +158,11 @@ export const OtborHandlers = OtborRpcs.toLayer(
       DecisionsList: (payload) => decisions.list(payload),
       DecisionsEvaluateBatch: (payload) => decisions.evaluateBatch(payload),
 
+      FitJudgeEnqueue: (payload) => fitJudge.enqueue(payload),
+      FitJudgementGet: (payload) => fitJudge.get(payload),
+      FitJudgementsList: (payload) => fitJudge.list(payload),
+      FitJudgementSave: (payload) => fitJudge.save(payload),
+
       ApplicationsList: (payload) => applications.list(payload),
       ApplicationsGet: ({ id }) => applications.get(id),
       ApplicationsCreateFromDecision: (payload) => applications.createFromDecision(payload),
@@ -204,12 +212,14 @@ const telegramSync = TelegramSync.layer.pipe(Layer.provide(TelegramGatewayProvid
 const hydration = HydrationRunner.layer.pipe(Layer.provide(crawlStack))
 const employers = EmployerHydrator.layer
 const evaluation = EvaluationRunner.layer
+const fitRunner = FitJudgeRunner.layer
 
 const sourceStack = Layer.mergeAll(
   crawlStack,
   hydration,
   employers,
   evaluation,
+  fitRunner,
   mailSync,
   telegramSync
 )
@@ -235,6 +245,7 @@ export const OtborServices = Layer.mergeAll(
   InferenceService.layer,
   WritingService.layer,
   DecisionService.layer,
+  FitJudgeService.layer,
   GateService.layer,
   ApplicationService.layer,
   PresetService.layer,
