@@ -126,7 +126,7 @@ const run = Command.make(
       OTBOR_API_URL: url,
       OTBOR_HARNESS_ID: harnessId,
       OTBOR_HARNESS_TOKEN: deviceToken,
-      OTBOR_HARNESS_KINDS: kinds.join(","),
+      OTBOR_HARNESS_KINDS: (kinds.length > 0 ? kinds : (saved?.kinds ?? [])).join(","),
       OTBOR_HARNESS_ACCOUNTS: accountIds.join(","),
       OTBOR_HARNESS_WAIT_SECONDS: String(waitSeconds)
     })
