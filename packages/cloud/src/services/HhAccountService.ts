@@ -1,4 +1,4 @@
-import type { ApiError, HhAccountId, HhAccountRecord } from "@otbor/contract"
+import type { ApiError, HhAccountId, HhAccountRecord, HhSessionState } from "@otbor/contract"
 import { InvalidInput, NotFound } from "@otbor/contract"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "../db/Database.ts"
@@ -19,6 +19,11 @@ export interface HhAccountUpsertInput {
 export interface HhAccountServiceShape {
   readonly list: () => Effect.Effect<ReadonlyArray<HhAccountRecord>, ApiError>
   readonly upsert: (input: HhAccountUpsertInput) => Effect.Effect<HhAccountRecord, ApiError>
+  readonly setSession: (input: {
+    readonly id: HhAccountId
+    readonly state: HhSessionState
+    readonly error?: string | null
+  }) => Effect.Effect<HhAccountRecord, ApiError>
   readonly remove: (
     id: string
   ) => Effect.Effect<{ readonly id: HhAccountId; readonly deleted: boolean }, ApiError>
@@ -50,15 +55,27 @@ export class HhAccountService extends Context.Service<HhAccountService, HhAccoun
 
           const record = yield* database
             .asUser(currentUser.userId, (tx) =>
-              HhAccountRepository.upsert(tx, {
+              Effect.gen(function*() {
+                // One session profile is one account: a second login with the
+                // same profile updates the row instead of creating a twin.
+                const twin =
+                  input.id === undefined && input.sessionProfile != null
+                    ? yield* HhAccountRepository.findBySessionProfile(
+                        tx,
+                        currentUser.userId,
+                        input.sessionProfile
+                      )
+                    : null
+                return yield* HhAccountRepository.upsert(tx, {
                 userId: currentUser.userId,
-                id: input.id ?? null,
+                id: input.id ?? twin?.id ?? null,
                 label,
-                isDefault: input.isDefault,
+                isDefault: input.isDefault ?? twin?.isDefault,
                 sessionProfile: input.sessionProfile,
                 firstName: input.firstName,
                 lastName: input.lastName,
                 areaName: input.areaName
+                })
               })
             )
             .pipe(Effect.mapError(toStorageError("hhAccount.upsert")))
@@ -77,6 +94,19 @@ export class HhAccountService extends Context.Service<HhAccountService, HhAccoun
           return { id: id as HhAccountId, deleted }
         })
 
+      const setSession: HhAccountServiceShape["setSession"] = (input) =>
+        Effect.gen(function*() {
+          const record = yield* database
+            .asUser(currentUser.userId, (tx) =>
+              HhAccountRepository.setSession(tx, { userId: currentUser.userId, ...input })
+            )
+            .pipe(Effect.mapError(toStorageError("hhAccount.setSession")))
+          if (record === null) {
+            return yield* new NotFound({ entity: "HhAccount", id: input.id })
+          }
+          return record
+        })
+
       const findById: HhAccountServiceShape["findById"] = (id) =>
         database
           .asUser(currentUser.userId, (tx) =>
@@ -84,7 +114,7 @@ export class HhAccountService extends Context.Service<HhAccountService, HhAccoun
           )
           .pipe(Effect.mapError(toStorageError("hhAccount.findById")))
 
-      return HhAccountService.of({ list, upsert, remove, findById })
+      return HhAccountService.of({ list, upsert, setSession, remove, findById })
     })
   )
 }

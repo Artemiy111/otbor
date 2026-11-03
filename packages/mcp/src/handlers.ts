@@ -99,7 +99,19 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
   return OtborReadToolkit.of({
     system_health: Effect.fn("mcp.system_health")(function*() {
       const health = yield* run(rpc.SystemHealth())
-      return { ...health, apiUrl: api.url }
+      const { accounts = [], ...rest } = health
+      return {
+        ...rest,
+        apiUrl: api.url,
+        accounts: accounts.map((a) => ({
+          id: a.id,
+          label: a.label,
+          profile: a.sessionProfile,
+          sessionState: a.session?.state ?? null,
+          lastOkAt: a.session?.lastOkAt ?? null,
+          lastError: a.session?.lastError ?? null
+        }))
+      }
     }),
 
     fit_get: Effect.fn("mcp.fit_get")(function*({ id, resumeId }) {

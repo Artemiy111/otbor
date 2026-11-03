@@ -95,6 +95,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
 
       HhAccountsList: () => hhAccounts.list(),
       HhAccountUpsert: (payload) => hhAccounts.upsert(payload),
+      HhAccountSessionSet: (payload) => hhAccounts.setSession(payload),
       HhAccountRemove: ({ id }) => hhAccounts.remove(id),
 
       ResumesList: (payload) => resumes.list(payload?.hhAccountId),

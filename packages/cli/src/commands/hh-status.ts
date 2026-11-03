@@ -1,82 +1,42 @@
-import { Api } from "../client.ts"
-import { hhProfileDir } from "@otbor/harness"
+import type { HhAccountRecord } from "@otbor/contract"
 import { Console, Effect } from "effect"
 import { Command, Flag } from "effect/cli"
-import { readFile } from "node:fs/promises"
-import { join } from "node:path"
+import { Api } from "../client.ts"
+import { checkProfileSession, formatLastOk } from "../hh-session.ts"
 
-const profileDir = (name: string) => hhProfileDir(name)
-const storagePath = (name: string) => join(profileDir(name), "storage-state.json")
+const HEADER = ["name", "profile", "state", "last ok"] as const
 
 export const hhStatusCommand = Command.make(
   "status",
   {
     account: Flag.String("account").pipe(
-      Flag.withDescription("hh account id"),
+      Flag.withDescription("hh account id; all accounts when omitted"),
       Flag.withDefault("")
-    ),
-    profile: Flag.String("profile").pipe(
-      Flag.withDescription("Profile name for this hh.ru account"),
-      Flag.withDefault("default")
-    ),},
-  Effect.fn(function*({ account, profile }) {
-    let resolvedProfile = profile
-    if (account !== "") {
-      const api = yield* Api
-      const accounts = yield* api.HhAccountsList()
-      const acc = accounts.find((a) => a.id === account)
-      if (acc?.sessionProfile) resolvedProfile = acc.sessionProfile
-    }
-    const path = storagePath(resolvedProfile)
-    let state: any
-    try {
-      const text = yield* Effect.tryPromise({ try: () => readFile(path, "utf8"), catch: () => new Error("missing") })
-      state = JSON.parse(text)
-    } catch {
-      yield* Console.log(`Сессия hh.ru не найдена: ${path}`)
-      yield* Console.log("Выполните: otbor hh login")
+    )
+  },
+  Effect.fn(function*({ account }) {
+    const api = yield* Api
+    const all = yield* api.HhAccountsList()
+    const targets: ReadonlyArray<HhAccountRecord> = account === "" ? all : all.filter((a) => a.id === account)
+    if (targets.length === 0) {
+      yield* Console.log(account === "" ? "Аккаунтов нет. Выполните: otbor hh login" : `Аккаунт не найден: ${account}`)
       return
     }
-
-    const cookies = (state.cookies ?? []).filter((c: any) => String(c.domain || "").includes("hh.ru"))
-    const token = cookies.find((c: any) => c.name === "hhtoken" || c.name === "hhul")
-    const expires = token?.expires ? new Date(token.expires * 1000) : null
-    const now = new Date()
-    const expired = expires !== null && expires < now
-
-    yield* Console.log(`Файл сессии: ${path}`)
-    yield* Console.log(`Cookies hh.ru: ${cookies.length}`)
-    yield* Console.log(`Токен: ${token?.name ?? "нет"} (истекает: ${expires ? expires.toISOString() : "неизвестно"})`)
-    yield* Console.log(`Локальный статус: ${expired ? "ИСТЁК" : "валиден"}`)
-
-    // Verify online
-    const cookieHeader = cookies.map((c: any) => `${c.name}=${c.value}`).join("; ")
-    const response = yield* Effect.tryPromise({
-      try: () => fetch("https://hh.ru/applicant/resumes", {
-        headers: { Cookie: cookieHeader, "User-Agent": "Mozilla/5.0" },
-        redirect: "follow"
-      }),
-      catch: (error) => new Error(`fetch failed: ${error}`)
-    })
-    const html = yield* Effect.tryPromise({
-      try: () => response.text(),
-      catch: () => new Error("read failed")
-    })
-    const anonymous = /"userType":\s*"anonymous"/.test(html)
-    yield* Console.log(`Проверка hh.ru: ${response.status} ${anonymous ? "(аноним — сессия недействительна)" : "(авторизован)"}`)
-
-    const profileRes = yield* Effect.tryPromise({
-      try: () => fetch("https://hh.ru/applicant/profile/me", {
-        headers: { Cookie: cookieHeader, "User-Agent": "Mozilla/5.0" },
-        redirect: "follow"
-      }),
-      catch: () => null as any
-    })
-    if (profileRes && profileRes.ok) {
-      const profileHtml = yield* Effect.tryPromise({ try: () => profileRes.text(), catch: () => "" })
-      const fn = profileHtml.match(/firstName&quot;:&quot;([^&]+)&quot;/)?.[1]
-      const ln = profileHtml.match(/lastName&quot;:&quot;([^&]+)&quot;/)?.[1]
-      if (fn || ln) yield* Console.log(`Аккаунт: ${fn ?? ""} ${ln ?? ""}`.trim())
+    const rows: Array<ReadonlyArray<string>> = []
+    for (const acc of targets) {
+      const profile = acc.sessionProfile
+      if (profile === null) {
+        rows.push([acc.label, "none", "no profile", "never"])
+        continue
+      }
+      const check = yield* Effect.promise(() => checkProfileSession(profile))
+      const saved = yield* api.HhAccountSessionSet({ id: acc.id, state: check.state, error: check.error })
+      rows.push([acc.label, profile, check.state, formatLastOk(saved.session?.lastOkAt)])
     }
+    const widths = HEADER.map((h, i) => Math.max(h.length, ...rows.map((r) => r[i]!.length)))
+    const line = (cells: ReadonlyArray<string>) =>
+      cells.map((c, i) => c.padEnd(widths[i]!)).join("  ").trimEnd()
+    yield* Console.log(line(HEADER))
+    for (const row of rows) yield* Console.log(line(row))
   })
-).pipe(Command.withDescription("Check hh.ru session status"))
+).pipe(Command.withDescription("Check hh.ru sessions of all accounts (or one) and record the result"))

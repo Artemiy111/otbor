@@ -66,6 +66,7 @@ import {
   KitRecord,
   LexiconKeyword,
   HhAccountRecord,
+  HhSessionState,
   MailAccountRecord,
   PresetFilter,
   PresetPreview,
@@ -560,6 +561,16 @@ export const HhAccountUpsert = Rpc.make("HhAccountUpsert", {
     firstName: Schema.optional(Schema.NullOr(Schema.String)),
     lastName: Schema.optional(Schema.NullOr(Schema.String)),
     areaName: Schema.optional(Schema.NullOr(Schema.String))
+  }),
+  success: HhAccountRecord,
+  error: ApiError
+})
+
+export const HhAccountSessionSet = Rpc.make("HhAccountSessionSet", {
+  payload: Schema.Struct({
+    id: HhAccountId,
+    state: HhSessionState,
+    error: Schema.optional(Schema.NullOr(Schema.String))
   }),
   success: HhAccountRecord,
   error: ApiError
@@ -1086,6 +1097,7 @@ export const OtborRpcs = RpcGroup.make(
   TelegramLoginStatus,
   HhAccountsList,
   HhAccountUpsert,
+  HhAccountSessionSet,
   HhAccountRemove,
   TitlesPreview,
   TitlesSetUserVerdict,

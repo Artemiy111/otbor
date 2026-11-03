@@ -39,13 +39,22 @@ const NullableString = Schema.NullOr(Schema.String)
 /* --------------------------------- system ---------------------------------- */
 
 export const SystemHealth = readTool("system_health", {
-  description: "Check that the otbor API and its database are up. Call this first if other tools fail.",
+  description: "Check that the otbor API and its database are up, and the hh.ru session state of each account " +
+    "(ok, expired, blocked). Call this first if other tools fail.",
   success: Schema.Struct({
     status: Schema.String,
     version: Schema.String,
     database: Schema.Boolean,
     now: Schema.String,
-    apiUrl: Schema.String
+    apiUrl: Schema.String,
+    accounts: Schema.Array(Schema.Struct({
+      id: Schema.String,
+      label: Schema.String,
+      profile: NullableString,
+      sessionState: NullableString,
+      lastOkAt: NullableString,
+      lastError: NullableString
+    }))
   })
 })
 
