@@ -1,15 +1,16 @@
 import { ContactKind, ConversationChannel, PresetKind } from "@otbor/contract"
 import { Schema } from "effect"
 import { Tool, Toolkit } from "effect/ai"
+import { FormView } from "./apply.ts"
 import { ToolFailure } from "./errors.ts"
 import { ApplicationBrief, DecisionBrief, EmployerBrief, VacancyBrief } from "./shapes.ts"
 
 /**
  * Tool definitions. Handlers live in `handlers.ts`.
  *
- * Adding a write tool later: define it with `writeTool(...)` below in a
- * separate `WriteToolkit`, implement its handlers in their own layer, and
- * merge the toolkits in `server.ts`. Read tools never change.
+ * Read tools only. Write tools live in `write-tools.ts` (their own toolkit
+ * and handlers layer) and are merged in `server.ts`, so `OTBOR_MCP_READONLY=1`
+ * can register this toolkit alone.
  */
 
 const readTool = <
@@ -340,12 +341,14 @@ export const ApplicationsList = readTool("applications_list", {
 
 export const ApplicationGet = readTool("application_get", {
   description:
-    "One application with its kit (cover letter and form answers, trimmed), the last attempts and the " +
+    "One application with its kit (cover letter and form answers, trimmed), the prepared hh.ru form " +
+    "(question ids, options, hints, kit problems; same as application_form), the last attempts and the " +
     "decision that created it.",
   parameters: Schema.Struct({ id: Schema.String.annotate({ description: "Application id (UUID)" }) }),
   success: Schema.Struct({
     application: ApplicationBrief,
     decision: Schema.NullOr(DecisionBrief),
+    form: FormView,
     kit: Schema.NullOr(Schema.Struct({
       letter: NullableString,
       letterTruncated: Schema.Boolean,
@@ -363,6 +366,17 @@ export const ApplicationGet = readTool("application_get", {
     })),
     attemptsTotal: Schema.Int
   })
+})
+
+export const ApplicationForm = readTool("application_form", {
+  description:
+    "Wait-free read of an application's prepared hh.ru form: questions with ids, kinds, options and the " +
+    "deterministic hints (hard: true hints must be answered exactly as hinted; blockers mean ask the user), " +
+    "plus the saved kit status and the problems approve would raise. prepare.status: pending (the browser " +
+    "harness has not finished; poll again in a few seconds), prepared, blocked (needs a human, see detail), " +
+    "unreadable, skipped. Does not change anything.",
+  parameters: Schema.Struct({ applicationId: Schema.String.annotate({ description: "Application id (UUID)" }) }),
+  success: Schema.Struct({ application: ApplicationBrief, form: FormView })
 })
 
 /* ------------------------- conversations and contacts ---------------------- */
@@ -450,6 +464,7 @@ export const OtborReadToolkit = Toolkit.make(
   ResumeGet,
   ApplicationsList,
   ApplicationGet,
+  ApplicationForm,
   ConversationsList,
   ConversationGet,
   ContactsList,
@@ -457,7 +472,7 @@ export const OtborReadToolkit = Toolkit.make(
   QueueStats
 )
 
-export const SERVER_INSTRUCTIONS = `otbor is an hh.ru auto-apply control plane. These tools are READ-ONLY.
+const READ_INSTRUCTIONS = `otbor is an hh.ru auto-apply control plane.
 
 Domain model, in pipeline order:
 - vacancy: a job posting crawled from hh.ru (title, employer, salary, description, skills).
@@ -467,9 +482,29 @@ Domain model, in pipeline order:
 - kit: the cover letter and form answers prepared for an application.
 Also: presets (saved filters), employers (with blacklist state), resumes (with operator enrichment), conversations and contacts (replies from recruiters), schedules (crawls) and the harness queue.
 
-How to use them:
+How to use the read tools:
 - "best vacancies / what should I apply to": vacancies_top, then vacancy_get for details of the interesting ones.
 - "what does vacancy X need": vacancy_get (accepts an id, id prefix or hh.ru URL).
 - "what is waiting": applications_list with state draft or needs_human, then application_get.
 - If a tool says the API is not reachable, tell the user to run \`otbor up\` and retry; use system_health to confirm.
 Outputs are compact and long texts are trimmed (check the truncated flag; raise maxChars if you need more).`
+
+export const READONLY_NOTE = "This server is running READ-ONLY (OTBOR_MCP_READONLY=1): there are no tools that change anything."
+
+const WRITE_INSTRUCTIONS = `
+
+Applying (write tools). application_approve SENDS A REAL APPLICATION on hh.ru, once and irreversibly. Everything before it is a draft and can be redone or dropped. Recommended workflow, one vacancy at a time (the tools are atomic; you orchestrate):
+1. vacancies_top for candidates. Optionally read vacancy_get + resume_get and, if the keyword fit looks wrong, record your own view with fit_save (it re-ranks).
+2. application_prepare (decisionId from vacancies_top). Idempotent: an existing application for that vacancy and account is returned. It queues a browser job that opens the hh.ru form.
+3. Poll application_form until prepare.status is "prepared" (pending means the harness is still working: wait a few seconds; blocked/unreadable/skipped means stop and tell the user). Do not hammer it; for several vacancies, prepare them all first, then poll.
+4. Write the letter and answers yourself from resume_get and vacancy_get. Be specific and truthful; never invent experience. Hints with hard: true must be answered exactly as hinted (they may be omitted, kit_set fills them). A hint with blockers, or a code question, needs the user's own answer (source "human"). Style rules for everything sent to an employer: no em dash or other long dashes, no emoji, no exclamation marks. Honor maxLength and answer with option ids, not labels.
+5. kit_set. All problems are returned together and nothing is saved until the kit is valid; fix them and call again.
+6. Show the user a summary per application (vacancy, employer, letter, answers) and ask whether to send. Only after the user agreed to THESE applications, call application_approve with confirm: true, one call per application. "Reply to the 10 best" is a request to prepare drafts and show them, not consent to send unseen text, unless the user explicitly said to send without review.
+7. Later: application_get shows queued -> submitting -> submitted and the attempts. Never approve again to "retry" a submit that is in flight or looks ambiguous; report it to the user. application_skip drops a draft you will not send.
+The server enforces a daily limit of submits per hh account (LimitExceeded): if it is hit, stop, tell the user when the next slot frees, and do not retry.`
+
+export const serverInstructions = (readOnly: boolean): string =>
+  readOnly ? `${READ_INSTRUCTIONS}\n\n${READONLY_NOTE}` : `${READ_INSTRUCTIONS}${WRITE_INSTRUCTIONS}`
+
+/** Full instructions (read + write). The server picks `serverInstructions(readOnly)`. */
+export const SERVER_INSTRUCTIONS = serverInstructions(false)

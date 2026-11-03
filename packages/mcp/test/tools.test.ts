@@ -4,7 +4,7 @@ import { Effect, Layer } from "effect"
 import { McpProtocol, McpTest } from "effect/ai"
 import { Api, apiLayerFor } from "../src/api.ts"
 import { OtborReadHandlers } from "../src/handlers.ts"
-import { OtborToolkitRegistration } from "../src/server.ts"
+import { OtborReadRegistration } from "../src/server.ts"
 import { OtborReadToolkit } from "../src/tools.ts"
 
 
@@ -131,12 +131,13 @@ const FakeApi = Layer.succeed(Api, { rpc: fake, url: "http://fake/rpc" })
 
 const withClient = <A, E>(
   layer: Layer.Layer<Api>,
-  use: (client: McpTest.Client) => Effect.Effect<A, E>
+  use: (client: McpTest.Client) => Effect.Effect<A, E>,
+  registration: typeof OtborReadRegistration = OtborReadRegistration
 ) =>
   Effect.runPromise(
     Effect.gen(function*() {
       const client = yield* McpTest.makeClient(
-        OtborToolkitRegistration.pipe(Layer.provide(layer)),
+        registration.pipe(Layer.provide(layer)),
         { protocols: [McpProtocol.v2025_11_25] }
       )
       return yield* use(client)
@@ -237,7 +238,7 @@ describe("mcp tools", () => {
   })
 
   test("toolkit exposes handlers for every tool", () => {
-    expect(Object.keys(OtborReadToolkit.tools).length).toBe(18)
+    expect(Object.keys(OtborReadToolkit.tools).length).toBe(19)
     void OtborReadHandlers
   })
 })

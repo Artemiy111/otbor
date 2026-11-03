@@ -44,6 +44,17 @@ export class AnswersInvalid extends Schema.TaggedError<AnswersInvalid>()("Answer
   )
 }) {}
 
+/**
+ * The per-account daily submit limit is used up. `used` counts applications
+ * approved, submitting or submitted in the last 24 hours; `resetsAt` is when
+ * the oldest of them leaves the window (ISO 8601).
+ */
+export class LimitExceeded extends Schema.TaggedError<LimitExceeded>()("LimitExceeded", {
+  limit: Schema.Int,
+  used: Schema.Int,
+  resetsAt: Schema.String
+}) {}
+
 export const ApiError = Schema.Union([
   NotFound,
   Conflict,
@@ -51,7 +62,8 @@ export const ApiError = Schema.Union([
   StorageError,
   Unauthorized,
   HarnessRejected,
-  AnswersInvalid
+  AnswersInvalid,
+  LimitExceeded
 ])
 
 export type ApiError = typeof ApiError.Type

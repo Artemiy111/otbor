@@ -6,9 +6,9 @@ import type {
   KitAnswer,
   KitRecord
 } from "@otbor/contract"
-import { AnswersInvalid, Conflict, InvalidInput, NotFound } from "@otbor/contract"
+import { AnswersInvalid, Conflict, InvalidInput, LimitExceeded, NotFound } from "@otbor/contract"
 import { sql } from "drizzle-orm"
-import { Context, Effect, Layer } from "effect"
+import { Config, Context, Effect, Layer } from "effect"
 import { Database, type Executor } from "../db/Database.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
 import * as DecisionRepository from "../repositories/DecisionRepository.ts"
@@ -37,6 +37,12 @@ type Failure =
       readonly applicationId: string
       readonly problems: ReadonlyArray<KitProblem>
     }
+  | {
+      readonly _tag: "limit"
+      readonly limit: number
+      readonly used: number
+      readonly resetsAt: string
+    }
 
 type Outcome<A> = { readonly ok: true; readonly value: A } | { readonly ok: false; readonly failure: Failure }
 
@@ -57,6 +63,8 @@ const raise = (failure: Failure): ApiError => {
         message: `the kit cannot be approved: ${failure.problems.map((problem) => problem.code).join(", ")}`,
         problems: failure.problems
       })
+    case "limit":
+      return new LimitExceeded({ limit: failure.limit, used: failure.used, resetsAt: failure.resetsAt })
   }
 }
 
@@ -71,6 +79,35 @@ const accountExists = (tx: Executor, id: string) =>
   tx
     .execute(sql`select id from hh_account where id = ${id} limit 1`)
     .pipe(Effect.map((result) => result.rows.length > 0))
+
+/** Daily submits per hh account when `OTBOR_DAILY_APPLY_LIMIT` is not set. */
+export const DEFAULT_DAILY_APPLY_LIMIT = 30
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Applications of one account that were approved in the last 24 hours and
+ * still stand (queued, submitting or submitted). `intent_at` is written by
+ * approve; auto-mode rows without it fall back to `submitted_at`.
+ * `oldest` is the timestamp that frees the first slot.
+ */
+const recentSubmits = (tx: Executor, hhAccountId: string, excludeId: string) =>
+  tx
+    .execute(sql`
+      select count(*)::int as used, min(coalesce(intent_at, submitted_at)) as oldest
+      from application
+      where hh_account_id = ${hhAccountId}
+        and id <> ${excludeId}
+        and state in ('queued', 'submitting', 'submitted')
+        and coalesce(intent_at, submitted_at) > now() - interval '24 hours'
+    `)
+    .pipe(
+      Effect.map((result) => {
+        const row = result.rows[0] as unknown as { used: number; oldest: Date | string | null } | undefined
+        const oldest = row?.oldest == null ? null : new Date(row.oldest)
+        return { used: row?.used ?? 0, oldest }
+      })
+    )
 
 const vacancyFor = (tx: Executor, id: string) => VacancyRepository.findById(tx, id)
 
@@ -113,10 +150,24 @@ export interface ApplicationServiceShape {
   readonly setKit: (input: SetKitInput) => Effect.Effect<KitRecord, ApiError>
 }
 
+export interface ApplicationServiceOptions {
+  /** Approvals allowed per hh account in any 24 hours. */
+  readonly dailyApplyLimit: number
+}
+
 export class ApplicationService extends Context.Service<ApplicationService, ApplicationServiceShape>()(
   "otbor/cloud/ApplicationService"
 ) {
-  static readonly layer = Layer.effect(
+  /** Production layer: the daily limit comes from `OTBOR_DAILY_APPLY_LIMIT` (default 30). */
+  static readonly layer = Layer.unwrap(
+    Config.Int("OTBOR_DAILY_APPLY_LIMIT").pipe(
+      Config.withDefault(DEFAULT_DAILY_APPLY_LIMIT),
+      Effect.map((dailyApplyLimit) => ApplicationService.layerWith({ dailyApplyLimit }))
+    )
+  )
+
+  static readonly layerWith = (options: ApplicationServiceOptions) =>
+  Layer.effect(
     ApplicationService,
     Effect.gen(function*() {
       const database = yield* Database
@@ -287,6 +338,25 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                       message: `submit was already attempted (${existing.status}); reconcile, do not resubmit`
                     })
                   }
+                }
+
+                // The real safety net behind any chat or CLI front end: a hard
+                // per-account cap on approvals in a rolling 24 hours.
+                if (!(["draft", "needs_human", "failed"] as ReadonlyArray<string>).includes(application.state)) {
+                  return fail({
+                    _tag: "conflict",
+                    entity: "Application",
+                    message: `cannot approve from state ${application.state}`
+                  })
+                }
+                const recent = yield* recentSubmits(tx, application.hhAccountId, id)
+                if (recent.used >= options.dailyApplyLimit) {
+                  return fail({
+                    _tag: "limit",
+                    limit: options.dailyApplyLimit,
+                    used: recent.used,
+                    resetsAt: new Date((recent.oldest?.getTime() ?? Date.now()) + DAY_MS).toISOString()
+                  })
                 }
 
                 const updated = yield* ApplicationRepository.transition(tx, currentUser.userId, id, "queued", {

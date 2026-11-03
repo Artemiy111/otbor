@@ -24,6 +24,7 @@ import {
   truncate,
   vacancyBrief
 } from "./shapes.ts"
+import { formView } from "./apply.ts"
 import { OtborReadToolkit, type TopItem } from "./tools.ts"
 
 const DECISION_PAGE = 200
@@ -31,7 +32,7 @@ const DECISION_PAGES = 4
 const VACANCY_PAGE = 200
 const VACANCY_PAGES = 5
 
-const fail = (message: string) => Effect.fail(new ToolFailure({ message }))
+export const fail = (message: string) => Effect.fail(new ToolFailure({ message }))
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -57,7 +58,7 @@ const latestPerVacancy = (decisions: ReadonlyArray<DecisionRecord>) => {
 }
 
 /** Accepts a UUID, a UUID prefix, an hh.ru URL or an hh external id. */
-const resolveVacancyId = (rpc: OtborApi, reference: string) =>
+export const resolveVacancyId = (rpc: OtborApi, reference: string) =>
   Effect.gen(function*() {
     const ref = reference.trim()
     if (UUID.test(ref)) return ref as VacancyId
@@ -369,6 +370,7 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
       return {
         application: applicationBrief(detail.application),
         decision: detail.decision == null ? null : decisionBrief(detail.decision, 8),
+        form: formView(detail),
         kit: detail.kit == null
           ? null
           : {
@@ -394,6 +396,11 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
         })),
         attemptsTotal: attempts.length
       }
+    }),
+
+    application_form: Effect.fn("mcp.application_form")(function*(params) {
+      const detail = yield* run(rpc.ApplicationsGet({ id: params.applicationId as ApplicationId }))
+      return { application: applicationBrief(detail.application), form: formView(detail) }
     }),
 
     conversations_list: Effect.fn("mcp.conversations_list")(function*(params) {

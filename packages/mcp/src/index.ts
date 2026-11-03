@@ -9,10 +9,16 @@ export {
   McpStdio,
   MCP_SERVER_NAME,
   MCP_SERVER_VERSION,
+  OtborReadRegistration,
   OtborToolkitRegistration,
+  OtborWriteRegistration,
+  ReadOnlyConfig,
+  registrationFor,
   StderrLogging
 } from "./server.ts"
-export { OtborReadToolkit, SERVER_INSTRUCTIONS } from "./tools.ts"
+export { OtborReadToolkit, SERVER_INSTRUCTIONS, serverInstructions } from "./tools.ts"
+export { OtborWriteHandlers } from "./write-handlers.ts"
+export { OtborWriteToolkit } from "./write-tools.ts"
 
 /**
  * Runs the MCP server on stdio until the client disconnects. Requires only
