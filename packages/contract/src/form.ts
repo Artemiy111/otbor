@@ -75,3 +75,52 @@ export const FormAnswer = Schema.Struct({
 })
 
 export type FormAnswer = typeof FormAnswer.Type
+
+/**
+ * A deterministic hint as stored next to the form. Mirrors `AnswerHint` of
+ * `@otbor/domain`, which is the only producer.
+ */
+export const StoredHint = Schema.Struct({
+  questionId: Schema.String,
+  kind: Schema.String,
+  optionIds: Schema.optional(Schema.Array(Schema.String)),
+  text: Schema.optional(Schema.String),
+  hard: Schema.Boolean,
+  confidence: Schema.Number,
+  note: Schema.NullOr(Schema.String),
+  evidence: Schema.Array(Schema.String),
+  blockers: Schema.Array(Schema.String)
+})
+
+export type StoredHint = typeof StoredHint.Type
+
+/** The prepared form of one application: what the cloud parsed and hinted. */
+export const StoredForm = Schema.Struct({
+  form: ResponseForm,
+  hints: Schema.Array(StoredHint),
+  url: Schema.String,
+  fetchedAt: Schema.String
+})
+
+export type StoredForm = typeof StoredForm.Type
+
+/**
+ * A kit answer as plain text for a human: the question and what is answered.
+ * Understands both `FormAnswer` and the older `{question, answer}` pairs.
+ */
+export const describeKitAnswer = (
+  answer: { readonly questionId: string; readonly optionIds?: ReadonlyArray<string>; readonly text?: string }
+    | { readonly question: string; readonly answer: string },
+  form?: { readonly questions: ReadonlyArray<FormQuestion> } | null
+): { readonly question: string; readonly answer: string } => {
+  if ("question" in answer) return { question: answer.question, answer: answer.answer }
+  const question = form?.questions.find((item) => item.id === answer.questionId)
+  const chosen = (answer.optionIds ?? []).map(
+    (id) => question?.options.find((option) => option.id === id)?.label ?? id
+  )
+  const text = (answer.text ?? "").trim()
+  return {
+    question: question?.text ?? answer.questionId,
+    answer: [...chosen, ...(text === "" ? [] : [text])].join("\n")
+  }
+}

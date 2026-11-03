@@ -1,3 +1,4 @@
+import type { KitAnswer, ResponseForm, StoredHint } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import {
   boolean,
@@ -259,7 +260,7 @@ export const applicationKit = pgTable(
     applicationId: uuid("application_id").notNull(),
     formHash: text("form_hash").notNull(),
     letter: text("letter"),
-    answers: jsonb("answers").$type<ReadonlyArray<{ question: string; answer: string }>>().notNull().default([]),
+    answers: jsonb("answers").$type<ReadonlyArray<KitAnswer>>().notNull().default([]),
     model: text("model"),
     promptHash: text("prompt_hash"),
     costUsd: doublePrecision("cost_usd"),
@@ -269,6 +270,31 @@ export const applicationKit = pgTable(
     uniqueIndex("application_kit_form_idx").on(table.applicationId, table.formHash),
     foreignKey({
       name: "kit_application_user",
+      columns: [table.applicationId, table.userId],
+      foreignColumns: [application.id, application.userId]
+    }).onDelete("cascade")
+  ]
+)
+
+export const applicationForm = pgTable(
+  "application_form",
+  {
+    id: uuidPk(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    applicationId: uuid("application_id").notNull(),
+    formHash: text("form_hash").notNull(),
+    layout: text("layout").notNull(),
+    form: jsonb("form").$type<ResponseForm>().notNull(),
+    hints: jsonb("hints").$type<ReadonlyArray<StoredHint>>().notNull().default([]),
+    url: text("url").notNull(),
+    createdAt: createdAt()
+  },
+  (table) => [
+    uniqueIndex("application_form_hash_idx").on(table.applicationId, table.formHash),
+    foreignKey({
+      name: "form_application_user",
       columns: [table.applicationId, table.userId],
       foreignColumns: [application.id, application.userId]
     }).onDelete("cascade")

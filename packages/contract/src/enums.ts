@@ -165,7 +165,9 @@ export const HarnessExitTag = Schema.Literals([
   "site_rejected",
   "inference_failed",
   "permanent",
-  "ambiguous"
+  "ambiguous",
+  "vacancy_archived",
+  "relocation_warning"
 ])
 
 export type HarnessExitTag = typeof HarnessExitTag.Type

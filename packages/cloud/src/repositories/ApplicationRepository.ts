@@ -1,15 +1,18 @@
 import type {
-  Answer,
   ApplicationDetail,
   ApplicationRecord,
   AttemptRecord,
   HarnessExit,
-  KitRecord
+  KitAnswer,
+  KitRecord,
+  ResponseForm,
+  StoredForm,
+  StoredHint
 } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
-import { application, applicationAttempt, applicationKit } from "../db/tables.ts"
+import { application, applicationAttempt, applicationForm, applicationKit } from "../db/tables.ts"
 
 export const APPLICABLE_STATES = ["draft", "needs_human", "failed"] as const
 
@@ -111,9 +114,10 @@ export const find = (
 
     const record = toRecord(row as unknown as ApplicationRow)
     const kit = yield* findKit(tx, id)
+    const form = yield* findForm(tx, id)
     const attempts = yield* listAttempts(tx, id)
 
-    return { application: record, kit, attempts }
+    return { application: record, kit, form, attempts }
   })
 
 export const list = (
@@ -200,7 +204,7 @@ export const upsertKit = (
     readonly applicationId: string
     readonly formHash: string
     readonly letter: string | null
-    readonly answers: ReadonlyArray<Answer>
+    readonly answers: ReadonlyArray<KitAnswer>
     readonly model: string | null
     readonly promptHash: string | null
     readonly costUsd: number | null
@@ -246,12 +250,17 @@ export const upsertKit = (
 
 export const findKit = (
   tx: Executor,
-  applicationId: string
+  applicationId: string,
+  formHash?: string
 ): RepoEffect<KitRecord | null> =>
   tx
     .select()
     .from(applicationKit)
-    .where(sql`${applicationKit.applicationId} = ${applicationId}`)
+    .where(
+      formHash === undefined
+        ? sql`${applicationKit.applicationId} = ${applicationId}`
+        : sql`${applicationKit.applicationId} = ${applicationId} and ${applicationKit.formHash} = ${formHash}`
+    )
     .orderBy(sql`${applicationKit.createdAt} desc`)
     .limit(1)
     .pipe(
@@ -271,6 +280,73 @@ export const findKit = (
         }
       })
     )
+
+export const findKitForForm = (
+  tx: Executor,
+  applicationId: string,
+  formHash: string
+): RepoEffect<KitRecord | null> =>
+  findKit(tx, applicationId, formHash)
+
+/* -------------------------------------------------------------------------- */
+/* Forms                                                                      */
+/* -------------------------------------------------------------------------- */
+
+const toStoredForm = (row: typeof applicationForm.$inferSelect): StoredForm => ({
+  form: row.form,
+  hints: row.hints,
+  url: row.url,
+  fetchedAt: row.createdAt.toISOString()
+})
+
+/** Stores the parsed form. Re-preparing an unchanged form refreshes its hints. */
+export const saveForm = (
+  tx: Executor,
+  input: {
+    readonly userId: string
+    readonly applicationId: string
+    readonly form: ResponseForm
+    readonly hints: ReadonlyArray<StoredHint>
+    readonly url: string
+  }
+): RepoEffect<StoredForm> =>
+  Effect.gen(function*() {
+    const [row] = yield* tx
+      .insert(applicationForm)
+      .values({
+        userId: input.userId,
+        applicationId: input.applicationId,
+        formHash: input.form.formHash,
+        layout: input.form.layout,
+        form: input.form,
+        hints: input.hints,
+        url: input.url
+      })
+      .onConflictDoUpdate({
+        target: [applicationForm.applicationId, applicationForm.formHash],
+        set: {
+          form: sql`excluded.form`,
+          hints: sql`excluded.hints`,
+          url: sql`excluded.url`,
+          createdAt: sql`now()`
+        }
+      })
+      .returning()
+    return toStoredForm(row!)
+  })
+
+/** The newest prepared form: the one a kit must be written for. */
+export const findForm = (
+  tx: Executor,
+  applicationId: string
+): RepoEffect<StoredForm | null> =>
+  tx
+    .select()
+    .from(applicationForm)
+    .where(sql`${applicationForm.applicationId} = ${applicationId}`)
+    .orderBy(sql`${applicationForm.createdAt} desc`)
+    .limit(1)
+    .pipe(Effect.map((rows) => (rows[0] === undefined ? null : toStoredForm(rows[0]))))
 
 /* -------------------------------------------------------------------------- */
 /* Attempts                                                                   */

@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { FormAnswer, StoredForm } from "./form.ts"
 import {
   ApplicationState,
   AttemptStage,
@@ -573,12 +574,17 @@ export const ApplicationRecord = Schema.Struct({
 
 export type ApplicationRecord = typeof ApplicationRecord.Type
 
+/** A kit holds structured answers; kits saved before the form parser hold `Answer`. */
+export const KitAnswer = Schema.Union([FormAnswer, Answer])
+
+export type KitAnswer = typeof KitAnswer.Type
+
 export const KitRecord = Schema.Struct({
   id: KitId,
   applicationId: ApplicationId,
   formHash: Schema.String,
   letter: Schema.optional(Schema.NullOr(Schema.String)),
-  answers: Schema.Array(Answer),
+  answers: Schema.Array(KitAnswer),
   model: Schema.optional(Schema.NullOr(Schema.String)),
   promptHash: Schema.optional(Schema.NullOr(Schema.String)),
   costUsd: Schema.optional(Schema.NullOr(Schema.Number)),
@@ -613,6 +619,7 @@ export type AttemptRecord = typeof AttemptRecord.Type
 export const ApplicationDetail = Schema.Struct({
   application: ApplicationRecord,
   kit: Schema.optional(Schema.NullOr(KitRecord)),
+  form: Schema.optional(Schema.NullOr(StoredForm)),
   attempts: Schema.Array(AttemptRecord),
   decision: Schema.optional(Schema.NullOr(DecisionRecord))
 })

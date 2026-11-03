@@ -1,12 +1,12 @@
 import type {
-  Answer,
   ApiError,
   ApplicationDetail,
   ApplicationRecord,
   DecisionRecord,
+  KitAnswer,
   KitRecord
 } from "@otbor/contract"
-import { Conflict, InvalidInput, NotFound } from "@otbor/contract"
+import { AnswersInvalid, Conflict, InvalidInput, NotFound } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
 import { Database, type Executor } from "../db/Database.ts"
@@ -15,7 +15,8 @@ import * as DecisionRepository from "../repositories/DecisionRepository.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
 import { CurrentUser } from "./CurrentUser.ts"
-import { nextSequence, prepareJob, reconcileJob, submitJob } from "./jobs.ts"
+import { checkKit, type KitProblem } from "./applyRules.ts"
+import { nextSequence, prepareJob, reconcileJob, submitJob, targetFor } from "./jobs.ts"
 import { toStorageError } from "./support.ts"
 
 /* -------------------------------------------------------------------------- */
@@ -31,6 +32,11 @@ type Failure =
   | { readonly _tag: "not_found"; readonly entity: string; readonly id: string }
   | { readonly _tag: "conflict"; readonly entity: string; readonly message: string }
   | { readonly _tag: "invalid"; readonly message: string }
+  | {
+      readonly _tag: "answers"
+      readonly applicationId: string
+      readonly problems: ReadonlyArray<KitProblem>
+    }
 
 type Outcome<A> = { readonly ok: true; readonly value: A } | { readonly ok: false; readonly failure: Failure }
 
@@ -45,6 +51,12 @@ const raise = (failure: Failure): ApiError => {
       return new Conflict({ entity: failure.entity, message: failure.message })
     case "invalid":
       return new InvalidInput({ message: failure.message })
+    case "answers":
+      return new AnswersInvalid({
+        applicationId: failure.applicationId,
+        message: `the kit cannot be approved: ${failure.problems.map((problem) => problem.code).join(", ")}`,
+        problems: failure.problems
+      })
   }
 }
 
@@ -77,7 +89,7 @@ export interface SetKitInput {
   readonly applicationId: string
   readonly formHash: string
   readonly letter?: string | null
-  readonly answers?: ReadonlyArray<Answer>
+  readonly answers?: ReadonlyArray<KitAnswer>
   readonly model?: string | null
   readonly promptHash?: string | null
   readonly costUsd?: number | null
@@ -184,16 +196,14 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                 if (created.created) {
                   const sequence =
                     yield* nextSequence(tx, created.record.id, "prepare")
-                  yield* prepareJob(tx, {
-                    userId: currentUser.userId,
-                    hhAccountId: input.hhAccountId,
-                    applicationId: created.record.id,
-                    vacancyId: vacancy.id,
-                    canonicalUrl: vacancy.canonicalUrl,
-                    resumeId: input.resumeId ?? null,
-                    priority: Math.round(decision.priority),
-                    sequence
-                  })
+                  const target = yield* targetFor(tx, created.record)
+                  if (target !== null) {
+                    yield* prepareJob(tx, {
+                      ...target,
+                      priority: Math.round(decision.priority),
+                      sequence
+                    })
+                  }
                 }
 
                 return ok(created.record)
@@ -228,32 +238,55 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                   })
                 }
 
-                const kit = yield* ApplicationRepository.findKit(tx, id)
-                if (kit === null) {
+                const stored = yield* ApplicationRepository.findForm(tx, id)
+                if (stored === null) {
                   return fail({
                     _tag: "conflict",
                     entity: "Application",
                     message: "the form is not prepared yet; run prepare first"
                   })
                 }
-
-                // At-most-once: once a submit job exists, approving again may
-                // only observe it. A terminal failure means a human must
-                // reconcile, never that the click is repeated.
-                const existing = yield* QueueRepository.latestFor(tx, id, ["submit"])
-                if (
-                  existing !== null &&
-                  (existing.status === "failed" ||
-                    existing.status === "dead" ||
-                    existing.status === "needs_human" ||
-                    existing.status === "needs_reconcile" ||
-                    existing.status === "done")
-                ) {
+                const kit = yield* ApplicationRepository.findKit(tx, id, stored.form.formHash)
+                if (kit === null) {
                   return fail({
                     _tag: "conflict",
                     entity: "Application",
-                    message: `submit was already attempted (${existing.status}); reconcile, do not resubmit`
+                    message: "there is no kit for the current form; set a kit first"
                   })
+                }
+
+                // Hard hints, required questions, code tasks and flagged
+                // answers are checked here, before anything can be queued.
+                const problems = checkKit({ form: stored.form, hints: stored.hints, kit })
+                if (problems.length > 0) {
+                  return fail({ _tag: "answers", applicationId: id, problems })
+                }
+
+                // At-most-once: once a submit job exists, approving again may
+                // only observe it. A terminal failure means a human must
+                // reconcile, never that the click is repeated. The one
+                // exception is a submit the harness proved was never clicked
+                // (`form_changed`, captcha, expired session ...): that job
+                // recorded `clicked: false` and a new submit gets its own key.
+                const existing = yield* QueueRepository.latestFor(tx, id, ["submit"])
+                const unsent =
+                  existing !== null &&
+                  (existing.status === "failed" || existing.status === "needs_human") &&
+                  (existing.result as { clicked?: unknown } | null)?.clicked === false
+                if (existing !== null && !unsent) {
+                  if (
+                    existing.status === "failed" ||
+                    existing.status === "dead" ||
+                    existing.status === "needs_human" ||
+                    existing.status === "needs_reconcile" ||
+                    existing.status === "done"
+                  ) {
+                    return fail({
+                      _tag: "conflict",
+                      entity: "Application",
+                      message: `submit was already attempted (${existing.status}); reconcile, do not resubmit`
+                    })
+                  }
                 }
 
                 const updated = yield* ApplicationRepository.transition(tx, currentUser.userId, id, "queued", {
@@ -268,9 +301,9 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                   })
                 }
 
-                if (existing === null) {
-                  const vacancy = yield* vacancyFor(tx, updated.vacancyId)
-                  if (vacancy === null) {
+                if (existing === null || unsent) {
+                  const target = yield* targetFor(tx, updated)
+                  if (target === null) {
                     return fail({
                       _tag: "not_found",
                       entity: "Vacancy",
@@ -278,13 +311,10 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                     })
                   }
                   yield* submitJob(tx, {
-                    userId: currentUser.userId,
-                    hhAccountId: updated.hhAccountId,
-                    applicationId: updated.id,
-                    vacancyId: updated.vacancyId,
-                    canonicalUrl: vacancy.canonicalUrl,
-                    resumeId: updated.resumeId ?? null,
-                    kit
+                    ...target,
+                    kit,
+                    form: stored.form,
+                    sequence: (yield* nextSequence(tx, id, "submit"))
                   })
                 }
 
@@ -370,17 +400,20 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                 // A failed submit is never retried. The only safe recovery is
                 // a reconcile: the site may have accepted the click.
                 const submit = yield* QueueRepository.latestFor(tx, id, ["submit"])
-                if (submit !== null) {
+                // The exception is a submit the harness proved was never clicked:
+                // that one is prepared again from scratch.
+                const unsent =
+                  submit !== null &&
+                  (submit.status === "failed" || submit.status === "needs_human") &&
+                  (submit.result as { clicked?: unknown } | null)?.clicked === false
+                const target = yield* targetFor(tx, application)
+                if (target === null) {
+                  return fail({ _tag: "not_found", entity: "Vacancy", id: application.vacancyId })
+                }
+                if (submit !== null && !unsent) {
                   const sequence =
                     yield* nextSequence(tx, id, "reconcile")
-                  yield* reconcileJob(tx, {
-                    userId: currentUser.userId,
-                    hhAccountId: application.hhAccountId,
-                    applicationId: application.id,
-                    vacancyId: vacancy.id,
-                    canonicalUrl: vacancy.canonicalUrl,
-                    sequence
-                  })
+                  yield* reconcileJob(tx, { ...target, sequence })
                   const updated = yield* ApplicationRepository.transition(
                     tx,
                     currentUser.userId,
@@ -398,21 +431,21 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                 }
 
                 const sequence = yield* nextSequence(tx, id, "prepare")
-                yield* prepareJob(tx, {
-                  userId: currentUser.userId,
-                  hhAccountId: application.hhAccountId,
-                  applicationId: application.id,
-                  vacancyId: vacancy.id,
-                  canonicalUrl: vacancy.canonicalUrl,
-                  resumeId: application.resumeId ?? null,
-                  priority: 0,
-                  sequence
-                })
+                yield* prepareJob(tx, { ...target, priority: 0, sequence })
 
-                const updated = yield* ApplicationRepository.transition(tx, currentUser.userId, id, "queued", {
-                  from: ["needs_human", "failed", "draft"],
-                  patch: { lastError: null }
-                })
+                // After a provably unsent submit the form is new: the kit has to
+                // be approved again, so the application goes back to draft
+                // instead of auto-submitting the next kit.
+                const updated = yield* ApplicationRepository.transition(
+                  tx,
+                  currentUser.userId,
+                  id,
+                  unsent ? "draft" : "queued",
+                  {
+                    from: ["needs_human", "failed", "draft"],
+                    patch: { lastError: null }
+                  }
+                )
                 return updated === null
                   ? fail({
                       _tag: "conflict",
@@ -460,6 +493,31 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                   promptHash: input.promptHash ?? null,
                   costUsd: input.costUsd ?? null
                 })
+
+                // An auto-mode application waits in `queued` for exactly this
+                // kit. When it matches the prepared form and passes every
+                // check, the single submit job is queued; otherwise the kit is
+                // only stored and a human decides.
+                if (application.state === "queued") {
+                  const stored = yield* ApplicationRepository.findForm(tx, application.id)
+                  const existing = yield* QueueRepository.latestFor(tx, application.id, ["submit"])
+                  if (
+                    stored !== null &&
+                    existing === null &&
+                    stored.form.formHash === kit.formHash &&
+                    checkKit({ form: stored.form, hints: stored.hints, kit }).length === 0
+                  ) {
+                    const target = yield* targetFor(tx, application)
+                    if (target !== null) {
+                      yield* submitJob(tx, {
+                        ...target,
+                        kit,
+                        form: stored.form,
+                        sequence: yield* nextSequence(tx, application.id, "submit")
+                      })
+                    }
+                  }
+                }
                 return ok(kit)
               })
             )

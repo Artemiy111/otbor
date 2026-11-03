@@ -1,12 +1,12 @@
 import { Api } from "../client.ts"
+import { hhProfileDir } from "@otbor/harness"
 import { Console, Effect } from "effect"
 import { Command, Flag } from "effect/cli"
 import { chromium } from "playwright"
 import { mkdir, writeFile } from "node:fs/promises"
-import { homedir } from "node:os"
 import { join } from "node:path"
 
-const profileDir = (name: string) => join(homedir(), ".otbor", "hh", "accounts", name)
+const profileDir = (name: string) => hhProfileDir(name)
 const storagePath = (name: string) => join(profileDir(name), "storage-state.json")
 
 export const hhLoginCommand = Command.make(

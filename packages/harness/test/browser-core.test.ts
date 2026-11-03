@@ -1,0 +1,207 @@
+import type { FormAnswer, SubmitJobPayload } from "@otbor/contract"
+import { classifyResponsePage, isSubmitSuccess, parseResponseForm } from "@otbor/hh"
+import { describe, expect, test } from "bun:test"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+import {
+  fillPlan,
+  postClickExit,
+  prepareExit,
+  responseUrl,
+  submitPreflight
+} from "../src/browser/core.ts"
+import { hhProfileDir, safeProfileName } from "../src/browser/profile.ts"
+
+const fixture = (name: string) =>
+  readFileSync(join(import.meta.dir, "../../hh/test/fixtures", name), "utf8")
+
+const URL_OK = "https://hh.ru/applicant/vacancy_response?vacancyId=100500"
+const html = fixture("hh-test-response.html")
+const form = parseResponseForm(html, URL_OK)
+
+const answer = (questionId: string, extra: Partial<FormAnswer> = {}): FormAnswer => ({
+  questionId,
+  source: "human",
+  hard: false,
+  needsHuman: false,
+  ...extra
+})
+
+const answers: ReadonlyArray<FormAnswer> = [
+  answer("387049547", { optionIds: ["387049548"] }),
+  answer("387049551", { optionIds: ["387049553"] }),
+  answer("387049555", { text: "Москва" }),
+  answer("387049556", { optionIds: ["387049557", "387049558"] }),
+  answer("387049560", { text: "300000" })
+]
+
+const payload = (
+  over: Partial<Pick<SubmitJobPayload, "expectedFormHash">> & {
+    answers?: ReadonlyArray<FormAnswer>
+  } = {}
+): Pick<SubmitJobPayload, "expectedFormHash" | "kit"> => ({
+  expectedFormHash: over.expectedFormHash ?? form.formHash,
+  kit: { formHash: form.formHash, letter: "Здравствуйте", answers: over.answers ?? answers }
+})
+
+describe("prepareExit", () => {
+  test("the response form becomes a prepared exit with the form fragment", () => {
+    const exit = prepareExit(html, URL_OK)
+    expect(exit.tag).toBe("prepared")
+    const artifacts = exit.artifacts as { url: string; html: string }
+    expect(artifacts.url).toBe(URL_OK)
+    // The cloud parses the fragment and must reach the same form.
+    expect(parseResponseForm(artifacts.html, URL_OK).formHash).toBe(form.formHash)
+  })
+
+  test("login, captcha, responded and archived pages are typed exits", () => {
+    expect(prepareExit("<html></html>", "https://hh.ru/account/login?backurl=x").tag).toBe(
+      "session_expired"
+    )
+    expect(prepareExit("<div>Подтвердите, что вы не робот</div>", URL_OK).tag).toBe("captcha")
+    expect(
+      prepareExit('<button data-qa="responded-success-attach-cover-letter"></button>', URL_OK).tag
+    ).toBe("already_responded")
+    expect(prepareExit("<h1>Вакансия в архиве</h1>", URL_OK).tag).toBe("vacancy_archived")
+  })
+
+  test("a relocation warning is reported, never confirmed, by prepare", () => {
+    const exit = prepareExit('<button data-qa="relocation-warning-confirm">OK</button>', URL_OK)
+    expect(exit.tag).toBe("relocation_warning")
+  })
+
+  test("an unrecognized page is blocked, not an empty form", () => {
+    expect(prepareExit("<html><body>hello</body></html>", URL_OK).tag).toBe("blocked")
+  })
+
+  test("a responded page that still has the respond-again button is responded", () => {
+    const page = `${html}<div data-qa="responded-success-attach-cover-letter">Вы откликнулись</div>`
+    expect(classifyResponsePage(page, URL_OK)).toBe("responded")
+  })
+})
+
+describe("fillPlan", () => {
+  test("maps answers to radios, checkboxes and textareas", () => {
+    const plan = fillPlan(form, answers)
+    expect(plan._tag).toBe("plan")
+    if (plan._tag !== "plan") return
+    expect(plan.steps).toHaveLength(6)
+    expect(plan.steps[0]).toMatchObject({
+      kind: "check",
+      selector: 'input[name="task_387049547"][value="387049548"]'
+    })
+    expect(plan.steps.filter((step) => step.kind === "fill").map((step) => step.selector)).toEqual([
+      'textarea[name="task_387049555_text"]',
+      'textarea[name="task_387049560_text"]'
+    ])
+  })
+
+  test("a required question without an answer aborts the plan", () => {
+    const plan = fillPlan(form, answers.slice(0, 2))
+    expect(plan).toMatchObject({ _tag: "missing", questionId: "387049555" })
+  })
+
+  test("an option the form does not offer aborts the plan", () => {
+    const plan = fillPlan(form, [answer("387049547", { optionIds: ["1"] }), ...answers.slice(1)])
+    expect(plan).toMatchObject({ _tag: "missing", questionId: "387049547" })
+  })
+})
+
+describe("submitPreflight", () => {
+  test("the form the kit was written for is filled", () => {
+    const result = submitPreflight(payload(), html, URL_OK)
+    expect(result._tag).toBe("fill")
+  })
+
+  test("a different form hash is form_changed and nothing is clicked", () => {
+    const result = submitPreflight(payload({ expectedFormHash: "0000" }), html, URL_OK)
+    expect(result._tag).toBe("exit")
+    if (result._tag !== "exit") return
+    expect(result.exit.tag).toBe("form_changed")
+    expect(result.exit.formHash).toBe(form.formHash)
+    expect(result.exit.artifacts).toMatchObject({ clicked: false })
+  })
+
+  test("a changed question text changes the hash", () => {
+    const edited = html.replace("В каком городе проживаете?", "В какой стране проживаете?")
+    const result = submitPreflight(payload(), edited, URL_OK)
+    expect(result._tag === "exit" && result.exit.tag).toBe("form_changed")
+  })
+
+  test("an unreadable layout is form_changed, not an empty form", () => {
+    const broken = `<form id="RESPONSE_MODAL_FORM_ID"><input type="hidden" name="testRequired" value="true"/></form>`
+    const result = submitPreflight(payload(), broken, URL_OK)
+    expect(result._tag === "exit" && result.exit.tag).toBe("form_changed")
+  })
+
+  test("login, captcha, responded and archived stop before any click", () => {
+    const tags = (page: string, url = URL_OK) => {
+      const result = submitPreflight(payload(), page, url)
+      return result._tag === "exit" ? [result.exit.tag, result.exit.artifacts] : [result._tag]
+    }
+    expect(tags("", "https://hh.ru/account/login")[0]).toBe("session_expired")
+    expect(tags("<div>Подтвердите, что вы не робот</div>")[0]).toBe("captcha")
+    expect(tags("<div>Вы откликнулись</div>")[0]).toBe("already_responded")
+    expect(tags("<h1>Вакансия в архиве</h1>")[0]).toBe("vacancy_archived")
+    for (const page of ["<div>Вы откликнулись</div>", "<h1>Вакансия в архиве</h1>"]) {
+      expect(tags(page)[1]).toMatchObject({ clicked: false })
+    }
+  })
+
+  test("a relocation warning is handled by the executor, with a lease check first", () => {
+    const result = submitPreflight(
+      payload(),
+      '<button data-qa="relocation-warning-confirm">OK</button>',
+      URL_OK
+    )
+    expect(result._tag).toBe("relocation")
+  })
+
+  test("a missing required answer is answer_rejected before the click", () => {
+    const result = submitPreflight(payload({ answers: answers.slice(0, 3) }), html, URL_OK)
+    expect(result._tag === "exit" && result.exit.tag).toBe("answer_rejected")
+  })
+})
+
+describe("postClickExit", () => {
+  test("a responded page is submitted, with the evidence the cloud re-checks", () => {
+    const page = '<div data-qa="responded-success-attach-cover-letter">Вы откликнулись</div>'
+    const exit = postClickExit(page, URL_OK, { letterAttached: true })
+    expect(exit.tag).toBe("submitted")
+    const evidence = exit.artifacts as { clicked: boolean; html: string; url: string }
+    expect(evidence.clicked).toBe(true)
+    expect(isSubmitSuccess(evidence.html, evidence.url)).toBe(true)
+  })
+
+  test("the form still showing after the click is ambiguous", () => {
+    const exit = postClickExit(html, URL_OK)
+    expect(exit.tag).toBe("ambiguous")
+    expect(exit.artifacts).toMatchObject({ clicked: true, marker: "error" })
+  })
+
+  test("an unreadable page after the click is ambiguous with clicked: true", () => {
+    const exit = postClickExit(null, URL_OK)
+    expect(exit).toMatchObject({ tag: "ambiguous", artifacts: { clicked: true } })
+  })
+
+  test("a captcha after the click keeps clicked: true", () => {
+    const exit = postClickExit("<div>Подтвердите, что вы не робот</div>", URL_OK)
+    expect(exit).toMatchObject({ tag: "captcha", artifacts: { clicked: true, marker: "captcha" } })
+  })
+})
+
+describe("profile paths", () => {
+  test("a profile name is one path segment", () => {
+    expect(safeProfileName("hh_123")).toBe("hh_123")
+    expect(safeProfileName("../etc")).toBe("default")
+    expect(safeProfileName("a/b")).toBe("default")
+    expect(safeProfileName(null)).toBe("default")
+    expect(hhProfileDir("x", { OTBOR_HH_PROFILES_DIR: "/tmp/p" })).toBe("/tmp/p/x")
+  })
+
+  test("the response URL carries the external id", () => {
+    expect(responseUrl("https://hh.ru/", "42")).toBe(
+      "https://hh.ru/applicant/vacancy_response?vacancyId=42"
+    )
+  })
+})

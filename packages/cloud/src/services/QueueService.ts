@@ -10,6 +10,7 @@ import type {
   QueueStats
 } from "@otbor/contract"
 import { HarnessRejected, NotFound } from "@otbor/contract"
+import { parseResponseForm } from "@otbor/hh"
 import { sql } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
 import { generateHarnessToken, hashHarnessToken } from "../auth/harnessToken.ts"
@@ -19,7 +20,9 @@ import * as HarnessRepository from "../repositories/HarnessRepository.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
 import { CurrentUser } from "./CurrentUser.ts"
-import { nextSequence, reconcileJob, submitJob } from "./jobs.ts"
+import { attemptArtifacts, checkKit, judgePrepare, judgeSubmit } from "./applyRules.ts"
+import { hintsFor } from "./formHints.ts"
+import { nextSequence, reconcileJob, submitJob, targetFor } from "./jobs.ts"
 import { toStorageError } from "./support.ts"
 
 /* -------------------------------------------------------------------------- */
@@ -366,99 +369,130 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                 let status: JobStatus = "done"
                 let message: string | null = null
                 let runAt: Date | null | undefined
-                let appState: "draft" | "queued" | "submitting" | "submitted" | "needs_human" | "failed" | null =
-                  null
+                let appState:
+                  | "draft"
+                  | "queued"
+                  | "submitting"
+                  | "submitted"
+                  | "skipped"
+                  | "needs_human"
+                  | "failed"
+                  | null = null
                 let appPatch: Record<string, unknown> = {}
                 let enqueue: "reconcile" | "submit" | null = null
                 let jobResult: unknown
 
                 switch (job.stage) {
                   case "prepare": {
-                    if (exit.tag === "prepared") {
-                      const kit =
+                    const verdict = judgePrepare(exit)
+                    if (verdict._tag === "form") {
+                      const application =
                         ctx.applicationId === null
                           ? null
-                          : yield* ApplicationRepository.findKit(tx, ctx.applicationId)
-                      if (kit === null) {
+                          : yield* ApplicationRepository.findAny(tx, ctx.applicationId)
+                      const vacancy = application
+                        ? yield* VacancyRepository.findById(tx, application.vacancyId)
+                        : null
+                      const form = parseResponseForm(
+                        verdict.artifacts.html,
+                        verdict.artifacts.url
+                      )
+                      if (application === null || vacancy === null) {
+                        status = "failed"
+                        appState = "failed"
+                        message = "prepared, but the application or vacancy is gone"
+                      } else if (form.vacancyId !== "" && form.vacancyId !== vacancy.externalId) {
                         status = "needs_human"
                         appState = "needs_human"
-                        message = "harness reported prepared but the kit is missing"
-                      } else if (ctx.applicationId !== null && ctx.hhAccountId !== null) {
-                        const application = yield* ApplicationRepository.findAny(
+                        message = "the harness returned the form of another vacancy"
+                      } else if (form.layout === "unknown") {
+                        status = "needs_human"
+                        appState = "needs_human"
+                        message = "the response form layout was not recognized"
+                      } else {
+                        const hints = yield* hintsFor(tx, application, form)
+                        yield* ApplicationRepository.saveForm(tx, {
+                          userId: ctx.userId,
+                          applicationId: application.id,
+                          form,
+                          hints,
+                          url: verdict.artifacts.url
+                        })
+                        const kit = yield* ApplicationRepository.findKit(
                           tx,
-                          ctx.applicationId
+                          application.id,
+                          form.formHash
                         )
-                        const vacancy = application
-                          ? yield* VacancyRepository.findById(tx, application.vacancyId)
-                          : null
-                        if (application !== null && vacancy !== null && application.state === "queued") {
-                          yield* submitJob(tx, {
-                            userId: ctx.userId,
-                            hhAccountId: ctx.hhAccountId,
-                            applicationId: application.id,
-                            vacancyId: vacancy.id,
-                            canonicalUrl: vacancy.canonicalUrl,
-                            resumeId: application.resumeId ?? null,
-                            kit
-                          })
-                          message = "prepared; submit queued"
-                        } else {
+                        if (kit === null) {
+                          message = "prepared; form stored; waiting for a kit"
+                        } else if (application.state !== "queued") {
                           message = "prepared; waiting for approval"
+                        } else {
+                          const problems = checkKit({ form, hints, kit })
+                          if (problems.length > 0) {
+                            status = "needs_human"
+                            appState = "needs_human"
+                            message = `prepared; kit refused: ${problems.map((problem) => problem.code).join(", ")}`
+                          } else {
+                            const target = yield* targetFor(tx, application)
+                            if (target !== null) {
+                              yield* submitJob(tx, { ...target, kit, form })
+                            }
+                            message = "prepared; submit queued"
+                          }
                         }
                       }
-                    } else if (terminalFailure.includes(exit.tag)) {
+                    } else if (verdict._tag === "skip") {
+                      status = "done"
+                      appState = "skipped"
+                      appPatch = { lastError: verdict.reason }
+                      message = `prepare skipped: ${verdict.reason}`
+                    } else if (verdict._tag === "human") {
+                      status = "needs_human"
+                      appState = "needs_human"
+                      appPatch = { lastError: verdict.reason }
+                      message = `prepare needs a human: ${verdict.reason}`
+                    } else if (verdict._tag === "failed") {
                       status = "failed"
                       appState = "failed"
-                      message = `prepare failed: ${exit.tag}`
-                    } else if (needsHuman.includes(exit.tag)) {
-                      status = "needs_human"
-                      appState = "needs_human"
-                      message = `prepare needs a human: ${exit.tag}`
-                    } else if (retryable.includes(exit.tag)) {
-                      if (job.attempts < job.maxAttempts) {
-                        status = "pending"
-                        runAt = retryLater(exit, 30)
-                        message = `prepare retry ${job.attempts + 1}/${job.maxAttempts}: ${exit.tag}`
-                      } else {
-                        status = "dead"
-                        appState = "needs_human"
-                        message = `prepare exhausted retries: ${exit.tag}`
-                      }
+                      appPatch = { lastError: verdict.reason }
+                      message = verdict.reason
+                    } else if (job.attempts < job.maxAttempts) {
+                      status = "pending"
+                      runAt = retryLater(exit, 30)
+                      message = `prepare retry ${job.attempts + 1}/${job.maxAttempts}: ${exit.tag}`
                     } else {
-                      status = "needs_human"
+                      status = "dead"
                       appState = "needs_human"
-                      message = `prepare finished with unexpected exit: ${exit.tag}`
+                      message = `prepare exhausted retries: ${exit.tag}`
                     }
                     break
                   }
 
                   case "submit": {
-                    if (
-                      exit.tag === "submitted" ||
-                      exit.tag === "clicked" ||
-                      exit.tag === "already_responded" ||
-                      exit.tag === "ambiguous" ||
-                      retryable.includes(exit.tag)
-                    ) {
-                      // The cloud never trusts "submitted"; a reconcile read
-                      // is the only thing that can confirm it.
-                      status = "needs_reconcile"
-                      appState = "submitting"
-                      enqueue = "reconcile"
-                      message = `submit outcome "${exit.tag}" needs reconcile`
-                    } else if (terminalFailure.includes(exit.tag)) {
-                      status = "failed"
-                      appState = "failed"
-                      message = `submit failed: ${exit.tag}`
-                    } else if (needsHuman.includes(exit.tag)) {
-                      status = "needs_human"
-                      appState = "needs_human"
-                      message = `submit needs a human: ${exit.tag}`
+                    // The harness reports a claim, the cloud decides from the
+                    // evidence. Only a page the cloud itself reads as "you
+                    // responded" settles a submit; anything that might have
+                    // reached hh goes to reconcile and is never sent again.
+                    const verdict = judgeSubmit(exit)
+                    if (verdict._tag === "submitted") {
+                      status = "done"
+                      appState = "submitted"
+                      appPatch = { submittedAt: new Date(), lastError: null }
+                      message = "submitted; the response page confirmed it"
+                      jobResult = { clicked: true, verified: "page" }
+                    } else if (verdict._tag === "not_sent") {
+                      status = verdict.app === "failed" ? "failed" : "needs_human"
+                      appState = verdict.app
+                      appPatch = { lastError: verdict.reason }
+                      message = `submit not sent: ${verdict.tag}`
+                      jobResult = { clicked: false, tag: verdict.tag }
                     } else {
                       status = "needs_reconcile"
                       appState = "submitting"
                       enqueue = "reconcile"
-                      message = `submit outcome "${exit.tag}" needs reconcile`
+                      message = verdict.reason
+                      jobResult = { clicked: null }
                     }
                     break
                   }
@@ -555,11 +589,14 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                     stage
                   )
                   if (attemptId !== null) {
+                    // The journal keeps evidence, not page bodies: a page can
+                    // be hundreds of kilobytes and holds the user's answers.
+                    const kept = attemptArtifacts(exit)
                     yield* ApplicationRepository.finishAttempt(
                       tx,
                       attemptId,
-                      exit,
-                      exit.artifacts ?? null
+                      kept === null ? exit : { ...exit, artifacts: kept },
+                      kept
                     )
                   }
                 }
@@ -574,7 +611,9 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                       from:
                         appState === "submitted"
                           ? ["submitting", "needs_human", "failed"]
-                          : appState === "submitting"
+                          : appState === "skipped"
+                            ? ["draft", "queued", "needs_human", "failed"]
+                            : appState === "submitting"
                             ? ["queued", "submitting"]
                             : appState === "needs_human"
                               ? ["draft", "queued", "submitting", "needs_human", "failed"]
@@ -588,17 +627,11 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
 
                 if (enqueue === "reconcile" && ctx.applicationId !== null) {
                   const application = yield* ApplicationRepository.findAny(tx, ctx.applicationId)
-                  const vacancy = application
-                    ? yield* VacancyRepository.findById(tx, application.vacancyId)
-                    : null
-                  if (application !== null && vacancy !== null && ctx.hhAccountId !== null) {
+                  const target = application ? yield* targetFor(tx, application) : null
+                  if (target !== null) {
                     yield* reconcileJob(tx, {
-                      userId: ctx.userId,
-                      hhAccountId: ctx.hhAccountId,
-                      applicationId: application.id,
-                      vacancyId: vacancy.id,
-                      canonicalUrl: vacancy.canonicalUrl,
-                      sequence: yield* nextSequence(tx, application.id, "reconcile")
+                      ...target,
+                      sequence: yield* nextSequence(tx, target.applicationId, "reconcile")
                     })
                   }
                 }
