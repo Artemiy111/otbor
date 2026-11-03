@@ -4,6 +4,7 @@ import { describeKitAnswer } from "@otbor/contract"
 import { useQuery } from "@pinia/colada"
 import { CircleAlert } from "@lucide/vue"
 import { applicationApi, applicationKeys } from "@/entities/application"
+import { hhAccountApi, hhAccountKeys, hhAccountNameById } from "@/entities/hh-account"
 import { RefreshButton } from "@/features/refresh-button"
 import {
   decisionReasonLabel,
@@ -44,6 +45,14 @@ const query = useQuery({
 })
 
 const data = computed(() => query.data.value)
+
+const accountsQuery = useQuery({
+  key: () => hhAccountKeys.list(),
+  query: () => hhAccountApi.list()
+})
+const accountName = computed(() =>
+  hhAccountNameById(accountsQuery.data.value ?? [], data.value?.application.hhAccountId)
+)
 
 const kitAnswers = computed(() =>
   (data.value?.kit?.answers ?? []).map((raw) => describeKitAnswer(raw, data.value?.form?.form))
@@ -97,7 +106,7 @@ const cost = (value: number | null | undefined): string =>
 
     <template v-else-if="data">
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Аккаунт" :value="data.application.hhAccountId" mono />
+        <StatCard label="Аккаунт" :value="accountName" />
         <StatCard label="Создан" :value="formatDate(data.application.createdAt)" />
         <StatCard label="Обновлён" :value="formatDate(data.application.updatedAt)" />
         <StatCard label="Попыток" :value="data.attempts.length" />

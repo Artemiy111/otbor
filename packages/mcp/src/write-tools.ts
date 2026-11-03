@@ -86,14 +86,17 @@ export const ApplicationPrepare = writeTool("application_prepare", {
     "Start an application for a vacancy: creates a DRAFT application (nothing is sent) and queues a browser job " +
     "that opens the hh.ru response form to read its questions. Give decisionId (from vacancies_top) or vacancyId. " +
     "Idempotent: if an application already exists for this vacancy and hh account, it is returned instead " +
-    "(existing: true). hhAccountId defaults to the only/default account. Next: poll application_form until " +
+    "(existing: true). account (id, id prefix or name) defaults to the default/only account. Next: poll application_form until " +
     "prepare.status is \"prepared\".",
   parameters: Schema.Struct({
     decisionId: Schema.optional(Schema.String).annotate({ description: "Decision id from vacancies_top" }),
     vacancyId: Schema.optional(Schema.String).annotate({
       description: "Vacancy id, prefix or hh.ru URL; the latest decision for it is used"
     }),
-    hhAccountId: Schema.optional(Schema.String),
+    account: Schema.optional(Schema.String).annotate({
+      description: "hh account: id, id prefix or name/label (see accounts_list). Default: the default/only account"
+    }),
+    hhAccountId: Schema.optional(Schema.String).annotate({ description: "Alias of account (an id)" }),
     resumeId: Schema.optional(Schema.String)
   }),
   success: Schema.Struct({

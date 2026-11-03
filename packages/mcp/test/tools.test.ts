@@ -56,13 +56,39 @@ const detail = (n: number): VacancyDetail => ({
   keywords: []
 } as unknown as VacancyDetail)
 
+const MAIN = id(500)
+const SIDE = id(501)
+
+const accounts = [
+  { id: MAIN, label: "main", isDefault: true, sessionProfile: "p1", firstName: "Ivan", lastName: "Petrov" },
+  { id: SIDE, label: "Side", isDefault: false, sessionProfile: null, firstName: null, lastName: null }
+]
+
+const application = (n: number, hhAccountId: string, state: string) => ({
+  id: id(2000 + n),
+  userId: "u",
+  hhAccountId,
+  vacancyId: id(n),
+  vacancyTitle: `Vacancy ${n}`,
+  employerName: null,
+  state,
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z"
+})
+
+const applications = [
+  application(1, MAIN, "draft"),
+  application(2, MAIN, "submitted"),
+  application(3, SIDE, "draft")
+]
+
 const decisions = [
-  decision(1, { vacancyN: 1, priority: 20, fit: 60 }),
-  decision(2, { vacancyN: 2, priority: 90, fit: 85 }),
-  decision(3, { vacancyN: 3, priority: 50, fit: 40 }),
+  decision(1, { vacancyN: 1, priority: 20, fit: 60, hhAccountId: MAIN } as never),
+  decision(2, { vacancyN: 2, priority: 90, fit: 85, hhAccountId: MAIN } as never),
+  decision(3, { vacancyN: 3, priority: 50, fit: 40, hhAccountId: SIDE } as never),
   // older duplicate of vacancy 2 with a higher priority: the newest must win
-  decision(4, { vacancyN: 2, priority: 99, fit: 99 }),
-  decision(5, { vacancyN: 4, priority: 70, fit: 90, verdict: "skip" })
+  decision(4, { vacancyN: 2, priority: 99, fit: 99, hhAccountId: MAIN } as never),
+  decision(5, { vacancyN: 4, priority: 70, fit: 90, verdict: "skip", hhAccountId: SIDE } as never)
 ]
 
 const seen: Array<unknown> = []
@@ -74,6 +100,7 @@ const fake = {
     minFit?: number
     orderBy?: string
     latestPerVacancy?: boolean
+    hhAccountId?: string
   }) => {
     seen.push(payload)
     // Mirrors the server: the list is newest-first; latestPerVacancy keeps the
@@ -86,11 +113,20 @@ const fake = {
     }
     rows = rows.filter((d) =>
       (payload.verdict === undefined || d.verdict === payload.verdict) &&
-      (payload.minFit === undefined || d.fit >= payload.minFit)
+      (payload.minFit === undefined || d.fit >= payload.minFit) &&
+      (payload.hhAccountId === undefined || d.hhAccountId === payload.hhAccountId)
     )
     if (payload.orderBy === "priority") rows.sort((a, b) => b.priority - a.priority || b.fit - a.fit)
     return Effect.succeed(rows.slice(payload.offset ?? 0, (payload.offset ?? 0) + (payload.limit ?? 50)))
   },
+  HhAccountsList: () => Effect.succeed(accounts),
+  ApplicationsList: (payload: { hhAccountId?: string; state?: string }) =>
+    Effect.succeed(
+      applications.filter((a) =>
+        (payload.hhAccountId === undefined || a.hhAccountId === payload.hhAccountId) &&
+        (payload.state === undefined || a.state === payload.state)
+      )
+    ),
   VacanciesGet: ({ id: vacancyId }: { id: string }) => {
     const n = Number(vacancyId.slice(-12))
     return n === 3 ? Effect.fail({ _tag: "NotFound", entity: "vacancy", id: vacancyId }) : Effect.succeed(detail(n))
@@ -210,6 +246,44 @@ describe("mcp tools", () => {
       .toEqual([id(4)])
   })
 
+  test("accounts_list shows names and application counts per state", async () => {
+    const result = await withClient(FakeApi, (c) => c.callTool({ name: "accounts_list", arguments: {} }))
+    const out = result.structuredContent as {
+      items: Array<{ id: string; name: string; label: string; isDefault: boolean; applications: Record<string, number> }>
+    }
+    expect(out.items.map((a) => a.name)).toEqual(["Ivan Petrov", "Side"])
+    expect(out.items[0]).toMatchObject({ label: "main", isDefault: true, applications: { draft: 1, submitted: 1 } })
+    expect(out.items[1]?.applications).toEqual({ draft: 1 })
+  })
+
+  test("applications and decisions carry the account and filter by it (id, prefix, name, label)", async () => {
+    const all = await withClient(FakeApi, (c) => c.callTool({ name: "applications_list", arguments: {} }))
+    const items = (all.structuredContent as { items: Array<{ account: { id: string; name: string } }> }).items
+    expect(items.map((i) => i.account.name)).toEqual(["Ivan Petrov", "Ivan Petrov", "Side"])
+
+    for (const account of [SIDE, SIDE.toUpperCase(), "side", "SIDE"]) {
+      const one = await withClient(FakeApi, (c) => c.callTool({ name: "applications_list", arguments: { account } }))
+      expect((one.structuredContent as { returned: number }).returned).toBe(1)
+    }
+    const byName = await withClient(FakeApi, (c) =>
+      c.callTool({ name: "decisions_list", arguments: { account: "ivan petrov" } }))
+    const decided = (byName.structuredContent as { items: Array<{ account: { name: string } | null }> }).items
+    expect(decided).toHaveLength(3)
+    expect(decided.every((d) => d.account?.name === "Ivan Petrov")).toBe(true)
+
+    const top = await withClient(FakeApi, (c) => c.callTool({ name: "vacancies_top", arguments: { account: "side" } }))
+    expect((top.structuredContent as { items: Array<{ vacancyId: string; account: { name: string } }> }).items)
+      .toMatchObject([{ vacancyId: id(3), account: { name: "Side" } }])
+  })
+
+  test("an unknown account is a clear error listing the accounts", async () => {
+    const result = await withClient(FakeApi, (c) =>
+      c.callTool({ name: "applications_list", arguments: { account: "nobody" } }))
+    expect(result.isError).toBe(true)
+    expect(JSON.stringify(result.content)).toContain("no hh account matches")
+    expect(JSON.stringify(result.content)).toContain("Ivan Petrov")
+  })
+
   test("system_health returns the api url", async () => {
     const result = await withClient(FakeApi, (c) => c.callTool({ name: "system_health", arguments: {} }))
     expect((result.structuredContent as { apiUrl: string }).apiUrl).toBe("http://fake/rpc")
@@ -238,7 +312,7 @@ describe("mcp tools", () => {
   })
 
   test("toolkit exposes handlers for every tool", () => {
-    expect(Object.keys(OtborReadToolkit.tools).length).toBe(19)
+    expect(Object.keys(OtborReadToolkit.tools).length).toBe(20)
     void OtborReadHandlers
   })
 })

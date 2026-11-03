@@ -722,6 +722,8 @@ export const FitJudgementSave = Rpc.make("FitJudgementSave", {
 export const ApplicationsList = Rpc.make("ApplicationsList", {
   payload: Schema.Struct({
     state: Schema.optional(Schema.String),
+    /** Only applications of this hh account. */
+    hhAccountId: Schema.optional(HhAccountId),
     limit: Schema.optional(Schema.Int)
   }),
   success: Schema.Array(ApplicationRecord),

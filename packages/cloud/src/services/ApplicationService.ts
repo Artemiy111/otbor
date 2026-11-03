@@ -135,6 +135,7 @@ export interface SetKitInput {
 export interface ApplicationServiceShape {
   readonly list: (options: {
     readonly state?: string
+    readonly hhAccountId?: string
     readonly limit?: number
   }) => Effect.Effect<ReadonlyArray<ApplicationRecord>, ApiError>
   readonly get: (id: string) => Effect.Effect<ApplicationDetail, ApiError>

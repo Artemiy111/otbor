@@ -2,6 +2,7 @@ import type {
   ApplicationRecord,
   DecisionRecord,
   EmployerSummary,
+  HhAccountRecord,
   VacancySummary
 } from "@otbor/contract"
 import { Schema } from "effect"
@@ -42,6 +43,28 @@ export const humanReasons = (
     .map((r) =>
       `${r.code.replaceAll("_", " ")}${r.detail ? `: ${r.detail}` : ""}${r.weight === undefined ? "" : ` (${r.weight})`}`
     )
+
+/* ---------------------------------- account -------------------------------- */
+
+export const AccountRef = Schema.Struct({ id: Schema.String, name: Schema.String })
+export type AccountRef = typeof AccountRef.Type
+
+/** hh display name ("firstName lastName"), else the operator's label. */
+export const accountName = (account: Pick<HhAccountRecord, "label" | "firstName" | "lastName">): string => {
+  const full = [account.firstName, account.lastName].filter((part) => part != null && part.trim() !== "").join(" ")
+  return full === "" ? account.label : full
+}
+
+export type AccountDirectory = ReadonlyMap<string, AccountRef>
+
+export const accountDirectory = (accounts: ReadonlyArray<HhAccountRecord>): AccountDirectory =>
+  new Map(accounts.map((account) => [account.id, { id: account.id, name: accountName(account) }]))
+
+const NO_ACCOUNTS: AccountDirectory = new Map()
+
+/** An account that was removed or is unknown keeps its id and shows a short id as the name. */
+export const accountRef = (directory: AccountDirectory, id: string): AccountRef =>
+  directory.get(id) ?? { id, name: id.slice(0, 8) }
 
 /* ---------------------------------- vacancy -------------------------------- */
 
@@ -86,13 +109,18 @@ export const DecisionBrief = Schema.Struct({
   gate: Schema.String,
   fit: Schema.Number,
   priority: Schema.Number,
+  account: Schema.NullOr(AccountRef),
   roleFamily: NullableString,
   reasons: Schema.Array(Schema.String),
   decidedAt: Schema.String
 })
 export type DecisionBrief = typeof DecisionBrief.Type
 
-export const decisionBrief = (d: DecisionRecord, topReasons = 5): DecisionBrief => ({
+export const decisionBrief = (
+  d: DecisionRecord,
+  topReasons = 5,
+  accounts: AccountDirectory = NO_ACCOUNTS
+): DecisionBrief => ({
   decisionId: d.id,
   vacancyId: d.vacancyId,
   title: d.vacancyTitle ?? null,
@@ -100,6 +128,7 @@ export const decisionBrief = (d: DecisionRecord, topReasons = 5): DecisionBrief 
   gate: d.gate,
   fit: d.fit,
   priority: d.priority,
+  account: d.hhAccountId == null ? null : accountRef(accounts, d.hhAccountId),
   roleFamily: d.roleFamily,
   reasons: humanReasons(d.reasons, topReasons),
   decidedAt: d.createdAt
@@ -113,18 +142,20 @@ export const ApplicationBrief = Schema.Struct({
   title: NullableString,
   employer: NullableString,
   state: Schema.String,
+  account: AccountRef,
   decisionId: NullableString,
   resumeId: NullableString,
   updatedAt: Schema.String
 })
 export type ApplicationBrief = typeof ApplicationBrief.Type
 
-export const applicationBrief = (a: ApplicationRecord): ApplicationBrief => ({
+export const applicationBrief = (a: ApplicationRecord, accounts: AccountDirectory = NO_ACCOUNTS): ApplicationBrief => ({
   id: a.id,
   vacancyId: a.vacancyId,
   title: a.vacancyTitle ?? null,
   employer: a.employerName ?? null,
   state: a.state,
+  account: accountRef(accounts, a.hhAccountId),
   decisionId: a.decisionId ?? null,
   resumeId: a.resumeId ?? null,
   updatedAt: a.updatedAt
