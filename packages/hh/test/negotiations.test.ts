@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import {
   initialStateFragment,
+  negotiationsStateFragment,
   parseNegotiations,
   readInitialState,
   readResponseStatus
@@ -91,6 +92,34 @@ describe("initial state helpers", () => {
     expect(fragment).not.toContain("<body>")
     expect(readInitialState(fragment ?? "")).not.toBeNull()
     expect(initialStateFragment("<html></html>")).toBeNull()
+  })
+})
+
+describe("negotiationsStateFragment", () => {
+  const bigPage = () => {
+    const state = {
+      unrelated: "x".repeat(600_000),
+      applicantNegotiations: {
+        topicList: [{ vacancyId: 1, lastState: "RESPONSE", lastModified: "2026-11-03T20:04:42.272Z" }],
+        pageCount: "5"
+      }
+    }
+    return `<html><template id="HH-Lux-InitialState">${JSON.stringify(state)}</template></html>`
+  }
+
+  test("a state larger than the fragment limit still reads as a list", () => {
+    const html = bigPage()
+    expect(parseNegotiations(initialStateFragment(html) ?? "").readable).toBe(false)
+    const page = parseNegotiations(negotiationsStateFragment(html) ?? "")
+    expect(page.readable).toBe(true)
+    expect(page.topics.map((topic) => topic.vacancyId)).toEqual(["1"])
+    expect(page.pageCount).toBe(5)
+  })
+
+  test("falls back to the plain fragment without a negotiations state", () => {
+    const html = fixture("synthetic-negotiations.html")
+    expect(negotiationsStateFragment(html)).not.toBeNull()
+    expect(negotiationsStateFragment("<html></html>")).toBeNull()
   })
 })
 

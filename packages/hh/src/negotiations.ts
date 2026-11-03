@@ -53,6 +53,22 @@ export const initialStateFragment = (html: string, max = 400_000): string | null
   return match[0].slice(0, max)
 }
 
+/**
+ * The negotiations evidence of a page: a template holding only
+ * `applicantNegotiations`. The whole initial state of a logged-in page is
+ * larger than any sane fragment limit (about 540 KB), and cutting it
+ * mid-JSON loses the closing tag, so the list would read as unreadable.
+ * Falls back to the plain fragment when the state cannot be read.
+ */
+export const negotiationsStateFragment = (html: string, max = 400_000): string | null => {
+  const negotiations = readInitialState(html)?.applicantNegotiations
+  if (negotiations === undefined || negotiations === null) return initialStateFragment(html, max)
+  const json = JSON.stringify({ applicantNegotiations: negotiations })
+    .replace(/</g, "\\u003c")
+  const fragment = `<template id="HH-Lux-InitialState">${json}</template>`
+  return fragment.length <= max ? fragment : initialStateFragment(html, max)
+}
+
 /* -------------------------------------------------------------------------- */
 /* Negotiations list                                                          */
 /* -------------------------------------------------------------------------- */
@@ -116,11 +132,16 @@ const employerOf = (topic: Record<string, unknown>): string | null => {
     : null
 }
 
-const positiveInt = (value: unknown): number | null =>
-  typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null
+const positiveInt = (value: unknown): number | null => {
+  const number = typeof value === "string" && /^\d+$/.test(value) ? Number(value) : value
+  return typeof number === "number" && Number.isInteger(number) && number > 0 ? number : null
+}
 
 /** Page count from `applicantNegotiations.paging`, in the shapes hh uses for lists. */
 const pageCountOf = (negotiations: Record<string, unknown>): number | null => {
+  // A logged-in page carries the count itself, as a numeric string.
+  const top = positiveInt(negotiations.pageCount)
+  if (top !== null) return top
   const paging = negotiations.paging
   if (typeof paging !== "object" || paging === null) return null
   const record = paging as Record<string, unknown>

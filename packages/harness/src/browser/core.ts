@@ -12,7 +12,7 @@ import type {
 import {
   classifyResponsePage,
   formFragment,
-  initialStateFragment,
+  negotiationsStateFragment,
   MAX_ARTIFACT_HTML,
   pageExcerpt,
   parseNegotiations,
@@ -358,7 +358,7 @@ export const reconcileExit = (
       url: page.url,
       // The list lives in the page's initial state; the rest of the page is
       // not evidence and can be large.
-      html: initialStateFragment(page.html) ?? page.html.slice(0, 20_000)
+      html: negotiationsStateFragment(page.html) ?? page.html.slice(0, 20_000)
     }))
   }
   return { tag: "reconciled", artifacts: { ...evidence } }
@@ -395,7 +395,7 @@ export const negotiationsSyncExit = (pages: ReadonlyArray<ReconcilePage>): Harne
   const evidence: NegotiationsSyncEvidence = {
     pages: pages.map((page) => ({
       url: page.url,
-      html: initialStateFragment(page.html) ?? page.html.slice(0, 20_000)
+      html: negotiationsStateFragment(page.html) ?? page.html.slice(0, 20_000)
     }))
   }
   return { tag: "reconciled", artifacts: { ...evidence } }
