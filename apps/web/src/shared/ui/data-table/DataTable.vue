@@ -173,7 +173,7 @@ watchEffect(() => {
         <TableRoot>
           <TableHeader>
             <TableRow v-for="headerGroup in table.getHeaderGroups()" :key="headerGroup.id">
-              <TableHead v-if="props.rowNumbers" class="w-12 text-right">№</TableHead>
+              <TableHead v-if="props.rowNumbers" class="w-9 px-2 text-right">№</TableHead>
               <TableHead v-for="header in headerGroup.headers" :key="header.id">
                 <FlexRender
                   v-if="!header.isPlaceholder"
@@ -206,7 +206,7 @@ watchEffect(() => {
             >
               <TableCell
                 v-if="props.rowNumbers"
-                class="w-12 text-right tabular-nums text-muted-foreground"
+                class="w-9 px-2 text-right tabular-nums text-muted-foreground"
               >
                 {{ rowOffset + index + 1 }}
               </TableCell>

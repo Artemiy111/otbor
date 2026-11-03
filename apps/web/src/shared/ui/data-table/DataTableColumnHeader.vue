@@ -31,7 +31,7 @@ const sorted = computed(() => props.column.getIsSorted())
       size="sm"
       :class="
         cn(
-          '-ml-2 h-8 px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground',
+          '-ml-2 h-8 px-2 text-xs font-medium normal-case text-muted-foreground',
           props.align === 'right' && 'ml-auto'
         )
       "
@@ -42,7 +42,7 @@ const sorted = computed(() => props.column.getIsSorted())
       <ArrowDown v-else-if="sorted === 'desc'" />
       <ArrowUpDown v-else />
     </Button>
-    <span v-else class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+    <span v-else class="text-xs font-medium normal-case text-muted-foreground">
       {{ props.title }}
     </span>
   </div>

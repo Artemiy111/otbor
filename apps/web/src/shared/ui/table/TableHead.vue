@@ -9,7 +9,7 @@ const props = defineProps<{ class?: HTMLAttributes["class"] }>()
   <th
     :class="
       cn(
-        'h-10 whitespace-nowrap px-3 text-left align-middle text-xs font-semibold uppercase tracking-wide text-muted-foreground',
+        'h-9 px-2 text-left align-middle text-xs font-medium normal-case text-muted-foreground',
         props.class
       )
     "
