@@ -150,6 +150,7 @@ export type TitleVerdictSource = typeof TitleVerdictSource.Type
  */
 export const HarnessExitTag = Schema.Literals([
   "prepared",
+  "reconciled",
   "clicked",
   "submitted",
   "not_submitted",

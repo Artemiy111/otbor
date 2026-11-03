@@ -1,5 +1,5 @@
 import type { FormAnswer, SubmitJobPayload } from "@otbor/contract"
-import { isSubmitSuccess, parseResponseForm } from "@otbor/hh"
+import { isSubmitSuccess, parseNegotiations, parseResponseForm, readResponseStatus } from "@otbor/hh"
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { existsSync, readFileSync } from "node:fs"
@@ -66,6 +66,20 @@ const page = (opts: { silent?: boolean; letter?: boolean; rename?: boolean } = {
   return html.replace("</body>", `${flag}${SCRIPT}</body>`)
 }
 
+const synthetic = (name: string) =>
+  readFileSync(join(import.meta.dir, "../../hh/test/fixtures", name), "utf8")
+const vacancyOpen = synthetic("synthetic-vacancy-open.html")
+const vacancyResponded = synthetic("synthetic-vacancy-responded.html")
+const negotiationsWith = synthetic("synthetic-negotiations.html")
+const negotiationsEmpty = synthetic("synthetic-negotiations-empty.html")
+const negotiationsOther =
+  '<template id="HH-Lux-InitialState">{"applicantNegotiations":{"topicList":[{"vacancyId":777,"lastState":"RESPONSE"}]}}</template>'
+const html = (body: string) =>
+  new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } })
+
+let reconcileMode = "open"
+const visited: Array<string> = []
+
 let mode = "ok"
 let posts = 0
 let server: ReturnType<typeof Bun.serve>
@@ -87,6 +101,19 @@ beforeAll(async () => {
         return new Response("<html><body>login</body></html>", {
           headers: { "content-type": "text/html; charset=utf-8" }
         })
+      }
+      // Reconcile: the vacancy page and the negotiations list. Synthetic pages.
+      if (url.pathname === "/vacancy/100500") {
+        visited.push(url.pathname)
+        if (reconcileMode === "login") return Response.redirect(`${origin}/account/login`, 302)
+        return html(reconcileMode === "responded" ? vacancyResponded : vacancyOpen)
+      }
+      if (url.pathname === "/applicant/negotiations") {
+        visited.push(`${url.pathname}?page=${url.searchParams.get("page")}`)
+        const index = Number(url.searchParams.get("page") ?? "0")
+        if (reconcileMode === "responded" && index === 0) return html(negotiationsWith)
+        // An account with other responses on page 0 and nothing after.
+        return html(index === 0 ? negotiationsOther : negotiationsEmpty)
       }
       if (url.pathname === "/applicant/vacancy_response") {
         if (mode === "login") return Response.redirect(`${origin}/account/login`, 302)
@@ -241,6 +268,71 @@ describe.skipIf(!hasBrowser)("PlaywrightBrowserExecutor against a local hh imita
     expect(exit.tag).toBe("ambiguous")
     expect(exit.artifacts).toMatchObject({ clicked: true })
     expect(posts).toBe(1)
+  }, 40_000)
+
+  const reconcilePayload = {
+    applicationId: "app",
+    vacancyId: "vac",
+    externalId: "100500",
+    canonicalUrl: "https://hh.ru/vacancy/100500",
+    sessionProfile: "test-account"
+  }
+
+  test("reconcile returns the vacancy page and the negotiations pages as evidence, and clicks nothing", async () => {
+    reconcileMode = "responded"
+    posts = 0
+    visited.length = 0
+    const exit = await run(executor().reconcile(reconcilePayload))
+    expect(exit.tag).toBe("reconciled")
+    const evidence = exit.artifacts as {
+      externalId: string
+      vacancy: { url: string; html: string }
+      negotiations: ReadonlyArray<{ url: string; html: string }>
+    }
+    expect(evidence.externalId).toBe("100500")
+    expect(evidence.vacancy.url).toBe(`${origin}/vacancy/100500`)
+    // The cloud's reading of the same pages finds the response.
+    expect(readResponseStatus(evidence.vacancy.html, "100500", "https://hh.ru/vacancy/100500").state).toBe("responded")
+    expect(parseNegotiations(evidence.negotiations[0]!.html).topics.map((topic) => topic.vacancyId)).toContain("100500")
+    // It stopped at the page that holds the vacancy, and sent nothing.
+    expect(evidence.negotiations).toHaveLength(1)
+    expect(posts).toBe(0)
+    expect(visited).toEqual(["/vacancy/100500", "/applicant/negotiations?page=0"])
+  }, 40_000)
+
+  test("reconcile reads the list to its end when the vacancy is absent", async () => {
+    reconcileMode = "open"
+    posts = 0
+    visited.length = 0
+    const exit = await run(executor().reconcile(reconcilePayload))
+    expect(exit.tag).toBe("reconciled")
+    const evidence = exit.artifacts as { negotiations: ReadonlyArray<{ html: string }> }
+    expect(evidence.negotiations).toHaveLength(2)
+    expect(parseNegotiations(evidence.negotiations[1]!.html)).toEqual({ readable: true, topics: [] })
+    expect(posts).toBe(0)
+  }, 40_000)
+
+  test("reconcile with a bounded page budget stops there", async () => {
+    reconcileMode = "open"
+    const exit = await run(
+      makePlaywrightExecutor({
+        baseUrl: origin,
+        profilesDir: profiles,
+        executablePath: null,
+        headless: true,
+        navigationTimeoutMs: 10_000,
+        settleMs: 4_000,
+        maxNegotiationPages: 1
+      }).reconcile(reconcilePayload)
+    )
+    expect((exit.artifacts as { negotiations: ReadonlyArray<unknown> }).negotiations).toHaveLength(1)
+  }, 40_000)
+
+  test("reconcile reports a login redirect as session_expired", async () => {
+    reconcileMode = "login"
+    const exit = await run(executor().reconcile(reconcilePayload))
+    expect(exit.tag).toBe("session_expired")
+    reconcileMode = "open"
   }, 40_000)
 
   test("a cover letter field on the form is filled before the click", async () => {

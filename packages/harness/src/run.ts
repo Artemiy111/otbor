@@ -4,6 +4,7 @@ import {
   type HarnessJob,
   type LeaseId,
   PrepareJobPayload,
+  ReconcileJobPayload,
   SubmitJobPayload
 } from "@otbor/contract"
 import { Deferred, Duration, Effect, Fiber, type Layer, Option, Schema } from "effect"
@@ -128,6 +129,18 @@ const runBrowserExit = (
                   Effect.orElseSucceed(() => false)
                 )
             })
+        })
+      )
+    case "reconcile":
+      return Schema.decodeUnknownEffect(ReconcileJobPayload)(job.payload).pipe(
+        Effect.matchEffect({
+          // A reconcile never clicks, so a bad payload touched nothing.
+          onFailure: (error) =>
+            Effect.succeed<HarnessExit>({
+              tag: "permanent",
+              message: `invalid reconcile payload: ${error.message}`
+            }),
+          onSuccess: (payload) => executor.reconcile(payload)
         })
       )
     default:

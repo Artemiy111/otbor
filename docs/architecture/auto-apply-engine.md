@@ -335,6 +335,27 @@ job ретраит доставку; бизнес-отказ hh — это ре�
    **не возвращает** submit в `pending`, а ставит `needs_reconcile`.
 4. Reconcile читает «Мои отклики». Нашёл — `submitted`; не нашёл — `failed`
    или `needs_human`, но не второй клик.
+
+   Реализация. Харнес открывает `/vacancy/<id>`, затем
+   `/applicant/negotiations?page=0..n` (до `MAX_NEGOTIATION_PAGES`, пока не
+   найден id или страница не пуста) и возвращает страницы как evidence
+   (`tag = reconciled`, `ReconcileEvidence`). Ничего не нажимает и ничего не
+   решает. Облако разбирает страницы само (`judgeReconcile`,
+   `readResponseStatus`, `parseNegotiations`):
+
+   | Чтение | Итог |
+   |---|---|
+   | отклик виден на странице вакансии и/или в списке | `submitted`; submit-job закрывается `done` |
+   | страница вакансии «не откликались» и список прочитан до пустой страницы без вакансии | `unsent`: submit-job `failed` с `clicked:false`, приложение `draft` (нужен новый approve) |
+   | нечитаемо, список не дочитан, противоречие (одно «есть», другое «нет») | остаётся `needs_reconcile`, повтор (3 попытки), затем `dead` + `needs_human` |
+   | login / captcha | `needs_human` |
+   | голый тег `submitted`/`not_submitted` без страниц | не доказательство, повтор |
+
+   Ни один исход не ставит второй submit сам: после `unsent` его ставит только
+   ручной `approve`.
+
+   `session`-job пока не выполняется харнесом (отвечает `blocked`): в облаке нет
+   ни постановки таких job, ни поля состояния сессии у аккаунта.
 5. Повторный `Complete` с тем же `lease_epoch` идемпотентен и ничего не
    меняет.
 

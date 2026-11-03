@@ -161,9 +161,38 @@ describe("runJob with a browser executor", () => {
     expect(outcome.exit.artifacts).toMatchObject({ clicked: false })
   })
 
-  test("reconcile has no browser routine yet and is blocked", async () => {
+  test("reconcile is handed to the executor and its evidence is reported untouched", async () => {
+    const seen = await Effect.runPromise(Ref.make<ReadonlyArray<string>>([]))
+    const exit: HarnessExit = {
+      tag: "reconciled",
+      artifacts: { externalId: "100500", negotiations: [] }
+    }
     const outcome = await Effect.runPromise(
       runJob(await config(), makeJob("reconcile", target), {
+        browserLayer: BrowserExecutor.fake({
+          reconcile: (payload) =>
+            Ref.update(seen, (list) => [...list, payload.externalId]).pipe(Effect.as(exit)),
+          // A reconcile must never reach the submit routine.
+          submit: () => Effect.die("reconcile called submit")
+        })
+      }).pipe(Effect.provide(gateway()))
+    )
+    expect(outcome).toEqual({ _tag: "complete", exit })
+    expect(await Effect.runPromise(Ref.get(seen))).toEqual(["100500"])
+  })
+
+  test("an invalid reconcile payload is a permanent failure and touches no executor", async () => {
+    const outcome = await Effect.runPromise(
+      runJob(await config(), makeJob("reconcile", { nonsense: true }), {
+        browserLayer: BrowserExecutor.fake({ reconcile: () => Effect.die("must not run") })
+      }).pipe(Effect.provide(gateway()))
+    )
+    expect(outcome._tag === "complete" && outcome.exit.tag).toBe("permanent")
+  })
+
+  test("a session job still has no browser routine and is blocked", async () => {
+    const outcome = await Effect.runPromise(
+      runJob(await config(), makeJob("session", target), {
         browserLayer: BrowserExecutor.fake()
       }).pipe(Effect.provide(gateway()))
     )

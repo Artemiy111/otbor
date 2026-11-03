@@ -2,6 +2,8 @@ import type {
   FormAnswer,
   HarnessExit,
   PrepareArtifacts,
+  ReconcileEvidence,
+  ReconcilePage,
   ResponseForm,
   SubmitEvidence,
   SubmitJobPayload
@@ -9,7 +11,10 @@ import type {
 import {
   classifyResponsePage,
   formFragment,
+  initialStateFragment,
+  MAX_ARTIFACT_HTML,
   pageExcerpt,
+  parseNegotiations,
   parseResponseForm,
   type ResponsePageKind
 } from "@otbor/hh"
@@ -294,4 +299,66 @@ export const postClickExit = (
         artifacts: { ...evidence(kind === "form" ? "error" : "none") }
       }
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Reconcile                                                                  */
+/* -------------------------------------------------------------------------- */
+
+export const vacancyUrl = (baseUrl: string, externalId: string): string =>
+  `${baseUrl.replace(/\/+$/, "")}/vacancy/${encodeURIComponent(externalId)}`
+
+export const negotiationsUrl = (baseUrl: string, page: number): string =>
+  `${baseUrl.replace(/\/+$/, "")}/applicant/negotiations?page=${page}`
+
+/** Negotiation pages read at most; a longer list is not exhausted, and the cloud knows. */
+export const MAX_NEGOTIATION_PAGES = 8
+
+/**
+ * Whether another negotiations page is worth opening. This only saves
+ * requests; it does not say whether a response exists.
+ */
+export const wantsMoreNegotiations = (html: string, externalId: string): boolean => {
+  const page = parseNegotiations(html)
+  return (
+    page.readable &&
+    page.topics.length > 0 &&
+    !page.topics.some((topic) => topic.vacancyId === externalId)
+  )
+}
+
+/**
+ * The reconcile exit: the pages that were read, as evidence. A redirect to the
+ * login page or a captcha is reported as such; otherwise the harness says only
+ * `reconciled` ("I looked") and leaves the verdict to the cloud.
+ */
+export const reconcileExit = (
+  externalId: string,
+  read: {
+    readonly vacancy?: ReconcilePage
+    readonly negotiations: ReadonlyArray<ReconcilePage>
+  }
+): HarnessExit => {
+  const pages = [...(read.vacancy === undefined ? [] : [read.vacancy]), ...read.negotiations]
+  for (const page of pages) {
+    const kind = classifyResponsePage(page.html, page.url)
+    if (kind === "login") {
+      return { tag: "session_expired", message: "hh redirected to the login page" }
+    }
+    if (kind === "captcha") return { tag: "captcha", message: "hh asked for a captcha" }
+  }
+
+  const evidence: ReconcileEvidence = {
+    externalId,
+    ...(read.vacancy === undefined
+      ? {}
+      : { vacancy: { url: read.vacancy.url, html: read.vacancy.html.slice(0, MAX_ARTIFACT_HTML) } }),
+    negotiations: read.negotiations.map((page) => ({
+      url: page.url,
+      // The list lives in the page's initial state; the rest of the page is
+      // not evidence and can be large.
+      html: initialStateFragment(page.html) ?? page.html.slice(0, 20_000)
+    }))
+  }
+  return { tag: "reconciled", artifacts: { ...evidence } }
 }

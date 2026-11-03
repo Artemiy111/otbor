@@ -5,10 +5,14 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import {
   fillPlan,
+  negotiationsUrl,
   postClickExit,
   prepareExit,
+  reconcileExit,
   responseUrl,
-  submitPreflight
+  submitPreflight,
+  vacancyUrl,
+  wantsMoreNegotiations
 } from "../src/browser/core.ts"
 import { hhProfileDir, safeProfileName } from "../src/browser/profile.ts"
 
@@ -203,5 +207,38 @@ describe("profile paths", () => {
     expect(responseUrl("https://hh.ru/", "42")).toBe(
       "https://hh.ru/applicant/vacancy_response?vacancyId=42"
     )
+  })
+})
+
+describe("reconcileExit", () => {
+  const vacancyPage = { url: "https://hh.ru/vacancy/100500", html: fixture("synthetic-vacancy-open.html") }
+  const list = { url: "https://hh.ru/applicant/negotiations?page=0", html: fixture("synthetic-negotiations.html") }
+
+  test("reports the pages it read as evidence and decides nothing", () => {
+    const exit = reconcileExit("100500", { vacancy: vacancyPage, negotiations: [list] })
+    expect(exit.tag).toBe("reconciled")
+    const artifacts = exit.artifacts as { externalId: string; vacancy: { url: string }; negotiations: ReadonlyArray<{ html: string }> }
+    expect(artifacts.externalId).toBe("100500")
+    expect(artifacts.vacancy.url).toBe(vacancyPage.url)
+    // Only the initial-state fragment travels for the list.
+    expect(artifacts.negotiations[0]?.html.startsWith("<template")).toBe(true)
+    expect(exit).not.toHaveProperty("clicked")
+  })
+
+  test("a login redirect or a captcha on any page is a typed exit", () => {
+    const login = { url: "https://hh.ru/account/login?backurl=x", html: "<html></html>" }
+    expect(reconcileExit("100500", { vacancy: login, negotiations: [] }).tag).toBe("session_expired")
+    expect(reconcileExit("100500", { vacancy: vacancyPage, negotiations: [login] }).tag).toBe("session_expired")
+    const captcha = { url: "https://hh.ru/captcha", html: "<html></html>" }
+    expect(reconcileExit("100500", { vacancy: captcha, negotiations: [] }).tag).toBe("captcha")
+  })
+
+  test("urls and the paging rule", () => {
+    expect(vacancyUrl("https://hh.ru/", "42")).toBe("https://hh.ru/vacancy/42")
+    expect(negotiationsUrl("https://hh.ru", 3)).toBe("https://hh.ru/applicant/negotiations?page=3")
+    expect(wantsMoreNegotiations(list.html, "999")).toBe(true)
+    expect(wantsMoreNegotiations(list.html, "100500")).toBe(false)
+    expect(wantsMoreNegotiations(fixture("synthetic-negotiations-empty.html"), "1")).toBe(false)
+    expect(wantsMoreNegotiations("<html></html>", "1")).toBe(false)
   })
 })

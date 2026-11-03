@@ -16,6 +16,13 @@ const serverUrl = support.serverUrl
 const fixture = (name: string) =>
   readFileSync(join(import.meta.dir, "../../../hh/test/fixtures", name), "utf8")
 
+// Synthetic, hand-written reconcile pages (see packages/hh/test/negotiations.test.ts).
+const vacancyOpenHtml = fixture("synthetic-vacancy-open.html")
+const vacancyRespondedHtml = fixture("synthetic-vacancy-responded.html")
+const emptyListHtml = fixture("synthetic-negotiations-empty.html")
+const otherListHtml =
+  '<template id="HH-Lux-InitialState">{"applicantNegotiations":{"topicList":[{"vacancyId":777,"lastState":"RESPONSE"}]}}</template>'
+
 const responseHtml = fixture("hh-test-response.html")
 const codeHtml = fixture("hh-test-code.html")
 
@@ -360,13 +367,197 @@ if (!enabled || serverUrl === null) {
       await expect(support.applicationRetry(ctx.tenant.userId, ctx.applicationId)).rejects.toBeDefined()
       expect(await support.countJobs(ctx.applicationId, "submit")).toBe(1)
 
-      // Reconcile finding the response settles it.
-      const queued = (await support.jobsOf(ctx.applicationId)).find((row) => row.stage === "reconcile")!
+      // A reconcile that merely claims "submitted" proves nothing.
+      const reconcile = await leaseReconcile(ctx)
+      const claim = await ctx.complete(reconcile, { tag: "submitted" })
+      expect(claim.status).toBe("pending")
+      expect(await stateOf(ctx)).toBe("submitting")
+    })
+
+    /** Makes the application's pending reconcile job runnable and leases it. */
+    const leaseReconcile = async (ctx: Ctx) => {
+      const queued = (await support.jobsOf(ctx.applicationId)).find(
+        (row) => row.stage === "reconcile" && row.status === "pending"
+      )!
       await support.makeJobRunnable(queued.id as string)
-      const reconcile = await ctx.lease()
-      expect(reconcile.job?.stage).toBe("reconcile")
-      await ctx.complete(reconcile.job!, { tag: "submitted" })
+      const leased = await ctx.lease()
+      expect(leased.job?.stage).toBe("reconcile")
+      return leased.job!
+    }
+
+    const vacancyPage = (ctx: Ctx, responded: boolean) => ({
+      url: `https://hh.ru/vacancy/${ctx.externalId}`,
+      html: responded ? vacancyRespondedHtml : vacancyOpenHtml
+    })
+
+    const reconciled = (
+      ctx: Ctx,
+      read: {
+        vacancy?: { url: string; html: string }
+        negotiations: ReadonlyArray<string>
+      }
+    ): HarnessExit => ({
+      tag: "reconciled",
+      artifacts: {
+        externalId: ctx.externalId,
+        ...(read.vacancy === undefined ? {} : { vacancy: read.vacancy }),
+        negotiations: read.negotiations.map((html, index) => ({
+          url: `https://hh.ru/applicant/negotiations?page=${index}`,
+          html
+        }))
+      }
+    })
+
+    /** A list page that holds this vacancy (as `externalId`), or other ones. */
+    const listWith = (ctx: Ctx) =>
+      `<template id="HH-Lux-InitialState">{"applicantNegotiations":{"topicList":[{"vacancyId":${JSON.stringify(ctx.externalId)},"lastState":"RESPONSE"}]}}</template>`
+
+    /** An ambiguous submit, parked in reconcile. Returns the leased reconcile job. */
+    const ambiguousSubmit = async (ctx: Ctx) => {
+      const { job } = await readyToSubmit(ctx)
+      await ctx.complete(job, {
+        tag: "ambiguous",
+        message: "timeout after the click",
+        artifacts: { clicked: true, url: urlFor(ctx.externalId), marker: "none" }
+      })
+      expect(await stateOf(ctx)).toBe("submitting")
+      return leaseReconcile(ctx)
+    }
+
+    test("reconcile finding the response on the vacancy page settles submitted", async () => {
+      const ctx = await setup("rec-vacancy")
+      const job = await ambiguousSubmit(ctx)
+
+      const result = await ctx.complete(
+        job,
+        reconciled(ctx, { vacancy: vacancyPage(ctx, true), negotiations: [listWith(ctx)] })
+      )
+      expect(result).toMatchObject({ accepted: true, status: "done" })
       expect(await stateOf(ctx)).toBe("submitted")
+      expect((await support.findApplication(ctx.applicationId))?.submittedAt).not.toBeNull()
+
+      // The parked submit is closed and the journal holds the reading, not the pages.
+      const submit = (await support.jobsOf(ctx.applicationId)).find((row) => row.stage === "submit")!
+      expect(submit.status).toBe("done")
+      const attempt = (await detail(ctx)).attempts.find((item) => item.stage === "reconcile")
+      expect(JSON.stringify(attempt)).not.toContain("HH-Lux-InitialState")
+      expect(JSON.stringify(attempt)).toContain("submitted")
+
+      expect(await support.countJobs(ctx.applicationId, "submit")).toBe(1)
+      const again = await support.applicationApproveFailure(ctx.tenant.userId, ctx.applicationId)
+      expect(again).toBeInstanceOf(Conflict)
+    })
+
+    test("reconcile finding the response only in the negotiations list settles submitted", async () => {
+      const ctx = await setup("rec-list")
+      const job = await ambiguousSubmit(ctx)
+      await ctx.complete(job, reconciled(ctx, { negotiations: [listWith(ctx)] }))
+      expect(await stateOf(ctx)).toBe("submitted")
+    })
+
+    test("reconcile proving no response returns the application to draft; one approval then allows one new submit", async () => {
+      const ctx = await setup("rec-unsent")
+      const job = await ambiguousSubmit(ctx)
+
+      const result = await ctx.complete(
+        job,
+        reconciled(ctx, {
+          vacancy: vacancyPage(ctx, false),
+          negotiations: [otherListHtml, emptyListHtml]
+        })
+      )
+      expect(result).toMatchObject({ accepted: true, status: "done" })
+      expect(await stateOf(ctx)).toBe("draft")
+
+      // Nothing was queued on its own: no new submit, no further reconcile.
+      expect(await support.countJobs(ctx.applicationId, "submit")).toBe(1)
+      const rows = await support.jobsOf(ctx.applicationId)
+      expect(rows.filter((row) => row.stage === "reconcile" && row.status === "pending")).toHaveLength(0)
+      const submit = rows.find((row) => row.stage === "submit")!
+      expect(submit.status).toBe("failed")
+      expect(submit.result).toMatchObject({ clicked: false })
+
+      // A person approves again: exactly one new submit, and then no third.
+      await support.applicationApprove(ctx.tenant.userId, ctx.applicationId)
+      expect(await support.countJobs(ctx.applicationId, "submit")).toBe(2)
+      const second = await ctx.lease()
+      expect(second.job?.stage).toBe("submit")
+      await ctx.complete(second.job!, { tag: "submitted", artifacts: successEvidence(ctx.externalId) })
+      expect(await stateOf(ctx)).toBe("submitted")
+      const third = await support.applicationApproveFailure(ctx.tenant.userId, ctx.applicationId)
+      expect(third).toBeInstanceOf(Conflict)
+      expect(await support.countJobs(ctx.applicationId, "submit")).toBe(2)
+    })
+
+    test("an inconclusive reconcile retries a bounded number of times and then needs a human, never a second submit", async () => {
+      const ctx = await setup("rec-inconclusive")
+      let job = await ambiguousSubmit(ctx)
+
+      // The list was not read to the end: absence proves nothing.
+      for (let attempt = 1; attempt < 3; attempt += 1) {
+        const result = await ctx.complete(
+          job,
+          reconciled(ctx, { vacancy: vacancyPage(ctx, false), negotiations: [otherListHtml] })
+        )
+        expect(result.status).toBe("pending")
+        expect(await stateOf(ctx)).toBe("submitting")
+        const row = (await support.jobsOf(ctx.applicationId)).find((item) => item.stage === "reconcile")!
+        await support.makeJobRunnable(row.id as string)
+        const leased = await ctx.lease()
+        expect(leased.job?.stage).toBe("reconcile")
+        job = leased.job!
+      }
+      const last = await ctx.complete(
+        job,
+        reconciled(ctx, { vacancy: vacancyPage(ctx, false), negotiations: [otherListHtml] })
+      )
+      expect(last.status).toBe("dead")
+      expect(await stateOf(ctx)).toBe("needs_human")
+
+      // The submit job is still parked; approving is refused and a retry only reconciles again.
+      expect(await support.countJobs(ctx.applicationId, "submit")).toBe(1)
+      expect(await support.applicationApproveFailure(ctx.tenant.userId, ctx.applicationId)).toBeInstanceOf(Conflict)
+      await support.applicationRetry(ctx.tenant.userId, ctx.applicationId)
+      expect(await support.countJobs(ctx.applicationId, "submit")).toBe(1)
+      expect(await support.countJobs(ctx.applicationId, "reconcile")).toBe(2)
+      expect(await stateOf(ctx)).toBe("submitting")
+    })
+
+    test("a contradictory reconcile stays in reconcile", async () => {
+      const ctx = await setup("rec-contradiction")
+      const job = await ambiguousSubmit(ctx)
+      const result = await ctx.complete(
+        job,
+        reconciled(ctx, { vacancy: vacancyPage(ctx, false), negotiations: [listWith(ctx)] })
+      )
+      expect(result.status).toBe("pending")
+      expect(await stateOf(ctx)).toBe("submitting")
+      expect(await support.countJobs(ctx.applicationId, "submit")).toBe(1)
+    })
+
+    test("reconcile hitting a login page needs a human and queues nothing", async () => {
+      const ctx = await setup("rec-login")
+      const job = await ambiguousSubmit(ctx)
+      const result = await ctx.complete(job, { tag: "session_expired" })
+      expect(result.status).toBe("needs_human")
+      expect(await stateOf(ctx)).toBe("needs_human")
+      expect(await support.countJobs(ctx.applicationId, "submit")).toBe(1)
+    })
+
+    test("an expired submit lease is reconciled the same way and never resubmitted", async () => {
+      const ctx = await setup("rec-expired")
+      const { job } = await readyToSubmit(ctx)
+      await support.expireJobLease(job.id)
+      await support.recoverExpiredJobs()
+      expect(await stateOf(ctx)).toBe("submitting")
+
+      const reconcile = await leaseReconcile(ctx)
+      await ctx.complete(
+        reconcile,
+        reconciled(ctx, { vacancy: vacancyPage(ctx, false), negotiations: [emptyListHtml] })
+      )
+      expect(await stateOf(ctx)).toBe("draft")
+      expect(await support.countJobs(ctx.applicationId, "submit")).toBe(1)
     })
 
     test("form_changed before the click is not sent; a fresh prepare allows exactly one new submit", async () => {

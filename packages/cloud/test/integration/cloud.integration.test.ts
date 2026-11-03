@@ -142,6 +142,7 @@ import {
   seedVacancySkill,
   seedVacancyTitled,
   seedVacancyWithExternal,
+  vacancyExternalId,
   serverUrl,
   setDefaultAccount,
   setScheduleNextRun,
@@ -539,7 +540,18 @@ if (!integrationEnabled || serverUrl === null) {
         jobId: reconcileLease.job!.id,
         leaseId: reconcileLease.job!.leaseId!,
         epoch: reconcileLease.job!.leaseEpoch,
-        exit: { tag: "submitted" }
+        // Evidence, not a claim: the vacancy page shows the response.
+        exit: {
+          tag: "reconciled",
+          artifacts: {
+            externalId: await vacancyExternalId(vacancyId),
+            vacancy: {
+              url: `https://hh.ru/vacancy/${await vacancyExternalId(vacancyId)}`,
+              html: '<h1 data-qa="vacancy-title">x</h1><a data-qa="vacancy-response-link-view-topic">Вы откликнулись</a>'
+            },
+            negotiations: []
+          }
+        }
       })
       expect(confirmed.accepted).toBe(true)
       expect(confirmed.status).toBe("done")
