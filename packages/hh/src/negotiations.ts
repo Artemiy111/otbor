@@ -64,16 +64,75 @@ export interface NegotiationTopic {
   readonly substate: string | null
   readonly discardReason: string | null
   readonly archived: boolean
+  /** Date of the last change hh shows (ISO 8601), when it ships one. */
+  readonly changedAt: string | null
+  readonly employerName: string | null
+  /** The vacancy title, when the list entry carries it. */
+  readonly vacancyName: string | null
 }
 
 export interface NegotiationsPage {
   /** `topicList` was present. An empty but readable page is a real empty page. */
   readonly readable: boolean
   readonly topics: ReadonlyArray<NegotiationTopic>
+  /** Total pages of the list as hh reports them, or `null` when it does not. */
+  readonly pageCount: number | null
 }
+
+const unreadable: NegotiationsPage = { readable: false, topics: [], pageCount: null }
 
 const text = (value: unknown): string | null =>
   typeof value === "string" && value.trim() !== "" ? value.trim() : null
+
+/**
+ * hh ships dates as ISO strings, epoch milliseconds or `{ "@timestamp": ms }`.
+ * Anything else is "no date", never a guess.
+ */
+const dateOf = (value: unknown): string | null => {
+  let raw: unknown = value
+  if (typeof raw === "object" && raw !== null) {
+    raw = (raw as Record<string, unknown>)["@timestamp"] ?? (raw as Record<string, unknown>).timestamp
+  }
+  let date: Date | null = null
+  if (typeof raw === "number" && Number.isFinite(raw)) date = new Date(raw)
+  else if (typeof raw === "string" && raw.trim() !== "") date = new Date(raw.trim())
+  return date !== null && !Number.isNaN(date.getTime()) ? date.toISOString() : null
+}
+
+const firstDate = (...values: ReadonlyArray<unknown>): string | null => {
+  for (const value of values) {
+    const date = dateOf(value)
+    if (date !== null) return date
+  }
+  return null
+}
+
+const employerOf = (topic: Record<string, unknown>): string | null => {
+  const direct = text(topic.employerName) ?? text(topic.companyName)
+  if (direct !== null) return direct
+  const nested = topic.employer
+  return typeof nested === "object" && nested !== null
+    ? text((nested as Record<string, unknown>).name)
+    : null
+}
+
+const positiveInt = (value: unknown): number | null =>
+  typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null
+
+/** Page count from `applicantNegotiations.paging`, in the shapes hh uses for lists. */
+const pageCountOf = (negotiations: Record<string, unknown>): number | null => {
+  const paging = negotiations.paging
+  if (typeof paging !== "object" || paging === null) return null
+  const record = paging as Record<string, unknown>
+  const direct = positiveInt(record.pages) ?? positiveInt(record.pagesCount) ?? positiveInt(record.pageCount)
+  if (direct !== null) return direct
+  const last = record.lastPage
+  if (typeof last === "object" && last !== null) {
+    const page = (last as Record<string, unknown>).page
+    if (typeof page === "number" && Number.isInteger(page) && page >= 0) return page + 1
+  }
+  return null
+}
 
 const idOf = (value: unknown): string | null => {
   if (typeof value === "number" && Number.isFinite(value)) return String(value)
@@ -83,31 +142,41 @@ const idOf = (value: unknown): string | null => {
 export const parseNegotiations = (html: string): NegotiationsPage => {
   const state = readInitialState(html)
   const negotiations = state?.applicantNegotiations
-  const list =
+  const record =
     typeof negotiations === "object" && negotiations !== null
-      ? (negotiations as Record<string, unknown>).topicList
+      ? (negotiations as Record<string, unknown>)
       : undefined
-  if (!Array.isArray(list)) return { readable: false, topics: [] }
+  const list = record?.topicList
+  if (record === undefined || !Array.isArray(list)) return unreadable
 
   const topics: Array<NegotiationTopic> = []
   for (const item of list) {
     if (typeof item !== "object" || item === null) {
       // One unreadable entry makes the whole page untrustworthy.
-      return { readable: false, topics: [] }
+      return unreadable
     }
     const topic = item as Record<string, unknown>
     const vacancyId = idOf(topic.vacancyId)
-    if (vacancyId === null) return { readable: false, topics: [] }
+    if (vacancyId === null) return unreadable
     topics.push({
       vacancyId,
       state: text(topic.lastState) ?? text(topic.initialState),
       employerState: text(topic.lastEmployerState),
       substate: text(topic.lastSubState),
       discardReason: text(topic.discardReason),
-      archived: topic.archived === true
+      archived: topic.archived === true,
+      changedAt: firstDate(
+        topic.lastModified,
+        topic.lastChangeTime,
+        topic.lastStateChangeTime,
+        topic.updateTime,
+        topic.creationTime
+      ),
+      employerName: employerOf(topic),
+      vacancyName: text(topic.vacancyName) ?? text(topic.vacancyTitle)
     })
   }
-  return { readable: true, topics }
+  return { readable: true, topics, pageCount: pageCountOf(record) }
 }
 
 /* -------------------------------------------------------------------------- */

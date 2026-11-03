@@ -190,6 +190,31 @@ describe("runJob with a browser executor", () => {
     expect(outcome._tag === "complete" && outcome.exit.tag).toBe("permanent")
   })
 
+  test("negotiations_sync is handed to the executor and never reaches submit", async () => {
+    const seen = await Effect.runPromise(Ref.make<ReadonlyArray<string>>([]))
+    const exit: HarnessExit = { tag: "reconciled", artifacts: { pages: [] } }
+    const outcome = await Effect.runPromise(
+      runJob(await config(), makeJob("negotiations_sync", { hhAccountId: "acc", maxPages: 3 }), {
+        browserLayer: BrowserExecutor.fake({
+          negotiationsSync: (payload) =>
+            Ref.update(seen, (list) => [...list, payload.hhAccountId]).pipe(Effect.as(exit)),
+          submit: () => Effect.die("sync called submit")
+        })
+      }).pipe(Effect.provide(gateway()))
+    )
+    expect(outcome).toEqual({ _tag: "complete", exit })
+    expect(await Effect.runPromise(Ref.get(seen))).toEqual(["acc"])
+  })
+
+  test("an invalid negotiations_sync payload is a permanent failure", async () => {
+    const outcome = await Effect.runPromise(
+      runJob(await config(), makeJob("negotiations_sync", { nonsense: true }), {
+        browserLayer: BrowserExecutor.fake({ negotiationsSync: () => Effect.die("must not run") })
+      }).pipe(Effect.provide(gateway()))
+    )
+    expect(outcome._tag === "complete" && outcome.exit.tag).toBe("permanent")
+  })
+
   test("a session job still has no browser routine and is blocked", async () => {
     const outcome = await Effect.runPromise(
       runJob(await config(), makeJob("session", target), {

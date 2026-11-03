@@ -96,3 +96,28 @@ export const ReconcileEvidence = Schema.Struct({
 })
 
 export type ReconcileEvidence = typeof ReconcileEvidence.Type
+
+/**
+ * `negotiations_sync` reads the account's whole negotiations list, so that
+ * responses made by hand on hh.ru become visible to dedupe. It has no
+ * application: the account is the target.
+ */
+export const NegotiationsSyncJobPayload = Schema.Struct({
+  hhAccountId: Schema.String,
+  /** Local profile name of the account's hh session. */
+  sessionProfile: Schema.optional(Schema.NullOr(Schema.String)),
+  /** Pages to read at most; the harness also applies its own cap. */
+  maxPages: Schema.optional(Schema.Int)
+})
+
+export type NegotiationsSyncJobPayload = typeof NegotiationsSyncJobPayload.Type
+
+/**
+ * `negotiations_sync` artifacts: `/applicant/negotiations?page=0..n`, in order,
+ * as many as were read. The harness does not parse or judge them.
+ */
+export const NegotiationsSyncEvidence = Schema.Struct({
+  pages: Schema.Array(ReconcilePage)
+})
+
+export type NegotiationsSyncEvidence = typeof NegotiationsSyncEvidence.Type

@@ -78,6 +78,7 @@ import { MailSync } from "../../src/services/MailSync.ts"
 import { PresetService } from "../../src/services/PresetService.ts"
 import { ResumeService } from "../../src/services/ResumeService.ts"
 import { prepareJob, submitJob } from "../../src/services/jobs.ts"
+import { NegotiationsSync } from "../../src/services/NegotiationsSync.ts"
 import { QueueService } from "../../src/services/QueueService.ts"
 import { recoverExpiredLeases } from "../../src/services/recovery.ts"
 import { ScheduleDispatcher } from "../../src/services/ScheduleDispatcher.ts"
@@ -253,6 +254,7 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
     DecisionService.layer.pipe(Layer.provide(shared)),
     FitJudgeService.layer.pipe(Layer.provide(shared)),
     QueueService.layer.pipe(Layer.provide(shared)),
+    NegotiationsSync.layer.pipe(Layer.provide(shared)),
     ApplicationService.layer.pipe(Layer.provide(shared)),
     InferenceService.layer.pipe(Layer.provide(shared)),
     GateService.layer.pipe(Layer.provide(shared)),
@@ -265,6 +267,7 @@ type Requirements =
   | Database
   | ApplicationService
   | QueueService
+  | NegotiationsSync
   | InferenceService
   | CrawlService
   | GateService
@@ -1980,5 +1983,52 @@ export const jobsOf = async (applicationId: string) =>
           sql`select id, stage, status, payload, result, idempotency_key from harness_jobs where application_id = ${applicationId} order by created_at`
         )
         .pipe(Effect.map((result) => result.rows as ReadonlyArray<Record<string, any>>))
+    )
+  )
+
+export const negotiationsRun = async (userId: string, accountId: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const sync = yield* NegotiationsSync
+      return yield* sync.run(accountId)
+    })
+  )
+
+export const negotiationsStatus = async (userId: string, accountId: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const sync = yield* NegotiationsSync
+      return yield* sync.status(accountId)
+    })
+  )
+
+export const negotiationsRunFailure = async (userId: string, accountId: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const sync = yield* NegotiationsSync
+      return yield* Effect.flip(sync.run(accountId))
+    })
+  )
+
+/** Applications of an account with the sync columns, as the owner sees them. */
+export const applicationRowsFor = async (accountId: string) =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx
+        .select({
+          id: application.id,
+          vacancyId: application.vacancyId,
+          state: application.state,
+          origin: application.origin,
+          hhStatus: application.hhStatus,
+          hhRespondedAt: application.hhRespondedAt,
+          submittedAt: application.submittedAt
+        })
+        .from(application)
+        .where(eq(application.hhAccountId, accountId))
     )
   )

@@ -308,7 +308,7 @@ describe.skipIf(!hasBrowser)("PlaywrightBrowserExecutor against a local hh imita
     expect(exit.tag).toBe("reconciled")
     const evidence = exit.artifacts as { negotiations: ReadonlyArray<{ html: string }> }
     expect(evidence.negotiations).toHaveLength(2)
-    expect(parseNegotiations(evidence.negotiations[1]!.html)).toEqual({ readable: true, topics: [] })
+    expect(parseNegotiations(evidence.negotiations[1]!.html)).toEqual({ readable: true, topics: [], pageCount: null })
     expect(posts).toBe(0)
   }, 40_000)
 

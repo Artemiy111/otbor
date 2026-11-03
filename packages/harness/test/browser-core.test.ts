@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import {
   fillPlan,
+  negotiationsSyncExit,
   negotiationsUrl,
   postClickExit,
   prepareExit,
@@ -12,7 +13,8 @@ import {
   responseUrl,
   submitPreflight,
   vacancyUrl,
-  wantsMoreNegotiations
+  wantsMoreNegotiations,
+  wantsMoreSyncPages
 } from "../src/browser/core.ts"
 import { hhProfileDir, safeProfileName } from "../src/browser/profile.ts"
 
@@ -240,5 +242,38 @@ describe("reconcileExit", () => {
     expect(wantsMoreNegotiations(list.html, "100500")).toBe(false)
     expect(wantsMoreNegotiations(fixture("synthetic-negotiations-empty.html"), "1")).toBe(false)
     expect(wantsMoreNegotiations("<html></html>", "1")).toBe(false)
+  })
+})
+
+describe("negotiations sync", () => {
+  const detailed = fixture("synthetic-negotiations-detailed.html")
+  const empty = fixture("synthetic-negotiations-empty.html")
+
+  test("reads on while hh reports more pages, stops at the last or an empty one", () => {
+    // The detailed fixture reports three pages.
+    expect(wantsMoreSyncPages(detailed, 0)).toBe(true)
+    expect(wantsMoreSyncPages(detailed, 1)).toBe(true)
+    expect(wantsMoreSyncPages(detailed, 2)).toBe(false)
+    expect(wantsMoreSyncPages(empty, 0)).toBe(false)
+    expect(wantsMoreSyncPages("<html></html>", 0)).toBe(false)
+    // No page count: keep going until an empty page.
+    expect(wantsMoreSyncPages(fixture("synthetic-negotiations.html"), 4)).toBe(true)
+  })
+
+  test("reports the pages as untouched evidence, trimmed to the initial state", () => {
+    const exit = negotiationsSyncExit([
+      { url: "https://hh.ru/applicant/negotiations?page=0", html: detailed }
+    ])
+    expect(exit.tag).toBe("reconciled")
+    const pages = (exit.artifacts as { pages: ReadonlyArray<{ html: string }> }).pages
+    expect(pages).toHaveLength(1)
+    expect(pages[0]!.html.startsWith("<template")).toBe(true)
+  })
+
+  test("a login redirect is reported as an expired session", () => {
+    const exit = negotiationsSyncExit([
+      { url: "https://hh.ru/account/login", html: "<html><body>login</body></html>" }
+    ])
+    expect(exit.tag).toBe("session_expired")
   })
 })

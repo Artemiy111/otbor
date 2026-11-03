@@ -204,3 +204,34 @@ export const inferenceJob = (
     },
     idempotencyKey: input.idempotencyKey
   })
+
+/**
+ * Reads the account's negotiations list. Not tied to an application: the
+ * account is the target. Callers pass a fresh `sequence` for an explicit rerun.
+ */
+export const negotiationsSyncJob = (
+  tx: Executor,
+  input: {
+    readonly userId: string
+    readonly hhAccountId: string
+    readonly sessionProfile: string | null
+    readonly sequence: number
+    readonly maxPages?: number
+  }
+) =>
+  QueueRepository.enqueue(tx, {
+    userId: input.userId,
+    hhAccountId: input.hhAccountId,
+    applicationId: null,
+    stage: "negotiations_sync",
+    kind: "browser",
+    // Background bookkeeping: behind every prepare, submit and reconcile.
+    priority: 10,
+    maxAttempts: 3,
+    payload: {
+      hhAccountId: input.hhAccountId,
+      sessionProfile: input.sessionProfile,
+      ...(input.maxPages === undefined ? {} : { maxPages: input.maxPages })
+    },
+    idempotencyKey: `account:${input.hhAccountId}:negotiations_sync:${input.sequence}`
+  })

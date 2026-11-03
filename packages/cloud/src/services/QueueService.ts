@@ -25,11 +25,13 @@ import {
   checkKit,
   judgePrepare,
   judgeReconcile,
+  judgeNegotiationsSync,
   judgeSubmit,
   reconcileArtifacts
 } from "./applyRules.ts"
 import { completeFitInference } from "./fitJudge.ts"
 import { hintsFor } from "./formHints.ts"
+import { importTopics } from "./NegotiationsSync.ts"
 import { nextSequence, reconcileJob, submitJob, targetFor } from "./jobs.ts"
 import { toStorageError } from "./support.ts"
 
@@ -575,6 +577,35 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                       appPatch = {
                         lastError: `could not confirm whether the response was sent: ${verdict.reason}`
                       }
+                    }
+                    break
+                  }
+
+                  case "negotiations_sync": {
+                    // The harness only delivers pages. The cloud reads them and
+                    // imports; nothing here touches an application of origin otbor.
+                    const verdict = judgeNegotiationsSync(exit)
+                    if (verdict._tag === "read" && ctx.hhAccountId !== null) {
+                      const imported = yield* importTopics(tx, {
+                        userId: ctx.userId,
+                        hhAccountId: ctx.hhAccountId,
+                        topics: verdict.topics,
+                        pages: verdict.pages,
+                        complete: verdict.complete
+                      })
+                      status = "done"
+                      jobResult = { counts: imported.counts }
+                      message = `negotiations synced: ${imported.counts.imported} imported, ${imported.counts.updated} updated, ${imported.counts.unknownVacancy} unknown vacancy${verdict.complete ? "" : " (list not read to the end)"}`
+                    } else if (verdict._tag === "human") {
+                      status = "needs_human"
+                      message = `negotiations sync needs a human: ${verdict.reason}`
+                    } else if (verdict._tag === "read" || job.attempts >= job.maxAttempts) {
+                      status = "dead"
+                      message = `negotiations sync gave up: ${verdict._tag === "read" ? "job has no account" : verdict.reason}`
+                    } else {
+                      status = "pending"
+                      runAt = retryLater(exit, 120)
+                      message = `negotiations sync retry ${job.attempts + 1}/${job.maxAttempts}: ${verdict.reason}`
                     }
                     break
                   }

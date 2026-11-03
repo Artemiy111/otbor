@@ -1,6 +1,7 @@
 import { Schema } from "effect"
 import { FormAnswer, StoredForm } from "./form.ts"
 import {
+  ApplicationOrigin,
   ApplicationState,
   AttemptStage,
   BlacklistScope,
@@ -632,11 +633,46 @@ export const ApplicationRecord = Schema.Struct({
   streamId: Schema.optional(Schema.NullOr(Schema.String)),
   decisionId: Schema.optional(Schema.NullOr(DecisionId)),
   state: ApplicationState,
+  origin: Schema.optional(ApplicationOrigin),
+  /** hh's own negotiation state, for imported applications. */
+  hhStatus: Schema.optional(Schema.NullOr(Schema.String)),
+  hhRespondedAt: Schema.optional(Schema.NullOr(Schema.String)),
   createdAt: Schema.String,
   updatedAt: Schema.String
 })
 
 export type ApplicationRecord = typeof ApplicationRecord.Type
+
+/** What the last negotiations sync of an account did. Counts only; no page bodies. */
+export const NegotiationsSyncCounts = Schema.Struct({
+  pages: Schema.Int,
+  topics: Schema.Int,
+  imported: Schema.Int,
+  updated: Schema.Int,
+  /** Already an application of otbor's own, or nothing changed. */
+  unchanged: Schema.Int,
+  /** In the list, but not in the corpus yet: ingest the vacancy, then sync again. */
+  unknownVacancy: Schema.Int,
+  /** The first external ids of those vacancies. */
+  unknownVacancyIds: Schema.optional(Schema.Array(Schema.String)),
+  /** Every page readable and the list read to its end. */
+  complete: Schema.Boolean
+})
+
+export type NegotiationsSyncCounts = typeof NegotiationsSyncCounts.Type
+
+export const NegotiationsSyncStatus = Schema.Struct({
+  hhAccountId: HhAccountId,
+  jobId: Schema.optional(Schema.NullOr(Schema.String)),
+  /** `none` when the account was never synced. */
+  status: Schema.Literals(["none", "pending", "running", "done", "failed", "needs_human"]),
+  message: Schema.optional(Schema.NullOr(Schema.String)),
+  requestedAt: Schema.optional(Schema.NullOr(Schema.String)),
+  finishedAt: Schema.optional(Schema.NullOr(Schema.String)),
+  counts: Schema.optional(Schema.NullOr(NegotiationsSyncCounts))
+})
+
+export type NegotiationsSyncStatus = typeof NegotiationsSyncStatus.Type
 
 /** A kit holds structured answers; kits saved before the form parser hold `Answer`. */
 export const KitAnswer = Schema.Union([FormAnswer, Answer])

@@ -557,3 +557,47 @@ export const context = (tx: Executor, id: string): RepoEffect<JobContext | null>
         }
       })
     )
+
+/** Newest non-cancelled job of a stage for an account (jobs without an application). */
+export const latestForAccount = (
+  tx: Executor,
+  hhAccountId: string,
+  stage: JobStage
+): RepoEffect<{
+  readonly job: HarnessJob
+  readonly lastError: string | null
+  readonly updatedAt: Date
+} | null> =>
+  tx
+    .select()
+    .from(harnessJob)
+    .where(
+      sql`${harnessJob.hhAccountId} = ${hhAccountId}
+        and ${harnessJob.stage} = ${stage}
+        and ${harnessJob.status} <> 'cancelled'`
+    )
+    .orderBy(sql`${harnessJob.createdAt} desc`)
+    .limit(1)
+    .pipe(
+      Effect.map((rows) =>
+        rows[0] === undefined
+          ? null
+          : {
+              job: toJob(fromSelect(rows[0])),
+              lastError: rows[0].lastError ?? null,
+              updatedAt: rows[0].updatedAt
+            }
+      )
+    )
+
+/** How many jobs of a stage an account has ever had, so an explicit rerun gets a new key. */
+export const countForAccount = (
+  tx: Executor,
+  hhAccountId: string,
+  stage: JobStage
+): RepoEffect<number> =>
+  tx
+    .execute(
+      sql`select count(*)::int as n from harness_jobs where hh_account_id = ${hhAccountId} and stage = ${stage}`
+    )
+    .pipe(Effect.map((result) => Number((result.rows[0] as { n?: number } | undefined)?.n ?? 0)))

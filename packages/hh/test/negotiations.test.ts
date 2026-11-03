@@ -29,7 +29,8 @@ describe("parseNegotiations", () => {
   test("an empty list is readable and empty", () => {
     expect(parseNegotiations(fixture("synthetic-negotiations-empty.html"))).toEqual({
       readable: true,
-      topics: []
+      topics: [],
+      pageCount: null
     })
   })
 
@@ -51,7 +52,34 @@ describe("parseNegotiations", () => {
   test("one malformed topic makes the page unreadable", () => {
     const html =
       '<template id="HH-Lux-InitialState">{"applicantNegotiations":{"topicList":[{"vacancyId":1},{"x":2}]}}</template>'
-    expect(parseNegotiations(html)).toEqual({ readable: false, topics: [] })
+    expect(parseNegotiations(html)).toEqual({ readable: false, topics: [], pageCount: null })
+  })
+})
+
+describe("parseNegotiations details", () => {
+  test("reads status, date, employer, title and the page count", () => {
+    const page = parseNegotiations(fixture("synthetic-negotiations-detailed.html"))
+    expect(page.readable).toBe(true)
+    expect(page.pageCount).toBe(3)
+    expect(page.topics[0]).toMatchObject({
+      vacancyId: "111",
+      state: "INVITATION",
+      changedAt: "2026-10-01T07:00:00.000Z",
+      employerName: "Acme",
+      vacancyName: "Backend Developer"
+    })
+    expect(page.topics[1]).toMatchObject({
+      vacancyId: "222",
+      changedAt: new Date(1760000000000).toISOString(),
+      employerName: "Globex",
+      vacancyName: null
+    })
+    // An unreadable date is no date, never a guess.
+    expect(page.topics[2]).toMatchObject({ vacancyId: "333", changedAt: null, employerName: null })
+  })
+
+  test("a list without paging has no page count", () => {
+    expect(parseNegotiations(fixture("synthetic-negotiations.html")).pageCount).toBeNull()
   })
 })
 

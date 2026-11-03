@@ -27,6 +27,9 @@ export interface ApplicationRow {
   readonly stream_id: string | null
   readonly decision_id: string | null
   readonly state: string
+  readonly origin?: string
+  readonly hh_status?: string | null
+  readonly hh_responded_at?: Date | null
   readonly created_at: Date
   readonly updated_at: Date
 }
@@ -49,6 +52,9 @@ export const toRecord = (row: ApplicationRow): ApplicationRecord => ({
   streamId: row.stream_id,
   decisionId: row.decision_id as ApplicationRecord["decisionId"],
   state: row.state as ApplicationRecord["state"],
+  origin: (row.origin ?? "otbor") as ApplicationRecord["origin"],
+  hhStatus: row.hh_status ?? null,
+  hhRespondedAt: row.hh_responded_at?.toISOString() ?? null,
   createdAt: row.created_at.toISOString(),
   updatedAt: row.updated_at.toISOString()
 })
