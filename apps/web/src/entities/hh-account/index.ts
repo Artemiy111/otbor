@@ -1,2 +1,2 @@
 export { hhAccountApi } from "./api"
-export { hhAccountKeys } from "./model"
+export { hhAccountKeys, hhAccountName, hhAccountNameById } from "./model"

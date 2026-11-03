@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, h, ref } from "vue"
 import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
-import type { DecisionRecord } from "@otbor/contract"
+import type { DecisionRecord, HhAccountRecord } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert, FilePlus2 } from "@lucide/vue"
 import { applicationApi } from "@/entities/application"
 import { decisionApi, decisionKeys } from "@/entities/decision"
 import { applicationKeys } from "@/entities/application/model"
+import { hhAccountApi, hhAccountKeys, hhAccountNameById } from "@/entities/hh-account"
+import { AccountFilter } from "@/features/account-filter"
 import { DecisionVerdictFilter } from "@/features/decision-filter"
 import { RefreshButton } from "@/features/refresh-button"
 import {
@@ -32,13 +34,21 @@ import {
 import { PageHeader } from "@/widgets/page-header"
 
 const verdict = ref("all")
+const account = ref("all")
+
+const accountsQuery = useQuery({
+  key: () => hhAccountKeys.list(),
+  query: () => hhAccountApi.list()
+})
+const accounts = computed<ReadonlyArray<HhAccountRecord>>(() => accountsQuery.data.value ?? [])
 
 const query = useQuery({
-  key: () => decisionKeys.list(verdict.value),
+  key: () => decisionKeys.list(verdict.value, account.value),
   query: () =>
     decisionApi.list({
       limit: 200,
-      verdict: verdict.value === "all" ? undefined : verdict.value
+      verdict: verdict.value === "all" ? undefined : verdict.value,
+      hhAccountId: account.value === "all" ? undefined : account.value
     })
 })
 
@@ -135,6 +145,17 @@ const columns: ColumnDef<DecisionRecord>[] = [
       h("span", { class: "font-mono tabular-nums" }, formatPriority(row.original.priority))
   },
   {
+    id: "account",
+    accessorFn: (row) => hhAccountNameById(accounts.value, row.hhAccountId),
+    header: sortableHeader<DecisionRecord>("Аккаунт"),
+    cell: ({ row }) =>
+      h(
+        "span",
+        { class: row.original.hhAccountId ? "" : "text-muted-foreground" },
+        row.original.hhAccountId ? hhAccountNameById(accounts.value, row.original.hhAccountId) : "—"
+      )
+  },
+  {
     id: "role",
     accessorFn: (row) => row.roleFamily ?? "",
     header: sortableHeader<DecisionRecord>("Роль"),
@@ -212,6 +233,7 @@ const columns: ColumnDef<DecisionRecord>[] = [
     >
       <template #toolbar>
         <DecisionVerdictFilter v-model="verdict" />
+        <AccountFilter v-model="account" :accounts="accounts" />
         <span class="pb-2 text-xs text-muted-foreground">Показано: {{ decisions.length }}</span>
       </template>
     </DataTable>

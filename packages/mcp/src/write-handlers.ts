@@ -2,7 +2,6 @@ import type {
   ApplicationId,
   DecisionRecord,
   FormAnswer,
-  HhAccountId,
   OtborApi,
   ResumeId
 } from "@otbor/contract"
@@ -11,7 +10,8 @@ import { Api } from "./api.ts"
 import { formatIssues, type KitIssue, prevalidateKit } from "./apply.ts"
 import { guard } from "./errors.ts"
 import { fail, resolveVacancyId } from "./handlers.ts"
-import { applicationBrief } from "./shapes.ts"
+import { pickAccount } from "./accounts.ts"
+import { accountDirectory, applicationBrief } from "./shapes.ts"
 import { OtborWriteToolkit } from "./write-tools.ts"
 
 const DECISION_PAGE = 200
@@ -34,21 +34,6 @@ const findDecision = (rpc: OtborApi, match: (decision: DecisionRecord) => boolea
       if (batch.length < DECISION_PAGE) break
     }
     return undefined
-  })
-
-/** The given account, or the default/only one. */
-const resolveAccount = (rpc: OtborApi, hhAccountId: string | undefined) =>
-  Effect.gen(function*() {
-    if (hhAccountId !== undefined) return hhAccountId as HhAccountId
-    const accounts = yield* rpc.HhAccountsList()
-    const chosen = accounts.find((account) => account.isDefault) ?? (accounts.length === 1 ? accounts[0] : undefined)
-    if (chosen !== undefined) return chosen.id
-    if (accounts.length === 0) return yield* fail("no hh account is configured; add one in otbor first")
-    return yield* fail(
-      `several hh accounts and none is default; pass hhAccountId: ${
-        accounts.map((account) => `${account.id} (${account.label})`).join(", ")
-      }`
-    )
   })
 
 const problemsMessage = (header: string, lines: ReadonlyArray<string>) =>
@@ -100,7 +85,9 @@ export const OtborWriteHandlers = OtborWriteToolkit.toLayer(Effect.gen(function*
       if (params.decisionId === undefined && params.vacancyId === undefined) {
         return yield* fail("pass decisionId (from vacancies_top) or vacancyId")
       }
-      const hhAccountId = yield* run(resolveAccount(rpc, params.hhAccountId))
+      const accounts = yield* run(rpc.HhAccountsList())
+      const directory = accountDirectory(accounts)
+      const hhAccountId = (yield* pickAccount(accounts, params.account ?? params.hhAccountId)).id
 
       let decision: DecisionRecord | undefined
       if (params.decisionId !== undefined) {
@@ -124,7 +111,7 @@ export const OtborWriteHandlers = OtborWriteToolkit.toLayer(Effect.gen(function*
         const existing = known.find((a) => a.vacancyId === decision!.vacancyId && a.hhAccountId === hhAccountId)
         if (existing !== undefined) {
           return {
-            application: applicationBrief(existing),
+            application: applicationBrief(existing, directory),
             existing: true,
             next: existing.state === "submitted"
               ? "already submitted; nothing to do"
@@ -141,7 +128,7 @@ export const OtborWriteHandlers = OtborWriteToolkit.toLayer(Effect.gen(function*
       }))
       const existing = Date.now() - Date.parse(created.createdAt) > FRESH_MS
       return {
-        application: applicationBrief(created),
+        application: applicationBrief(created, directory),
         existing,
         next: existing
           ? "already exists; call application_form to see its form and kit"
@@ -230,8 +217,9 @@ export const OtborWriteHandlers = OtborWriteToolkit.toLayer(Effect.gen(function*
         return yield* fail("confirm must be true: ask the user before sending a real application")
       }
       const application = yield* run(rpc.ApplicationsApprove({ id: params.applicationId as ApplicationId }))
+      const directory = accountDirectory(yield* run(rpc.HhAccountsList()))
       return {
-        application: applicationBrief(application),
+        application: applicationBrief(application, directory),
         queued: application.state === "queued",
         note:
           "The submit is queued and will be sent once by the browser harness. Check progress with application_get " +
@@ -244,7 +232,8 @@ export const OtborWriteHandlers = OtborWriteToolkit.toLayer(Effect.gen(function*
         id: params.applicationId as ApplicationId,
         ...(params.reason === undefined ? {} : { reason: params.reason })
       }))
-      return { application: applicationBrief(application) }
+      const directory = accountDirectory(yield* run(rpc.HhAccountsList()))
+      return { application: applicationBrief(application, directory) }
     })
   })
 }))

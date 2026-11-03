@@ -84,11 +84,13 @@ const makeFake = (options: {
   applications?: Array<ApplicationRecord>
   detail?: Partial<ApplicationDetail>
   approveError?: unknown
+  accounts?: ReadonlyArray<{ id: string; label: string; isDefault: boolean; firstName?: string; lastName?: string }>
 }) => {
   const calls: Calls = { create: [], setKit: [], approve: [], save: [] }
   const applications = options.applications ?? []
   const rpc = {
-    HhAccountsList: () => Effect.succeed([{ id: ACCOUNT, label: "main", isDefault: true }]),
+    HhAccountsList: () =>
+      Effect.succeed(options.accounts ?? [{ id: ACCOUNT, label: "main", isDefault: true }]),
     DecisionsList: () => Effect.succeed([decision(1), decision(2), decision(3, "skip")]),
     VacanciesList: () => Effect.succeed({ items: [] }),
     ApplicationsList: () => Effect.succeed(applications),
@@ -202,6 +204,25 @@ describe("write tools", () => {
     expect(skip.isError).toBe(true)
     expect(text(skip)).toContain("skip")
     expect(known.calls.create).toHaveLength(0)
+  })
+
+  test("application_prepare resolves the account by name, and refuses to guess among several", async () => {
+    const OTHER = id(501)
+    const two = [
+      { id: ACCOUNT, label: "main", isDefault: false, firstName: "Ivan", lastName: "Petrov" },
+      { id: OTHER, label: "side", isDefault: false }
+    ]
+    const named = makeFake({ accounts: two })
+    const ok = await call(named.layer, "application_prepare", { decisionId: id(1001), account: "ivan petrov" })
+    expect(ok.isError).toBeFalsy()
+    expect(named.calls.create).toEqual([{ decisionId: id(1001), hhAccountId: ACCOUNT, mode: "drafts" }])
+    const brief = (ok.structuredContent as { application: { account: { id: string; name: string } } }).application
+    expect(brief.account).toEqual({ id: ACCOUNT, name: "Ivan Petrov" })
+
+    const ambiguous = await call(named.layer, "application_prepare", { decisionId: id(1001) })
+    expect(ambiguous.isError).toBe(true)
+    expect(text(ambiguous)).toContain("none is default")
+    expect(text(ambiguous)).toContain("Ivan Petrov")
   })
 
   test("application_form reports pending, then the form with hints and kit status", async () => {

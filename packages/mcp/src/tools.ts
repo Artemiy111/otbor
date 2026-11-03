@@ -3,7 +3,7 @@ import { Schema } from "effect"
 import { Tool, Toolkit } from "effect/ai"
 import { FormView } from "./apply.ts"
 import { ToolFailure } from "./errors.ts"
-import { ApplicationBrief, DecisionBrief, EmployerBrief, VacancyBrief } from "./shapes.ts"
+import { AccountRef, ApplicationBrief, DecisionBrief, EmployerBrief, VacancyBrief } from "./shapes.ts"
 
 /**
  * Tool definitions. Handlers live in `handlers.ts`.
@@ -35,6 +35,9 @@ const readTool = <
 const limit = (description: string) => Schema.optional(Schema.Int).annotate({ description })
 const text = (description: string) => Schema.optional(Schema.String).annotate({ description })
 const NullableString = Schema.NullOr(Schema.String)
+const account = Schema.optional(Schema.String).annotate({
+  description: "Only this hh account: id, id prefix or name/label (see accounts_list). Default: all accounts"
+})
 
 /* --------------------------------- system ---------------------------------- */
 
@@ -105,6 +108,7 @@ export const TopItem = Schema.Struct({
   priority: Schema.Number,
   verdict: Schema.String,
   gate: Schema.String,
+  account: Schema.NullOr(AccountRef),
   reasons: Schema.Array(Schema.String),
   url: NullableString
 })
@@ -124,7 +128,8 @@ export const VacanciesTop = readTool("vacancies_top", {
     verdict: Schema.optional(Schema.Literals(["apply", "draft", "skip"])).annotate({
       description: "Decision verdict filter (default \"apply\")"
     }),
-    minFit: Schema.optional(Schema.Number).annotate({ description: "Minimum fit score, 0-100" })
+    minFit: Schema.optional(Schema.Number).annotate({ description: "Minimum fit score, 0-100" }),
+    account
   }),
   success: Schema.Struct({
     items: Schema.Array(TopItem),
@@ -173,6 +178,7 @@ export const DecisionsList = readTool("decisions_list", {
   parameters: Schema.Struct({
     verdict: Schema.optional(Schema.Literals(["apply", "draft", "skip"])),
     minFit: Schema.optional(Schema.Number),
+    account,
     limit: limit("Page size (default 20, max 100)"),
     offset: limit("Offset (default 0)")
   }),
@@ -208,6 +214,28 @@ export const FitGet = readTool("fit_get", {
       error: NullableString,
       updatedAt: Schema.String
     }))
+  })
+})
+
+/* -------------------------------- accounts --------------------------------- */
+
+export const AccountsList = readTool("accounts_list", {
+  description:
+    "The hh.ru accounts otbor applies from: id, name (hh display name, else label), label, whether it is the " +
+    "default, its browser session profile and how many applications it has per state. Applications, decisions " +
+    "and vacancies_top carry `account: {id, name}` and accept an `account` filter.",
+  success: Schema.Struct({
+    items: Schema.Array(Schema.Struct({
+      id: Schema.String,
+      name: Schema.String,
+      label: Schema.String,
+      isDefault: Schema.Boolean,
+      sessionProfile: NullableString,
+      applications: Schema.Record(Schema.String, Schema.Int)
+    })),
+    applicationsCountedFrom: Schema.Int.annotate({
+      description: "Counts cover the most recently updated applications only (at most this many)"
+    })
   })
 })
 
@@ -343,6 +371,7 @@ export const ApplicationsList = readTool("applications_list", {
       "needs_human",
       "failed"
     ])),
+    account,
     limit: limit("Page size (default 20, max 100)")
   }),
   success: Schema.Struct({ items: Schema.Array(ApplicationBrief), returned: Schema.Int })
@@ -461,6 +490,7 @@ export const ContactsList = readTool("contacts_list", {
 
 export const OtborReadToolkit = Toolkit.make(
   SystemHealth,
+  AccountsList,
   VacanciesTop,
   VacancyGet,
   DecisionsList,
@@ -489,12 +519,13 @@ Domain model, in pipeline order:
 - decision: the policy result for a vacancy: verdict (apply / draft / skip), fit (0-100 against the resume), priority (ranking score) and reasons (why). Reasons starting with "blocked_" explain a skip. The "fit" reason says whether the number is "deterministic" (keyword rules, saturates near 95-100) or "llm" (a personal judgement, see fit_get).
 - application: created from an apply/draft decision; states draft, queued, submitting, submitted, skipped, needs_human, failed. Submit is at-most-once; "waiting" usually means draft or needs_human. Applications the operator made by hand on hh.ru are imported by the operator CLI command "otbor hh sync" as state submitted with origin "imported" (and hh's own status); they count as already applied (blocked_applied), cannot be approved or prepared again, and are not otbor submits. This server has no tool to run or change the sync.
 - kit: the cover letter and form answers prepared for an application.
-Also: presets (saved filters), employers (with blacklist state), resumes (with operator enrichment), conversations and contacts (replies from recruiters), schedules (crawls) and the harness queue.
+Also: hh accounts (accounts_list; several can exist), presets (saved filters), employers (with blacklist state), resumes (with operator enrichment), conversations and contacts (replies from recruiters), schedules (crawls) and the harness queue.
 
 How to use the read tools:
 - "best vacancies / what should I apply to": vacancies_top, then vacancy_get for details of the interesting ones.
 - "what does vacancy X need": vacancy_get (accepts an id, id prefix or hh.ru URL).
 - "what is waiting": applications_list with state draft or needs_human, then application_get.
+- Accounts: applications and decisions belong to an hh account and show it as account {id, name}. Read tools take an optional \`account\` (id, id prefix or name/label, case-insensitive) and cover all accounts without it. Write tools use \`account\`, else the default account, else the only one; with several accounts and no default they fail and list them.
 - If a tool says the API is not reachable, tell the user to run \`otbor up\` and retry; use system_health to confirm.
 Outputs are compact and long texts are trimmed (check the truncated flag; raise maxChars if you need more).`
 

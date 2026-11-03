@@ -12,9 +12,12 @@ import type {
 } from "@otbor/contract"
 import { describeKitAnswer } from "@otbor/contract"
 import { Effect } from "effect"
+import { accountsFor } from "./accounts.ts"
 import { Api } from "./api.ts"
 import { guard, ToolFailure } from "./errors.ts"
 import {
+  accountName,
+  accountRef,
   applicationBrief,
   clamp,
   decisionBrief,
@@ -31,6 +34,7 @@ const DECISION_PAGE = 200
 const DECISION_PAGES = 4
 const VACANCY_PAGE = 200
 const VACANCY_PAGES = 5
+const APPLICATION_COUNT_WINDOW = 200
 
 export const fail = (message: string) => Effect.fail(new ToolFailure({ message }))
 
@@ -149,6 +153,28 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
       return yield* run(rpc.QueueStatsGet())
     }),
 
+    accounts_list: Effect.fn("mcp.accounts_list")(function*() {
+      const accounts = yield* run(rpc.HhAccountsList())
+      const applications = yield* run(rpc.ApplicationsList({ limit: APPLICATION_COUNT_WINDOW }))
+      return {
+        items: accounts.map((account) => {
+          const counts: Record<string, number> = {}
+          for (const a of applications) {
+            if (a.hhAccountId === account.id) counts[a.state] = (counts[a.state] ?? 0) + 1
+          }
+          return {
+            id: account.id,
+            name: accountName(account),
+            label: account.label,
+            isDefault: account.isDefault,
+            sessionProfile: account.sessionProfile,
+            applications: counts
+          }
+        }),
+        applicationsCountedFrom: APPLICATION_COUNT_WINDOW
+      }
+    }),
+
     schedules_list: Effect.fn("mcp.schedules_list")(function*() {
       const schedules = yield* run(rpc.SchedulesList())
       return {
@@ -167,6 +193,7 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
 
     vacancies_top: Effect.fn("mcp.vacancies_top")(function*(params) {
       const count = clamp(params.limit, 10, 50)
+      const { filter, directory } = yield* accountsFor(run(rpc.HhAccountsList()), params.account)
       const verdict = params.verdict ?? "apply"
 
       let presetId: string | undefined
@@ -185,6 +212,7 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
         orderBy: "priority",
         latestPerVacancy: true,
         limit: count,
+        ...(filter === undefined ? {} : { hhAccountId: filter.id }),
         ...(params.minFit === undefined ? {} : { minFit: Math.trunc(params.minFit) }),
         ...(presetId === undefined ? {} : { presetId: presetId as PresetId })
       }))
@@ -214,6 +242,7 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
           priority: d.priority,
           verdict: d.verdict,
           gate: d.gate,
+          account: d.hhAccountId == null ? null : accountRef(directory, d.hhAccountId),
           reasons: humanReasons(d.reasons, 4),
           url: v?.canonicalUrl ?? null
         }
@@ -231,6 +260,7 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
       const maxChars = clamp(params.maxChars, 4000, 20000, 200)
       const id = yield* run(resolveVacancyId(rpc, params.id))
       const detail = yield* run(rpc.VacanciesGet({ id }))
+      const { directory } = yield* accountsFor(run(rpc.HhAccountsList()), undefined)
       const decisions = yield* run(scanDecisions(rpc, undefined)).pipe(Effect.catch(() => Effect.succeed([])))
       const latest = decisions.find((d) => d.vacancyId === id)
       const description = truncate(detail.descriptionText, maxChars)
@@ -253,19 +283,21 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
           typo: k.typo
         })),
         titleGate: detail.titleVerdict ?? null,
-        decision: latest === undefined ? null : decisionBrief(latest, 8)
+        decision: latest === undefined ? null : decisionBrief(latest, 8, directory)
       }
     }),
 
     decisions_list: Effect.fn("mcp.decisions_list")(function*(params) {
+      const { filter, directory } = yield* accountsFor(run(rpc.HhAccountsList()), params.account)
       const decisions = yield* run(rpc.DecisionsList({
         verdict: params.verdict,
+        ...(filter === undefined ? {} : { hhAccountId: filter.id }),
         limit: clamp(params.limit, 20, 100),
         offset: clamp(params.offset, 0, 100000, 0)
       }))
       const items = decisions
         .filter((d) => params.minFit === undefined || d.fit >= params.minFit)
-        .map((d) => decisionBrief(d))
+        .map((d) => decisionBrief(d, 5, directory))
       return { items, returned: items.length }
     }),
 
@@ -368,20 +400,23 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
     }),
 
     applications_list: Effect.fn("mcp.applications_list")(function*(params) {
+      const { filter, directory } = yield* accountsFor(run(rpc.HhAccountsList()), params.account)
       const applications = yield* run(rpc.ApplicationsList({
         state: params.state,
+        ...(filter === undefined ? {} : { hhAccountId: filter.id }),
         limit: clamp(params.limit, 20, 100)
       }))
-      return { items: applications.map(applicationBrief), returned: applications.length }
+      return { items: applications.map((a) => applicationBrief(a, directory)), returned: applications.length }
     }),
 
     application_get: Effect.fn("mcp.application_get")(function*(params) {
       const detail = yield* run(rpc.ApplicationsGet({ id: params.id as ApplicationId }))
+      const { directory } = yield* accountsFor(run(rpc.HhAccountsList()), undefined)
       const attempts = [...detail.attempts].sort((a, b) => a.seq - b.seq)
       const letter = detail.kit?.letter == null ? null : truncate(detail.kit.letter, 1500)
       return {
-        application: applicationBrief(detail.application),
-        decision: detail.decision == null ? null : decisionBrief(detail.decision, 8),
+        application: applicationBrief(detail.application, directory),
+        decision: detail.decision == null ? null : decisionBrief(detail.decision, 8, directory),
         form: formView(detail),
         kit: detail.kit == null
           ? null
@@ -412,7 +447,8 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
 
     application_form: Effect.fn("mcp.application_form")(function*(params) {
       const detail = yield* run(rpc.ApplicationsGet({ id: params.applicationId as ApplicationId }))
-      return { application: applicationBrief(detail.application), form: formView(detail) }
+      const { directory } = yield* accountsFor(run(rpc.HhAccountsList()), undefined)
+      return { application: applicationBrief(detail.application, directory), form: formView(detail) }
     }),
 
     conversations_list: Effect.fn("mcp.conversations_list")(function*(params) {

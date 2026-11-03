@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, h, ref } from "vue"
 import { useQuery } from "@pinia/colada"
-import type { ApplicationRecord } from "@otbor/contract"
+import type { ApplicationRecord, HhAccountRecord } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert } from "@lucide/vue"
 import { applicationApi, applicationKeys } from "@/entities/application"
+import { hhAccountApi, hhAccountKeys, hhAccountNameById } from "@/entities/hh-account"
+import { AccountFilter } from "@/features/account-filter"
 import { ApplicationStateFilter } from "@/features/application-filter"
 import { RefreshButton } from "@/features/refresh-button"
 import {
@@ -26,13 +28,21 @@ import {
 import { PageHeader } from "@/widgets/page-header"
 
 const state = ref("all")
+const account = ref("all")
+
+const accountsQuery = useQuery({
+  key: () => hhAccountKeys.list(),
+  query: () => hhAccountApi.list()
+})
+const accounts = computed<ReadonlyArray<HhAccountRecord>>(() => accountsQuery.data.value ?? [])
 
 const query = useQuery({
-  key: () => applicationKeys.list(state.value),
+  key: () => applicationKeys.list(state.value, account.value),
   query: () =>
     applicationApi.list({
       limit: 200,
-      state: state.value === "all" ? undefined : state.value
+      state: state.value === "all" ? undefined : state.value,
+      hhAccountId: account.value === "all" ? undefined : account.value
     })
 })
 
@@ -85,8 +95,7 @@ const columns: ColumnDef<ApplicationRecord>[] = [
   textColumn<ApplicationRecord>({
     id: "hhAccountId",
     title: "Аккаунт",
-    accessorFn: (row) => row.hhAccountId,
-    cellClass: "font-mono text-xs"
+    accessorFn: (row) => hhAccountNameById(accounts.value, row.hhAccountId)
   }),
   {
     accessorKey: "updatedAt",
@@ -131,6 +140,7 @@ const columns: ColumnDef<ApplicationRecord>[] = [
     >
       <template #toolbar>
         <ApplicationStateFilter v-model="state" />
+        <AccountFilter v-model="account" :accounts="accounts" />
         <span class="pb-2 text-xs text-muted-foreground">Показано: {{ applications.length }}</span>
       </template>
     </DataTable>

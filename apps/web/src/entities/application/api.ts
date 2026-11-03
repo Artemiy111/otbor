@@ -9,6 +9,7 @@ import { call } from "@/shared/api"
 
 export interface ApplicationListInput {
   readonly state?: string
+  readonly hhAccountId?: string
   readonly limit?: number
 }
 
@@ -21,7 +22,7 @@ export interface ApplicationCreateFromDecisionInput {
 
 export const applicationApi = {
   list: (input: ApplicationListInput): Promise<ReadonlyArray<ApplicationRecord>> =>
-    call((client) => client.ApplicationsList(input)),
+    call((client) => client.ApplicationsList({ ...input, hhAccountId: input.hhAccountId as HhAccountId | undefined })),
   get: (id: string): Promise<ApplicationDetail> =>
     call((client) => client.ApplicationsGet({ id: id as ApplicationId })),
   createFromDecision: (input: ApplicationCreateFromDecisionInput): Promise<ApplicationRecord> =>
