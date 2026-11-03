@@ -289,7 +289,12 @@ export const CrawlSavePage = Rpc.make("CrawlSavePage", {
     pagesDone: Schema.Int,
     found: Schema.Int,
     /** Ingested vacancies from this page, in card order. */
-    vacancyIds: Schema.Array(VacancyId)
+    vacancyIds: Schema.Array(VacancyId),
+    currentPage: Schema.optional(Schema.NullOr(Schema.Int)),
+    pagesTotal: Schema.optional(Schema.NullOr(Schema.Int)),
+    inserted: Schema.optional(Schema.Int),
+    updated: Schema.optional(Schema.Int),
+    skipped: Schema.optional(Schema.Int)
   }),
   success: CrawlRun,
   error: ApiError

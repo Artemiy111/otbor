@@ -74,7 +74,8 @@ guide doesn't cover, search through the source code in `node_modules/effect/src`
   and to `logs/app-YYYY-MM-DD.log`.
 - Crawl schedules are user-owned rows. The worker claims due schedules with
   `FOR UPDATE SKIP LOCKED`, advances `next_run_at` in the same transaction and
-  runs exactly one search page through `CrawlRunner`. `ScheduleRunNow` only
+  runs a full search crawl through `CrawlRunner` (up to 100 pages; it stops at the
+  last page hh.ru reports). `ScheduleRunNow` only
   accepts the request and forks the crawl, so the RPC never waits for hh.ru.
 - Web list tables use the shared `apps/web/src/shared/ui/data-table` wrapper
   (TanStack Table) instead of raw shadcn `Table` markup.

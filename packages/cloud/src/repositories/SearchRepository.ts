@@ -17,6 +17,8 @@ export interface StoredSearchRun {
   readonly normalizedUrl: string
   readonly status: string
   readonly nextPage: number | null
+  readonly currentPage: number | null
+  readonly pagesTotal: number | null
   readonly pagesDone: number
   readonly found: number
   readonly inserted: number
@@ -33,6 +35,8 @@ const runSelection = {
   normalizedUrl: searchQuery.normalizedUrl,
   status: searchRun.status,
   nextPage: searchRun.nextPage,
+  currentPage: searchRun.currentPage,
+  pagesTotal: searchRun.pagesTotal,
   pagesDone: searchRun.pagesDone,
   found: searchRun.found,
   inserted: searchRun.inserted,
@@ -49,6 +53,8 @@ export const toCrawlRun = (row: StoredSearchRun): CrawlRun => ({
   normalizedUrl: row.normalizedUrl,
   status: row.status as CrawlRun["status"],
   nextPage: row.nextPage ?? 0,
+  currentPage: row.currentPage,
+  pagesTotal: row.pagesTotal,
   pagesDone: row.pagesDone,
   found: row.found,
   inserted: row.inserted,
@@ -62,12 +68,20 @@ export const toCrawlRun = (row: StoredSearchRun): CrawlRun => ({
 const nonNegativeInt = (value: number): number =>
   Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0
 
+const nonNegativeNullableInt = (value: number | null | undefined): number | null =>
+  value === null || value === undefined ? null : nonNegativeInt(value)
+
 /** A new run starts *at* `startPage`: `next_page` doubles as the resume cursor. */
 export const startRunFields = (startPage: number) => ({
   status: "running" as const,
   nextPage: nonNegativeInt(startPage),
+  currentPage: nonNegativeInt(startPage),
+  pagesTotal: null,
   pagesDone: 0,
   found: 0,
+  inserted: 0,
+  updated: 0,
+  skipped: 0,
   error: null
 })
 
@@ -75,6 +89,11 @@ export interface RunProgress {
   readonly pagesDone: number
   readonly found: number
   readonly nextPage: number
+  readonly currentPage?: number | null
+  readonly pagesTotal?: number | null
+  readonly inserted?: number
+  readonly updated?: number
+  readonly skipped?: number
 }
 
 /**
@@ -85,7 +104,22 @@ export const progressRunFields = (progress: RunProgress) => ({
   status: "running" as const,
   pagesDone: nonNegativeInt(progress.pagesDone),
   found: nonNegativeInt(progress.found),
-  nextPage: nonNegativeInt(progress.nextPage)
+  nextPage: nonNegativeInt(progress.nextPage),
+  ...(progress.currentPage === undefined
+    ? {}
+    : { currentPage: nonNegativeNullableInt(progress.currentPage) }),
+  ...(progress.pagesTotal === undefined
+    ? {}
+    : { pagesTotal: nonNegativeNullableInt(progress.pagesTotal) }),
+  ...(progress.inserted === undefined
+    ? {}
+    : { inserted: nonNegativeInt(progress.inserted) }),
+  ...(progress.updated === undefined
+    ? {}
+    : { updated: nonNegativeInt(progress.updated) }),
+  ...(progress.skipped === undefined
+    ? {}
+    : { skipped: nonNegativeInt(progress.skipped) })
 })
 
 export interface FinishRunInput {

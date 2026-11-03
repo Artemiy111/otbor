@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { normalizeSearchUrl, searchTextFromUrl } from "../src/url.ts"
+import { formatSearchUrl, normalizeSearchUrl, searchTextFromUrl } from "../src/url.ts"
 
 describe("search URL normalization", () => {
   test("drops paging, sessions and referral noise", () => {
@@ -18,6 +18,20 @@ describe("search URL normalization", () => {
     expect(
       normalizeSearchUrl("https://m.hh.ru/search/vacancy?area=2&text=sre")
     ).toBe("https://hh.ru/search/vacancy?area=2&text=sre")
+  })
+
+  test("formats a normalized URL for humans without changing its meaning", () => {
+    expect(
+      formatSearchUrl(
+        "https://hh.ru/search/vacancy?text=Devops-%D0%B8%D0%BD%D0%B6%D0%B5%D0%BD%D0%B5%D1%80&area=1"
+      )
+    ).toBe("https://hh.ru/search/vacancy?text=Devops-инженер&area=1")
+    expect(formatSearchUrl("https://hh.ru/search/vacancy?text=sre+lead&area=1")).toBe(
+      "https://hh.ru/search/vacancy?text=sre%20lead&area=1"
+    )
+    expect(
+      formatSearchUrl("https://hh.ru/search/vacancy?text=a%26b%3Dc%2Bd&text=%25")
+    ).toBe("https://hh.ru/search/vacancy?text=a%26b%3Dc%2Bd&text=%25")
   })
 
   test("keeps an unparseable value as typed text", () => {

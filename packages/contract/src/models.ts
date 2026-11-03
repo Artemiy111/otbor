@@ -246,6 +246,10 @@ export const CrawlRun = Schema.Struct({
   normalizedUrl: Schema.String,
   status: CrawlRunStatus,
   nextPage: Schema.Int,
+  /** Zero-based page currently being crawled or last completed; null for legacy rows. */
+  currentPage: Schema.NullOr(Schema.Int),
+  /** Total pages reported by the search engine; null until known. */
+  pagesTotal: Schema.NullOr(Schema.Int),
   pagesDone: Schema.Int,
   found: Schema.Int,
   inserted: Schema.Int,

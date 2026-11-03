@@ -59,8 +59,7 @@ export interface CrawlRunnerShape {
 
 /**
  * The scheduled half of the crawler. It uses the same fetch/parse helpers as
- * `otbor crawl`, but it is bounded to one page by default so a schedule never
- * turns into an unbounded crawl inside the worker.
+ * `otbor crawl`; search schedules request a full crawl (up to the caller's cap).
  *
  * Proxy settings stay local secrets: the endpoint (or the mihomo engine for a
  * subscription) is prepared here and never stored or logged in full.
@@ -175,6 +174,9 @@ export class CrawlRunner extends Context.Service<CrawlRunner, CrawlRunnerShape>(
 
         let pagesDone = 0
         let found = 0
+        let inserted = 0
+        let updated = 0
+        let skipped = 0
         const vacancyIds = new Set<string>()
 
         const savePage = (
@@ -189,6 +191,9 @@ export class CrawlRunner extends Context.Service<CrawlRunner, CrawlRunnerShape>(
 
             pagesDone += 1
             found += page.cards.length
+            inserted += saved.inserted
+            updated += saved.updated
+            skipped += saved.skipped
             for (const item of saved.items) vacancyIds.add(item.id)
 
             yield* crawl.savePage({
@@ -196,6 +201,11 @@ export class CrawlRunner extends Context.Service<CrawlRunner, CrawlRunnerShape>(
               nextPage: meta.page + 1,
               pagesDone,
               found,
+              currentPage: page.page,
+              pagesTotal: page.pagesTotal,
+              inserted,
+              updated,
+              skipped,
               vacancyIds: saved.items.map((item) => item.id)
             }).pipe(Effect.mapError((error) => asCrawlerError("network", error)))
 

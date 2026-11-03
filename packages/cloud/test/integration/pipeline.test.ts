@@ -8,6 +8,7 @@ import { Database } from "../../src/db/Database.ts"
 import { CrawlRunner, type CrawlRunnerResult } from "../../src/services/CrawlRunner.ts"
 import { DecisionService } from "../../src/services/DecisionService.ts"
 import { runDueSchedules } from "../../src/services/ScheduleWorker.ts"
+import { DEFAULT_SEARCH_CRAWL_PAGES } from "../../src/services/ScheduleDispatcher.ts"
 import { ScheduleService } from "../../src/services/ScheduleService.ts"
 import * as support from "./support.ts"
 
@@ -295,10 +296,27 @@ if (!enabled || serverUrl === null) {
 
       expect(outcomes.find((o) => o.targetId.includes(suffix))?.ok).toBe(true)
       // The schedule's page options reach the single crawl owner.
-      expect(seen[0]).toMatchObject({ maxPages: 3, delayMs: 5, stopWhenNoNew: true })
+      expect(seen[0]).toMatchObject({ maxPages: 3, delayMs: 5, stopWhenNoNew: false })
       expect(runs[0]?.detail).toMatchObject({ evaluated: 2 })
       const stored = await listDecisions(tenant.userId, { limit: 50 })
       expect(new Set(ids(stored))).toEqual(new Set(saved))
+    })
+
+    test("a search tick walks the whole result set by default", async () => {
+      const tenant = await support.seedTenant("chain-full")
+      const suffix = randomUUID().slice(0, 6)
+      const seen: Array<unknown> = []
+      await support.scheduleUpsert(tenant.userId, {
+        targetId: searchUrl(`full-${suffix}`),
+        intervalMinutes: 30
+      })
+
+      await runOnce(tenant.userId, runnerReturning(crawlResult([]), seen))
+
+      expect(seen[0]).toMatchObject({
+        maxPages: DEFAULT_SEARCH_CRAWL_PAGES,
+        stopWhenNoNew: false
+      })
     })
 
     test("an evaluation failure is recorded but does not fail the crawl", async () => {

@@ -98,6 +98,9 @@ const crawl = Command.make(
 
     let pagesDone = 0
     let found = 0
+    let inserted = 0
+    let updated = 0
+    let skipped = 0
 
     const savePage = (
       page: SearchPage,
@@ -138,12 +141,20 @@ const crawl = Command.make(
 
         pagesDone += 1
         found += page.cards.length
+        inserted += saved.inserted
+        updated += saved.updated
+        skipped += saved.skipped
 
         yield* api.CrawlSavePage({
           runId: crawlRun.runId,
           nextPage: meta.page + 1,
           pagesDone,
           found,
+          currentPage: page.page,
+          pagesTotal: page.pagesTotal,
+          inserted,
+          updated,
+          skipped,
           vacancyIds: [...vacancyIds]
         }).pipe(Effect.mapError((error) => asCrawlerError("network", error)))
 
@@ -179,6 +190,9 @@ const crawl = Command.make(
       nextPage: outcome.nextPage,
       pagesDone: outcome.pagesDone,
       found: outcome.found,
+      inserted: outcome.inserted,
+      updated: outcome.updated,
+      skipped: outcome.skipped,
       error: outcome.status === "done" ? null : outcome.reason
     })
 

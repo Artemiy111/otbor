@@ -93,6 +93,8 @@ export const searchRun = pgTable("search_run", {
     .references(() => searchQuery.id, { onDelete: "cascade" }),
   status: text("status").notNull(),
   nextPage: integer("next_page"),
+  currentPage: integer("current_page"),
+  pagesTotal: integer("pages_total"),
   pagesDone: integer("pages_done").notNull().default(0),
   found: integer("found").notNull().default(0),
   inserted: integer("inserted").notNull().default(0),

@@ -18,6 +18,11 @@ export interface CrawlSavePageInput {
   readonly pagesDone: number
   readonly found: number
   readonly vacancyIds: ReadonlyArray<VacancyId>
+  readonly currentPage?: number | null
+  readonly pagesTotal?: number | null
+  readonly inserted?: number
+  readonly updated?: number
+  readonly skipped?: number
 }
 
 export interface CrawlFinishInput {
@@ -102,7 +107,12 @@ export class CrawlService extends Context.Service<CrawlService, CrawlServiceShap
               yield* SearchRepository.updateRunProgress(tx, input.runId, {
                 pagesDone: input.pagesDone,
                 found: input.found,
-                nextPage: input.nextPage
+                nextPage: input.nextPage,
+                currentPage: input.currentPage,
+                pagesTotal: input.pagesTotal,
+                inserted: input.inserted,
+                updated: input.updated,
+                skipped: input.skipped
               })
 
               const hits = SearchRepository.searchHitRows(existing.queryId, input.vacancyIds)

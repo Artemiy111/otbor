@@ -18,6 +18,34 @@ const VOLATILE_PARAMS = new Set([
   "redirect"
 ])
 
+/** Escapes characters that must not change the meaning of a query in a link. */
+const escapeDisplayParam = (value: string): string =>
+  value
+    .replace(/%/g, "%25")
+    .replace(/&/g, "%26")
+    .replace(/=/g, "%3D")
+    .replace(/\+/g, "%2B")
+    .replace(/#/g, "%23")
+    .replace(/\?/g, "%3F")
+    .replace(/ /g, "%20")
+
+/**
+ * Human-readable URL for the same normalized identity: Cyrillic and spaces are
+ * legible, while reserved query characters stay escaped so the link is safe to
+ * click and round-trips to the same URL.
+ */
+export const formatSearchUrl = (input: string): string => {
+  try {
+    const url = new URL(input)
+    const query = [...url.searchParams.entries()]
+      .map(([key, value]) => `${escapeDisplayParam(key)}=${escapeDisplayParam(value)}`)
+      .join("&")
+    return `${url.origin}${url.pathname}${query === "" ? "" : `?${query}`}`
+  } catch {
+    return input.trim()
+  }
+}
+
 /** Stable identity of a saved search: drops paging and session noise. */
 export const normalizeSearchUrl = (input: string): string => {
   try {

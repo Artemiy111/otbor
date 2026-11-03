@@ -22,8 +22,13 @@ export interface ScheduleDispatcherShape {
   readonly run: (schedule: StoredSchedule) => Effect.Effect<ScheduleDispatchResult, ApiError>
 }
 
-/** Hard cap on pages per scheduled crawl tick; the default stays one. */
-export const MAX_CRAWL_PAGES = 20
+/** Hard cap on pages per scheduled crawl tick. */
+export const MAX_CRAWL_PAGES = 100
+/**
+ * A search schedule is a full backfill: every tick walks the whole result set,
+ * stopping only at the last page hh.ru reports.
+ */
+export const DEFAULT_SEARCH_CRAWL_PAGES = MAX_CRAWL_PAGES
 
 const intOption = (
   options: Record<string, unknown>,
@@ -148,9 +153,16 @@ export class ScheduleDispatcher extends Context.Service<
               const result = yield* runner.run({
                 userId: schedule.userId,
                 url: schedule.targetId,
-                maxPages: intOption(options, "maxPages", 1, 1, MAX_CRAWL_PAGES),
+                maxPages: intOption(
+                  options,
+                  "maxPages",
+                  DEFAULT_SEARCH_CRAWL_PAGES,
+                  1,
+                  MAX_CRAWL_PAGES
+                ),
                 delayMs: intOption(options, "delayMs", 750, 0, 60_000),
-                stopWhenNoNew: options.stopWhenNoNew !== false
+                // Full crawl by default; `stopWhenNoNew: true` is an explicit opt-out.
+                stopWhenNoNew: options.stopWhenNoNew === true
               })
               const chained = yield* evaluateSaved(
                 schedule.userId,

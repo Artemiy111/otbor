@@ -20,8 +20,13 @@ describe("search run bookkeeping", () => {
     expect(startRunFields(3)).toEqual({
       status: "running",
       nextPage: 3,
+      currentPage: 3,
+      pagesTotal: null,
       pagesDone: 0,
       found: 0,
+      inserted: 0,
+      updated: 0,
+      skipped: 0,
       error: null
     })
     expect(startRunFields(-5).nextPage).toBe(0)
@@ -40,6 +45,28 @@ describe("search run bookkeeping", () => {
       pagesDone: 0,
       found: 0,
       nextPage: 0
+    })
+    expect(
+      progressRunFields({
+        pagesDone: 1,
+        found: 50,
+        nextPage: 1,
+        currentPage: 0,
+        pagesTotal: 18,
+        inserted: 3,
+        updated: 2,
+        skipped: 45
+      })
+    ).toEqual({
+      status: "running",
+      pagesDone: 1,
+      found: 50,
+      nextPage: 1,
+      currentPage: 0,
+      pagesTotal: 18,
+      inserted: 3,
+      updated: 2,
+      skipped: 45
     })
   })
 
@@ -99,6 +126,8 @@ describe("search run bookkeeping", () => {
       normalizedUrl: "https://hh.ru/search/vacancy?text=devops",
       status: "running",
       nextPage: null,
+      currentPage: null,
+      pagesTotal: null,
       pagesDone: 0,
       found: 0,
       inserted: 0,
