@@ -1,4 +1,4 @@
-import type { BlacklistScope, EmployerSummary } from "@otbor/contract"
+import type { BlacklistScope, EmployerHydrationMissing, EmployerHydrationTarget, EmployerSummary } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
@@ -123,11 +123,55 @@ export const findById = (
       })
     )
 
-export interface EmployerRefreshTarget {
+interface EmployerTargetRow {
   readonly id: string
-  readonly externalId: string
+  readonly source: string
+  readonly external_id: string
   readonly name: string
+  readonly rating: number | null
+  readonly reviews_count: number | null
+  readonly recommendations_percent: number | null
+  readonly site_url: string | null
+  readonly logo_url: string | null
+  readonly industries: unknown
+  readonly updated_at: string | Date
+  readonly vacancy_count: number | string
 }
+
+const toTarget = (row: EmployerTargetRow): EmployerHydrationTarget => {
+  const industries = industriesOf(row.industries)
+  const missing: Array<EmployerHydrationMissing> = []
+  if (row.rating === null) missing.push("rating")
+  if (row.site_url === null || row.site_url.trim() === "") missing.push("siteUrl")
+  if (row.logo_url === null || row.logo_url.trim() === "") missing.push("logoUrl")
+  if (industries.length === 0) missing.push("industries")
+  return {
+    id: row.id as EmployerHydrationTarget["id"],
+    source: row.source,
+    externalId: row.external_id,
+    name: row.name,
+    rating: row.rating,
+    reviewsCount: row.reviews_count,
+    recommendationsPercent: row.recommendations_percent,
+    siteUrl: row.site_url,
+    logoUrl: row.logo_url,
+    industries,
+    vacancyCount: Number(row.vacancy_count),
+    updatedAt: isoOf(row.updated_at),
+    missing
+  }
+}
+
+const industriesOf = (value: unknown): ReadonlyArray<string> =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
+
+const isoOf = (value: unknown): string => {
+  const date = value instanceof Date ? value : new Date(String(value))
+  return Number.isNaN(date.getTime()) ? new Date(0).toISOString() : date.toISOString()
+}
+
+const targetValues = (result: { readonly rows: unknown }) =>
+  (result.rows as unknown as ReadonlyArray<EmployerTargetRow>).map(toTarget)
 
 /**
  * Bounded refresh queue: only employers that actually back a vacancy, oldest
@@ -136,31 +180,88 @@ export interface EmployerRefreshTarget {
 export const listForRefresh = (
   tx: Executor,
   options: { readonly limit?: number } = {}
-): RepoEffect<ReadonlyArray<EmployerRefreshTarget>> => {
+): RepoEffect<ReadonlyArray<EmployerHydrationTarget>> => {
   const limit = Math.min(Math.max(options.limit ?? 25, 1), 200)
   return tx
     .execute(sql`
-      select e.id, e.external_id, e.name
+      select e.id, e.source, e.external_id, e.name, e.rating, e.reviews_count,
+             e.recommendations_percent, e.site_url, e.logo_url, e.industries,
+             e.updated_at,
+             count(v.id) filter (where not v.archived)::int as vacancy_count
       from employer e
       where e.source = 'hh'
         and exists (select 1 from vacancy v where v.employer_id = e.id)
+      group by e.id
       order by e.updated_at asc, e.id
       limit ${limit}
     `)
-    .pipe(
-      Effect.map((result) =>
-        (result.rows as unknown as ReadonlyArray<{
-          id: string
-          external_id: string
-          name: string
-        }>).map((row) => ({
-          id: row.id,
-          externalId: row.external_id,
-          name: row.name
-        }))
-      )
-    )
+    .pipe(Effect.map(targetValues))
 }
+
+/** One refresh target by id; used by the manual "refresh profile" action. */
+export const findTargetById = (
+  tx: Executor,
+  id: string
+): RepoEffect<EmployerHydrationTarget | null> =>
+  tx
+    .execute(sql`
+      select e.id, e.source, e.external_id, e.name, e.rating, e.reviews_count,
+             e.recommendations_percent, e.site_url, e.logo_url, e.industries,
+             e.updated_at,
+             count(v.id) filter (where not v.archived)::int as vacancy_count
+      from employer e
+      where e.source = 'hh' and e.id = ${id}
+      group by e.id
+    `)
+    .pipe(Effect.map((result) => targetValues(result)[0] ?? null))
+
+/** hh-only employer counters for the hydration dashboard. */
+export const countHhProfile = (tx: Executor): RepoEffect<{
+  readonly total: number
+  readonly linked: number
+  readonly withoutRating: number
+  readonly withoutSite: number
+  readonly withoutLogo: number
+  readonly withoutIndustries: number
+  readonly stale30Days: number
+}> =>
+  tx
+    .execute(sql`
+      select
+        count(*)::int as total,
+        count(*) filter (where exists (
+          select 1 from vacancy v where v.employer_id = e.id
+        ))::int as linked,
+        count(*) filter (where e.rating is null)::int as without_rating,
+        count(*) filter (where e.site_url is null or btrim(e.site_url) = '')::int as without_site,
+        count(*) filter (where e.logo_url is null or btrim(e.logo_url) = '')::int as without_logo,
+        count(*) filter (where e.industries is null or e.industries = '[]'::jsonb)::int as without_industries,
+        count(*) filter (where e.updated_at < now() - interval '30 days')::int as stale_30_days
+      from employer e
+      where e.source = 'hh'
+    `)
+    .pipe(
+      Effect.map((result) => {
+        const row = result.rows[0] as {
+          total?: number | string
+          linked?: number | string
+          without_rating?: number | string
+          without_site?: number | string
+          without_logo?: number | string
+          without_industries?: number | string
+          stale_30_days?: number | string
+        } | undefined
+        return {
+          total: Number(row?.total ?? 0),
+          linked: Number(row?.linked ?? 0),
+          withoutRating: Number(row?.without_rating ?? 0),
+          withoutSite: Number(row?.without_site ?? 0),
+          withoutLogo: Number(row?.without_logo ?? 0),
+          withoutIndustries: Number(row?.without_industries ?? 0),
+          stale30Days: Number(row?.stale_30_days ?? 0)
+        }
+      })
+    )
 
 export interface EmployerProfilePatch {
   readonly name?: string | null

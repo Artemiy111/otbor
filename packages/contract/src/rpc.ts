@@ -56,6 +56,8 @@ import {
   ScheduleRun,
   EmployerDetail,
   EmployerSummary,
+  EmployerHydrationTarget,
+  HydrationStats,
   HarnessExit,
   HarnessJob,
   HarnessRegistration,
@@ -244,6 +246,27 @@ export const VacanciesHydrateOne = Rpc.make("VacanciesHydrateOne", {
 
 export const VacancyHydrate = Rpc.make("VacancyHydrate", {
   payload: Schema.Struct({ id: VacancyId }),
+  success: Schema.Struct({ hydrated: Schema.Boolean }),
+  error: ApiError
+})
+
+/** Overview counters for the vacancy/employer hydration dashboard. */
+export const HydrationStatsRpc = Rpc.make("HydrationStats", {
+  success: HydrationStats,
+  error: ApiError
+})
+
+/** Employers backing vacancies, oldest profile first, with gaps made explicit. */
+export const EmployersHydrationTargets = Rpc.make("EmployersHydrationTargets", {
+  payload: Schema.Struct({
+    limit: Schema.optional(Schema.Int)
+  }),
+  success: Schema.Array(EmployerHydrationTarget),
+  error: ApiError
+})
+
+export const EmployersHydrateOne = Rpc.make("EmployersHydrateOne", {
+  payload: Schema.Struct({ id: EmployerId }),
   success: Schema.Struct({ hydrated: Schema.Boolean }),
   error: ApiError
 })
@@ -1062,6 +1085,9 @@ export const OtborRpcs = RpcGroup.make(
   VacanciesHydrationTargets,
   VacanciesHydrateOne,
   VacancyHydrate,
+  HydrationStatsRpc,
+  EmployersHydrationTargets,
+  EmployersHydrateOne,
   VacanciesEvaluate,
   CrawlStart,
   CrawlSavePage,

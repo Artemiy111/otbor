@@ -25,6 +25,7 @@ server-side fallback:
 | `/health` | `SystemHealth` |
 | `/vacancies` | corpus list: search, gate, salary, company, area, date |
 | `/vacancies/:id` | vacancy detail, skills, lexicon matches, description, links |
+| `/hydration` | vacancy/company hydration queues, scheduled passes and run history |
 | `/companies` | employers with rating, industries and vacancy count |
 | `/companies/:id` | employer profile and its vacancies |
 | `/keywords` | lexicon terms, aliases and enabled state |

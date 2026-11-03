@@ -6,7 +6,7 @@ import type {
   VacancyDraft,
   VacancySummary
 } from "@otbor/contract"
-import { sql } from "drizzle-orm"
+import { eq, sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
 import { employer, vacancy, vacancyResponseSample, vacancySkill, vacancySnapshot } from "../db/tables.ts"
@@ -349,6 +349,32 @@ export const findByExternal = (tx: Executor, source: string, externalId: string)
   )
 }
 
+/** hh-only vacancy counters for the hydration dashboard. */
+export const countHhProfile = (tx: Executor): RepoEffect<{
+  readonly total: number
+  readonly full: number
+  readonly stub: number
+}> =>
+  tx
+    .select({
+      total: sql<number>`count(*)::int`,
+      full: sql<number>`count(*) filter (where ${vacancy.hydrationStatus} = 'full'
+        and ${vacancy.descriptionHtml} is not null
+        and coalesce(length(btrim(${vacancy.descriptionText})), 0) >= ${HYDRATION_MIN_DESCRIPTION})::int`,
+      stub: sql<number>`count(*) filter (where not (${vacancy.hydrationStatus} = 'full'
+        and ${vacancy.descriptionHtml} is not null
+        and coalesce(length(btrim(${vacancy.descriptionText})), 0) >= ${HYDRATION_MIN_DESCRIPTION}))::int`
+    })
+    .from(vacancy)
+    .where(eq(vacancy.source, "hh"))
+    .pipe(
+      Effect.map((rows) => ({
+        total: Number(rows[0]?.total ?? 0),
+        full: Number(rows[0]?.full ?? 0),
+        stub: Number(rows[0]?.stub ?? 0)
+      }))
+    )
+
 export interface HydrationFilter {
   readonly limit?: number
   readonly minDescriptionLength?: number
@@ -370,9 +396,14 @@ export const listNeedingHydration = (tx: Executor, filter: HydrationFilter = {})
       externalId: vacancy.externalId,
       canonicalUrl: vacancy.canonicalUrl,
       title: vacancy.title,
-      descriptionLength: sql<number>`coalesce(length(btrim(${vacancy.descriptionText})), 0)::int`
+      descriptionLength: sql<number>`coalesce(length(btrim(${vacancy.descriptionText})), 0)::int`,
+      employerName: employer.name,
+      areaName: vacancy.areaName,
+      publishedAt: vacancy.publishedAt,
+      lastSeenAt: vacancy.lastSeenAt
     })
     .from(vacancy)
+    .leftJoin(employer, eq(vacancy.employerId, employer.id))
     .where(sql`
       ${vacancy.source} = 'hh'
       and (
@@ -392,7 +423,11 @@ export const listNeedingHydration = (tx: Executor, filter: HydrationFilter = {})
             externalId: row.externalId,
             canonicalUrl: row.canonicalUrl,
             title: row.title,
-            descriptionLength: Number(row.descriptionLength)
+            descriptionLength: Number(row.descriptionLength),
+            employerName: row.employerName ?? null,
+            areaName: row.areaName ?? null,
+            publishedAt: row.publishedAt?.toISOString() ?? null,
+            lastSeenAt: row.lastSeenAt?.toISOString() ?? null
           })
         )
       )

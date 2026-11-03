@@ -49,7 +49,11 @@ const telegramAccountsQuery = useQuery({
 })
 
 const schedules = computed<ReadonlyArray<CrawlSchedule>>(() =>
-  (query.data.value ?? []).filter((schedule) => schedule.kind !== "search")
+  (query.data.value ?? []).filter((schedule) =>
+    schedule.kind !== "search" &&
+    schedule.kind !== "vacancy_hydration" &&
+    schedule.kind !== "employer_hydration"
+  )
 )
 
 const runsQuery = useQuery({
@@ -83,13 +87,11 @@ const runNowMutation = useMutation<{ readonly accepted: boolean }, string>({
   mutation: (id) => scheduleApi.runNow(id)
 })
 
-const kind = ref("search")
+const kind = ref("mail_sync")
 const target = ref("")
 const interval = ref("30")
 const enabled = ref(true)
 
-const limit = ref("")
-const delayMs = ref("")
 const mailDays = ref("")
 const mailLimit = ref("")
 const mailMaxPages = ref("")
@@ -112,17 +114,13 @@ const errorText = computed(() =>
   query.error.value === null ? null : describeError(query.error.value)
 )
 
-const isSearch = computed(() => kind.value === "search")
-const isHydration = computed(
-  () => kind.value === "vacancy_hydration" || kind.value === "employer_hydration"
+const hasOptions = computed(
+  () => kind.value === "mail_sync" || kind.value === "telegram_sync"
 )
 const isAccountTarget = computed(
   () => kind.value === "mail_sync" || kind.value === "telegram_sync"
 )
 const isChat = computed(() => kind.value === "hh_chat_sync")
-const hasOptions = computed(
-  () => isHydration.value || kind.value === "mail_sync" || kind.value === "telegram_sync"
-)
 
 const targetAccounts = computed(() =>
   kind.value === "mail_sync" ? mailAccounts.value : telegramAccounts.value
@@ -138,9 +136,7 @@ const optionString = (options: Record<string, unknown>, key: string): string => 
 }
 
 const defaultTarget = (next: string): string =>
-  next === "vacancy_hydration" || next === "employer_hydration" || next === "hh_chat_sync"
-    ? "global"
-    : ""
+  next === "hh_chat_sync" ? "global" : ""
 
 const changeKind = (next: string) => {
   kind.value = next
@@ -165,12 +161,10 @@ onUnmounted(() => {
 
 const resetForm = () => {
   editingId.value = null
-  kind.value = "vacancy_hydration"
-  target.value = "global"
+  kind.value = "mail_sync"
+  target.value = ""
   interval.value = "30"
   enabled.value = true
-  limit.value = ""
-  delayMs.value = ""
   mailDays.value = ""
   mailLimit.value = ""
   mailMaxPages.value = ""
@@ -186,14 +180,6 @@ const fillForm = (schedule: CrawlSchedule) => {
   target.value = schedule.targetId
   interval.value = String(schedule.intervalMinutes)
   enabled.value = schedule.enabled
-  limit.value =
-    nextKind === "vacancy_hydration" || nextKind === "employer_hydration"
-      ? optionString(schedule.options, "limit")
-      : ""
-  delayMs.value =
-    nextKind === "vacancy_hydration" || nextKind === "employer_hydration"
-      ? optionString(schedule.options, "delayMs")
-      : ""
   mailLimit.value = nextKind === "mail_sync" ? optionString(schedule.options, "limit") : ""
   mailDays.value = nextKind === "mail_sync" ? optionString(schedule.options, "days") : ""
   mailMaxPages.value = nextKind === "mail_sync" ? optionString(schedule.options, "maxPages") : ""
@@ -224,10 +210,7 @@ const collectOptions = (): Record<string, unknown> | null => {
   }
 
   let valid = true
-  if (isHydration.value) {
-    valid = add("limit", limit.value, "Лимит", 1, 200) && valid
-    valid = add("delayMs", delayMs.value, "Задержка", 0, 60_000) && valid
-  } else if (kind.value === "mail_sync") {
+  if (kind.value === "mail_sync") {
     valid = add("days", mailDays.value, "Дней", 0, 3_650) && valid
     valid = add("limit", mailLimit.value, "Лимит писем", 1, 500) && valid
     valid = add("maxPages", mailMaxPages.value, "Страниц", 1, 100) && valid
@@ -248,17 +231,8 @@ const submit = async () => {
     return
   }
 
-  const trimmedTarget = isHydration.value ? "global" : target.value.trim()
-  if (isSearch.value) {
-    if (trimmedTarget === "") {
-      formError.value = "Введите URL поиска hh.ru."
-      return
-    }
-    if (!/^https?:\/\//i.test(trimmedTarget)) {
-      formError.value = "URL должен начинаться с http:// или https://."
-      return
-    }
-  } else if (isAccountTarget.value && trimmedTarget === "") {
+  const trimmedTarget = target.value.trim()
+  if (isAccountTarget.value && trimmedTarget === "") {
     formError.value =
       kind.value === "mail_sync"
         ? "Выберите почтовый аккаунт."
@@ -334,12 +308,8 @@ const runNow = async (schedule: CrawlSchedule) => {
 
 const kindVariant = (value: string): "info" | "secondary" | "neutral" | "warning" => {
   switch (value) {
-    case "search":
     case "source":
       return "info"
-    case "vacancy_hydration":
-    case "employer_hydration":
-      return "secondary"
     case "hh_chat_sync":
       return "warning"
     default:
@@ -349,10 +319,6 @@ const kindVariant = (value: string): "info" | "secondary" | "neutral" | "warning
 
 const targetText = (schedule: CrawlSchedule): string => {
   switch (schedule.kind) {
-    case "vacancy_hydration":
-      return "Все вакансии"
-    case "employer_hydration":
-      return "Все компании"
     case "mail_sync": {
       const account = mailAccounts.value.find((item) => item.id === schedule.targetId)
       return account?.label ?? schedule.targetId
@@ -578,7 +544,7 @@ const runColumns: ColumnDef<ScheduleRun>[] = [
   <section>
     <PageHeader
       title="Обход"
-      description="Расписания источников: гидратация вакансий и компаний, синхронизация почты и Telegram. Поиск новых вакансий настраивается на странице «Поиск». Запустите «Запустить сейчас», чтобы получить первую порцию, или дождитесь интервала."
+      description="Расписания синхронизации почты и Telegram. Гидратация вакансий и компаний вынесена на страницу «Гидратация», поиск — на страницу «Поиск». Запустите «Запустить» или дождитесь интервала."
     >
       <template #actions>
         <RefreshButton :loading="query.isLoading.value" @refresh="query.refetch()" />
@@ -628,8 +594,6 @@ const runColumns: ColumnDef<ScheduleRun>[] = [
                 </SelectTrigger>
                 <SelectContent>
                   
-                  <SelectItem value="vacancy_hydration">Гидратация вакансий</SelectItem>
-                  <SelectItem value="employer_hydration">Гидратация компаний</SelectItem>
                   <SelectItem value="mail_sync">Синхронизация почты</SelectItem>
                   <SelectItem value="telegram_sync">Синхронизация Telegram</SelectItem>
                   <SelectItem value="hh_chat_sync">Чаты hh (пока недоступно)</SelectItem>
@@ -650,33 +614,7 @@ const runColumns: ColumnDef<ScheduleRun>[] = [
               <p class="text-xs text-muted-foreground">Не меньше 5 минут.</p>
             </div>
 
-            <div v-if="isSearch" class="space-y-2 md:col-span-2">
-              <Label for="schedule-target">URL поиска</Label>
-              <Input
-                id="schedule-target"
-                v-model="target"
-                type="url"
-                placeholder="https://hh.ru/search/vacancy?text=backend"
-                :disabled="isSaving"
-              />
-              <p class="text-xs text-muted-foreground">
-                Ссылка на выдачу hh.ru, а не id сохранённого поиска: расписание живёт дольше
-                одного запуска.
-              </p>
-            </div>
-
-            <div v-else-if="isHydration" class="space-y-2 md:col-span-2">
-              <Label>Цель</Label>
-              <div class="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
-                {{ kind === "vacancy_hydration" ? "Все вакансии" : "Все компании" }}
-              </div>
-              <p class="text-xs text-muted-foreground">
-                Гидратация проходит по сохранённому корпусу и не требует URL. Worker сам берёт
-                следующую порцию целей.
-              </p>
-            </div>
-
-            <div v-else-if="isAccountTarget" class="space-y-2 md:col-span-2">
+            <div v-if="isAccountTarget" class="space-y-2 md:col-span-2">
               <Label for="schedule-account">
                 {{ kind === "mail_sync" ? "Почтовый аккаунт" : "Telegram-аккаунт" }}
               </Label>
@@ -731,36 +669,7 @@ const runColumns: ColumnDef<ScheduleRun>[] = [
           </div>
 
           <div v-if="hasOptions" class="grid gap-4 border-t border-border pt-4 md:grid-cols-2">
-            <template v-if="isHydration">
-              <div class="space-y-2">
-                <Label for="schedule-limit">Лимит за запуск</Label>
-                <Input
-                  id="schedule-limit"
-                  v-model="limit"
-                  type="number"
-                  min="1"
-                  max="200"
-                  step="1"
-                  placeholder="25"
-                  :disabled="isSaving"
-                />
-              </div>
-              <div class="space-y-2">
-                <Label for="schedule-delay">Задержка между запросами, мс</Label>
-                <Input
-                  id="schedule-delay"
-                  v-model="delayMs"
-                  type="number"
-                  min="0"
-                  max="60000"
-                  step="1"
-                  :placeholder="kind === 'vacancy_hydration' ? '1000' : '750'"
-                  :disabled="isSaving"
-                />
-              </div>
-            </template>
-
-            <template v-else-if="kind === 'mail_sync'">
+            <template v-if="kind === 'mail_sync'">
               <div class="space-y-2">
                 <Label for="schedule-mail-days">Дней</Label>
                 <Input

@@ -226,10 +226,53 @@ export const HydrationTarget = Schema.Struct({
   externalId: Schema.String,
   canonicalUrl: Schema.String,
   title: Schema.String,
-  descriptionLength: Schema.Int
+  descriptionLength: Schema.Int,
+  employerName: Schema.optional(Schema.NullOr(Schema.String)),
+  areaName: Schema.optional(Schema.NullOr(Schema.String)),
+  publishedAt: Schema.optional(Schema.NullOr(Schema.String)),
+  lastSeenAt: Schema.optional(Schema.NullOr(Schema.String))
 })
 
 export type HydrationTarget = typeof HydrationTarget.Type
+
+export const EmployerHydrationMissing = Schema.Literals(["rating", "siteUrl", "logoUrl", "industries"])
+export type EmployerHydrationMissing = typeof EmployerHydrationMissing.Type
+
+/**
+ * A profile worth refreshing: only employers backing vacancies are offered,
+ * oldest profile first. `missing` makes the gaps visible without opening hh.
+ */
+export const EmployerHydrationTarget = Schema.Struct({
+  id: EmployerId,
+  source: Schema.String,
+  externalId: Schema.String,
+  name: Schema.String,
+  rating: Schema.optional(Schema.NullOr(Schema.Number)),
+  reviewsCount: Schema.optional(Schema.NullOr(Schema.Int)),
+  recommendationsPercent: Schema.optional(Schema.NullOr(Schema.Int)),
+  siteUrl: Schema.optional(Schema.NullOr(Schema.String)),
+  logoUrl: Schema.optional(Schema.NullOr(Schema.String)),
+  industries: Schema.Array(Schema.String),
+  vacancyCount: Schema.Int,
+  updatedAt: Schema.String,
+  missing: Schema.Array(EmployerHydrationMissing)
+})
+export type EmployerHydrationTarget = typeof EmployerHydrationTarget.Type
+
+/** Counts shown on the hydration page; employers are always the hh corpus. */
+export const HydrationStats = Schema.Struct({
+  vacancyTotal: Schema.Int,
+  vacancyFull: Schema.Int,
+  vacancyStub: Schema.Int,
+  employerTotal: Schema.Int,
+  employersLinked: Schema.Int,
+  employersWithoutRating: Schema.Int,
+  employersWithoutSite: Schema.Int,
+  employersWithoutLogo: Schema.Int,
+  employersWithoutIndustries: Schema.Int,
+  employersStale30Days: Schema.Int
+})
+export type HydrationStats = typeof HydrationStats.Type
 
 /* -------------------------------------------------------------------------- */
 /* Search runs                                                                */

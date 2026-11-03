@@ -7,6 +7,7 @@ import { CompaniesPage } from "@/pages/companies"
 import { CompanyDetailPage } from "@/pages/company-detail"
 import { ContactsPage } from "@/pages/contacts"
 import { DecisionsPage } from "@/pages/decisions"
+import { HydrationPage } from "@/pages/hydration"
 import { HealthPage } from "@/pages/health"
 import { InferencePage } from "@/pages/inference"
 import { KeywordsPage } from "@/pages/keywords"
@@ -37,6 +38,7 @@ const applicationId = computed(() =>
     <VacancyDetailPage v-else-if="route.name === 'vacancy'" :id="vacancyId" />
     <CompaniesPage v-else-if="route.name === 'companies'" />
     <CompanyDetailPage v-else-if="route.name === 'company'" :id="companyId" />
+    <HydrationPage v-else-if="route.name === 'hydration'" />
     <KeywordsPage v-else-if="route.name === 'keywords'" />
     <DecisionsPage v-else-if="route.name === 'decisions'" />
     <ApplicationsPage v-else-if="route.name === 'applications'" />

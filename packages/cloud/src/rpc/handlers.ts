@@ -10,6 +10,7 @@ import { CrawlRunner } from "../services/CrawlRunner.ts"
 import { CrawlService } from "../services/CrawlService.ts"
 import { DecisionService } from "../services/DecisionService.ts"
 import { EmployerHydrator } from "../services/EmployerHydrator.ts"
+import { HydrationService } from "../services/HydrationService.ts"
 import { EvaluationRunner } from "../services/EvaluationRunner.ts"
 import { FitJudgeRunner } from "../services/FitJudgeRunner.ts"
 import { FitJudgeService } from "../services/FitJudgeService.ts"
@@ -40,6 +41,8 @@ export const OtborHandlers = OtborRpcs.toLayer(
   Effect.gen(function*() {
     const system = yield* SystemService
     const corpus = yield* CorpusService
+    const hydrationStats = yield* HydrationService
+    const employerHydrator = yield* EmployerHydrator
     const hydrationRunner = yield* HydrationRunner
     const evaluation = yield* EvaluationRunner
     const crawl = yield* CrawlService
@@ -106,6 +109,15 @@ export const OtborHandlers = OtborRpcs.toLayer(
       VacanciesHydrationTargets: (payload) => corpus.hydrationTargets(payload),
       VacanciesHydrateOne: ({ id }) => hydrateAndEvaluate(id),
       VacancyHydrate: ({ id }) => hydrateAndEvaluate(id),
+      HydrationStats: () => hydrationStats.stats(),
+      EmployersHydrationTargets: (payload) => hydrationStats.employerTargets(payload),
+      EmployersHydrateOne: ({ id }) =>
+        Effect.gen(function*() {
+          const user = yield* CurrentUser
+          return yield* employerHydrator.hydrateOne(user.userId, id).pipe(
+            Effect.map((hydrated) => ({ hydrated }))
+          )
+        }),
       VacanciesEvaluate: ({ vacancyId, resumeId, fit, includeBlacklisted, hhAccountId }) =>
         decisions.evaluate({
           vacancyId,
@@ -217,6 +229,7 @@ const fitRunner = FitJudgeRunner.layer
 const sourceStack = Layer.mergeAll(
   crawlStack,
   hydration,
+  HydrationService.layer,
   employers,
   evaluation,
   fitRunner,

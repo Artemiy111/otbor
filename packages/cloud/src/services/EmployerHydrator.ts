@@ -1,10 +1,11 @@
-import type { ApiError } from "@otbor/contract"
-import { InvalidInput } from "@otbor/contract"
+import type { ApiError, EmployerHydrationTarget } from "@otbor/contract"
+import { InvalidInput, NotFound } from "@otbor/contract"
 import {
   ensureEngine,
   fetchHtml,
   loadProxyConfig,
-  proxyForUrl
+  proxyForUrl,
+  type ProxyConfig
 } from "@otbor/crawler"
 import { extractEmployer } from "@otbor/hh"
 import { Cause, Context, Effect, Layer } from "effect"
@@ -28,6 +29,10 @@ export interface EmployerHydratorShape {
     userId: string,
     options?: EmployerHydrationOptions
   ) => Effect.Effect<EmployerHydrationResult, ApiError>
+  readonly hydrateOne: (
+    userId: string,
+    id: string
+  ) => Effect.Effect<boolean, ApiError>
 }
 
 /**
@@ -64,35 +69,12 @@ export class EmployerHydrator extends Context.Service<
         return config
       })
 
-      const run = Effect.fn("EmployerHydrator.run")(function*(
-        _userId: string,
-        options: EmployerHydrationOptions = {}
-      ) {
-        const limit = Math.min(Math.max(options.limit ?? 25, 1), 200)
-        const delayMs = Math.max(0, options.delayMs ?? 750)
-        const config = yield* prepareProxy()
-
-        // The corpus is shared, and only the owner may update it.
-        const targets = yield* database
-          .asOwner((tx) => EmployerRepository.listForRefresh(tx, { limit }))
-          .pipe(
-            Effect.mapError(
-              (cause) =>
-                new InvalidInput({
-                  message: `employer refresh list: ${
-                    cause instanceof Error ? cause.message : String(cause)
-                  }`
-                })
-            )
-          )
-
-        let processed = 0
-        let updated = 0
-        let failed = 0
-        const errors: string[] = []
-
-        for (const [index, target] of targets.entries()) {
-          processed += 1
+      const hydrateTarget = (
+        target: EmployerHydrationTarget,
+        config: ProxyConfig | null,
+        errors?: string[]
+      ) =>
+        Effect.gen(function*() {
           const pageUrl = `https://hh.ru/employer/${target.externalId}`
 
           const patch = yield* Effect.gen(function*() {
@@ -131,46 +113,76 @@ export class EmployerHydrator extends Context.Service<
           }).pipe(
             Effect.catchCause((cause) => {
               const error = Cause.squash(cause)
-              if (errors.length < 5) {
+              if (errors !== undefined && errors.length < 5) {
                 errors.push(error instanceof Error ? error.message : String(error))
               }
               return Effect.succeed(null)
             })
           )
 
-          if (patch === null) {
-            failed += 1
-          } else {
-            const saved = yield* database
-              .asOwner((tx) =>
-                EmployerRepository.applyProfile(tx, target.id, {
-                  name: patch.name,
-                  rating: patch.rating,
-                  reviewsCount: patch.reviewsCount,
-                  recommendationsPercent: patch.recommendationsPercent,
-                  siteUrl: patch.siteUrl,
-                  logoUrl: patch.logoUrl,
-                  industries: patch.industries
+          if (patch === null) return false
+
+          const saved = yield* database
+            .asOwner((tx) =>
+              EmployerRepository.applyProfile(tx, target.id, {
+                name: patch.name,
+                rating: patch.rating,
+                reviewsCount: patch.reviewsCount,
+                recommendationsPercent: patch.recommendationsPercent,
+                siteUrl: patch.siteUrl,
+                logoUrl: patch.logoUrl,
+                industries: patch.industries
+              })
+            )
+            .pipe(
+              Effect.match({
+                onFailure: (error: unknown) => {
+                  if (errors !== undefined && errors.length < 5) {
+                    errors.push(
+                      `update ${target.externalId}: ${
+                        error instanceof Error ? error.message : String(error)
+                      }`
+                    )
+                  }
+                  return false
+                },
+                onSuccess: () => true
+              })
+            )
+          return saved
+        })
+
+      const run = Effect.fn("EmployerHydrator.run")(function*(
+        _userId: string,
+        options: EmployerHydrationOptions = {}
+      ) {
+        const limit = Math.min(Math.max(options.limit ?? 25, 1), 200)
+        const delayMs = Math.max(0, options.delayMs ?? 750)
+        const config = yield* prepareProxy()
+
+        // The corpus is shared, and only the owner may update it.
+        const targets = yield* database
+          .asOwner((tx) => EmployerRepository.listForRefresh(tx, { limit }))
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new InvalidInput({
+                  message: `employer refresh list: ${
+                    cause instanceof Error ? cause.message : String(cause)
+                  }`
                 })
-              )
-              .pipe(
-                Effect.match({
-                  onFailure: (error: unknown) => {
-                    if (errors.length < 5) {
-                      errors.push(
-                        `update ${target.externalId}: ${
-                          error instanceof Error ? error.message : String(error)
-                        }`
-                      )
-                    }
-                    return false
-                  },
-                  onSuccess: () => true
-                })
-              )
-            if (saved) updated += 1
-            else failed += 1
-          }
+            )
+          )
+
+        let processed = 0
+        let updated = 0
+        let failed = 0
+        const errors: string[] = []
+
+        for (const [index, target] of targets.entries()) {
+          processed += 1
+          if (yield* hydrateTarget(target, config, errors)) updated += 1
+          else failed += 1
 
           if (delayMs > 0 && index < targets.length - 1) {
             yield* Effect.sleep(`${delayMs} millis`)
@@ -186,7 +198,34 @@ export class EmployerHydrator extends Context.Service<
         return { processed, updated, failed, errors }
       })
 
-      return EmployerHydrator.of({ run })
+      const hydrateOne = Effect.fn("EmployerHydrator.hydrateOne")(function*(
+        _userId: string,
+        id: string
+      ) {
+        const config = yield* prepareProxy()
+        const target = yield* database
+          .asOwner((tx) => EmployerRepository.findTargetById(tx, id))
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new InvalidInput({
+                  message: `employer load ${id}: ${
+                    cause instanceof Error ? cause.message : String(cause)
+                  }`
+                })
+            )
+          )
+
+        if (target === null) {
+          return yield* new NotFound({ entity: "Employer", id })
+        }
+
+        const ok = yield* hydrateTarget(target, config)
+        if (ok) yield* Effect.logInfo(`employer hydrated: ${target.externalId}`)
+        return ok
+      })
+
+      return EmployerHydrator.of({ run, hydrateOne })
     })
   )
 }

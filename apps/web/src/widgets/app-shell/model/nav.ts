@@ -6,6 +6,7 @@ import {
   Building,
   CalendarClock,
   Contact,
+  DatabaseZap,
   Gavel,
   HeartPulse,
   ListChecks,
@@ -48,6 +49,7 @@ export const navSections: ReadonlyArray<NavSection> = [
     items: [
       { id: "vacancies", label: "Вакансии", href: "/vacancies", icon: Briefcase },
       { id: "companies", label: "Компании", href: "/companies", icon: Building },
+      { id: "hydration", label: "Гидратация", href: "/hydration", icon: DatabaseZap },
       { id: "keywords", label: "Ключевые слова", href: "/keywords", icon: BookOpen },
       { id: "blacklist", label: "Чёрный список", href: "/blacklist", icon: Ban }
     ]

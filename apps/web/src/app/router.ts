@@ -13,6 +13,7 @@ export type Route =
   | { readonly name: "queue" }
   | { readonly name: "inference" }
   | { readonly name: "presets" }
+  | { readonly name: "hydration" }
   | { readonly name: "search" }
   | { readonly name: "schedules" }
   | { readonly name: "contacts" }
@@ -29,6 +30,8 @@ const parse = (): Route => {
   switch (head) {
     case "vacancies":
       return id === "" ? { name: "vacancies" } : { name: "vacancy", id }
+    case "hydration":
+      return { name: "hydration" }
     case "companies":
       return id === "" ? { name: "companies" } : { name: "company", id }
     case "keywords":
