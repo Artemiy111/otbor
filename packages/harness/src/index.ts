@@ -30,3 +30,28 @@ export {
   type JobOutcome,
   type RunJobOptions
 } from "./run.ts"
+export { BrowserExecutor, type BrowserExecutorShape, type SubmitRequest } from "./browser/executor.ts"
+export {
+  fillPlan,
+  postClickExit,
+  prepareExit,
+  responseUrl,
+  submitPreflight,
+  type FillPlan,
+  type FillStep,
+  type SubmitPreflight
+} from "./browser/core.ts"
+export {
+  DEFAULT_CHROME_PATH,
+  DEFAULT_PROFILE,
+  hhAccountsDir,
+  hhProfileDir,
+  hhStoragePath,
+  safeProfileName
+} from "./browser/profile.ts"
+export {
+  BrowserError,
+  PlaywrightBrowserExecutor,
+  makePlaywrightExecutor,
+  type PlaywrightOptions
+} from "./browser/playwright.ts"

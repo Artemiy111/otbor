@@ -1,6 +1,11 @@
 import type { HarnessId, HarnessJobId, HhAccountId, JobKind, LeaseId } from "@otbor/contract"
 import { HarnessExitTag, JobKind as JobKindSchema } from "@otbor/contract"
-import { HarnessGateway, parseHarnessConfig, runHarness } from "@otbor/harness"
+import {
+  HarnessGateway,
+  PlaywrightBrowserExecutor,
+  parseHarnessConfig,
+  runHarness
+} from "@otbor/harness"
 import { Config, Console, Effect, Option } from "effect"
 import { Command, Flag } from "effect/cli"
 import { Api } from "../client.ts"
@@ -126,7 +131,23 @@ const run = Command.make(
       OTBOR_HARNESS_WAIT_SECONDS: String(waitSeconds)
     })
 
-    yield* runHarness({ ...config, once }).pipe(
+    // Browser jobs need the account's hh session on this machine. The profile
+    // is the one `otbor hh login` wrote; nothing here talks to hh.ru unless a
+    // browser job is actually leased.
+    const handlesBrowser = config.kinds.length === 0 || config.kinds.includes("browser")
+    yield* runHarness(
+      { ...config, once },
+      handlesBrowser
+        ? {
+            browserLayer: PlaywrightBrowserExecutor.layer({
+              headless: process.env.OTBOR_BROWSER_HEADLESS !== "0",
+              ...(process.env.OTBOR_CHROME_PATH === undefined
+                ? {}
+                : { executablePath: process.env.OTBOR_CHROME_PATH })
+            })
+          }
+        : {}
+    ).pipe(
       Effect.provide(HarnessGateway.layer(config.apiUrl))
     )
   })

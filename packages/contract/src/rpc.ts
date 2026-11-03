@@ -62,6 +62,7 @@ import {
   Health,
   HeartbeatResult,
   HydrationTarget,
+  KitAnswer,
   KitRecord,
   LexiconKeyword,
   HhAccountRecord,
@@ -771,14 +772,7 @@ export const ApplicationsSetKit = Rpc.make("ApplicationsSetKit", {
     applicationId: ApplicationId,
     formHash: Schema.String,
     letter: Schema.optional(Schema.NullOr(Schema.String)),
-    answers: Schema.optional(
-      Schema.Array(
-        Schema.Struct({
-          question: Schema.String,
-          answer: Schema.String
-        })
-      )
-    ),
+    answers: Schema.optional(Schema.Array(KitAnswer)),
     model: Schema.optional(Schema.NullOr(Schema.String)),
     promptHash: Schema.optional(Schema.NullOr(Schema.String)),
     costUsd: Schema.optional(Schema.NullOr(Schema.Number))

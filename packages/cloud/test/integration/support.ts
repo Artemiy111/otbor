@@ -56,6 +56,7 @@ import * as ScheduleRepository from "../../src/repositories/ScheduleRepository.t
 import { ContactService } from "../../src/services/ContactService.ts"
 import { ConversationService } from "../../src/services/ConversationService.ts"
 import { CorpusService } from "../../src/services/CorpusService.ts"
+import { ApplicationService } from "../../src/services/ApplicationService.ts"
 import { BlacklistService } from "../../src/services/BlacklistService.ts"
 import { DecisionService } from "../../src/services/DecisionService.ts"
 import { EvaluationRunner } from "../../src/services/EvaluationRunner.ts"
@@ -76,8 +77,9 @@ import { MailService, type MailAccountUpsertInput } from "../../src/services/Mai
 import { MailSync } from "../../src/services/MailSync.ts"
 import { PresetService } from "../../src/services/PresetService.ts"
 import { ResumeService } from "../../src/services/ResumeService.ts"
-import { submitJob } from "../../src/services/jobs.ts"
+import { prepareJob, submitJob } from "../../src/services/jobs.ts"
 import { QueueService } from "../../src/services/QueueService.ts"
+import { recoverExpiredLeases } from "../../src/services/recovery.ts"
 import { ScheduleDispatcher } from "../../src/services/ScheduleDispatcher.ts"
 import {
   ScheduleService,
@@ -251,6 +253,7 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
     DecisionService.layer.pipe(Layer.provide(shared)),
     FitJudgeService.layer.pipe(Layer.provide(shared)),
     QueueService.layer.pipe(Layer.provide(shared)),
+    ApplicationService.layer.pipe(Layer.provide(shared)),
     InferenceService.layer.pipe(Layer.provide(shared)),
     GateService.layer.pipe(Layer.provide(shared)),
     PresetService.layer.pipe(Layer.provide(shared)),
@@ -260,6 +263,7 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
 
 type Requirements =
   | Database
+  | ApplicationService
   | QueueService
   | InferenceService
   | CrawlService
@@ -745,6 +749,7 @@ export const enqueueSubmitJob = async (input: {
         applicationId: input.applicationId,
         vacancyId: input.vacancyId,
         canonicalUrl: input.canonicalUrl,
+        externalId: "100500",
         kit: input.kit,
         resumeId: input.resumeId ?? null
       })
@@ -1707,7 +1712,9 @@ export const expireJobLease = async (jobId: string) => {
 export const recoverExpiredJobs = async () =>
   runAs(
     "owner",
-    ownerTx((tx) => QueueRepository.recoverExpired(tx))
+    ownerTx((tx) =>
+      recoverExpiredLeases(tx).pipe(Effect.map((jobs) => jobs.map((job) => job.id)))
+    )
   )
 
 export const makeJobRunnable = async (jobId: string) => {
@@ -1872,3 +1879,106 @@ export const insertRawJob = async (input: RawJobInput) => runAs(input.userId, ra
 
 export const insertRawJobFailure = async (input: RawJobInput) =>
   runAsFailure(input.userId, rawJobInsert(input))
+
+/* -------------------------------------------------------------------------- */
+/* Applications (browser flow)                                                */
+/* -------------------------------------------------------------------------- */
+
+export const applicationApprove = async (userId: string, id: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const applications = yield* ApplicationService
+      return yield* applications.approve(id)
+    })
+  )
+
+export const applicationApproveFailure = async (userId: string, id: string) =>
+  runAsFailure(
+    userId,
+    Effect.gen(function*() {
+      const applications = yield* ApplicationService
+      return yield* applications.approve(id)
+    })
+  )
+
+export const applicationRetry = async (userId: string, id: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const applications = yield* ApplicationService
+      return yield* applications.retry(id)
+    })
+  )
+
+export const applicationSetKit = async (
+  userId: string,
+  input: Parameters<ApplicationService["Service"]["setKit"]>[0]
+) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const applications = yield* ApplicationService
+      return yield* applications.setKit(input)
+    })
+  )
+
+export const applicationGet = async (userId: string, id: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const applications = yield* ApplicationService
+      return yield* applications.get(id)
+    })
+  )
+
+/** The external id and prepare job for an application, through the real `prepareJob`. */
+export const enqueuePrepareJob = async (input: {
+  readonly userId: string
+  readonly accountId: string
+  readonly applicationId: string
+  readonly vacancyId: string
+  readonly externalId: string
+  readonly sequence?: number
+}) =>
+  runAs(
+    input.userId,
+    ownerTx((tx) =>
+      prepareJob(tx, {
+        userId: input.userId,
+        hhAccountId: input.accountId,
+        applicationId: input.applicationId,
+        vacancyId: input.vacancyId,
+        canonicalUrl: `https://hh.ru/vacancy/${input.externalId}`,
+        externalId: input.externalId,
+        sessionProfile: null,
+        priority: 0,
+        sequence: input.sequence ?? 1
+      })
+    )
+  )
+
+export const vacancyExternalId = async (vacancyId: string): Promise<string> =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx
+        .select({ externalId: vacancy.externalId })
+        .from(vacancy)
+        .where(eq(vacancy.id, vacancyId))
+        .limit(1)
+        .pipe(Effect.map((rows) => rows[0]!.externalId))
+    )
+  )
+
+export const jobsOf = async (applicationId: string) =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx
+        .execute(
+          sql`select id, stage, status, payload, result, idempotency_key from harness_jobs where application_id = ${applicationId} order by created_at`
+        )
+        .pipe(Effect.map((result) => result.rows as ReadonlyArray<Record<string, any>>))
+    )
+  )

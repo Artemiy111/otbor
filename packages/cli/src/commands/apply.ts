@@ -1,4 +1,4 @@
-import type { Answer, ApplicationId, HhAccountId } from "@otbor/contract"
+import { type Answer, type ApplicationId, type HhAccountId, describeKitAnswer } from "@otbor/contract"
 import { Console, Effect, FileSystem, Option } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { Api } from "../client.ts"
@@ -103,7 +103,8 @@ const get = Command.make(
       if (detail.kit.letter !== null && detail.kit.letter !== undefined) {
         yield* Console.log(detail.kit.letter)
       }
-      for (const answer of detail.kit.answers) {
+      for (const raw of detail.kit.answers) {
+        const answer = describeKitAnswer(raw, detail.form?.form)
         yield* Console.log(`Q: ${answer.question}\nA: ${answer.answer}`)
       }
     }

@@ -1,0 +1,70 @@
+import type { ApplicationRecord, ResponseForm, StoredHint } from "@otbor/contract"
+import { answerHints } from "@otbor/domain"
+import { Effect } from "effect"
+import type { DatabaseError, Executor } from "../db/Database.ts"
+import * as ResumeEnrichmentRepository from "../repositories/ResumeEnrichmentRepository.ts"
+import * as ResumeRepository from "../repositories/ResumeRepository.ts"
+import * as VacancyRepository from "../repositories/VacancyRepository.ts"
+
+/**
+ * Deterministic answer hints for a form, from the vacancy, the application's
+ * resume and the resume enrichment. Candidate facts that live nowhere yet
+ * (city, relocation, english level, start date) are not passed: a topic
+ * without facts produces no hint, and the answer is left to a model or a human.
+ */
+export const hintsFor = (
+  tx: Executor,
+  application: ApplicationRecord,
+  form: ResponseForm
+): Effect.Effect<ReadonlyArray<StoredHint>, DatabaseError> =>
+  Effect.gen(function*() {
+    if (form.layout !== "known" || form.questions.length === 0) return []
+
+    const vacancy = yield* VacancyRepository.findById(tx, application.vacancyId)
+    if (vacancy === null) return []
+
+    const resume =
+      application.resumeId === null || application.resumeId === undefined
+        ? null
+        : yield* ResumeRepository.findById(tx, application.userId, application.resumeId)
+    const enrichment =
+      resume === null
+        ? null
+        : yield* ResumeEnrichmentRepository.get(tx, application.userId, resume.id)
+
+    const expectation = enrichment?.salaryExpectation ?? resume?.salaryAmount ?? null
+    const minimum = enrichment?.salaryMin ?? null
+    const salary =
+      expectation === null && minimum === null
+        ? null
+        : {
+            expectation,
+            minimum,
+            currency: enrichment?.currency ?? resume?.salaryCurrency ?? null
+          }
+
+    return answerHints({
+      questions: form.questions,
+      vacancy: {
+        areaName: vacancy.areaName,
+        salaryFrom: vacancy.salaryFrom,
+        salaryTo: vacancy.salaryTo,
+        salaryCurrency: vacancy.salaryCurrency,
+        workFormats: vacancy.workFormats
+      },
+      salary,
+      resumeWorkFormats: resume?.workFormats ?? []
+    }).map(
+      (hint): StoredHint => ({
+        questionId: hint.questionId,
+        kind: hint.kind,
+        ...(hint.optionIds === undefined ? {} : { optionIds: hint.optionIds }),
+        ...(hint.text === undefined ? {} : { text: hint.text }),
+        hard: hint.hard,
+        confidence: hint.confidence,
+        note: hint.note,
+        evidence: hint.evidence,
+        blockers: hint.blockers
+      })
+    )
+  })

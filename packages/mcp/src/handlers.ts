@@ -10,6 +10,7 @@ import type {
   ResumeId,
   VacancyId
 } from "@otbor/contract"
+import { describeKitAnswer } from "@otbor/contract"
 import { Effect } from "effect"
 import { Api } from "./api.ts"
 import { guard, ToolFailure } from "./errors.ts"
@@ -373,10 +374,13 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
           : {
             letter: letter?.text ?? null,
             letterTruncated: letter?.truncated ?? false,
-            answers: detail.kit.answers.map((a) => ({
-              question: truncate(a.question, 300).text,
-              answer: truncate(a.answer, 500).text
-            })),
+            answers: detail.kit.answers.map((raw) => {
+              const a = describeKitAnswer(raw, detail.form?.form)
+              return {
+                question: truncate(a.question, 300).text,
+                answer: truncate(a.answer, 500).text
+              }
+            }),
             model: detail.kit.model ?? null,
             createdAt: detail.kit.createdAt
           },

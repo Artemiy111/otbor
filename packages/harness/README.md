@@ -33,11 +33,28 @@ The ACP agent itself is configured by the `@otbor/acp` package:
 - Heartbeat every 30 seconds while the prompt runs. A `ok: false` answer (or a
   heartbeat transport error) stops the prompt and skips completion: the lease
   may belong to another performer.
-- Browser jobs complete as `blocked` with an explicit message. The browser
-  executor is a separate workstream; this package does not pretend to click.
+- Browser jobs go to a `BrowserExecutor` (`browserLayer` in `RunJobOptions`).
+  `otbor harness run` provides the Playwright executor when the harness handles
+  `browser` jobs; without one the job completes as `blocked`.
+  - `prepare` opens `/applicant/vacancy_response?vacancyId=<external id>` in
+    the account's persistent Chrome profile (`~/.otbor/hh/accounts/<profile>`,
+    the one `otbor hh login` writes), classifies the page and returns the form
+    fragment as `prepared` artifacts `{url, html}`, or a typed exit
+    (`session_expired`, `captcha`, `already_responded`, `vacancy_archived`,
+    `relocation_warning`). The cloud parses the form; prepare never clicks.
+  - `submit` re-parses the live form and stops with `form_changed` if its hash
+    differs from `expectedFormHash`. It fills answers and the letter, checks the
+    lease with a heartbeat right before the click, clicks once, and reports
+    evidence `{clicked, url, marker, html}`. It never retries a click. Exits
+    before the click carry `clicked: false`; after it, `clicked: true`.
+  - `reconcile` and `session` are not implemented and complete as `blocked`.
+  - Tests use a local server and a temporary profile; `OTBOR_BROWSER_HEADLESS=0`
+    shows the window and `OTBOR_CHROME_PATH` overrides the Chrome binary.
 
 ## Known limitations
 
+- The browser executor has no reconcile routine yet, and the relocation warning
+  path is untested against real hh markup.
 - If the agent rejects the requested model, the harness logs a warning and uses
   the session default; the artifacts record the model that actually answered.
 - A payload `jsonSchema` is appended to the prompt as an instruction. The

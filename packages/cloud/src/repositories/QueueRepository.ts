@@ -146,7 +146,7 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
 
     const [candidate] = (
       yield* tx.execute(sql`
-        select id, hh_account_id, user_id
+        select id, hh_account_id, user_id, kind
         from harness_jobs
         where status = 'pending'
           and run_at <= now()
@@ -176,6 +176,7 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
 
     const jobId = candidate.id as string
     const hhAccountId = candidate.hh_account_id as string | null
+    const candidateKind = candidate.kind as string
 
     if (hhAccountId !== null) {
       const leased = yield* tx.execute(sql`
@@ -191,6 +192,30 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
       `)
 
       if (leased.rows.length === 0) {
+        yield* tx.execute(sql`
+          update harness_jobs
+          set run_at = now() + interval '5 seconds', updated_at = now()
+          where id = ${jobId}
+        `)
+        return null
+      }
+    }
+
+    // One browser job per hh account at a time. Another holder is kept out by
+    // account_lease itself; this closes the gap for the same holder, whose
+    // upsert always succeeds. The upsert locks the account's row, so a
+    // concurrent claim for the account waits and then sees the job leased here.
+    if (hhAccountId !== null && candidateKind === "browser") {
+      const busy = yield* tx.execute(sql`
+        select 1 from harness_jobs
+        where hh_account_id = ${hhAccountId}
+          and kind = 'browser'
+          and status in ('leased', 'running')
+          and locked_by = ${input.holder}
+          and id <> ${jobId}
+        limit 1
+      `)
+      if (busy.rows.length > 0) {
         yield* tx.execute(sql`
           update harness_jobs
           set run_at = now() + interval '5 seconds', updated_at = now()
@@ -290,22 +315,53 @@ export const complete = (
     `)
     .pipe(Effect.map((result) => result.rows.length > 0))
 
-/** Returns jobs whose performer stopped heartbeating. */
-export const recoverExpired = (tx: Executor): RepoEffect<ReadonlyArray<string>> =>
+export interface RecoveredJob {
+  readonly id: string
+  readonly stage: string
+  readonly status: string
+  readonly userId: string
+  readonly applicationId: string | null
+}
+
+/**
+ * Handles jobs whose performer stopped heartbeating. A submit job is never put
+ * back in the queue: the click may already have happened, so it becomes
+ * `needs_reconcile` and the caller queues a reconcile. Other stages return to
+ * `pending`, or `dead` once their attempts are spent.
+ */
+export const recoverExpired = (tx: Executor): RepoEffect<ReadonlyArray<RecoveredJob>> =>
   tx
     .execute(sql`
       update harness_jobs
-      set status = case when attempts >= max_attempts then 'dead' else 'pending' end,
+      set status = case
+            when stage = 'submit' then 'needs_reconcile'
+            when attempts >= max_attempts then 'dead'
+            else 'pending'
+          end,
           lease_id = null,
           lease_until = null,
           locked_by = null,
           run_at = now(),
+          last_error = case
+            when stage = 'submit' then 'lease expired during submit; outcome unknown'
+            else last_error
+          end,
           updated_at = now()
       where status in ('leased', 'running')
         and lease_until < now()
-      returning id
+      returning id, stage, status, user_id, application_id
     `)
-    .pipe(Effect.map((result) => result.rows.map((row) => row.id as string)))
+    .pipe(
+      Effect.map((result) =>
+        result.rows.map((row) => ({
+          id: row.id as string,
+          stage: row.stage as string,
+          status: row.status as string,
+          userId: row.user_id as string,
+          applicationId: row.application_id as string | null
+        }))
+      )
+    )
 
 export const stats = (tx: Executor): RepoEffect<QueueStats> =>
   tx

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue"
+import { describeKitAnswer } from "@otbor/contract"
 import { useQuery } from "@pinia/colada"
 import { CircleAlert } from "@lucide/vue"
 import { applicationApi, applicationKeys } from "@/entities/application"
@@ -43,6 +44,10 @@ const query = useQuery({
 })
 
 const data = computed(() => query.data.value)
+
+const kitAnswers = computed(() =>
+  (data.value?.kit?.answers ?? []).map((raw) => describeKitAnswer(raw, data.value?.form?.form))
+)
 
 const subtitle = computed(() => {
   const application = data.value?.application
@@ -165,7 +170,7 @@ const cost = (value: number | null | undefined): string =>
             </h3>
             <div v-if="data.kit.answers.length > 0" class="space-y-2">
               <div
-                v-for="(answer, index) in data.kit.answers"
+                v-for="(answer, index) in kitAnswers"
                 :key="index"
                 class="rounded-md border border-border bg-muted/20 p-3"
               >

@@ -1,10 +1,10 @@
+import { hhAccountsDir } from "@otbor/harness"
 import { Console, Effect } from "effect"
 import { Command } from "effect/cli"
 import { readdir, stat } from "node:fs/promises"
-import { homedir } from "node:os"
 import { join } from "node:path"
 
-const accountsDir = () => join(homedir(), ".otbor", "hh", "accounts")
+const accountsDir = () => hhAccountsDir()
 
 export const hhProfilesCommand = Command.make(
   "profiles",
