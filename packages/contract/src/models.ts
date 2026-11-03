@@ -867,7 +867,13 @@ export const PresetField = Schema.Literals([
   "source",
   "responses_total",
   "description_length",
-  "skills_count"
+  "skills_count",
+  /** Open (non-archived) vacancies of the same employer in the corpus; a company-size proxy. */
+  "employer_vacancies",
+  /** hh employer rating, 0-5; rules never match employers without one. */
+  "employer_rating",
+  /** Number of hh employer reviews; a company-size proxy. */
+  "employer_reviews"
 ])
 
 export type PresetField = typeof PresetField.Type

@@ -1,4 +1,4 @@
-import { ContactKind, ConversationChannel, PresetKind } from "@otbor/contract"
+import { ContactKind, ConversationChannel, PresetFilter, PresetKind } from "@otbor/contract"
 import { Schema } from "effect"
 import { Tool, Toolkit } from "effect/ai"
 import { FormView } from "./apply.ts"
@@ -110,6 +110,13 @@ export const TopItem = Schema.Struct({
   gate: Schema.String,
   account: Schema.NullOr(AccountRef),
   reasons: Schema.Array(Schema.String),
+  /** Vacancy seniority: unknown, junior, middle, senior or lead. "unknown" means not stated, not "mid". */
+  seniority: NullableString,
+  /** hh experience requirement: noExperience, between1And3, between3And6, moreThan6. */
+  experience: NullableString,
+  /** The first few hh key skills. */
+  skills: Schema.Array(Schema.String),
+  publishedAt: NullableString,
   url: NullableString
 })
 export type TopItem = typeof TopItem.Type
@@ -135,6 +142,59 @@ export const VacanciesTop = readTool("vacancies_top", {
     items: Schema.Array(TopItem),
     returned: Schema.Int,
     considered: Schema.Int,
+    note: NullableString
+  })
+})
+
+const SEARCH_DESCRIPTION = `Search the vacancy corpus with ad-hoc filters, for chat requests like "take 10 mediocre vacancies, around middle level, with Kubernetes, not big companies". Returns vacancies that have a decision (the pipeline makes decisions), joined with seniority, experience, top skills, employer, salary, fit, priority, account and hh url, so you can explain each choice. All criteria are ANDed. Filtering runs server-side in SQL with the same engine presets use (see presets_list / preset_preview). \`presetId\` and \`filter\` can be combined: the ad-hoc rules extend the preset's.
+
+PARAMETERS
+- filter: { rules?: [{field, op, value?}], text?, gate?, location?, includeArchived?, includeBlacklisted? }. Archived and blacklisted vacancies are excluded unless included explicitly. Prefer rules.
+- verdict: apply (default) | draft | skip. The default "apply" only sees vacancies the policy would apply to; for "mediocre" or lower-fit requests pass verdict "draft" or "skip" and bound the score with minFit / maxFit (roughly 40-70 for mediocre).
+- minFit / maxFit: fit score bounds, 0-100.
+- account: hh account id, prefix or name. limit (default 10, max 50), offset.
+- sort: priority (default, best first) | fit (highest fit first) | newest (newest published) | salary (highest, currencies are NOT converted) | random (a random sample, offset is not stable).
+
+RULE FIELDS, operators and value shapes
+- Text fields: title, description, employer (company name), area (city or region), salary_currency (RUR, USD, EUR), seniority, experience, employment_form, source. Operators: contains / not_contains (string, case-insensitive substring), eq / neq (string), in / not_in (string array).
+- skills (hh key skills): contains / not_contains with a string, in / not_in with a string array (matches ANY, substring, case-insensitive).
+- keywords (lexicon terms detected in the vacancy): same operators as skills; filter.location says where the term must appear: title, body, skills, text_or_skills, any.
+- work_format: in / not_in with a string array of remote, hybrid, onsite, field.
+- Number fields: salary_from, salary_to (in the vacancy's own currency; vacancies without a salary never match), published_days (published within N days: use lte), responses_total, description_length, skills_count, employer_vacancies, employer_rating, employer_reviews. Operators: gte, lte, eq, neq with a number. A null value (no rating, no reviews, no salary) never matches a number rule.
+- archived: is_true / is_false. gate: eq with match | unknown | reject. role_family: eq with a family name.
+
+SENIORITY. vacancy.seniority is junior, middle, senior, lead or unknown. About two thirds of the corpus is "unknown" (the vacancy does not say), which is not the same as "not middle". For "around middle" use {field:"seniority", op:"in", value:["middle","unknown"]}; strict "middle" drops most of the corpus. A second, independent signal is experience (hh requirement): noExperience, between1And3 (junior to middle), between3And6 (middle to senior), moreThan6 (senior). For example add experience in ["between1And3","between3And6"], or seniority not_in ["senior","lead"]. Every result carries both, so say which signal you relied on.
+
+COMPANY SIZE. There is no headcount column yet. Working proxies: employer_vacancies (open vacancies of that employer in the corpus: 1-5 usually a small company, 30+ a big one or a recruiter), employer_reviews (number of hh reviews: thousands is a well known big company) and employer_rating (0-5). Say honestly that these are proxies. For "not big companies": employer_vacancies lte 10, optionally employer_reviews lte 300 (an employer without reviews has a null count and is NOT matched, so that rule also drops unreviewed small companies; leave it out if they matter).
+
+EXAMPLES (value of the filter argument)
+1. Around middle, Kubernetes, not a big company: {"rules":[{"field":"seniority","op":"in","value":["middle","unknown"]},{"field":"skills","op":"contains","value":"kubernetes"},{"field":"employer_vacancies","op":"lte","value":10}]}
+2. Remote, at least 250000 RUR, not senior: {"rules":[{"field":"work_format","op":"in","value":["remote"]},{"field":"salary_from","op":"gte","value":250000},{"field":"salary_currency","op":"eq","value":"RUR"},{"field":"seniority","op":"not_in","value":["senior","lead"]}]}
+3. Go or Rust in the title or skills, published this week, in Moscow or Saint Petersburg: {"rules":[{"field":"keywords","op":"in","value":["go","rust"]},{"field":"published_days","op":"lte","value":7},{"field":"area","op":"in","value":["Москва","Санкт-Петербург"]}],"location":"text_or_skills"}
+4. Kubernetes in the description, decent employer rating, not a Yandex vacancy: {"rules":[{"field":"description","op":"contains","value":"kubernetes"},{"field":"employer_rating","op":"gte","value":3.5},{"field":"employer","op":"not_contains","value":"Яндекс"}]}`
+
+export const VacanciesSearch = readTool("vacancies_search", {
+  description: SEARCH_DESCRIPTION,
+  parameters: Schema.Struct({
+    filter: Schema.optional(PresetFilter).annotate({
+      description: "Ad-hoc vacancy filter {rules:[{field,op,value}], text?, gate?, location?, includeArchived?, includeBlacklisted?}. See the tool description."
+    }),
+    presetId: text("Also require this saved preset's filter (see presets_list); ANDed with `filter`"),
+    verdict: Schema.optional(Schema.Literals(["apply", "draft", "skip"])).annotate({
+      description: "Decision verdict (default \"apply\")"
+    }),
+    minFit: Schema.optional(Schema.Number).annotate({ description: "Minimum fit score, 0-100" }),
+    maxFit: Schema.optional(Schema.Number).annotate({ description: "Maximum fit score, 0-100" }),
+    sort: Schema.optional(Schema.Literals(["priority", "fit", "newest", "salary", "random"])).annotate({
+      description: "Order: priority (default), fit, newest, salary (currencies not converted), random"
+    }),
+    limit: limit("How many vacancies to return (default 10, max 50)"),
+    offset: limit("Skip this many results (default 0)"),
+    account
+  }),
+  success: Schema.Struct({
+    items: Schema.Array(TopItem),
+    returned: Schema.Int,
     note: NullableString
   })
 })
@@ -492,6 +552,7 @@ export const OtborReadToolkit = Toolkit.make(
   SystemHealth,
   AccountsList,
   VacanciesTop,
+  VacanciesSearch,
   VacancyGet,
   DecisionsList,
   FitGet,
@@ -522,6 +583,7 @@ Domain model, in pipeline order:
 Also: hh accounts (accounts_list; several can exist), presets (saved filters), employers (with blacklist state), resumes (with operator enrichment), conversations and contacts (replies from recruiters), schedules (crawls) and the harness queue.
 
 How to use the read tools:
+- "take N vacancies that are ..." (level, skill, company size, salary, remote, fit range, random sample): vacancies_search with a \`filter\`. Read its description first: it lists the rule fields and operators, how seniority "unknown" is treated and the company-size proxies.
 - "best vacancies / what should I apply to": vacancies_top, then vacancy_get for details of the interesting ones.
 - "what does vacancy X need": vacancy_get (accepts an id, id prefix or hh.ru URL).
 - "what is waiting": applications_list with state draft or needs_human, then application_get.

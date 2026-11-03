@@ -1,0 +1,142 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import type { PresetFilter } from "@otbor/contract"
+import { Effect } from "effect"
+import { DecisionService } from "../../src/services/DecisionService.ts"
+import * as support from "./support.ts"
+
+const enabled = support.integrationEnabled
+const serverUrl = support.serverUrl
+
+if (!enabled || serverUrl === null) {
+  test("vacancy search integration suite is opt-in", () => {
+    expect(enabled).toBe(false)
+  })
+} else {
+  const base = serverUrl
+  const previousDatabaseUrl = process.env.DATABASE_URL
+
+  beforeAll(async () => {
+    await support.createTestDatabase(base)
+    await support.migrateTestDatabase(base)
+    process.env.DATABASE_URL = support.testDatabaseUrl(base)
+  }, 120_000)
+
+  afterAll(async () => {
+    if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL
+    else process.env.DATABASE_URL = previousDatabaseUrl
+    await support.dropTestDatabase(base)
+  }, 60_000)
+
+  const search = (userId: string, options: Record<string, unknown>) =>
+    support.runAs(
+      userId,
+      Effect.gen(function*() {
+        const service = yield* DecisionService
+        return yield* service.list({ latestPerVacancy: true, limit: 50, ...options })
+      })
+    )
+
+  describe("ad-hoc vacancy search (DecisionService.list)", () => {
+    test("combines seniority, skills, company-size proxies, preset, fit bounds and sort", async () => {
+      const tenant = await support.seedTenant("search")
+
+      const small = await support.seedEmployerStats("e-small", "Small Co", { rating: 4.2, reviewsCount: 12 })
+      const big = await support.seedEmployerStats("e-big", "Big Corp", { rating: 3.9, reviewsCount: 5000 })
+      const unrated = await support.seedEmployerStats("e-none", "Unrated Co")
+
+      // Big Corp has four open vacancies and one archived (does not count); Small Co has three.
+      const bigMiddle = await support.seedSearchVacancy({
+        label: "big1", title: "Platform Engineer", employerId: big, seniority: "middle",
+        skills: ["Kubernetes"], salaryFrom: 300_000, salaryCurrency: "RUR", publishedDaysAgo: 2
+      })
+      const bigSenior = await support.seedSearchVacancy({
+        label: "big2", title: "SRE", employerId: big, seniority: "senior"
+      })
+      await support.seedSearchVacancy({ label: "big3", title: "Old", employerId: big, archived: true })
+      await support.seedSearchVacancy({ label: "big4", title: "Open A", employerId: big })
+      await support.seedSearchVacancy({ label: "big5", title: "Open B", employerId: big })
+
+      const smallMiddle = await support.seedSearchVacancy({
+        label: "small1", title: "DevOps Engineer", employerId: small, seniority: "middle",
+        experienceCode: "between3And6", skills: ["Kubernetes", "Terraform"],
+        salaryFrom: 200_000, salaryCurrency: "RUR", publishedDaysAgo: 10
+      })
+      const smallUnknown = await support.seedSearchVacancy({
+        label: "small2", title: "Infra Engineer", employerId: small, seniority: "unknown",
+        skills: ["kubernetes"], salaryFrom: 400_000, salaryCurrency: "RUR", publishedDaysAgo: 1
+      })
+      const smallSenior = await support.seedSearchVacancy({
+        label: "small3", title: "Lead DevOps", employerId: small, seniority: "senior", skills: ["Kubernetes"]
+      })
+      const unratedMiddle = await support.seedSearchVacancy({
+        label: "unrated1", title: "Support", employerId: unrated, seniority: "middle"
+      })
+
+      // A title that is not gated "match" is skipped with fit 0, so gate them.
+      for (const title of ["Platform Engineer", "SRE", "DevOps Engineer", "Infra Engineer", "Lead DevOps", "Support"]) {
+        await support.seedTitleVerdict(title, "match")
+      }
+
+      const fits: Record<string, number> = {
+        [bigMiddle]: 80, [bigSenior]: 20, [smallMiddle]: 55, [smallUnknown]: 65, [smallSenior]: 50,
+        [unratedMiddle]: 30
+      }
+      for (const [vacancyId, fit] of Object.entries(fits)) {
+        await support.evaluateVacancy(tenant.userId, { vacancyId, fit })
+      }
+
+      // The test policy may give any verdict; filter on the unconstrained list.
+      const ids = async (options: Record<string, unknown>) =>
+        (await search(tenant.userId, options)).map((row): string => row.vacancyId)
+
+      const rules: NonNullable<PresetFilter["rules"]> = [
+        { field: "seniority", op: "in", value: ["middle", "unknown"] },
+        { field: "skills", op: "contains", value: "kubernetes" }
+      ]
+
+      // "around middle, Kubernetes, not a big company"
+      expect(await ids({
+        filter: { rules: [...rules, { field: "employer_vacancies", op: "lte", value: 3 }] },
+        sort: "fit"
+      })).toEqual([smallUnknown, smallMiddle])
+
+      // Without the size rule the big employer returns.
+      expect(await ids({ filter: { rules }, sort: "fit" })).toEqual([bigMiddle, smallUnknown, smallMiddle])
+
+      // The archived vacancy does not count towards employer_vacancies: Big Corp has 4.
+      expect(await ids({
+        filter: { rules: [{ field: "employer_vacancies", op: "eq", value: 4 }] },
+        sort: "fit"
+      })).toEqual([bigMiddle, bigSenior])
+
+      // Reviews and rating: employers without them are not matched.
+      expect(await ids({ filter: { rules: [{ field: "employer_reviews", op: "lte", value: 100 }] }, sort: "fit" }))
+        .toEqual([smallUnknown, smallMiddle, smallSenior])
+      expect(await ids({ filter: { rules: [{ field: "employer_rating", op: "gte", value: 4 }] }, sort: "fit" }))
+        .toEqual([smallUnknown, smallMiddle, smallSenior])
+
+      // experience, published_days and salary sort
+      expect(await ids({ filter: { rules: [{ field: "experience", op: "in", value: ["between3And6"] }] } }))
+        .toEqual([smallMiddle])
+      expect(await ids({ filter: { rules: [{ field: "published_days", op: "lte", value: 3 }] }, sort: "newest" }))
+        .toEqual([smallUnknown, bigMiddle])
+      expect(await ids({ filter: { rules: [{ field: "salary_from", op: "gte", value: 1 }] }, sort: "salary" }))
+        .toEqual([smallUnknown, bigMiddle, smallMiddle])
+
+      // fit bounds ("mediocre")
+      expect(await ids({ minFit: 45, maxFit: 65, sort: "fit" })).toEqual([smallUnknown, smallMiddle, smallSenior])
+
+      // preset AND ad-hoc filter
+      const preset = await support.seedPreset(tenant.userId, { title: "devops", filter: { text: "devops" } })
+      expect((await ids({ presetId: preset })).sort()).toEqual([smallMiddle, smallSenior].sort())
+      expect(await ids({
+        presetId: preset,
+        filter: { rules: [{ field: "seniority", op: "eq", value: "middle" }] }
+      })).toEqual([smallMiddle])
+
+      // random sort and offset return a valid page
+      expect(await ids({ sort: "random", limit: 2 })).toHaveLength(2)
+      expect(await ids({ sort: "fit", limit: 2, offset: 1 })).toEqual([smallUnknown, smallMiddle])
+    }, 60_000)
+  })
+}

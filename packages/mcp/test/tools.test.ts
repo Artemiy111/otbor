@@ -44,6 +44,7 @@ const detail = (n: number): VacancyDetail => ({
     salaryTo: 200000,
     salaryCurrency: "RUR",
     seniority: "senior",
+    experienceCode: "between3And6",
     workFormats: ["remote"],
     archived: false,
     createdAt: "2026-01-01T00:00:00Z",
@@ -98,6 +99,8 @@ const fake = {
     offset?: number
     limit?: number
     minFit?: number
+    maxFit?: number
+    sort?: string
     orderBy?: string
     latestPerVacancy?: boolean
     hhAccountId?: string
@@ -114,9 +117,11 @@ const fake = {
     rows = rows.filter((d) =>
       (payload.verdict === undefined || d.verdict === payload.verdict) &&
       (payload.minFit === undefined || d.fit >= payload.minFit) &&
+      (payload.maxFit === undefined || d.fit <= payload.maxFit) &&
       (payload.hhAccountId === undefined || d.hhAccountId === payload.hhAccountId)
     )
-    if (payload.orderBy === "priority") rows.sort((a, b) => b.priority - a.priority || b.fit - a.fit)
+    if (payload.sort === "fit") rows.sort((a, b) => b.fit - a.fit)
+    else if (payload.orderBy === "priority") rows.sort((a, b) => b.priority - a.priority || b.fit - a.fit)
     return Effect.succeed(rows.slice(payload.offset ?? 0, (payload.offset ?? 0) + (payload.limit ?? 50)))
   },
   HhAccountsList: () => Effect.succeed(accounts),
@@ -246,6 +251,47 @@ describe("mcp tools", () => {
       .toEqual([id(4)])
   })
 
+  test("vacancies_search forwards filter, bounds and sort, and explains each hit", async () => {
+    seen.length = 0
+    const filter = {
+      rules: [
+        { field: "seniority", op: "in", value: ["middle", "unknown"] },
+        { field: "skills", op: "contains", value: "kubernetes" }
+      ]
+    }
+    const result = await withClient(FakeApi, (c) =>
+      c.callTool({
+        name: "vacancies_search",
+        arguments: { filter, maxFit: 70, sort: "fit", offset: 0, limit: 5, verdict: "apply" }
+      }))
+    expect(result.isError).toBeFalsy()
+    const out = result.structuredContent as {
+      items: Array<{ vacancyId: string; fit: number; seniority: string | null; experience: string | null; skills: Array<string>; employer: string | null; salary: string | null; url: string | null }>
+      returned: number
+    }
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatchObject({ verdict: "apply", sort: "fit", maxFit: 70, limit: 5, latestPerVacancy: true, filter })
+    expect(out.items.map((i) => i.vacancyId)).toEqual([id(1), id(3)])
+    expect(out.items[0]).toMatchObject({
+      fit: 60,
+      seniority: "senior",
+      experience: "between3And6",
+      skills: ["TypeScript"],
+      employer: "Employer 1",
+      url: "https://hh.ru/vacancy/9001"
+    })
+    expect(out.returned).toBe(2)
+  })
+
+  test("vacancies_search describes the filter vocabulary and unknown seniority", async () => {
+    const tools = await withClient(FakeApi, (c) => c.listTools())
+    const tool = tools.tools.find((t) => t.name === "vacancies_search")
+    const description = tool?.description ?? ""
+    for (const word of ["employer_vacancies", "employer_reviews", "seniority", "unknown", "kubernetes", "not_in", "published_days"]) {
+      expect(description).toContain(word)
+    }
+  })
+
   test("accounts_list shows names and application counts per state", async () => {
     const result = await withClient(FakeApi, (c) => c.callTool({ name: "accounts_list", arguments: {} }))
     const out = result.structuredContent as {
@@ -312,7 +358,7 @@ describe("mcp tools", () => {
   })
 
   test("toolkit exposes handlers for every tool", () => {
-    expect(Object.keys(OtborReadToolkit.tools).length).toBe(20)
+    expect(Object.keys(OtborReadToolkit.tools).length).toBe(21)
     void OtborReadHandlers
   })
 })

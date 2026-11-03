@@ -109,6 +109,12 @@ const numberFieldSql = (field: PresetRule["field"]): SQL | null => {
       return sql`length(coalesce(vacancy.description_text, ''))`
     case "skills_count":
       return sql`(select count(*)::int from vacancy_skill vs where vs.vacancy_id = vacancy.id)`
+    case "employer_vacancies":
+      return sql`(select count(*)::int from vacancy v_emp where v_emp.employer_id = vacancy.employer_id and not v_emp.archived)`
+    case "employer_rating":
+      return sql`(select e_r.rating from employer e_r where e_r.id = vacancy.employer_id)`
+    case "employer_reviews":
+      return sql`(select e_r.reviews_count from employer e_r where e_r.id = vacancy.employer_id)`
     default:
       return null
   }
