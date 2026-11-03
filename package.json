@@ -13,8 +13,8 @@
     "cli": "bun packages/cli/src/main.ts",
     "web": "bun run --cwd apps/web dev",
     "web:build": "bun run --cwd apps/web build",
-    "mcp": "bun packages/cloud/src/mcp.ts",
-    "dev": "bun run --parallel server worker",
+    "mcp": "bun packages/mcp/src/main.ts",
+    "dev": "bun packages/cli/src/main.ts up",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
     "db:migrate": "bun run cli db migrate",
@@ -23,7 +23,9 @@
     "link": "cd packages/cli && bun link",
     "test": "bun test",
     "test:integration": "OTBOR_TEST_DATABASE_URL=${OTBOR_TEST_DATABASE_URL:-postgres://otbor:otbor@localhost:55432/postgres} bun test packages/cloud/test/integration",
-    "typecheck": "tsc -p tsconfig.json && bun run --cwd apps/web typecheck"
+    "typecheck": "tsc -p tsconfig.json && bun run --cwd apps/web typecheck",
+    "up": "bun packages/cli/src/main.ts up",
+    "down": "bun packages/cli/src/main.ts down"
   },
   "devDependencies": {
     "@types/bun": "1.4.4",

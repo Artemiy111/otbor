@@ -17,11 +17,13 @@ import { hydrateCommand } from "./commands/hydrate.ts"
 import { inferenceCommand } from "./commands/inference.ts"
 import { lexiconCommand } from "./commands/lexicon.ts"
 import { mailCommand } from "./commands/mail.ts"
+import { mcpCommand } from "./commands/mcp.ts"
 import { presetCommand } from "./commands/preset.ts"
 import { proxyCommand } from "./commands/proxy.ts"
 import { queueCommand } from "./commands/queue.ts"
 import { scheduleCommand } from "./commands/schedule.ts"
 import { healthCommand } from "./commands/system.ts"
+import { doctorCommand, downCommand, statusCommand, upCommand } from "./commands/stack.ts"
 import { telegramCommand } from "./commands/telegram.ts"
 import { vacancyCommand } from "./commands/vacancy.ts"
 import { writeCommand } from "./commands/write.ts"
@@ -69,6 +71,10 @@ const reportFailure = (cause: Cause.Cause<unknown>) =>
 root
   .pipe(
     Command.withSubcommands([
+      upCommand,
+      downCommand,
+      statusCommand,
+      doctorCommand,
       healthCommand,
       dbCommand,
       vacancyCommand,
@@ -90,7 +96,8 @@ root
       proxyCommand,
       acpCommand,
       inferenceCommand,
-      writeCommand
+      writeCommand,
+      mcpCommand
     ]),
     Command.run({ version: "0.2.0" })
   )

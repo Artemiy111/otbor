@@ -22,19 +22,38 @@ reference checkout и не является runtime-зависимостью.
 
 ```bash
 bun install
-bun run db:up
-bun run db:migrate
-bun run db:seed
-
-bun run server       # RPC на 127.0.0.1:3001
-bun run web          # UI на 127.0.0.1:5173
+bun run link          # otbor -> ~/.bun/bin/otbor
+otbor doctor          # что не настроено и как починить
+otbor up              # Postgres, миграции, server + worker + web
 ```
 
-CLI устанавливается как бинарник:
+`otbor up` поднимает Postgres через docker compose (если он не отвечает),
+применяет миграции и запускает server (RPC на 127.0.0.1:3001), worker и web
+(127.0.0.1:5173) с общим логом. Ctrl+C останавливает всё. Флаги:
+
+- `--detach` (`-d`) — в фоне: pid в `~/.otbor/run`, вывод в `logs/<name>.log`;
+- `--no-web`, `--harness` (ещё `harness run`), `--proxy` (сначала `proxy up`).
 
 ```bash
-bun run link          # otbor -> ~/.bun/bin/otbor
-otbor --help
+otbor status          # postgres, api, worker, web, harness
+otbor down            # остановить фоновые сервисы; --db ещё и Postgres
+```
+
+На новой базе один раз нужен `otbor db seed`. `bun run dev` — то же, что
+`otbor up`.
+
+## MCP
+
+`otbor mcp` — MCP-сервер на stdio поверх того же `RpcGroup`, что CLI и web.
+Пока только чтение: `vacancies_top`, `vacancy_get`, `decisions_list`,
+пресеты, работодатели, резюме, заявки, диалоги, контакты, расписания,
+очередь. Нужен запущенный API (`otbor up`).
+
+В репозитории лежит `.mcp.json`, поэтому Claude Code видит сервер `otbor`
+сразу. Для OpenCode:
+
+```jsonc
+{ "mcp": { "otbor": { "type": "local", "command": ["otbor", "mcp"], "enabled": true } } }
 ```
 
 ## Корпус, краулер и прокси

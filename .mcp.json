@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "otbor": {
+      "type": "stdio",
+      "command": "./packages/cli/bin/otbor",
+      "args": ["mcp"]
+    }
+  }
+}
