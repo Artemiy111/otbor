@@ -16,6 +16,7 @@ import { Context, Effect, Layer } from "effect"
 import { generateHarnessToken, hashHarnessToken } from "../auth/harnessToken.ts"
 import { Database } from "../db/Database.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
+import * as HhAccountRepository from "../repositories/HhAccountRepository.ts"
 import * as HarnessRepository from "../repositories/HarnessRepository.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
@@ -666,6 +667,20 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                     accepted: false,
                     message: "stale lease"
                   })
+                }
+
+                // A login page where a session was expected proves the cookies
+                // are dead: record it so status and health show the account.
+                if (exit.tag === "session_expired" && ctx.applicationId !== null) {
+                  const owner = yield* ApplicationRepository.findAny(tx, ctx.applicationId)
+                  if (owner !== null) {
+                    yield* HhAccountRepository.setSession(tx, {
+                      userId: ctx.userId,
+                      id: owner.hhAccountId,
+                      state: "expired",
+                      error: exit.message ?? "hh redirected to the login page"
+                    })
+                  }
                 }
 
                 // A fit judgement may be waiting for this inference job: store

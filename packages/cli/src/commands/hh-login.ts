@@ -1,4 +1,5 @@
 import { Api } from "../client.ts"
+import { fullName, isReplaceableLabel, parseProfileName } from "../hh-session.ts"
 import { hhProfileDir } from "@otbor/harness"
 import { Console, Effect } from "effect"
 import { Command, Flag } from "effect/cli"
@@ -92,8 +93,7 @@ export const hhLoginCommand = Command.make(
       },
       catch: () => ""
     })
-    const firstName = profileHtml.match(/firstName&quot;:&quot;([^&]+)&quot;/)?.[1]?.replace(/&quot;/g, "") ?? null
-    const lastName = profileHtml.match(/lastName&quot;:&quot;([^&]+)&quot;/)?.[1]?.replace(/&quot;/g, "") ?? null
+    const { firstName, lastName } = parseProfileName(profileHtml)
     const hhid = homeHtml.match(/"hhid":\s*"([^"]+)"/)?.[1] ?? null
     const resolvedProfile = hhid ? `hh_${hhid}` : (firstName && lastName ? `${firstName}_${lastName}`.toLowerCase() : "default")
 
@@ -108,15 +108,22 @@ export const hhLoginCommand = Command.make(
 
     yield* Effect.tryPromise({ try: () => context.close(), catch: () => new Error("close failed") })
 
-    const label = [firstName, lastName].filter(Boolean).join(" ") || (hhid ? `hh ${hhid}` : "hh account")
+    const hhName = fullName({ firstName, lastName }) || (hhid ? `hh ${hhid}` : "hh account")
     const api = yield* Api
+    const accounts = yield* api.HhAccountsList()
+    // Same session profile means same account: update it, never duplicate.
+    const existing = accounts.find((a) => a.id === account) ??
+      accounts.find((a) => a.sessionProfile === resolvedProfile)
     const createdAccount = yield* api.HhAccountUpsert({
-      label,
+      ...(existing ? { id: existing.id } : {}),
+      // a label the operator chose is never overwritten
+      label: existing && !isReplaceableLabel(existing.label) ? existing.label : hhName,
       sessionProfile: resolvedProfile,
-      firstName: firstName ?? undefined,
-      lastName: lastName ?? undefined,
-      isDefault: true
+      firstName: firstName ?? existing?.firstName ?? undefined,
+      lastName: lastName ?? existing?.lastName ?? undefined,
+      isDefault: existing ? existing.isDefault : true
     })
+    yield* api.HhAccountSessionSet({ id: createdAccount.id, state: "ok" })
     yield* Console.log(`Сессия сохранена: ${path}`)
     yield* Console.log(`Аккаунт: ${createdAccount.label} (${createdAccount.id})`)
   })

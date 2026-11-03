@@ -465,6 +465,18 @@ export const TelegramAccountRecord = Schema.Struct({
 
 export type TelegramAccountRecord = typeof TelegramAccountRecord.Type
 
+export const HhSessionState = Schema.Literals(["ok", "expired", "blocked"])
+export type HhSessionState = typeof HhSessionState.Type
+
+/** Health of one account's hh.ru login. Cookies never leave the operator's disk. */
+export const HhSessionRecord = Schema.Struct({
+  state: HhSessionState,
+  lastOkAt: Schema.NullOr(Schema.String),
+  lastError: Schema.NullOr(Schema.String),
+  updatedAt: Schema.String
+})
+export type HhSessionRecord = typeof HhSessionRecord.Type
+
 export const HhAccountRecord = Schema.Struct({
   id: HhAccountId,
   label: Schema.String,
@@ -473,6 +485,7 @@ export const HhAccountRecord = Schema.Struct({
   firstName: Schema.optional(Schema.NullOr(Schema.String)),
   lastName: Schema.optional(Schema.NullOr(Schema.String)),
   areaName: Schema.optional(Schema.NullOr(Schema.String)),
+  session: Schema.optional(Schema.NullOr(HhSessionRecord)),
   createdAt: Schema.String,
   updatedAt: Schema.String
 })
@@ -1062,11 +1075,20 @@ export const ResumeDraft = Schema.Struct({
 
 export type ResumeDraft = typeof ResumeDraft.Type
 
+export const HealthAccount = Schema.Struct({
+  id: HhAccountId,
+  label: Schema.String,
+  sessionProfile: Schema.NullOr(Schema.String),
+  session: Schema.NullOr(HhSessionRecord)
+})
+export type HealthAccount = typeof HealthAccount.Type
+
 export const Health = Schema.Struct({
   status: Schema.Literals(["ok", "degraded"]),
   version: Schema.String,
   database: Schema.Boolean,
-  now: Schema.String
+  now: Schema.String,
+  accounts: Schema.optional(Schema.Array(HealthAccount))
 })
 
 export type Health = typeof Health.Type

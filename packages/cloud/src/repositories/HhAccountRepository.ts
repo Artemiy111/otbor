@@ -1,4 +1,4 @@
-import type { HhAccountRecord, HhAccountId } from "@otbor/contract"
+import type { HhAccountRecord, HhSessionState } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
@@ -14,6 +14,10 @@ export interface StoredHhAccount {
   readonly phone: string | null
   readonly area_name: string | null
   readonly session_profile: string | null
+  readonly session_state?: string | null
+  readonly session_last_ok_at?: Date | string | null
+  readonly session_last_error?: string | null
+  readonly session_updated_at?: Date | string | null
   readonly created_at: Date | string
   readonly updated_at: Date | string
 }
@@ -29,14 +33,29 @@ export const toRecord = (row: StoredHhAccount): HhAccountRecord => ({
   firstName: row.first_name,
   lastName: row.last_name,
   areaName: row.area_name,
+  session:
+    row.session_state === null || row.session_state === undefined
+      ? null
+      : {
+          state: row.session_state as HhSessionState,
+          lastOkAt:
+            row.session_last_ok_at === null || row.session_last_ok_at === undefined
+              ? null
+              : iso(row.session_last_ok_at),
+          lastError: row.session_last_error ?? null,
+          updatedAt: iso(row.session_updated_at ?? row.updated_at)
+        },
   createdAt: iso(row.created_at),
   updatedAt: iso(row.updated_at)
 })
 
 const selection = sql`
-  select id, user_id, label, is_default, first_name, last_name, email, phone,
-         area_name, session_profile, created_at, updated_at
-  from hh_account
+  select a.id, a.user_id, a.label, a.is_default, a.first_name, a.last_name, a.email,
+         a.phone, a.area_name, a.session_profile, a.created_at, a.updated_at,
+         s.state as session_state, s.last_ok_at as session_last_ok_at,
+         s.last_error as session_last_error, s.updated_at as session_updated_at
+  from hh_account a
+  left join hh_account_session s on s.hh_account_id = a.id
 `
 
 export const list = (
@@ -46,8 +65,8 @@ export const list = (
   tx
     .execute(sql`
       ${selection}
-      where user_id = ${userId}
-      order by is_default desc, created_at asc
+      where a.user_id = ${userId}
+      order by a.is_default desc, a.created_at asc
     `)
     .pipe(
       Effect.map((result) =>
@@ -63,7 +82,7 @@ export const find = (
   tx
     .execute(sql`
       ${selection}
-      where user_id = ${userId} and id = ${id}::uuid
+      where a.user_id = ${userId} and a.id = ${id}::uuid
       limit 1
     `)
     .pipe(
@@ -124,9 +143,9 @@ export const upsert = (
           area_name = ${input.areaName === undefined ? existing.area_name : input.areaName},
           updated_at = ${now}
         where id = ${existing.id}::uuid
-        returning *
+        returning id
       `)
-      return toRecord(result.rows[0] as unknown as StoredHhAccount)
+      return (yield* findById(tx, input.userId, (result.rows[0] as { id: string }).id))!
     }
 
     const inserted = yield* tx.execute(sql`
@@ -139,9 +158,66 @@ export const upsert = (
         ${input.lastName ?? null},
         ${input.areaName ?? null}
       )
-      returning *
+      returning id
     `)
-    return toRecord(inserted.rows[0] as unknown as StoredHhAccount)
+    return (yield* findById(tx, input.userId, (inserted.rows[0] as { id: string }).id))!
+  })
+
+export const findBySessionProfile = (
+  tx: Executor,
+  userId: string,
+  sessionProfile: string
+): RepoEffect<HhAccountRecord | null> =>
+  tx
+    .execute(sql`
+      ${selection}
+      where a.user_id = ${userId} and a.session_profile = ${sessionProfile}
+      order by a.created_at asc
+      limit 1
+    `)
+    .pipe(
+      Effect.map((result) =>
+        result.rows[0] === undefined
+          ? null
+          : toRecord(result.rows[0] as unknown as StoredHhAccount)
+      )
+    )
+
+export interface SetSessionInput {
+  readonly userId: string
+  readonly id: string
+  readonly state: HhSessionState
+  readonly error?: string | null
+  readonly now?: Date
+}
+
+/**
+ * Records whether the account's hh.ru login still works. Only the verdict is
+ * stored: the cookie jar stays on the operator's disk. `last_ok_at` moves only
+ * on `ok`, so it keeps the last time the session was known good.
+ */
+export const setSession = (
+  tx: Executor,
+  input: SetSessionInput
+): RepoEffect<HhAccountRecord | null> =>
+  Effect.gen(function*() {
+    const account = yield* find(tx, input.userId, input.id)
+    if (account === null) return null
+    const now = input.now ?? new Date()
+    const ok = input.state === "ok"
+    yield* tx.execute(sql`
+      insert into hh_account_session (user_id, hh_account_id, state, last_ok_at, last_error, updated_at)
+      values (
+        ${input.userId}, ${input.id}::uuid, ${input.state},
+        ${ok ? now : null}, ${ok ? null : (input.error ?? null)}, ${now}
+      )
+      on conflict (hh_account_id) do update set
+        state = excluded.state,
+        last_ok_at = case when ${ok} then ${now}::timestamptz else hh_account_session.last_ok_at end,
+        last_error = excluded.last_error,
+        updated_at = excluded.updated_at
+    `)
+    return yield* findById(tx, input.userId, input.id)
   })
 
 export const remove = (
