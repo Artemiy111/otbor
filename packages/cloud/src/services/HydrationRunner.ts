@@ -27,6 +27,8 @@ export interface HydrationRunResult {
   readonly updated: number
   readonly skipped: number
   readonly errors: ReadonlyArray<string>
+  /** Vacancies the pass re-saved, for the evaluation that follows. */
+  readonly vacancyIds?: ReadonlyArray<string>
 }
 
 export interface HydrationRunnerShape {
@@ -103,6 +105,7 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
         let updated = 0
         let skipped = 0
         const errors: string[] = []
+        const vacancyIds = new Set<string>()
 
         for (const [index, target] of targets.entries()) {
           processed += 1
@@ -177,6 +180,7 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
               failed += 1
             } else {
               hydrated += 1
+              for (const item of saved.items) vacancyIds.add(item.id)
               inserted += saved.inserted
               updated += saved.updated
               skipped += saved.skipped
@@ -194,7 +198,16 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
           )
         }
 
-        return { processed, hydrated, failed, inserted, updated, skipped, errors }
+        return {
+          processed,
+          hydrated,
+          failed,
+          inserted,
+          updated,
+          skipped,
+          errors,
+          vacancyIds: [...vacancyIds]
+        }
       })
 
       const hydrateOne = Effect.fn("HydrationRunner.hydrateOne")(function*(

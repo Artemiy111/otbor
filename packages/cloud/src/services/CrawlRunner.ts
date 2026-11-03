@@ -31,6 +31,8 @@ export interface CrawlRunnerInput {
   /** One page per scheduled run by default. */
   readonly maxPages?: number
   readonly delayMs?: number
+  /** Stop at the first page without a newly inserted vacancy. */
+  readonly stopWhenNoNew?: boolean
   readonly startPage?: number
   readonly title?: string
 }
@@ -47,6 +49,8 @@ export interface CrawlRunnerResult {
   readonly updated: number
   readonly skipped: number
   readonly errors: number
+  /** Every vacancy the run saw, for the evaluation that follows the crawl. */
+  readonly vacancyIds?: ReadonlyArray<string>
 }
 
 export interface CrawlRunnerShape {
@@ -171,6 +175,7 @@ export class CrawlRunner extends Context.Service<CrawlRunner, CrawlRunnerShape>(
 
         let pagesDone = 0
         let found = 0
+        const vacancyIds = new Set<string>()
 
         const savePage = (
           page: SearchPage,
@@ -184,6 +189,7 @@ export class CrawlRunner extends Context.Service<CrawlRunner, CrawlRunnerShape>(
 
             pagesDone += 1
             found += page.cards.length
+            for (const item of saved.items) vacancyIds.add(item.id)
 
             yield* crawl.savePage({
               runId: runId,
@@ -206,6 +212,7 @@ export class CrawlRunner extends Context.Service<CrawlRunner, CrawlRunnerShape>(
           startPage: input.startPage ?? 0,
           maxPages,
           delayMs,
+          stopWhenNoNew: input.stopWhenNoNew ?? false,
           fetchPage,
           savePage
         })
@@ -233,7 +240,8 @@ export class CrawlRunner extends Context.Service<CrawlRunner, CrawlRunnerShape>(
           inserted: outcome.inserted,
           updated: outcome.updated,
           skipped: outcome.skipped,
-          errors: outcome.errors
+          errors: outcome.errors,
+          vacancyIds: [...vacancyIds]
         }
       })
 
@@ -251,6 +259,7 @@ export const failureReason = (outcome: CrawlOutcome): string | null => {
       outcome.reason === "max_pages" ||
       outcome.reason === "empty_page" ||
       outcome.reason === "last_page" ||
+      outcome.reason === "no_new" ||
       outcome.reason === "cancelled"
     ) {
       return null

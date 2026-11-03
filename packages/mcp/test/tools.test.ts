@@ -67,13 +67,29 @@ const decisions = [
 
 const seen: Array<unknown> = []
 const fake = {
-  DecisionsList: (payload: { verdict?: string; offset?: number }) => {
+  DecisionsList: (payload: {
+    verdict?: string
+    offset?: number
+    limit?: number
+    minFit?: number
+    orderBy?: string
+    latestPerVacancy?: boolean
+  }) => {
     seen.push(payload)
-    return Effect.succeed(
-      (payload.offset ?? 0) > 0
-        ? []
-        : decisions.filter((d) => payload.verdict === undefined || d.verdict === payload.verdict)
+    // Mirrors the server: the list is newest-first; latestPerVacancy keeps the
+    // first row per vacancy, filters apply to the survivor, then order + limit.
+    let rows = [...decisions]
+    if (payload.latestPerVacancy === true) {
+      const kept = new Map<string, DecisionRecord>()
+      for (const d of rows) if (!kept.has(d.vacancyId)) kept.set(d.vacancyId, d)
+      rows = [...kept.values()]
+    }
+    rows = rows.filter((d) =>
+      (payload.verdict === undefined || d.verdict === payload.verdict) &&
+      (payload.minFit === undefined || d.fit >= payload.minFit)
     )
+    if (payload.orderBy === "priority") rows.sort((a, b) => b.priority - a.priority || b.fit - a.fit)
+    return Effect.succeed(rows.slice(payload.offset ?? 0, (payload.offset ?? 0) + (payload.limit ?? 50)))
   },
   VacanciesGet: ({ id: vacancyId }: { id: string }) => {
     const n = Number(vacancyId.slice(-12))
@@ -121,7 +137,9 @@ describe("mcp tools", () => {
     expect(out.items.map((i) => i.vacancyId)).toEqual([id(2), id(3), id(1)])
     expect(out.items.map((i) => i.rank)).toEqual([1, 2, 3])
     expect(out.considered).toBe(3)
-    expect((seen[0] as { verdict: string }).verdict).toBe("apply")
+    // one server-side call: ranked, newest decision per vacancy, no client scan
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatchObject({ verdict: "apply", orderBy: "priority", latestPerVacancy: true, limit: 10 })
     expect(out.items[0]?.employer).toBe("Employer 2")
     expect(out.items[0]?.salary).toBe("100000-200000 RUR")
     expect(out.items[0]?.url).toBe("https://hh.ru/vacancy/9002")

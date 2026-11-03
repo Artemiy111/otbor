@@ -545,6 +545,23 @@ export const DecisionRecord = Schema.Struct({
 
 export type DecisionRecord = typeof DecisionRecord.Type
 
+/**
+ * Outcome of one batch evaluation. `byReason` counts the primary (first)
+ * reason code of every decision made in the batch.
+ */
+export const EvaluateBatchResult = Schema.Struct({
+  /** Vacancies that went through the decision cascade in this call. */
+  evaluated: Schema.Int,
+  apply: Schema.Int,
+  draft: Schema.Int,
+  skip: Schema.Int,
+  /** Vacancies that still lack a current decision after this call. */
+  remaining: Schema.Int,
+  byReason: Schema.Record(Schema.String, Schema.Int)
+})
+
+export type EvaluateBatchResult = typeof EvaluateBatchResult.Type
+
 /* -------------------------------------------------------------------------- */
 /* Applications                                                               */
 /* -------------------------------------------------------------------------- */

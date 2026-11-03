@@ -249,7 +249,8 @@ const SCHEDULE_KIND_LABELS: Record<string, string> = {
   employer_hydration: "Гидратация компаний",
   mail_sync: "Синхронизация почты",
   telegram_sync: "Синхронизация Telegram",
-  hh_chat_sync: "Чаты hh"
+  hh_chat_sync: "Чаты hh",
+  evaluate: "Оценка вакансий"
 }
 
 export const scheduleKindLabel = (value: string): string =>

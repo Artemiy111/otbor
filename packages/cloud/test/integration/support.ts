@@ -58,6 +58,7 @@ import { ConversationService } from "../../src/services/ConversationService.ts"
 import { CorpusService } from "../../src/services/CorpusService.ts"
 import { BlacklistService } from "../../src/services/BlacklistService.ts"
 import { DecisionService } from "../../src/services/DecisionService.ts"
+import { EvaluationRunner } from "../../src/services/EvaluationRunner.ts"
 import { CrawlRunner, type CrawlRunnerResult } from "../../src/services/CrawlRunner.ts"
 import { CrawlService, type CrawlSavePageInput } from "../../src/services/CrawlService.ts"
 import { CurrentUser } from "../../src/services/CurrentUser.ts"
@@ -221,10 +222,12 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
     options.hydrationRunner ??
     HydrationRunner.layer.pipe(Layer.provide(Layer.merge(shared, crawlStack)))
   const employers = EmployerHydrator.layer.pipe(Layer.provide(shared))
+  const evaluation = EvaluationRunner.layer.pipe(Layer.provide(shared))
   const sourceStack = Layer.mergeAll(
     crawlStack,
     hydration,
     employers,
+    evaluation,
     mailSync,
     telegramSync
   )
@@ -271,6 +274,7 @@ type Requirements =
   | EmployerHydrator
   | BlacklistService
   | DecisionService
+  | EvaluationRunner
   | ResumeService
 
 export const runAs = <A, E>(

@@ -124,4 +124,80 @@ describe("crawl loop", () => {
     expect(outcome.status).toBe("done")
     expect(outcome.pagesDone).toBe(1)
   })
+
+  /** A fetch that serves `pages` pages, every one with a next link. */
+  const endless = (inserted: ReadonlyArray<number>, extra: { stopWhenNoNew?: boolean; maxPages?: number } = {}) => {
+    const fetched: number[] = []
+    const run = Effect.runPromise(
+      runCrawl({
+        url: "https://hh.ru/search/vacancy?text=devops",
+        maxPages: extra.maxPages ?? 10,
+        stopWhenNoNew: extra.stopWhenNoNew,
+        delayMs: 0,
+        jitter: false,
+        fetchPage: (url) => {
+          const index = Number(new URL(url).searchParams.get("page") ?? 0)
+          fetched.push(index)
+          return Effect.succeed({
+            status: 200,
+            url,
+            page: page(index, true)
+          })
+        },
+        savePage: (parsed) =>
+          Effect.succeed({ inserted: inserted[parsed.page] ?? 0, updated: 0, skipped: 0 })
+      })
+    )
+    return { run, fetched }
+  }
+
+  test("stopWhenNoNew stops after the first page without a new vacancy", async () => {
+    const { run, fetched } = endless([5, 2, 0, 9], { stopWhenNoNew: true })
+    const outcome = await run
+
+    expect(outcome.status).toBe("stopped")
+    expect(outcome.reason).toBe("no_new")
+    expect(outcome.pagesDone).toBe(3)
+    expect(outcome.inserted).toBe(7)
+    expect(fetched).toEqual([0, 1, 2])
+  })
+
+  test("without stopWhenNoNew the crawl keeps going up to maxPages", async () => {
+    const { run, fetched } = endless([5, 0, 0], { maxPages: 4 })
+    const outcome = await run
+
+    expect(outcome.reason).toBe("max_pages")
+    expect(outcome.pagesDone).toBe(4)
+    expect(fetched).toEqual([0, 1, 2, 3])
+  })
+
+  test("a captcha on a later page stops the run and keeps the earlier pages", async () => {
+    const saved: number[] = []
+    const outcome = await Effect.runPromise(
+      runCrawl({
+        url: "https://hh.ru/search/vacancy?text=devops",
+        maxPages: 5,
+        delayMs: 0,
+        jitter: false,
+        stopWhenNoNew: true,
+        fetchPage: (url) => {
+          const index = Number(new URL(url).searchParams.get("page") ?? 0)
+          return Effect.succeed(
+            index === 2
+              ? { status: 200, url, page: null, blocked: "captcha" as const }
+              : { status: 200, url, page: page(index, true) }
+          )
+        },
+        savePage: (parsed) => {
+          saved.push(parsed.page)
+          return Effect.succeed({ inserted: 1, updated: 0, skipped: 0 })
+        }
+      })
+    )
+
+    expect(outcome.status).toBe("stopped")
+    expect(outcome.reason).toBe("captcha")
+    expect(saved).toEqual([0, 1])
+    expect(outcome.pagesDone).toBe(2)
+  })
 })

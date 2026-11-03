@@ -11,7 +11,8 @@ const kinds: ReadonlyArray<SourceSyncKind> = [
   "employer_hydration",
   "mail_sync",
   "telegram_sync",
-  "hh_chat_sync"
+  "hh_chat_sync",
+  "evaluate"
 ]
 
 const list = Command.make(
@@ -55,7 +56,7 @@ const upsert = Command.make(
   {
     target: Flag.String("target").pipe(
       Flag.withDescription(
-        "hh.ru search URL for search, an account id for mail_sync/telegram_sync, or 'global'"
+        "hh.ru search URL for search, an account id for mail_sync/telegram_sync/evaluate, or 'global'"
       )
     ),
     kind: Flag.String("kind").pipe(

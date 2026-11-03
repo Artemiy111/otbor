@@ -104,9 +104,10 @@ export const VacanciesTop = readTool("vacancies_top", {
   description:
     "The best vacancies to apply to, ranked by decision priority (highest first), with fit, verdict and the " +
     "top human-readable reasons. Joined with employer, salary and hh url. Defaults to verdict \"apply\". " +
-    "LIMITATION: the API cannot sort or filter decisions server-side, so this scans the newest " +
-    "decisions (up to 800, one per vacancy, latest wins) and ranks them client-side; `considered` reports how " +
-    "many were scanned. presetId restricts to vacancies in that preset's preview (which is itself capped).",
+    "Ranking, the minFit and presetId filters and the \"newest decision per vacancy\" rule all run server-side, " +
+    "so the result is the true top of the corpus, not of a recent window. Decisions come from the pipeline " +
+    "(crawl and hydration evaluate automatically; `otbor decision evaluate --all` backfills). `considered` " +
+    "equals `returned` and is kept for compatibility.",
   parameters: Schema.Struct({
     limit: limit("How many vacancies to return (default 10, max 50)"),
     presetId: text("Only vacancies matching this preset (see presets_list)"),

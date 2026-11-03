@@ -196,7 +196,8 @@ export const ScheduleKind = Schema.Literals([
   "employer_hydration",
   "mail_sync",
   "telegram_sync",
-  "hh_chat_sync"
+  "hh_chat_sync",
+  "evaluate"
 ])
 
 export type ScheduleKind = typeof ScheduleKind.Type
@@ -209,7 +210,8 @@ export const SourceSyncKind = Schema.Literals([
   "employer_hydration",
   "mail_sync",
   "telegram_sync",
-  "hh_chat_sync"
+  "hh_chat_sync",
+  "evaluate"
 ])
 
 export type SourceSyncKind = typeof SourceSyncKind.Type

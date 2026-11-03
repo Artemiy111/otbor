@@ -1,6 +1,6 @@
 import type { DecisionReason, DecisionRecord, GateVerdict, TitleVerdictRecord } from "@otbor/contract"
 import type { RoleGateOutput } from "@otbor/domain"
-import { sql } from "drizzle-orm"
+import { sql, type SQL } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
 import { decision, titleVerdict } from "../db/tables.ts"
@@ -160,12 +160,14 @@ export interface PersistDecisionInput {
   readonly policyVersion: number
   readonly rulesVersion: number
   readonly inputHash: string
+  /** `vacancy.content_hash` the decision was made for (drives staleness). */
+  readonly vacancyContentHash: string
 }
 
 const selectDecision = sql`
-  select d.*, v.title as vacancy_title
+  select d.*, vacancy.title as vacancy_title
   from decision d
-  join vacancy v on v.id = d.vacancy_id
+  join vacancy on vacancy.id = d.vacancy_id
 `
 
 export const persist = (
@@ -188,9 +190,26 @@ export const persist = (
         reasons: input.reasons,
         policyVersion: input.policyVersion,
         rulesVersion: input.rulesVersion,
-        inputHash: input.inputHash
+        inputHash: input.inputHash,
+        vacancyContentHash: input.vacancyContentHash
       })
-      .onConflictDoNothing()
+      // The same inputs give the same decision, so no second row. Two repairs
+      // keep "latest decision" truthful: fill the content hash on rows that
+      // predate it, and re-stamp a row that a newer decision has overtaken
+      // (content flipped A -> B -> A), so the confirmed one is the latest again.
+      .onConflictDoUpdate({
+        target: [decision.userId, decision.vacancyId, decision.policyVersion, decision.inputHash],
+        set: {
+          vacancyContentHash: sql`excluded.vacancy_content_hash`,
+          createdAt: sql`now()`
+        },
+        setWhere: sql`${decision.vacancyContentHash} is null or exists (
+          select 1 from decision newer
+          where newer.user_id = ${decision.userId}
+            and newer.vacancy_id = ${decision.vacancyId}
+            and newer.created_at > ${decision.createdAt}
+        )`
+      })
 
     const [row] = (
       yield* tx.execute(sql`
@@ -214,24 +233,131 @@ export const findById = (tx: Executor, id: string): RepoEffect<DecisionRecord | 
       return row === undefined ? null : toRecord(row)
     }))
 
+export interface DecisionListOptions {
+  readonly verdict?: string
+  readonly limit?: number
+  readonly offset?: number
+  readonly orderBy?: "priority" | "created"
+  readonly minFit?: number
+  readonly hhAccountId?: string
+  /** Newest decision per vacancy and account only. */
+  readonly latestPerVacancy?: boolean
+  /** A preset's vacancy filter, already compiled over the `vacancy` table. */
+  readonly vacancyFilter?: SQL
+}
+
 export const list = (
   tx: Executor,
   userId: string,
-  options: { readonly verdict?: string; readonly limit?: number; readonly offset?: number } = {}
-): RepoEffect<ReadonlyArray<DecisionRecord>> =>
-  tx
+  options: DecisionListOptions = {}
+): RepoEffect<ReadonlyArray<DecisionRecord>> => {
+  // `distinct on` keeps the newest row of each vacancy+account; filters apply
+  // to that survivor, so an old `apply` never shows through a newer `skip`.
+  const source = options.latestPerVacancy === true
+    ? sql`(
+        select distinct on (x.vacancy_id, x.hh_account_id) x.*
+        from decision x
+        where x.user_id = ${userId}
+        order by x.vacancy_id, x.hh_account_id, x.created_at desc, x.id desc
+      ) d`
+    : sql`decision d`
+
+  const order = options.orderBy === "priority"
+    ? sql`d.priority desc, d.fit desc, d.created_at desc, d.id desc`
+    : sql`d.created_at desc, d.id desc`
+
+  return tx
     .execute(sql`
-      ${selectDecision}
+      select d.*, vacancy.title as vacancy_title
+      from ${source}
+      join vacancy on vacancy.id = d.vacancy_id
       where d.user_id = ${userId}
         ${options.verdict === undefined || options.verdict === ""
           ? sql``
           : sql`and d.verdict = ${options.verdict}`}
-      order by d.created_at desc
+        ${options.minFit === undefined ? sql`` : sql`and d.fit >= ${options.minFit}`}
+        ${options.hhAccountId === undefined
+          ? sql``
+          : sql`and d.hh_account_id = ${options.hhAccountId}`}
+        ${options.vacancyFilter === undefined ? sql`` : sql`and ${options.vacancyFilter}`}
+      order by ${order}
       limit ${Math.min(Math.max(options.limit ?? 50, 1), 200)}
       offset ${Math.max(options.offset ?? 0, 0)}
     `)
     .pipe(
       Effect.map((result) =>
         (result.rows as unknown as ReadonlyArray<DecisionRow>).map(toRecord)
+      )
+    )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Staleness                                                                  */
+/* -------------------------------------------------------------------------- */
+
+export interface StaleVacanciesOptions {
+  readonly userId: string
+  readonly policyVersion: number
+  readonly rulesVersion: number
+  /** Include vacancies whose decision is current. */
+  readonly force?: boolean
+  readonly vacancyIds?: ReadonlyArray<string>
+}
+
+/**
+ * The SQL twin of `isDecisionStale` in `@otbor/domain`: no decision, other
+ * content, other policy version, or older (non-user) gate rules. Compared
+ * against the newest decision of the user for the vacancy.
+ */
+const staleFrom = (options: StaleVacanciesOptions) => sql`
+  from vacancy
+  left join lateral (
+    select x.vacancy_content_hash, x.policy_version, x.rules_version
+    from decision x
+    where x.user_id = ${options.userId} and x.vacancy_id = vacancy.id
+    order by x.created_at desc, x.id desc
+    limit 1
+  ) d on true
+  where ${options.vacancyIds === undefined
+      ? sql`true`
+      : options.vacancyIds.length === 0
+        ? sql`false`
+        : sql`vacancy.id in (${sql.join(options.vacancyIds.map((id) => sql`${id}`), sql`, `)})`}
+    and (
+      ${options.force === true ? sql`true` : sql`false`}
+      or d.policy_version is null
+      or d.vacancy_content_hash is distinct from vacancy.content_hash
+      or d.policy_version <> ${options.policyVersion}
+      or (d.rules_version <> 0 and d.rules_version < ${options.rulesVersion})
+    )
+`
+
+/** Vacancy ids to evaluate: live and fresh first, so a bounded batch helps most. */
+export const staleVacancyIds = (
+  tx: Executor,
+  options: StaleVacanciesOptions & { readonly limit: number }
+): RepoEffect<ReadonlyArray<string>> =>
+  tx
+    .execute(sql`
+      select vacancy.id::text as id
+      ${staleFrom(options)}
+      order by vacancy.archived asc, vacancy.published_at desc nulls last, vacancy.id
+      limit ${options.limit}
+    `)
+    .pipe(
+      Effect.map((result) =>
+        (result.rows as unknown as ReadonlyArray<{ id: string }>).map((row) => row.id)
+      )
+    )
+
+export const countStaleVacancies = (
+  tx: Executor,
+  options: StaleVacanciesOptions
+): RepoEffect<number> =>
+  tx
+    .execute(sql`select count(*)::int as count ${staleFrom(options)}`)
+    .pipe(
+      Effect.map((result) =>
+        Number((result.rows[0] as { count?: number | string } | undefined)?.count ?? 0)
       )
     )

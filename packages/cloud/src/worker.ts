@@ -8,6 +8,7 @@ import { CrawlService } from "./services/CrawlService.ts"
 import { CorpusService } from "./services/CorpusService.ts"
 import { CurrentUser } from "./services/CurrentUser.ts"
 import { EmployerHydrator } from "./services/EmployerHydrator.ts"
+import { EvaluationRunner } from "./services/EvaluationRunner.ts"
 import { HydrationRunner } from "./services/HydrationRunner.ts"
 import { MailGatewayProvider } from "./services/MailGatewayProvider.ts"
 import { MailSync } from "./services/MailSync.ts"
@@ -59,8 +60,16 @@ const telegramSync = TelegramSync.layer.pipe(
 )
 const hydration = HydrationRunner.layer.pipe(Layer.provide(Layer.merge(base, crawlStack)))
 const employers = EmployerHydrator.layer.pipe(Layer.provide(base))
+const evaluation = EvaluationRunner.layer.pipe(Layer.provide(base))
 
-const sourceStack = Layer.mergeAll(crawlStack, hydration, employers, mailSync, telegramSync)
+const sourceStack = Layer.mergeAll(
+  crawlStack,
+  hydration,
+  employers,
+  evaluation,
+  mailSync,
+  telegramSync
+)
 const dispatcher = ScheduleDispatcher.layer.pipe(Layer.provide(Layer.merge(base, sourceStack)))
 
 const WorkerServices = Layer.mergeAll(base, sourceStack, dispatcher)

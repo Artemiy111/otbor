@@ -63,6 +63,12 @@ export interface CrawlDeps {
   readonly maxRetries?: number
   /** Base for exponential backoff, default 2000 ms. */
   readonly backoffMs?: number
+  /**
+   * Stop after a page that inserted no vacancy that was not already stored
+   * (`reason: "no_new"`). Search results are newest first, so a page of known
+   * vacancies means the pages behind it are known too.
+   */
+  readonly stopWhenNoNew?: boolean
   /** Randomises pauses and backoff; disable in tests. */
   readonly jitter?: boolean
   /** Relative spread of a random pause, 0..1; default 0.5 (±50%). */
@@ -221,6 +227,9 @@ export const runCrawl = (deps: CrawlDeps): Effect.Effect<CrawlOutcome> =>
       }
 
       if (!parsed.hasNext) return finish("done", "last_page", page)
+      if (deps.stopWhenNoNew === true && saved.value.inserted === 0) {
+        return finish("stopped", "no_new", page)
+      }
       if (pagesDone >= maxPages) return finish("stopped", "max_pages", page)
       yield* pause(delayMs, jitter, jitterRatio)
     }

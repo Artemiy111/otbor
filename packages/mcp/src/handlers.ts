@@ -6,6 +6,7 @@ import type {
   EmployerId,
   HhAccountId,
   OtborApi,
+  PresetId,
   ResumeId,
   VacancyId
 } from "@otbor/contract"
@@ -123,37 +124,26 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
       const count = clamp(params.limit, 10, 50)
       const verdict = params.verdict ?? "apply"
 
-      const scanned = yield* run(scanDecisions(rpc, verdict))
-      let candidates = latestPerVacancy(scanned)
-      const considered = candidates.length
-      const notes: Array<string> = []
-      if (scanned.length >= DECISION_PAGE * DECISION_PAGES) {
-        notes.push(`scan hit the ${DECISION_PAGE * DECISION_PAGES}-decision cap; older decisions were not considered`)
-      }
-
-      if (params.minFit !== undefined) {
-        candidates = candidates.filter((d) => d.fit >= params.minFit!)
-      }
-
+      let presetId: string | undefined
       if (params.presetId !== undefined) {
         const wanted = params.presetId.toLowerCase()
         const presets = yield* run(rpc.PresetsList({}))
         const preset = presets.find((p) => p.id === wanted || p.id.startsWith(wanted))
         if (preset === undefined) return yield* fail(`preset not found: ${params.presetId}`)
-        const preview = yield* run(rpc.PresetsPreview({ filter: preset.filter }))
-        const ids = new Set(preview.vacancies.map((v) => v.id as string))
-        candidates = candidates.filter((d) => ids.has(d.vacancyId))
-        if (preview.count > preview.vacancies.length) {
-          notes.push(
-            `preset preview lists ${preview.vacancies.length} of ${preview.count} matching vacancies; ` +
-              `the preset filter may hide some candidates`
-          )
-        }
+        presetId = preset.id
       }
 
-      const ranked = [...candidates]
-        .sort((a, b) => b.priority - a.priority || b.fit - a.fit)
-        .slice(0, count)
+      // Ranking happens in the database: best priority first, newest decision
+      // per vacancy only, preset and fit filters applied before the limit.
+      const ranked = yield* run(rpc.DecisionsList({
+        verdict,
+        orderBy: "priority",
+        latestPerVacancy: true,
+        limit: count,
+        ...(params.minFit === undefined ? {} : { minFit: Math.trunc(params.minFit) }),
+        ...(presetId === undefined ? {} : { presetId: presetId as PresetId })
+      }))
+      const notes: Array<string> = []
 
       const details = yield* Effect.forEach(
         ranked,
@@ -187,7 +177,7 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
       return {
         items,
         returned: items.length,
-        considered,
+        considered: items.length,
         note: notes.length === 0 ? null : notes.join("; ")
       }
     }),

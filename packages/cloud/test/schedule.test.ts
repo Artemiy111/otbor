@@ -27,6 +27,7 @@ describe("schedule error text", () => {
     expect(failureReason(outcome("stopped", "max_pages"))).toBeNull()
     expect(failureReason(outcome("stopped", "empty_page"))).toBeNull()
     expect(failureReason(outcome("stopped", "cancelled"))).toBeNull()
+    expect(failureReason(outcome("stopped", "no_new"))).toBeNull()
   })
 
   test("a block, transport failure or parse error is recorded", () => {
@@ -105,7 +106,8 @@ describe("schedule kinds", () => {
       "employer_hydration",
       "mail_sync",
       "telegram_sync",
-      "hh_chat_sync"
+      "hh_chat_sync",
+      "evaluate"
     ]
 
     for (const kind of kinds) {

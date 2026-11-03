@@ -1,9 +1,11 @@
 import type { ApiError } from "@otbor/contract"
 import { InvalidInput } from "@otbor/contract"
-import { Context, Effect, Layer } from "effect"
+import { Cause, Context, Effect, Layer } from "effect"
 import type { StoredSchedule } from "../repositories/ScheduleRepository.ts"
 import { CrawlRunner, type CrawlRunnerResult } from "./CrawlRunner.ts"
+import { DEFAULT_BATCH, MAX_BATCH } from "./decisionEvaluation.ts"
 import { EmployerHydrator } from "./EmployerHydrator.ts"
+import { EvaluationRunner } from "./EvaluationRunner.ts"
 import { HydrationRunner } from "./HydrationRunner.ts"
 import { MailSync } from "./MailSync.ts"
 import { TelegramSync } from "./TelegramSync.ts"
@@ -19,6 +21,9 @@ export interface ScheduleDispatcherShape {
   readonly run: (schedule: StoredSchedule) => Effect.Effect<ScheduleDispatchResult, ApiError>
 }
 
+/** Hard cap on pages per scheduled crawl tick; the default stays one. */
+export const MAX_CRAWL_PAGES = 20
+
 const intOption = (
   options: Record<string, unknown>,
   key: string,
@@ -31,10 +36,14 @@ const intOption = (
   return Math.min(Math.max(Math.trunc(value), min), max)
 }
 
-const searchResult = (result: CrawlRunnerResult): ScheduleDispatchResult => ({
+const searchResult = (
+  result: CrawlRunnerResult,
+  chained: Record<string, unknown>
+): ScheduleDispatchResult => ({
   ok: result.error === null,
   error: result.error,
   detail: {
+    ...chained,
     runId: result.runId,
     status: result.status,
     pagesDone: result.pagesDone,
@@ -82,6 +91,45 @@ export class ScheduleDispatcher extends Context.Service<
       const employers = yield* EmployerHydrator
       const mail = yield* MailSync
       const telegram = yield* TelegramSync
+      const evaluation = yield* EvaluationRunner
+
+      /**
+       * Decides the vacancies a crawl or hydration pass just saved. It is a
+       * best-effort second step: a failure is logged and recorded in the run
+       * detail, but never fails the schedule whose real work already succeeded.
+       */
+      const evaluateSaved = (
+        userId: string,
+        vacancyIds: ReadonlyArray<string> | undefined,
+        source: string
+      ): Effect.Effect<Record<string, unknown>> => {
+        if (vacancyIds === undefined || vacancyIds.length === 0) return Effect.succeed({})
+        return evaluation
+          .evaluateBatch(userId, {
+            vacancyIds,
+            limit: Math.min(vacancyIds.length, MAX_BATCH)
+          })
+          .pipe(
+            Effect.tap((result) =>
+              result.evaluated > 0
+                ? Effect.logInfo(
+                    `${source}: evaluated ${result.evaluated} (apply ${result.apply}, skip ${result.skip})`
+                  )
+                : Effect.void
+            ),
+            Effect.map((result) => ({
+              evaluated: result.evaluated,
+              evaluatedApply: result.apply,
+              evaluatedSkip: result.skip
+            })),
+            Effect.catchCause((cause) => {
+              const message = Cause.pretty(cause)
+              return Effect.logWarning(`${source}: evaluation failed`, cause).pipe(
+                Effect.as({ evaluationError: message.split("\n")[0] ?? "evaluation failed" })
+              )
+            })
+          )
+      }
 
       const run: ScheduleDispatcherShape["run"] = (schedule) =>
         Effect.gen(function*() {
@@ -98,9 +146,16 @@ export class ScheduleDispatcher extends Context.Service<
               const result = yield* runner.run({
                 userId: schedule.userId,
                 url: schedule.targetId,
-                maxPages: 1
+                maxPages: intOption(options, "maxPages", 1, 1, MAX_CRAWL_PAGES),
+                delayMs: intOption(options, "delayMs", 750, 0, 60_000),
+                stopWhenNoNew: options.stopWhenNoNew !== false
               })
-              return searchResult(result)
+              const chained = yield* evaluateSaved(
+                schedule.userId,
+                result.vacancyIds,
+                `schedule ${schedule.id}`
+              )
+              return searchResult(result, chained)
             }
 
             case "vacancy_hydration": {
@@ -110,6 +165,11 @@ export class ScheduleDispatcher extends Context.Service<
               })
               const error =
                 result.errors.length === 0 ? null : result.errors.join("; ")
+              const chained = yield* evaluateSaved(
+                schedule.userId,
+                result.vacancyIds,
+                `schedule ${schedule.id}`
+              )
               return {
                 ok: error === null,
                 error,
@@ -119,7 +179,33 @@ export class ScheduleDispatcher extends Context.Service<
                   failed: result.failed,
                   inserted: result.inserted,
                   updated: result.updated,
-                  skipped: result.skipped
+                  skipped: result.skipped,
+                  ...chained
+                }
+              }
+            }
+
+            case "evaluate": {
+              // Sweep: whatever chaining missed (a crash, a policy bump, edits
+              // made outside a crawl). The target is an hh account id, or
+              // `default`/`global` for the user's default account.
+              const target = schedule.targetId.trim()
+              const named = target !== "" && target !== "default" && target !== "global"
+              const result = yield* evaluation.evaluateBatch(schedule.userId, {
+                limit: intOption(options, "limit", DEFAULT_BATCH, 1, MAX_BATCH),
+                force: options.force === true,
+                ...(named ? { hhAccountId: target } : {})
+              })
+              return {
+                ok: true,
+                error: null,
+                detail: {
+                  evaluated: result.evaluated,
+                  apply: result.apply,
+                  draft: result.draft,
+                  skip: result.skip,
+                  remaining: result.remaining,
+                  byReason: result.byReason
                 }
               }
             }

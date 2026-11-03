@@ -1,4 +1,4 @@
-import { OtborRpcs } from "@otbor/contract"
+import { OtborRpcs, type VacancyId } from "@otbor/contract"
 import { Effect, Layer } from "effect"
 import { ApplicationService } from "../services/ApplicationService.ts"
 import { BlacklistService } from "../services/BlacklistService.ts"
@@ -10,6 +10,7 @@ import { CrawlRunner } from "../services/CrawlRunner.ts"
 import { CrawlService } from "../services/CrawlService.ts"
 import { DecisionService } from "../services/DecisionService.ts"
 import { EmployerHydrator } from "../services/EmployerHydrator.ts"
+import { EvaluationRunner } from "../services/EvaluationRunner.ts"
 import { GateService } from "../services/GateService.ts"
 import { HhAccountService } from "../services/HhAccountService.ts"
 import { HydrationRunner } from "../services/HydrationRunner.ts"
@@ -38,6 +39,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const system = yield* SystemService
     const corpus = yield* CorpusService
     const hydrationRunner = yield* HydrationRunner
+    const evaluation = yield* EvaluationRunner
     const crawl = yield* CrawlService
     const inference = yield* InferenceService
     const writing = yield* WritingService
@@ -54,6 +56,26 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const blacklist = yield* BlacklistService
     const hhAccounts = yield* HhAccountService
     const resumes = yield* ResumeService
+
+    /**
+     * Hydration answers the caller first; the fresh content is decided in a
+     * detached fiber so the RPC does not wait for the cascade. A failure there
+     * is only logged: the sweep schedule picks the vacancy up later.
+     */
+    const hydrateAndEvaluate = (id: string) =>
+      Effect.gen(function* () {
+        const user = yield* CurrentUser
+        const hydrated = yield* hydrationRunner.hydrateOne(user.userId, id)
+        if (hydrated) {
+          yield* evaluation.evaluateBatch(user.userId, { vacancyIds: [id as VacancyId], limit: 1 }).pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning(`vacancy ${id}: evaluation after hydration failed`, cause)
+            ),
+            Effect.forkDetach
+          )
+        }
+        return { hydrated }
+      })
 
     return {
       SystemHealth: () => system.health(),
@@ -79,20 +101,8 @@ export const OtborHandlers = OtborRpcs.toLayer(
       ResumeEnrichmentSave: ({ resumeId, data }) => resumes.enrichmentSave(resumeId, data),
       VacanciesUpsert: ({ drafts }) => corpus.ingest(drafts),
       VacanciesHydrationTargets: (payload) => corpus.hydrationTargets(payload),
-      VacanciesHydrateOne: ({ id }) =>
-        Effect.gen(function* () {
-          const user = yield* CurrentUser
-          return yield* hydrationRunner.hydrateOne(user.userId, id).pipe(
-            Effect.map((hydrated) => ({ hydrated }))
-          )
-        }),
-      VacancyHydrate: ({ id }) =>
-        Effect.gen(function* () {
-          const user = yield* CurrentUser
-          return yield* hydrationRunner.hydrateOne(user.userId, id).pipe(
-            Effect.map((hydrated) => ({ hydrated }))
-          )
-        }),
+      VacanciesHydrateOne: ({ id }) => hydrateAndEvaluate(id),
+      VacancyHydrate: ({ id }) => hydrateAndEvaluate(id),
       VacanciesEvaluate: ({ vacancyId, resumeId, fit, includeBlacklisted, hhAccountId }) =>
         decisions.evaluate({
           vacancyId,
@@ -143,6 +153,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
         gate.lexiconRemove(id).pipe(Effect.map((deleted) => ({ id, deleted }))),
 
       DecisionsList: (payload) => decisions.list(payload),
+      DecisionsEvaluateBatch: (payload) => decisions.evaluateBatch(payload),
 
       ApplicationsList: (payload) => applications.list(payload),
       ApplicationsGet: ({ id }) => applications.get(id),
@@ -192,11 +203,13 @@ const mailSync = MailSync.layer.pipe(Layer.provide(MailGatewayProvider.layer))
 const telegramSync = TelegramSync.layer.pipe(Layer.provide(TelegramGatewayProvider.layer))
 const hydration = HydrationRunner.layer.pipe(Layer.provide(crawlStack))
 const employers = EmployerHydrator.layer
+const evaluation = EvaluationRunner.layer
 
 const sourceStack = Layer.mergeAll(
   crawlStack,
   hydration,
   employers,
+  evaluation,
   mailSync,
   telegramSync
 )

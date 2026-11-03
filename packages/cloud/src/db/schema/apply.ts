@@ -43,6 +43,8 @@ export const decision = pgTable(
     policyVersion: integer("policy_version").notNull(),
     rulesVersion: integer("rules_version").notNull(),
     inputHash: text("input_hash").notNull(),
+    /** `vacancy.content_hash` the decision was made for; null on legacy rows. */
+    vacancyContentHash: text("vacancy_content_hash"),
     createdAt: createdAt()
   },
   (table) => [
@@ -52,7 +54,9 @@ export const decision = pgTable(
       table.policyVersion,
       table.inputHash
     ),
-    index("decision_user_created_idx").on(table.userId, table.createdAt)
+    index("decision_user_created_idx").on(table.userId, table.createdAt),
+    index("decision_user_vacancy_idx").on(table.userId, table.vacancyId, table.createdAt),
+    index("decision_user_priority_idx").on(table.userId, table.priority, table.createdAt)
   ]
 )
 
