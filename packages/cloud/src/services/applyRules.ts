@@ -4,12 +4,21 @@ import {
   type HarnessExitTag,
   type KitAnswer,
   PrepareArtifacts,
+  ReconcileEvidence,
   type ResponseForm,
   type StoredHint,
   SubmitEvidence
 } from "@otbor/contract"
 import { type AnswerHint, validateAnswers } from "@otbor/domain"
-import { classifyResponsePage, isSubmitSuccess, pageExcerpt, type ResponsePageKind } from "@otbor/hh"
+import {
+  classifyResponsePage,
+  isSubmitSuccess,
+  pageExcerpt,
+  parseNegotiations,
+  readResponseStatus,
+  type ResponsePageKind,
+  type VacancyResponseState
+} from "@otbor/hh"
 import { Option, Schema } from "effect"
 
 /**
@@ -350,4 +359,178 @@ export const attemptArtifacts = (exit: HarnessExit): Record<string, unknown> | n
   const { html, ...rest } = artifacts as Record<string, unknown>
   if (typeof html !== "string") return rest
   return { ...rest, htmlBytes: html.length, excerpt: pageExcerpt(html) }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Reconcile                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/** What the cloud itself read from the reconcile pages. Stored on the attempt. */
+export interface ReconcileReading {
+  readonly externalId: string
+  readonly vacancy: {
+    readonly state: VacancyResponseState
+    readonly markers: ReadonlyArray<string>
+    readonly url: string | null
+  }
+  readonly negotiations: {
+    readonly pages: number
+    /** Every page readable. */
+    readonly readable: boolean
+    /** The vacancy is in the list. */
+    readonly found: boolean
+    /** Pages run to an empty one, so "absent" means absent. */
+    readonly exhausted: boolean
+    readonly topic: { readonly state: string | null; readonly archived: boolean } | null
+  }
+}
+
+export type ReconcileVerdict =
+  /** A response exists. Whatever the submit said, the application is submitted. */
+  | { readonly _tag: "submitted"; readonly reading: ReconcileReading; readonly reason: string }
+  /**
+   * Both reads were clear and show no response: the click did not reach hh.
+   * The application goes back to a human; nothing is queued.
+   */
+  | { readonly _tag: "unsent"; readonly reading: ReconcileReading; readonly reason: string }
+  /** Login or captcha: only a person can continue. */
+  | { readonly _tag: "human"; readonly reason: string }
+  /** Unreadable, contradictory or missing: read again, bounded. */
+  | {
+      readonly _tag: "retry"
+      readonly reason: string
+      readonly reading?: ReconcileReading
+    }
+
+/**
+ * Decides an ambiguous submit from the pages a reconcile harness read.
+ *
+ * The harness's tag is not a verdict: a bare `submitted` or `not_submitted` is
+ * a claim without evidence and is read again. Only the cloud's own reading of
+ * the pages settles anything, and only a clear reading of both pages settles
+ * "no response". Every doubt keeps the application in reconcile; no outcome
+ * of this function ever queues a second submit.
+ */
+export const judgeReconcile = (exit: HarnessExit, externalId: string): ReconcileVerdict => {
+  if (exit.tag === "session_expired") {
+    return { _tag: "human", reason: "hh session expired; log in again" }
+  }
+  if (exit.tag === "captcha") return { _tag: "human", reason: "hh asked for a captcha" }
+  if (exit.tag !== "reconciled") {
+    return { _tag: "retry", reason: `reconcile came without page evidence (${exit.tag})` }
+  }
+
+  const decoded = Schema.decodeUnknownOption(ReconcileEvidence)(exit.artifacts)
+  if (Option.isNone(decoded)) {
+    return { _tag: "retry", reason: "reconcile evidence is not readable" }
+  }
+  const evidence = decoded.value
+  if (evidence.externalId !== externalId) {
+    return { _tag: "retry", reason: "reconcile evidence is for another vacancy" }
+  }
+
+  const pages = evidence.negotiations ?? []
+  for (const page of [...(evidence.vacancy === undefined ? [] : [evidence.vacancy]), ...pages]) {
+    const kind = classifyResponsePage(page.html, page.url)
+    if (kind === "login") return { _tag: "human", reason: "hh session expired; log in again" }
+    if (kind === "captcha") return { _tag: "human", reason: "hh asked for a captcha" }
+  }
+
+  const vacancy =
+    evidence.vacancy === undefined
+      ? {
+          state: "unreadable" as VacancyResponseState,
+          markers: [] as ReadonlyArray<string>,
+          url: null as string | null
+        }
+      : {
+          ...readResponseStatus(evidence.vacancy.html, externalId, evidence.vacancy.url),
+          url: evidence.vacancy.url as string | null
+        }
+
+  const parsed = pages.map((page) => parseNegotiations(page.html))
+  const topic =
+    parsed
+      .flatMap((page) => page.topics)
+      .find((candidate) => candidate.vacancyId === externalId) ?? null
+  const readable = parsed.length > 0 && parsed.every((page) => page.readable)
+  const last = parsed[parsed.length - 1]
+  const exhausted = readable && last !== undefined && last.topics.length === 0
+
+  const reading: ReconcileReading = {
+    externalId,
+    vacancy: { state: vacancy.state, markers: vacancy.markers, url: vacancy.url },
+    negotiations: {
+      pages: pages.length,
+      readable,
+      found: topic !== null,
+      exhausted,
+      topic: topic === null ? null : { state: topic.state, archived: topic.archived }
+    }
+  }
+
+  const vacancyResponded = vacancy.state === "responded"
+  const vacancyNo = vacancy.state === "not_responded"
+  const found = topic !== null
+  // The list says "absent" only when it was read to the end.
+  const listNo = !found && exhausted
+
+  if ((vacancyResponded || found) && (vacancyNo || (vacancyResponded && listNo))) {
+    return {
+      _tag: "retry",
+      reading,
+      reason: vacancyNo
+        ? "contradiction: the negotiations list holds the vacancy, the vacancy page shows no response"
+        : "contradiction: the vacancy page shows a response, the negotiations list does not hold it"
+    }
+  }
+
+  if (vacancyResponded || found) {
+    const sources = [vacancyResponded ? "vacancy page" : null, found ? "negotiations list" : null]
+    return {
+      _tag: "submitted",
+      reading,
+      reason: `a response exists (${sources.filter((source) => source !== null).join(", ")})`
+    }
+  }
+
+  if (vacancyNo && listNo) {
+    return {
+      _tag: "unsent",
+      reading,
+      reason: "neither the vacancy page nor the negotiations list shows a response"
+    }
+  }
+
+  const doubts = [
+    vacancy.state === "unreadable" ? "vacancy page unreadable" : null,
+    !readable ? "negotiations list unreadable" : null,
+    readable && !exhausted ? "negotiations list not read to the end" : null
+  ].filter((doubt) => doubt !== null)
+  return { _tag: "retry", reading, reason: `reconcile is inconclusive: ${doubts.join(", ")}` }
+}
+
+/** The reconcile attempt keeps the cloud's reading and the verdict, not page bodies. */
+export const reconcileArtifacts = (
+  exit: HarnessExit,
+  verdict: ReconcileVerdict
+): Record<string, unknown> => {
+  const evidence = Schema.decodeUnknownOption(ReconcileEvidence)(exit.artifacts)
+  const pages = Option.isSome(evidence)
+    ? {
+        vacancyBytes: evidence.value.vacancy?.html.length ?? 0,
+        vacancyExcerpt:
+          evidence.value.vacancy === undefined ? null : pageExcerpt(evidence.value.vacancy.html, 300),
+        negotiationsBytes: (evidence.value.negotiations ?? []).reduce(
+          (total, page) => total + page.html.length,
+          0
+        )
+      }
+    : {}
+  return {
+    verdict: verdict._tag,
+    reason: verdict.reason,
+    ...("reading" in verdict && verdict.reading !== undefined ? { reading: verdict.reading } : {}),
+    ...pages
+  }
 }

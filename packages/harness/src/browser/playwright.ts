@@ -1,4 +1,10 @@
-import type { HarnessExit, PrepareJobPayload, SubmitEvidence } from "@otbor/contract"
+import type {
+  HarnessExit,
+  PrepareJobPayload,
+  ReconcileJobPayload,
+  ReconcilePage,
+  SubmitEvidence
+} from "@otbor/contract"
 import { classifyResponsePage } from "@otbor/hh"
 import { Effect, Layer, Schema } from "effect"
 import { existsSync } from "node:fs"
@@ -6,12 +12,17 @@ import { chromium, type Page } from "playwright"
 import {
   LETTER_ATTACH_SELECTOR,
   LETTER_SELECTOR,
+  MAX_NEGOTIATION_PAGES,
   RELOCATION_SELECTOR,
   SUBMIT_SELECTOR,
+  negotiationsUrl,
   postClickExit,
   prepareExit,
+  reconcileExit,
   responseUrl,
-  submitPreflight
+  submitPreflight,
+  vacancyUrl,
+  wantsMoreNegotiations
 } from "./core.ts"
 import { BrowserExecutor, type SubmitRequest } from "./executor.ts"
 import { DEFAULT_CHROME_PATH, hhProfileDir } from "./profile.ts"
@@ -33,6 +44,8 @@ export interface PlaywrightOptions {
   readonly settleMs?: number
   /** How long to wait for the page to change after the submit click. */
   readonly afterClickMs?: number
+  /** Negotiation pages a reconcile reads before giving up. */
+  readonly maxNegotiationPages?: number
 }
 
 const defaults = {
@@ -293,7 +306,62 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
     )
   }
 
-  return BrowserExecutor.of({ prepare, submit })
+  /**
+   * Opens the vacancy and then the negotiations list and returns what it saw.
+   * Only navigation: no control on either page is clicked, so a reconcile can
+   * never send a response.
+   */
+  const reconcile = (payload: ReconcileJobPayload): Effect.Effect<HarnessExit> =>
+    withPage(payload.sessionProfile, (page) =>
+      Effect.gen(function*() {
+        const settled = (url: string, ready: (html: string) => boolean) =>
+          Effect.gen(function*() {
+            yield* attempt(() =>
+              page.goto(url, { waitUntil: "domcontentloaded", timeout: config.navigationTimeoutMs })
+            )
+            const deadline = Date.now() + config.settleMs
+            let html = ""
+            while (true) {
+              const read = yield* content(page)
+              if (read !== null) {
+                html = read
+                const kind = classifyResponsePage(html, page.url())
+                if (kind === "login" || kind === "captcha" || ready(html)) break
+              }
+              if (Date.now() >= deadline) break
+              yield* sleep(250)
+            }
+            return { url: page.url(), html } satisfies ReconcilePage
+          })
+
+        const vacancy = yield* settled(vacancyUrl(baseUrl, payload.externalId), (html) =>
+          /vacancy-response-link|вы\s+откликнулись/i.test(html)
+        )
+        const early = reconcileExit(payload.externalId, { vacancy, negotiations: [] })
+        if (early.tag !== "reconciled") return early
+
+        const negotiations: Array<ReconcilePage> = []
+        const limit = config.maxNegotiationPages ?? MAX_NEGOTIATION_PAGES
+        for (let index = 0; index < limit; index += 1) {
+          const read = yield* settled(negotiationsUrl(baseUrl, index), (html) =>
+            html.includes("HH-Lux-InitialState")
+          )
+          negotiations.push(read)
+          if (!wantsMoreNegotiations(read.html, payload.externalId)) break
+        }
+        return reconcileExit(payload.externalId, { vacancy, negotiations })
+      })
+    ).pipe(
+      // Reading failed: nothing was sent, and the cloud retries the reconcile.
+      Effect.catch((error) =>
+        Effect.succeed<HarnessExit>({ tag: "transport", message: error.message })
+      ),
+      Effect.catchDefect((defect) =>
+        Effect.succeed<HarnessExit>({ tag: "transport", message: String(defect) })
+      )
+    )
+
+  return BrowserExecutor.of({ prepare, submit, reconcile })
 }
 
 export const PlaywrightBrowserExecutor = {

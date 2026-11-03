@@ -20,7 +20,14 @@ import * as HarnessRepository from "../repositories/HarnessRepository.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
 import { CurrentUser } from "./CurrentUser.ts"
-import { attemptArtifacts, checkKit, judgePrepare, judgeSubmit } from "./applyRules.ts"
+import {
+  attemptArtifacts,
+  checkKit,
+  judgePrepare,
+  judgeReconcile,
+  judgeSubmit,
+  reconcileArtifacts
+} from "./applyRules.ts"
 import { completeFitInference } from "./fitJudge.ts"
 import { hintsFor } from "./formHints.ts"
 import { nextSequence, reconcileJob, submitJob, targetFor } from "./jobs.ts"
@@ -382,6 +389,14 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                 let appPatch: Record<string, unknown> = {}
                 let enqueue: "reconcile" | "submit" | null = null
                 let jobResult: unknown
+                /** Reconcile: what the cloud read, kept on the attempt instead of the pages. */
+                let reconcileKept: Record<string, unknown> | null = null
+                /** Reconcile: how the parked submit job is closed once the application moves. */
+                let settle: {
+                  readonly status: "done" | "failed"
+                  readonly result: unknown
+                  readonly message: string
+                } | null = null
 
                 switch (job.stage) {
                   case "prepare": {
@@ -499,27 +514,67 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                   }
 
                   case "reconcile": {
-                    if (exit.tag === "submitted" || exit.tag === "already_responded") {
+                    // The harness only reports the pages it read. The cloud
+                    // parses them and decides; a bare tag settles nothing, and
+                    // no verdict here can queue a second submit.
+                    const application =
+                      ctx.applicationId === null
+                        ? null
+                        : yield* ApplicationRepository.findAny(tx, ctx.applicationId)
+                    const vacancy = application
+                      ? yield* VacancyRepository.findById(tx, application.vacancyId)
+                      : null
+                    if (application === null || vacancy === null) {
+                      status = "failed"
+                      appState = "failed"
+                      message = "reconciled, but the application or vacancy is gone"
+                      break
+                    }
+
+                    const verdict = judgeReconcile(exit, vacancy.externalId)
+                    reconcileKept = reconcileArtifacts(exit, verdict)
+                    if (verdict._tag === "submitted") {
                       status = "done"
                       appState = "submitted"
                       appPatch = { submittedAt: new Date(), lastError: null }
-                      message = "response confirmed on the site"
-                    } else if (exit.tag === "not_submitted") {
-                      status = "failed"
-                      appState = "failed"
-                      message = "no response on the site"
-                    } else if (needsHuman.includes(exit.tag)) {
+                      message = `reconciled: ${verdict.reason}`
+                      jobResult = { found: true, reading: verdict.reading }
+                      settle = {
+                        status: "done",
+                        result: { clicked: true, verified: "reconcile" },
+                        message
+                      }
+                    } else if (verdict._tag === "unsent") {
+                      // Provably no response: back to draft so a person looks
+                      // again and approves again. Nothing is queued here.
+                      status = "done"
+                      appState = "draft"
+                      message = `reconciled: ${verdict.reason}`
+                      appPatch = {
+                        lastError: "the response did not reach hh; approve again to send it"
+                      }
+                      jobResult = { found: false, reading: verdict.reading }
+                      settle = {
+                        status: "failed",
+                        result: { clicked: false, reconciled: true },
+                        message
+                      }
+                    } else if (verdict._tag === "human") {
                       status = "needs_human"
                       appState = "needs_human"
-                      message = `reconcile needs a human: ${exit.tag}`
+                      message = `reconcile needs a human: ${verdict.reason}`
+                      appPatch = { lastError: verdict.reason }
                     } else if (job.attempts < job.maxAttempts) {
                       status = "pending"
                       runAt = retryLater(exit, 60)
-                      message = `reconcile retry ${job.attempts + 1}/${job.maxAttempts}: ${exit.tag}`
+                      message = `reconcile retry ${job.attempts + 1}/${job.maxAttempts}: ${verdict.reason}`
                     } else {
                       status = "dead"
                       appState = "needs_human"
-                      message = `reconcile exhausted retries: ${exit.tag}`
+                      message = `reconcile exhausted retries: ${verdict.reason}`
+                      appPatch = {
+                        lastError: `could not confirm whether the response was sent: ${verdict.reason}`
+                      }
                     }
                     break
                   }
@@ -603,7 +658,9 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                   if (attemptId !== null) {
                     // The journal keeps evidence, not page bodies: a page can
                     // be hundreds of kilobytes and holds the user's answers.
-                    const kept = attemptArtifacts(exit)
+                    const kept = job.stage === "reconcile"
+                      ? reconcileKept ?? { verdict: "none" }
+                      : attemptArtifacts(exit)
                     yield* ApplicationRepository.finishAttempt(
                       tx,
                       attemptId,
@@ -614,7 +671,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                 }
 
                 if (appState !== null && ctx.applicationId !== null) {
-                  yield* ApplicationRepository.transition(
+                  const moved = yield* ApplicationRepository.transition(
                     tx,
                     ctx.userId,
                     ctx.applicationId,
@@ -631,10 +688,26 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                               ? ["draft", "queued", "submitting", "needs_human", "failed"]
                               : appState === "failed"
                                 ? ["draft", "queued", "submitting", "needs_human", "failed"]
-                                : ["draft", "queued"],
+                                : appState === "draft" && job.stage === "reconcile"
+                                  ? ["submitting", "needs_human", "failed"]
+                                  : ["draft", "queued"],
                       patch: appPatch
                     }
                   )
+
+                  // The reconcile explained the parked submit: close it so the
+                  // queue and the application agree, and stop further reads.
+                  // Only when the application really moved (a person may have
+                  // skipped it meanwhile).
+                  if (settle !== null && moved !== null) {
+                    yield* QueueRepository.settleSubmit(tx, ctx.applicationId, settle)
+                    yield* QueueRepository.cancelForApplication(tx, ctx.applicationId, [
+                      "prepare",
+                      "submit",
+                      "session",
+                      "inference"
+                    ])
+                  }
                 }
 
                 if (enqueue === "reconcile" && ctx.applicationId !== null) {

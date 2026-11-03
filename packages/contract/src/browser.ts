@@ -68,3 +68,31 @@ export const SubmitEvidence = Schema.Struct({
 })
 
 export type SubmitEvidence = typeof SubmitEvidence.Type
+
+/** `reconcile` reads the site for an application whose submit is unknown. */
+export const ReconcileJobPayload = Schema.Struct(Target)
+
+export type ReconcileJobPayload = typeof ReconcileJobPayload.Type
+
+export const ReconcilePage = Schema.Struct({
+  /** Final URL after redirects. */
+  url: Schema.String,
+  html: Schema.String
+})
+
+export type ReconcilePage = typeof ReconcilePage.Type
+
+/**
+ * `reconcile` artifacts: the pages the harness read, nothing more. The harness
+ * does not say whether a response exists; the cloud parses these pages and
+ * decides. A missing part means "not read".
+ */
+export const ReconcileEvidence = Schema.Struct({
+  externalId: Schema.String,
+  /** `/vacancy/<id>` as the account sees it. */
+  vacancy: Schema.optional(ReconcilePage),
+  /** `/applicant/negotiations?page=0..n`, in order, as many as were read. */
+  negotiations: Schema.optional(Schema.Array(ReconcilePage))
+})
+
+export type ReconcileEvidence = typeof ReconcileEvidence.Type

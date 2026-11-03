@@ -442,6 +442,37 @@ export const cancelForApplication = (
     `)
     .pipe(Effect.map((result) => result.rows.length))
 
+/**
+ * Closes the submit job a reconcile has explained. Only a job parked in
+ * `needs_reconcile` is touched, and only to a state that matches what the
+ * reconcile proved: `done` (the response exists) or `failed` with
+ * `clicked: false` (it never reached hh, which is what lets a human approve a
+ * new submit after re-checking).
+ */
+export const settleSubmit = (
+  tx: Executor,
+  applicationId: string,
+  input: { readonly status: "done" | "failed"; readonly result: unknown; readonly message: string }
+): RepoEffect<boolean> =>
+  tx
+    .execute(sql`
+      update harness_jobs
+      set status = ${input.status},
+          result = ${JSON.stringify(input.result)}::jsonb,
+          last_error = ${input.message},
+          updated_at = now()
+      where id = (
+        select id from harness_jobs
+        where application_id = ${applicationId}
+          and stage = 'submit'
+          and status = 'needs_reconcile'
+        order by created_at desc
+        limit 1
+      )
+      returning id
+    `)
+    .pipe(Effect.map((result) => result.rows.length > 0))
+
 export const findById = (tx: Executor, id: string): RepoEffect<HarnessJob | null> =>
   tx
     .select()
