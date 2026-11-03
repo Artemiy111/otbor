@@ -239,6 +239,8 @@ export interface DecisionListOptions {
   readonly offset?: number
   readonly orderBy?: "priority" | "created"
   readonly minFit?: number
+  readonly maxFit?: number
+  readonly sort?: "priority" | "fit" | "newest" | "salary" | "random"
   readonly hhAccountId?: string
   /** Newest decision per vacancy and account only. */
   readonly latestPerVacancy?: boolean
@@ -262,9 +264,23 @@ export const list = (
       ) d`
     : sql`decision d`
 
-  const order = options.orderBy === "priority"
-    ? sql`d.priority desc, d.fit desc, d.created_at desc, d.id desc`
-    : sql`d.created_at desc, d.id desc`
+  const sort = options.sort ?? (options.orderBy === "priority" ? "priority" : undefined)
+  const order = (() => {
+    switch (sort) {
+      case "priority":
+        return sql`d.priority desc, d.fit desc, d.created_at desc, d.id desc`
+      case "fit":
+        return sql`d.fit desc, d.priority desc, d.created_at desc, d.id desc`
+      case "newest":
+        return sql`vacancy.published_at desc nulls last, d.priority desc, d.id desc`
+      case "salary":
+        return sql`coalesce(vacancy.salary_to, vacancy.salary_from) desc nulls last, d.priority desc, d.id desc`
+      case "random":
+        return sql`random()`
+      default:
+        return sql`d.created_at desc, d.id desc`
+    }
+  })()
 
   return tx
     .execute(sql`
@@ -276,6 +292,7 @@ export const list = (
           ? sql``
           : sql`and d.verdict = ${options.verdict}`}
         ${options.minFit === undefined ? sql`` : sql`and d.fit >= ${options.minFit}`}
+        ${options.maxFit === undefined ? sql`` : sql`and d.fit <= ${options.maxFit}`}
         ${options.hhAccountId === undefined
           ? sql``
           : sql`and d.hh_account_id = ${options.hhAccountId}`}

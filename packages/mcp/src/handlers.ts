@@ -6,6 +6,7 @@ import type {
   EmployerId,
   HhAccountId,
   OtborApi,
+  PresetFilter,
   PresetId,
   ResumeId,
   VacancyId
@@ -100,6 +101,84 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
   const rpc = api.rpc
   const run = guard(api)
 
+  const rankVacancies = Effect.fnUntraced(function*(params: {
+    readonly limit?: number | undefined
+    readonly offset?: number | undefined
+    readonly presetId?: string | undefined
+    readonly verdict?: "apply" | "draft" | "skip" | undefined
+    readonly minFit?: number | undefined
+    readonly maxFit?: number | undefined
+    readonly account?: string | undefined
+    readonly filter?: PresetFilter | undefined
+    readonly sort?: "priority" | "fit" | "newest" | "salary" | "random" | undefined
+  }) {
+    const count = clamp(params.limit, 10, 50)
+    const { filter: accountFilter, directory } = yield* accountsFor(run(rpc.HhAccountsList()), params.account)
+    const verdict = params.verdict ?? "apply"
+
+    let presetId: string | undefined
+    if (params.presetId !== undefined) {
+      const wanted = params.presetId.toLowerCase()
+      const presets = yield* run(rpc.PresetsList({}))
+      const preset = presets.find((p) => p.id === wanted || p.id.startsWith(wanted))
+      if (preset === undefined) return yield* fail(`preset not found: ${params.presetId}`)
+      presetId = preset.id
+    }
+
+    // Ranking happens in the database: sorted, newest decision per vacancy
+    // only, preset, ad-hoc filter and fit bounds applied before the limit.
+    const ranked = yield* run(rpc.DecisionsList({
+      verdict,
+      orderBy: "priority",
+      latestPerVacancy: true,
+      limit: count,
+      ...(params.sort === undefined || params.sort === "priority" ? {} : { sort: params.sort }),
+      ...(params.offset === undefined ? {} : { offset: clamp(params.offset, 0, 100000, 0) }),
+      ...(accountFilter === undefined ? {} : { hhAccountId: accountFilter.id }),
+      ...(params.minFit === undefined ? {} : { minFit: Math.trunc(params.minFit) }),
+      ...(params.maxFit === undefined ? {} : { maxFit: Math.trunc(params.maxFit) }),
+      ...(params.filter === undefined ? {} : { filter: params.filter }),
+      ...(presetId === undefined ? {} : { presetId: presetId as PresetId })
+    }))
+    const notes: Array<string> = []
+
+    const details = yield* Effect.forEach(
+      ranked,
+      (d) =>
+        run(rpc.VacanciesGet({ id: d.vacancyId })).pipe(
+          Effect.catch(() => Effect.succeed(undefined))
+        ),
+      { concurrency: 5 }
+    )
+
+    const items: Array<TopItem> = ranked.map((d, index) => {
+      const detail = details[index]
+      const v = detail?.vacancy
+      return {
+        rank: (params.offset ?? 0) + index + 1,
+        decisionId: d.id,
+        vacancyId: d.vacancyId,
+        title: v?.title ?? d.vacancyTitle ?? "(unknown title)",
+        employer: v?.employerName ?? null,
+        salary: v ? formatSalary(v.salaryFrom, v.salaryTo, v.salaryCurrency) : null,
+        workFormats: v?.workFormats ?? [],
+        fit: d.fit,
+        priority: d.priority,
+        verdict: d.verdict,
+        gate: d.gate,
+        account: d.hhAccountId == null ? null : accountRef(directory, d.hhAccountId),
+        reasons: humanReasons(d.reasons, 4),
+        seniority: v?.seniority ?? null,
+        experience: v?.experienceCode ?? null,
+        skills: (detail?.skills ?? []).slice(0, 6),
+        publishedAt: v?.publishedAt ?? null,
+        url: v?.canonicalUrl ?? null
+      }
+    })
+
+    return { items, note: notes.length === 0 ? null : notes.join("; ") }
+  })
+
   return OtborReadToolkit.of({
     system_health: Effect.fn("mcp.system_health")(function*() {
       const health = yield* run(rpc.SystemHealth())
@@ -192,68 +271,13 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
     }),
 
     vacancies_top: Effect.fn("mcp.vacancies_top")(function*(params) {
-      const count = clamp(params.limit, 10, 50)
-      const { filter, directory } = yield* accountsFor(run(rpc.HhAccountsList()), params.account)
-      const verdict = params.verdict ?? "apply"
+      const { items, note } = yield* rankVacancies({ ...params, sort: "priority" })
+      return { items, returned: items.length, considered: items.length, note }
+    }),
 
-      let presetId: string | undefined
-      if (params.presetId !== undefined) {
-        const wanted = params.presetId.toLowerCase()
-        const presets = yield* run(rpc.PresetsList({}))
-        const preset = presets.find((p) => p.id === wanted || p.id.startsWith(wanted))
-        if (preset === undefined) return yield* fail(`preset not found: ${params.presetId}`)
-        presetId = preset.id
-      }
-
-      // Ranking happens in the database: best priority first, newest decision
-      // per vacancy only, preset and fit filters applied before the limit.
-      const ranked = yield* run(rpc.DecisionsList({
-        verdict,
-        orderBy: "priority",
-        latestPerVacancy: true,
-        limit: count,
-        ...(filter === undefined ? {} : { hhAccountId: filter.id }),
-        ...(params.minFit === undefined ? {} : { minFit: Math.trunc(params.minFit) }),
-        ...(presetId === undefined ? {} : { presetId: presetId as PresetId })
-      }))
-      const notes: Array<string> = []
-
-      const details = yield* Effect.forEach(
-        ranked,
-        (d) =>
-          run(rpc.VacanciesGet({ id: d.vacancyId })).pipe(
-            Effect.map((detail) => detail.vacancy),
-            Effect.catch(() => Effect.succeed(undefined))
-          ),
-        { concurrency: 5 }
-      )
-
-      const items: Array<TopItem> = ranked.map((d, index) => {
-        const v = details[index]
-        return {
-          rank: index + 1,
-          decisionId: d.id,
-          vacancyId: d.vacancyId,
-          title: v?.title ?? d.vacancyTitle ?? "(unknown title)",
-          employer: v?.employerName ?? null,
-          salary: v ? formatSalary(v.salaryFrom, v.salaryTo, v.salaryCurrency) : null,
-          workFormats: v?.workFormats ?? [],
-          fit: d.fit,
-          priority: d.priority,
-          verdict: d.verdict,
-          gate: d.gate,
-          account: d.hhAccountId == null ? null : accountRef(directory, d.hhAccountId),
-          reasons: humanReasons(d.reasons, 4),
-          url: v?.canonicalUrl ?? null
-        }
-      })
-
-      return {
-        items,
-        returned: items.length,
-        considered: items.length,
-        note: notes.length === 0 ? null : notes.join("; ")
-      }
+    vacancies_search: Effect.fn("mcp.vacancies_search")(function*(params) {
+      const { items, note } = yield* rankVacancies(params)
+      return { items, returned: items.length, note }
     }),
 
     vacancy_get: Effect.fn("mcp.vacancy_get")(function*(params) {

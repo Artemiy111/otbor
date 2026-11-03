@@ -267,6 +267,28 @@ export const PRESET_FIELDS: ReadonlyArray<PresetFieldMeta> = [
     ops: NUMBER_OPS
   },
   {
+    field: "employer_vacancies",
+    label: "Вакансий у работодателя",
+    group: "Зарплата и метрики",
+    kind: "number",
+    ops: NUMBER_OPS,
+    hint: "Открытых вакансий этого работодателя в базе; грубая оценка размера компании."
+  },
+  {
+    field: "employer_rating",
+    label: "Рейтинг работодателя",
+    group: "Зарплата и метрики",
+    kind: "number",
+    ops: NUMBER_OPS
+  },
+  {
+    field: "employer_reviews",
+    label: "Отзывов о работодателе",
+    group: "Зарплата и метрики",
+    kind: "number",
+    ops: NUMBER_OPS
+  },
+  {
     field: "archived",
     label: "Архивная",
     group: "Прочее",

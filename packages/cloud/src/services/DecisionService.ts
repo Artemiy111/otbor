@@ -1,5 +1,6 @@
 import type { ApiError, DecisionRecord, EvaluateBatchResult } from "@otbor/contract"
-import { NotFound } from "@otbor/contract"
+import { NotFound, parsePresetFilter, type PresetFilter } from "@otbor/contract"
+import { sql, type SQL } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "../db/Database.ts"
 import * as DecisionRepository from "../repositories/DecisionRepository.ts"
@@ -21,6 +22,10 @@ export interface DecisionListOptions {
   readonly offset?: number
   readonly orderBy?: "priority" | "created"
   readonly minFit?: number
+  readonly maxFit?: number
+  readonly sort?: "priority" | "fit" | "newest" | "salary" | "random"
+  /** Ad-hoc filter, ANDed with the preset's (same SQL builder). */
+  readonly filter?: PresetFilter
   readonly presetId?: string
   readonly hhAccountId?: string
   readonly latestPerVacancy?: boolean
@@ -49,20 +54,28 @@ export class DecisionService extends Context.Service<DecisionService, DecisionSe
 
       const list: DecisionServiceShape["list"] = (options) =>
         Effect.gen(function*() {
-          const { presetId, ...rest } = options
+          const { presetId, filter, ...rest } = options
 
           return yield* database
             .asUser(currentUser.userId, (tx) =>
               Effect.gen(function*() {
                 // The preset's own vacancy filter, applied to the decided vacancies.
-                let vacancyFilter
+                const parts: Array<SQL> = []
                 if (presetId !== undefined) {
                   const preset = yield* PresetRepository.findById(tx, presetId, currentUser.userId)
                   if (preset === null) return null
-                  vacancyFilter = LexiconRepository.vacancyFilterSql(preset.filter, {
+                  parts.push(LexiconRepository.vacancyFilterSql(preset.filter, {
                     userId: currentUser.userId
-                  })
+                  }))
                 }
+                if (filter !== undefined) {
+                  parts.push(LexiconRepository.vacancyFilterSql(parsePresetFilter(filter), {
+                    userId: currentUser.userId
+                  }))
+                }
+                const vacancyFilter = parts.length === 0
+                  ? undefined
+                  : sql.join(parts.map((p) => sql`(${p})`), sql` and `)
                 return yield* DecisionRepository.list(tx, currentUser.userId, {
                   ...rest,
                   vacancyFilter

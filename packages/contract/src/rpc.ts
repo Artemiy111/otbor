@@ -697,7 +697,20 @@ export const DecisionsList = Rpc.make("DecisionsList", {
     /** Only decisions made for this hh account. */
     hhAccountId: Schema.optional(HhAccountId),
     /** Collapse history: keep the newest decision per vacancy and account. */
-    latestPerVacancy: Schema.optional(Schema.Boolean)
+    latestPerVacancy: Schema.optional(Schema.Boolean),
+    /** Only decisions with `fit <= maxFit`. */
+    maxFit: Schema.optional(Schema.Int),
+    /**
+     * Ad-hoc vacancy filter, evaluated by the same SQL builder as presets and
+     * ANDed with `presetId` when both are given.
+     */
+    filter: Schema.optional(PresetFilter),
+    /**
+     * Overrides `orderBy` when set. `priority` best first, `fit` highest fit,
+     * `newest` newest published vacancy, `salary` highest salary (mixed
+     * currencies are not converted), `random` a random sample.
+     */
+    sort: Schema.optional(Schema.Literals(["priority", "fit", "newest", "salary", "random"]))
   }),
   success: Schema.Array(DecisionRecord),
   error: ApiError

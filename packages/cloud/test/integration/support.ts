@@ -2032,3 +2032,72 @@ export const applicationRowsFor = async (accountId: string) =>
         .where(eq(application.hhAccountId, accountId))
     )
   )
+
+/** An employer with optional hh rating and review count (company-size proxies). */
+export const seedEmployerStats = async (
+  externalId: string,
+  name: string,
+  stats: { readonly rating?: number; readonly reviewsCount?: number } = {}
+): Promise<string> =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx
+        .insert(employer)
+        .values({
+          source: "hh",
+          externalId: unique(externalId),
+          name,
+          rating: stats.rating ?? null,
+          reviewsCount: stats.reviewsCount ?? null
+        })
+        .returning({ id: employer.id })
+        .pipe(Effect.map((rows) => rows[0]!.id))
+    )
+  )
+
+/** A vacancy with the columns ad-hoc search filters on. */
+export const seedSearchVacancy = async (input: {
+  readonly label: string
+  readonly title: string
+  readonly employerId?: string
+  readonly seniority?: string
+  readonly experienceCode?: string
+  readonly salaryFrom?: number
+  readonly salaryCurrency?: string
+  readonly publishedDaysAgo?: number
+  readonly archived?: boolean
+  readonly skills?: ReadonlyArray<string>
+}): Promise<string> => {
+  const externalId = unique(`v-${input.label}`)
+  const id = await runAs(
+    "owner",
+    ownerTx((tx) =>
+      Effect.gen(function*() {
+        const [row] = yield* tx
+          .insert(vacancy)
+          .values({
+            source: "hh",
+            externalId,
+            canonicalUrl: `https://hh.ru/vacancy/${externalId}`,
+            title: input.title,
+            employerId: input.employerId ?? null,
+            seniority: input.seniority ?? "unknown",
+            experienceCode: input.experienceCode ?? null,
+            salaryFrom: input.salaryFrom ?? null,
+            salaryCurrency: input.salaryCurrency ?? null,
+            publishedAt: new Date(Date.now() - (input.publishedDaysAgo ?? 30) * 86_400_000),
+            archived: input.archived ?? false,
+            workFormats: [],
+            contentHash: randomUUID()
+          })
+          .returning({ id: vacancy.id })
+        return row!.id
+      })
+    )
+  )
+  for (const [position, term] of (input.skills ?? []).entries()) {
+    await seedVacancySkill(id, term, position)
+  }
+  return id
+}
