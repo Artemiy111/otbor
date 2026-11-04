@@ -66,36 +66,39 @@ export const nextSequence = (
 ): Effect.Effect<number, DatabaseError> =>
   QueueRepository.countFor(tx, applicationId, stage).pipe(Effect.map((count) => count + 1))
 
-export const prepareJob = (
+/**
+ * Reads the response form of a vacancy. Not tied to an application: the
+ * account only lends its hh session. Callers deduplicate against a form read
+ * that is already queued (`requestFormRead`), so the key is just unique.
+ */
+export const formReadJob = (
   tx: Executor,
-  input: JobTarget & {
+  input: {
+    readonly userId: string
+    readonly hhAccountId: string
+    readonly vacancyId: string
+    readonly externalId: string
+    readonly canonicalUrl: string
+    readonly sessionProfile: string | null
     readonly priority: number
-    readonly sequence: number
-    readonly runAt?: Date
   }
-) => {
-  const payload = {
-    applicationId: input.applicationId,
-    vacancyId: input.vacancyId,
-    canonicalUrl: input.canonicalUrl,
-    externalId: input.externalId,
-    sessionProfile: input.sessionProfile ?? null,
-    resumeId: input.resumeId
-  }
-
-  return QueueRepository.enqueue(tx, {
+) =>
+  QueueRepository.enqueue(tx, {
     userId: input.userId,
     hhAccountId: input.hhAccountId,
-    applicationId: input.applicationId,
-    stage: "prepare",
+    applicationId: null,
+    stage: "form_read",
     kind: "browser",
     priority: input.priority,
-    runAt: input.runAt,
     maxAttempts: 3,
-    payload,
-    idempotencyKey: `application:${input.applicationId}:prepare:${input.sequence}`
+    payload: {
+      vacancyId: input.vacancyId,
+      externalId: input.externalId,
+      canonicalUrl: input.canonicalUrl,
+      sessionProfile: input.sessionProfile
+    },
+    idempotencyKey: `vacancy:${input.vacancyId}:form_read:${Date.now()}`
   })
-}
 
 export const submitJob = (
   tx: Executor,

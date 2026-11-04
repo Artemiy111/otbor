@@ -2,7 +2,8 @@ export const applicationKeys = {
   all: ["applications"] as const,
   list: (state: string, account = "all") => ["applications", "list", state, account] as const,
   vacancy: (vacancyId: string) => ["applications", "vacancy", vacancyId] as const,
-  detail: (id: string) => ["applications", "detail", id] as const
+  detail: (id: string) => ["applications", "detail", id] as const,
+  vacancyForm: (vacancyId: string) => ["applications", "vacancy-form", vacancyId] as const
 }
 
 /** Applications that count as "this account responded to the vacancy". */

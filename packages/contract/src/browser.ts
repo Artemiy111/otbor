@@ -22,6 +22,19 @@ export const PrepareJobPayload = Schema.Struct(Target)
 
 export type PrepareJobPayload = typeof PrepareJobPayload.Type
 
+/**
+ * `form_read`: open the response form of a vacancy and hand the page back. Not
+ * tied to an application; the account only supplies the hh session.
+ */
+export const FormReadJobPayload = Schema.Struct({
+  vacancyId: Schema.String,
+  externalId: Schema.String,
+  canonicalUrl: Schema.String,
+  sessionProfile: Schema.optional(Schema.NullOr(Schema.String))
+})
+
+export type FormReadJobPayload = typeof FormReadJobPayload.Type
+
 export const SubmitKit = Schema.Struct({
   formHash: Schema.String,
   letter: Schema.NullOr(Schema.String),

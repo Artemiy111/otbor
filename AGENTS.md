@@ -82,6 +82,12 @@ guide doesn't cover, search through the source code in `node_modules/effect/src`
 - IDs are UUIDv7, generated in Postgres (`uuidv7()` on Postgres 18) and are the
   same value inside and outside the system. Vendor IDs live in
   `external_id` + `source`, never in a primary key.
+- The hh response form ("employer test") belongs to the vacancy, not to an
+  application. `form_read` is a browser job without an application; the cloud
+  stores one immutable `vacancy_form_version` per distinct form hash and a
+  `vacancy_form_state` for what hh shows now. A form is trusted for 24 hours,
+  and the web page reads it again right before sending. A draft application is
+  created only when the operator saves or sends, never to look at the questions.
 - Submit is at-most-once per application: an intent row is written before the
   click, ambiguity goes to reconcile, never to a second submit. One account may
   apply to the same vacancy with different resumes.

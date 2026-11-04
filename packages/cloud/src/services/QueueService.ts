@@ -32,6 +32,7 @@ import {
   reconcileArtifacts
 } from "./applyRules.ts"
 import { completeFitInference } from "./fitJudge.ts"
+import * as VacancyFormRepository from "../repositories/VacancyFormRepository.ts"
 import { hintsFor } from "./formHints.ts"
 import { importTopics } from "./NegotiationsSync.ts"
 import { importResumes } from "./ResumeSync.ts"
@@ -405,87 +406,139 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
 
                 switch (job.stage) {
                   case "prepare": {
+                    // Replaced by `form_read`; a leftover job reads nothing.
+                    status = "cancelled"
+                    message = "prepare is replaced by form_read"
+                    break
+                  }
+
+                  case "form_read": {
+                    // The form belongs to the vacancy: every applicant sees the
+                    // same questions. The harness delivers the page, the cloud
+                    // parses it and keeps one version per distinct form.
                     const verdict = judgePrepare(exit)
-                    if (verdict._tag === "form") {
-                      const application =
-                        ctx.applicationId === null
-                          ? null
-                          : yield* ApplicationRepository.findAny(tx, ctx.applicationId)
-                      const vacancy = application
-                        ? yield* VacancyRepository.findById(tx, application.vacancyId)
+                    const wanted = (job.payload as { vacancyId?: unknown } | null)?.vacancyId
+                    const vacancy =
+                      typeof wanted === "string"
+                        ? yield* VacancyRepository.findById(tx, wanted)
                         : null
-                      const form = parseResponseForm(
-                        verdict.artifacts.html,
-                        verdict.artifacts.url
+                    const waiting =
+                      vacancy === null
+                        ? []
+                        : yield* ApplicationRepository.list(tx, ctx.userId, {
+                            state: "queued",
+                            vacancyId: vacancy.id
+                          })
+                    /** An application auto-queued for this form cannot wait for a read that failed. */
+                    const parkWaiting = (state: "needs_human" | "skipped", reason: string) =>
+                      Effect.forEach(waiting, (application) =>
+                        ApplicationRepository.transition(tx, ctx.userId, application.id, state, {
+                          from: ["queued"],
+                          patch: { lastError: reason }
+                        })
                       )
-                      if (application === null || vacancy === null) {
-                        status = "failed"
-                        appState = "failed"
-                        message = "prepared, but the application or vacancy is gone"
-                      } else if (form.vacancyId !== "" && form.vacancyId !== vacancy.externalId) {
+
+                    if (vacancy === null) {
+                      status = "failed"
+                      message = "form read, but the vacancy is gone"
+                    } else if (verdict._tag === "form") {
+                      const form = parseResponseForm(verdict.artifacts.html, verdict.artifacts.url)
+                      if (form.vacancyId !== "" && form.vacancyId !== vacancy.externalId) {
                         status = "needs_human"
-                        appState = "needs_human"
                         message = "the harness returned the form of another vacancy"
+                        yield* VacancyFormRepository.recordFailure(tx, {
+                          vacancyId: vacancy.id,
+                          message
+                        })
+                        yield* parkWaiting("needs_human", message)
                       } else if (form.layout === "unknown") {
                         status = "needs_human"
-                        appState = "needs_human"
                         message = "the response form layout was not recognized"
+                        yield* VacancyFormRepository.recordUnreadable(tx, {
+                          vacancyId: vacancy.id,
+                          accountId: ctx.hhAccountId,
+                          message
+                        })
+                        yield* parkWaiting("needs_human", message)
                       } else {
-                        const hints = yield* hintsFor(tx, application, form)
-                        yield* ApplicationRepository.saveForm(tx, {
-                          userId: ctx.userId,
-                          applicationId: application.id,
+                        const recorded = yield* VacancyFormRepository.recordRead(tx, {
+                          vacancyId: vacancy.id,
+                          accountId: ctx.hhAccountId,
+                          status: form.questions.length === 0 ? "none" : "present",
                           form,
-                          hints,
                           url: verdict.artifacts.url
                         })
-                        const kit = yield* ApplicationRepository.findKit(
-                          tx,
-                          application.id,
-                          form.formHash
-                        )
-                        if (kit === null) {
-                          message = "prepared; form stored; waiting for a kit"
-                        } else if (application.state !== "queued") {
-                          message = "prepared; waiting for approval"
-                        } else {
+                        message = recorded.changed ? "form read; the form changed" : "form read; unchanged"
+                        // Auto-queued applications whose kit fits this form go out now.
+                        for (const application of waiting) {
+                          const kit = yield* ApplicationRepository.findKit(tx, application.id, form.formHash)
+                          if (kit === null) continue
+                          if ((yield* QueueRepository.latestFor(tx, application.id, ["submit"])) !== null) continue
+                          const hints = yield* hintsFor(tx, application, form)
                           const problems = checkKit({ form, hints, kit })
                           if (problems.length > 0) {
-                            status = "needs_human"
-                            appState = "needs_human"
-                            message = `prepared; kit refused: ${problems.map((problem) => problem.code).join(", ")}`
-                          } else {
-                            const target = yield* targetFor(tx, application)
-                            if (target !== null) {
-                              yield* submitJob(tx, { ...target, kit, form })
-                            }
-                            message = "prepared; submit queued"
+                            yield* ApplicationRepository.transition(
+                              tx,
+                              ctx.userId,
+                              application.id,
+                              "needs_human",
+                              {
+                                from: ["queued"],
+                                patch: {
+                                  lastError: `kit refused: ${problems.map((problem) => problem.code).join(", ")}`
+                                }
+                              }
+                            )
+                            continue
+                          }
+                          const target = yield* targetFor(tx, application)
+                          if (target !== null) {
+                            yield* submitJob(tx, {
+                              ...target,
+                              kit,
+                              form,
+                              sequence: yield* nextSequence(tx, application.id, "submit")
+                            })
                           }
                         }
                       }
                     } else if (verdict._tag === "skip") {
                       status = "done"
-                      appState = "skipped"
-                      appPatch = { lastError: verdict.reason }
-                      message = `prepare skipped: ${verdict.reason}`
+                      message = `form read skipped: ${verdict.reason}`
+                      if (verdict.reason.includes("archived")) {
+                        yield* VacancyFormRepository.recordRead(tx, {
+                          vacancyId: vacancy.id,
+                          accountId: ctx.hhAccountId,
+                          status: "gone",
+                          form: null,
+                          url: null
+                        })
+                      } else {
+                        yield* VacancyFormRepository.recordFailure(tx, {
+                          vacancyId: vacancy.id,
+                          message: verdict.reason
+                        })
+                      }
+                      yield* parkWaiting("skipped", verdict.reason)
                     } else if (verdict._tag === "human") {
                       status = "needs_human"
-                      appState = "needs_human"
-                      appPatch = { lastError: verdict.reason }
-                      message = `prepare needs a human: ${verdict.reason}`
+                      message = `form read needs a human: ${verdict.reason}`
+                      yield* VacancyFormRepository.recordFailure(tx, { vacancyId: vacancy.id, message })
+                      yield* parkWaiting("needs_human", verdict.reason)
                     } else if (verdict._tag === "failed") {
                       status = "failed"
-                      appState = "failed"
-                      appPatch = { lastError: verdict.reason }
                       message = verdict.reason
+                      yield* VacancyFormRepository.recordFailure(tx, { vacancyId: vacancy.id, message })
+                      yield* parkWaiting("needs_human", verdict.reason)
                     } else if (job.attempts < job.maxAttempts) {
                       status = "pending"
                       runAt = retryLater(exit, 30)
-                      message = `prepare retry ${job.attempts + 1}/${job.maxAttempts}: ${exit.tag}`
+                      message = `form read retry ${job.attempts + 1}/${job.maxAttempts}: ${exit.tag}`
                     } else {
                       status = "dead"
-                      appState = "needs_human"
-                      message = `prepare exhausted retries: ${exit.tag}`
+                      message = `form read exhausted retries: ${exit.tag}`
+                      yield* VacancyFormRepository.recordFailure(tx, { vacancyId: vacancy.id, message })
+                      yield* parkWaiting("needs_human", message)
                     }
                     break
                   }
@@ -757,9 +810,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                       from:
                         appState === "submitted"
                           ? ["submitting", "needs_human", "failed"]
-                          : appState === "skipped"
-                            ? ["draft", "queued", "needs_human", "failed"]
-                            : appState === "submitting"
+                          : appState === "submitting"
                             ? ["queued", "submitting"]
                             : appState === "needs_human"
                               ? ["draft", "queued", "submitting", "needs_human", "failed"]

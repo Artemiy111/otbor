@@ -7,6 +7,7 @@ import type {
   HhAccountId,
   KitAnswer,
   KitRecord,
+  VacancyFormState,
   VacancyId
 } from "@otbor/contract"
 import { call } from "@/shared/api"
@@ -43,6 +44,22 @@ export const applicationApi = {
         vacancyId: input.vacancyId as VacancyId,
         hhAccountId: input.hhAccountId as HhAccountId,
         resumeId: input.resumeId
+      })
+    ),
+  /** The response form of a vacancy as last read; never opens hh. */
+  formGet: (vacancyId: string): Promise<VacancyFormState> =>
+    call((client) => client.VacancyFormGet({ vacancyId: vacancyId as VacancyId })),
+  /** Queues a form read when the stored form is stale, or always with `force`. */
+  formRefresh: (input: {
+    readonly vacancyId: string
+    readonly hhAccountId: string
+    readonly force?: boolean
+  }): Promise<VacancyFormState> =>
+    call((client) =>
+      client.VacancyFormRefresh({
+        vacancyId: input.vacancyId as VacancyId,
+        hhAccountId: input.hhAccountId as HhAccountId,
+        force: input.force
       })
     ),
   setKit: (input: ApplicationSetKitInput): Promise<KitRecord> =>

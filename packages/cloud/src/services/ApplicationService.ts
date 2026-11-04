@@ -4,7 +4,8 @@ import type {
   ApplicationRecord,
   DecisionRecord,
   KitAnswer,
-  KitRecord
+  KitRecord,
+  VacancyFormState
 } from "@otbor/contract"
 import { AnswersInvalid, Conflict, InvalidInput, LimitExceeded, NotFound } from "@otbor/contract"
 import { sql } from "drizzle-orm"
@@ -16,7 +17,10 @@ import * as QueueRepository from "../repositories/QueueRepository.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
 import { CurrentUser } from "./CurrentUser.ts"
 import { checkKit, type KitProblem } from "./applyRules.ts"
-import { nextSequence, prepareJob, reconcileJob, submitJob, targetFor } from "./jobs.ts"
+import { nextSequence, reconcileJob, submitJob, targetFor } from "./jobs.ts"
+import * as VacancyFormRepository from "../repositories/VacancyFormRepository.ts"
+import { FORM_TTL_MS } from "../repositories/VacancyFormRepository.ts"
+import { currentFormFor, requestFormRead } from "./vacancyForm.ts"
 import { toStorageError } from "./support.ts"
 
 /* -------------------------------------------------------------------------- */
@@ -167,6 +171,14 @@ export interface ApplicationServiceShape {
   >
   readonly retry: (id: string) => Effect.Effect<ApplicationRecord, ApiError>
   readonly setKit: (input: SetKitInput) => Effect.Effect<KitRecord, ApiError>
+  /** The response form of a vacancy as last read. Never opens hh. */
+  readonly formGet: (vacancyId: string) => Effect.Effect<VacancyFormState, ApiError>
+  /** Queues a form read when the stored form is stale (or with `force`). Creates no application. */
+  readonly formRefresh: (input: {
+    readonly vacancyId: string
+    readonly hhAccountId: string
+    readonly force?: boolean
+  }) => Effect.Effect<VacancyFormState, ApiError>
 }
 
 export interface ApplicationServiceOptions {
@@ -209,7 +221,8 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                   base.application.decisionId === undefined
                     ? null
                     : yield* DecisionRepository.findById(tx, base.application.decisionId)
-                return { ...base, decision } satisfies ApplicationDetail
+                const form = yield* currentFormFor(tx, base.application)
+                return { ...base, form, decision } satisfies ApplicationDetail
               })
             )
             .pipe(Effect.mapError(toStorageError("application.get")))
@@ -264,16 +277,12 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                 })
 
                 if (created.created) {
-                  const sequence =
-                    yield* nextSequence(tx, created.record.id, "prepare")
-                  const target = yield* targetFor(tx, created.record)
-                  if (target !== null) {
-                    yield* prepareJob(tx, {
-                      ...target,
-                      priority: Math.round(decision.priority),
-                      sequence
-                    })
-                  }
+                  yield* requestFormRead(tx, {
+                    userId: currentUser.userId,
+                    hhAccountId: input.hhAccountId,
+                    vacancyId: vacancy.id,
+                    priority: Math.round(decision.priority)
+                  })
                 }
 
                 return ok(created.record)
@@ -308,11 +317,12 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                 })
 
                 if (created.created) {
-                  const sequence = yield* nextSequence(tx, created.record.id, "prepare")
-                  const target = yield* targetFor(tx, created.record)
-                  if (target !== null) {
-                    yield* prepareJob(tx, { ...target, priority: MANUAL_PREPARE_PRIORITY, sequence })
-                  }
+                  yield* requestFormRead(tx, {
+                    userId: currentUser.userId,
+                    hhAccountId: input.hhAccountId,
+                    vacancyId: vacancy.id,
+                    priority: MANUAL_PREPARE_PRIORITY
+                  })
                 }
                 return ok({ application: created.record, created: created.created })
               })
@@ -346,12 +356,22 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                   })
                 }
 
-                const stored = yield* ApplicationRepository.findForm(tx, id)
+                const stored = yield* currentFormFor(tx, application)
                 if (stored === null) {
                   return fail({
                     _tag: "conflict",
                     entity: "Application",
-                    message: "the form is not prepared yet; run prepare first"
+                    message: "the form has not been read yet; refresh the vacancy form first"
+                  })
+                }
+                // The kit was written against a form that may have changed since.
+                // A day-old read is not trusted for an irreversible send; the
+                // submit itself still compares the live form hash.
+                if (Date.now() - Date.parse(stored.fetchedAt) > FORM_TTL_MS) {
+                  return fail({
+                    _tag: "conflict",
+                    entity: "Application",
+                    message: "the stored form is older than a day; refresh the vacancy form first"
                   })
                 }
                 const kit = yield* ApplicationRepository.findKit(tx, id, stored.form.formHash)
@@ -557,8 +577,12 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                     : ok(updated)
                 }
 
-                const sequence = yield* nextSequence(tx, id, "prepare")
-                yield* prepareJob(tx, { ...target, priority: 0, sequence })
+                yield* requestFormRead(tx, {
+                  userId: currentUser.userId,
+                  hhAccountId: application.hhAccountId,
+                  vacancyId: application.vacancyId,
+                  force: true
+                })
 
                 // After a provably unsent submit the form is new: the kit has to
                 // be approved again, so the application goes back to draft
@@ -626,7 +650,7 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                 // check, the single submit job is queued; otherwise the kit is
                 // only stored and a human decides.
                 if (application.state === "queued") {
-                  const stored = yield* ApplicationRepository.findForm(tx, application.id)
+                  const stored = yield* currentFormFor(tx, application)
                   const existing = yield* QueueRepository.latestFor(tx, application.id, ["submit"])
                   if (
                     stored !== null &&
@@ -653,7 +677,39 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
           return yield* unwrap(outcome)
         })
 
+      const formGet: ApplicationServiceShape["formGet"] = (vacancyId) =>
+        database
+          .asUser(currentUser.userId, (tx) => VacancyFormRepository.getState(tx, vacancyId))
+          .pipe(Effect.mapError(toStorageError("application.formGet")))
+
+      const formRefresh: ApplicationServiceShape["formRefresh"] = (input) =>
+        Effect.gen(function*() {
+          const outcome = yield* database
+            .asUser(currentUser.userId, (tx) =>
+              Effect.gen(function*() {
+                if (!(yield* accountExists(tx, input.hhAccountId))) {
+                  return fail({ _tag: "not_found", entity: "HhAccount", id: input.hhAccountId })
+                }
+                const state = yield* requestFormRead(tx, {
+                  userId: currentUser.userId,
+                  hhAccountId: input.hhAccountId,
+                  vacancyId: input.vacancyId,
+                  force: input.force,
+                  priority: MANUAL_PREPARE_PRIORITY
+                })
+                return state === null
+                  ? fail({ _tag: "not_found", entity: "Vacancy", id: input.vacancyId })
+                  : ok(state)
+              })
+            )
+            .pipe(Effect.mapError(toStorageError("application.formRefresh")))
+
+          return yield* unwrap(outcome)
+        })
+
       return ApplicationService.of({
+        formGet,
+        formRefresh,
         list,
         get,
         createFromDecision,

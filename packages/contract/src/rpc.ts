@@ -48,6 +48,7 @@ import {
 import { ApiError } from "./errors.ts"
 import {
   ApplicationDetail,
+  VacancyFormState,
   ApplicationRecord,
   BlacklistRecord,
   ContactRecord,
@@ -967,6 +968,27 @@ export const ApplicationsCreateManual = Rpc.make("ApplicationsCreateManual", {
   error: ApiError
 })
 
+/** The response form of a vacancy as last read. Never opens hh. */
+export const VacancyFormGet = Rpc.make("VacancyFormGet", {
+  payload: Schema.Struct({ vacancyId: VacancyId }),
+  success: VacancyFormState,
+  error: ApiError
+})
+
+/**
+ * Queues a form read when the stored form is older than a day, or always with
+ * `force`. Creates no application. Returns the state as it is now.
+ */
+export const VacancyFormRefresh = Rpc.make("VacancyFormRefresh", {
+  payload: Schema.Struct({
+    vacancyId: VacancyId,
+    hhAccountId: HhAccountId,
+    force: Schema.optional(Schema.Boolean)
+  }),
+  success: VacancyFormState,
+  error: ApiError
+})
+
 export const ApplicationsApprove = Rpc.make("ApplicationsApprove", {
   payload: Schema.Struct({ id: ApplicationId }),
   success: ApplicationRecord,
@@ -1342,6 +1364,8 @@ export const OtborRpcs = RpcGroup.make(
   ApplicationsGet,
   ApplicationsCreateFromDecision,
   ApplicationsCreateManual,
+  VacancyFormGet,
+  VacancyFormRefresh,
   ApplicationsApprove,
   ApplicationsSkip,
   ApplicationsRetry,

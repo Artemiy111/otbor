@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { FormAnswer, StoredForm } from "./form.ts"
+import { FormAnswer, ResponseForm, StoredForm } from "./form.ts"
 import {
   ApplicationOrigin,
   ApplicationState,
@@ -951,6 +951,38 @@ export const ApplicationDetail = Schema.Struct({
 })
 
 export type ApplicationDetail = typeof ApplicationDetail.Type
+
+/**
+ * The response form of a vacancy as hh shows it now, the same for every
+ * applicant. `unknown`: never read. `none`: hh shows no questions. `unreadable`:
+ * the layout was not recognized, which is never "no questions". `gone`: the
+ * vacancy is archived.
+ */
+export const VacancyFormStatus = Schema.Literals(["unknown", "none", "present", "unreadable", "gone"])
+
+export type VacancyFormStatus = typeof VacancyFormStatus.Type
+
+export const VacancyFormState = Schema.Struct({
+  vacancyId: VacancyId,
+  status: VacancyFormStatus,
+  /** The current version, null until a form was read. */
+  form: Schema.NullOr(ResponseForm),
+  url: Schema.NullOr(Schema.String),
+  /** Last successful read. */
+  checkedAt: Schema.NullOr(Schema.String),
+  /** When the current version last changed. */
+  changedAt: Schema.NullOr(Schema.String),
+  /** Older than a day, or never read: worth refreshing before it is relied on. */
+  stale: Schema.Boolean,
+  /** A form read is queued or running. */
+  reading: Schema.Boolean,
+  /** Why the latest read failed, if it did. */
+  lastError: Schema.NullOr(Schema.String),
+  /** How many versions of the form were seen. */
+  versions: Schema.Int
+})
+
+export type VacancyFormState = typeof VacancyFormState.Type
 
 /* -------------------------------------------------------------------------- */
 /* Harness queue                                                              */

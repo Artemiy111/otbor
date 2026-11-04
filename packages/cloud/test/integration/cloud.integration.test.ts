@@ -377,7 +377,7 @@ if (!integrationEnabled || serverUrl === null) {
       const job = await enqueueJob({
         userId: tenant.userId,
         accountId: tenant.accountId,
-        stage: "prepare",
+        stage: "form_read",
         maxAttempts: 3
       })
 

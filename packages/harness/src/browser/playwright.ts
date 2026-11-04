@@ -1,7 +1,7 @@
 import type {
   HarnessExit,
   NegotiationsSyncJobPayload,
-  PrepareJobPayload,
+  FormReadJobPayload,
   ReconcileJobPayload,
   ResumeSyncJobPayload,
   ReconcilePage,
@@ -151,7 +151,7 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
       })
     )
 
-  const prepare = (payload: PrepareJobPayload): Effect.Effect<HarnessExit> =>
+  const prepare = (payload: FormReadJobPayload): Effect.Effect<HarnessExit> =>
     withPage(payload.sessionProfile, (page) =>
       Effect.gen(function*() {
         yield* open(page, payload.externalId)

@@ -188,7 +188,6 @@ describe.skipIf(!hasBrowser)("PlaywrightBrowserExecutor against a local hh imita
     mode = "ok"
     const exit = await run(
       executor().prepare({
-        applicationId: "app",
         vacancyId: "vac",
         externalId: "100500",
         canonicalUrl: "https://hh.ru/vacancy/100500",

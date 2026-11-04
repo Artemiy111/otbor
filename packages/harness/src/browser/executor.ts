@@ -1,4 +1,4 @@
-import type { HarnessExit, NegotiationsSyncJobPayload, PrepareJobPayload, ResumeSyncJobPayload, ReconcileJobPayload, SubmitJobPayload } from "@otbor/contract"
+import type { FormReadJobPayload, HarnessExit, NegotiationsSyncJobPayload, ResumeSyncJobPayload, ReconcileJobPayload, SubmitJobPayload } from "@otbor/contract"
 import { Context, Effect, Layer } from "effect"
 
 /**
@@ -17,7 +17,7 @@ export interface SubmitRequest {
 }
 
 export interface BrowserExecutorShape {
-  readonly prepare: (payload: PrepareJobPayload) => Effect.Effect<HarnessExit>
+  readonly prepare: (payload: FormReadJobPayload) => Effect.Effect<HarnessExit>
   readonly submit: (request: SubmitRequest) => Effect.Effect<HarnessExit>
   /**
    * Reads the vacancy page and the negotiations list in the account's session

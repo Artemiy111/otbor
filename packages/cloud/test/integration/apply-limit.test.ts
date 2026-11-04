@@ -82,7 +82,7 @@ if (!enabled || serverUrl === null) {
         sequence: 1
       })
       const leased = await support.leaseNext(tenant.userId, harness.id, harness.token!, accounts)
-      expect(leased.job?.stage).toBe("prepare")
+      expect(leased.job?.stage).toBe("form_read")
       await support.completeJob(tenant.userId, {
         harnessId: harness.id,
         token: harness.token!,

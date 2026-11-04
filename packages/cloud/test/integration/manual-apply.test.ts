@@ -187,7 +187,7 @@ if (!enabled || serverUrl === null) {
       expect((mismatch as InvalidInput).message).toContain("not 7700004")
     }, 60_000)
 
-    test("creates a decision-less draft with a prepare job, once per account and vacancy", async () => {
+    test("creates a decision-less draft and one shared form read, once per account and vacancy", async () => {
       const tenant = await support.seedTenant("manual-create")
       const other = await support.addAccount(tenant.userId, "manual-other")
       // a vacancy nobody evaluated: no decision exists for it
@@ -196,12 +196,12 @@ if (!enabled || serverUrl === null) {
       const first = await createManual(tenant.userId, vacancyId, tenant.accountId)
       expect(first.created).toBe(true)
       expect(first.application).toMatchObject({ state: "draft", vacancyId, decisionId: null })
-      expect(await support.countJobs(first.application.id, "prepare")).toBe(1)
+      expect((await support.formReadJobsOf(vacancyId)).length).toBe(1)
 
       const second = await createManual(tenant.userId, vacancyId, tenant.accountId)
       expect(second.created).toBe(false)
       expect(second.application.id).toBe(first.application.id)
-      expect(await support.countJobs(first.application.id, "prepare")).toBe(1)
+      expect((await support.formReadJobsOf(vacancyId)).length).toBe(1)
 
       // another account of the same user may apply to the same vacancy
       const third = await createManual(tenant.userId, vacancyId, other)
@@ -250,7 +250,7 @@ if (!enabled || serverUrl === null) {
       const { application } = await createManual(tenant.userId, vacancyId, tenant.accountId)
 
       const leased = await support.leaseNext(tenant.userId, harness.id, harness.token!, [tenant.accountId])
-      expect(leased.job?.stage).toBe("prepare")
+      expect(leased.job?.stage).toBe("form_read")
       await support.completeJob(tenant.userId, {
         harnessId: harness.id,
         token: harness.token!,

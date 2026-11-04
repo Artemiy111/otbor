@@ -115,7 +115,7 @@ if (!enabled || serverUrl === null) {
         sequence
       })
       const leased = await ctx.lease()
-      expect(leased.job?.stage).toBe("prepare")
+      expect(leased.job?.stage).toBe("form_read")
       return ctx.complete(leased.job!, { tag: "prepared", artifacts: { url, html } })
     }
 
@@ -157,21 +157,57 @@ if (!enabled || serverUrl === null) {
       expect(await support.countJobs(ctx.applicationId, "submit")).toBe(0)
       expect(await stateOf(ctx)).toBe("draft")
 
-      // The attempt journal keeps the evidence, not the page body.
-      const attempt = view.attempts.find((item) => item.stage === "prepare")
-      expect(attempt?.exit?.tag).toBe("prepared")
-      expect(JSON.stringify(attempt?.exit)).not.toContain("RESPONSE_MODAL_FORM_ID")
+      // The form belongs to the vacancy: the same version is visible without the application.
+      const shared = await support.vacancyFormState(ctx.tenant.userId, ctx.vacancyId)
+      expect(shared).toMatchObject({ status: "present", stale: false, reading: false, versions: 1 })
+      expect(shared.form?.formHash).toBe(view.form?.form.formHash)
+    })
+
+    test("an edited form becomes a new version; a day-old form is not approved", async () => {
+      const ctx = await setup("form-versions")
+      await prepare(ctx, responseHtml)
+      const first = await support.vacancyFormState(ctx.tenant.userId, ctx.vacancyId)
+
+      // A second read of the same form adds no version.
+      await prepare(ctx, responseHtml)
+      expect((await support.vacancyFormState(ctx.tenant.userId, ctx.vacancyId)).versions).toBe(1)
+
+      // The employer edits a question: a new version, the old one is kept.
+      const changed = responseHtml.replace("В каком городе проживаете?", "В какой стране проживаете?")
+      await prepare(ctx, changed)
+      const second = await support.vacancyFormState(ctx.tenant.userId, ctx.vacancyId)
+      expect(second.versions).toBe(2)
+      expect(second.form?.formHash).not.toBe(first.form?.formHash)
+
+      // An old read is not trusted for an irreversible send.
+      await support.applicationSetKit(ctx.tenant.userId, {
+        applicationId: ctx.applicationId,
+        formHash: second.form!.formHash,
+        letter: "Здравствуйте",
+        answers: fullAnswers()
+      })
+      await support.ageVacancyForm(ctx.vacancyId, 25)
+      expect((await support.vacancyFormState(ctx.tenant.userId, ctx.vacancyId)).stale).toBe(true)
+      await expect(support.applicationApprove(ctx.tenant.userId, ctx.applicationId)).rejects.toThrow()
     })
 
     test("prepare on a responded page skips; on a login page asks for a human", async () => {
       const responded = await setup("prep-responded")
       await prepare(responded, '<div data-qa="responded-success-attach-cover-letter">Вы откликнулись</div>')
-      expect(await stateOf(responded)).toBe("skipped")
+      // A draft is the operator's; only an auto-queued application is parked by a failed read.
+      expect(await stateOf(responded)).toBe("draft")
+      const respondedForm = await support.vacancyFormState(responded.tenant.userId, responded.vacancyId)
+      expect(respondedForm.lastError ?? "").toBe("")
+      expect(respondedForm.form).toBeNull()
+
+      const auto = await setup("prep-responded-auto", "queued")
+      await prepare(auto, '<div data-qa="responded-success-attach-cover-letter">Вы откликнулись</div>')
+      expect(await stateOf(auto)).toBe("skipped")
 
       const login = await setup("prep-login")
       const result = await prepare(login, "<html></html>", 1, "https://hh.ru/account/login")
       expect(result.status).toBe("needs_human")
-      expect(await stateOf(login)).toBe("needs_human")
+      expect(await stateOf(login)).toBe("draft")
 
       const relocation = await setup("prep-reloc")
       await support.enqueuePrepareJob({
@@ -576,7 +612,7 @@ if (!enabled || serverUrl === null) {
 
       // Retry is a new prepare, not a reconcile.
       await support.applicationRetry(ctx.tenant.userId, ctx.applicationId)
-      expect(await support.countJobs(ctx.applicationId, "prepare")).toBe(2)
+      expect((await support.formReadJobsOf(ctx.vacancyId)).length).toBe(2)
       expect(await support.countJobs(ctx.applicationId, "reconcile")).toBe(0)
       // The new form needs a new approval.
       expect(await stateOf(ctx)).toBe("draft")
@@ -584,7 +620,7 @@ if (!enabled || serverUrl === null) {
       // The site changed a question: the new form has a new hash.
       const changed = responseHtml.replace("В каком городе проживаете?", "В какой стране проживаете?")
       const prepared = await ctx.lease()
-      expect(prepared.job?.stage).toBe("prepare")
+      expect(prepared.job?.stage).toBe("form_read")
       await ctx.complete(prepared.job!, {
         tag: "prepared",
         artifacts: { url: urlFor(ctx.externalId), html: changed }
@@ -687,7 +723,7 @@ if (!enabled || serverUrl === null) {
       expect(second.job).toBeNull()
 
       await ctx.complete(first.job!, { tag: "session_expired" })
-      await support.makeJobRunnable((await support.jobsOf(otherApp))[0]!.id as string)
+      await support.makeJobRunnable((await support.formReadJobsOf(otherVacancy))[0]!.id as string)
       const next = await ctx.lease()
       expect(next.job).not.toBeNull()
       expect(next.job?.id).not.toBe(first.job?.id)

@@ -3,6 +3,7 @@ import {
   type HarnessExit,
   type HarnessJob,
   type LeaseId,
+  FormReadJobPayload,
   PrepareJobPayload,
   NegotiationsSyncJobPayload,
   ResumeSyncJobPayload,
@@ -108,6 +109,14 @@ const runBrowserExit = (
       return Schema.decodeUnknownEffect(PrepareJobPayload)(job.payload).pipe(
         Effect.matchEffect({
           onFailure: (error) => Effect.succeed(badPayload("prepare", error.message)),
+          onSuccess: (payload) => executor.prepare(payload)
+        })
+      )
+    case "form_read":
+      // Same page, same reading as `prepare`; the job just has no application.
+      return Schema.decodeUnknownEffect(FormReadJobPayload)(job.payload).pipe(
+        Effect.matchEffect({
+          onFailure: (error) => Effect.succeed(badPayload("form_read", error.message)),
           onSuccess: (payload) => executor.prepare(payload)
         })
       )

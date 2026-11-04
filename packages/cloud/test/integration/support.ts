@@ -79,7 +79,7 @@ import { MailService, type MailAccountUpsertInput } from "../../src/services/Mai
 import { MailSync } from "../../src/services/MailSync.ts"
 import { PresetService } from "../../src/services/PresetService.ts"
 import { ResumeService } from "../../src/services/ResumeService.ts"
-import { prepareJob, submitJob } from "../../src/services/jobs.ts"
+import { formReadJob, submitJob } from "../../src/services/jobs.ts"
 import { NegotiationsSync } from "../../src/services/NegotiationsSync.ts"
 import { ResumeSync } from "../../src/services/ResumeSync.ts"
 import { VacancyAnalysisService } from "../../src/services/VacancyAnalysisService.ts"
@@ -1683,6 +1683,39 @@ export const countJobs = async (applicationId: string, stage: JobStage) =>
     ownerTx((tx) => QueueRepository.countFor(tx, applicationId, stage))
   )
 
+/** Form reads queued for a vacancy: they have no application, only a vacancy in the payload. */
+export const formReadJobsOf = async (vacancyId: string) =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx
+        .execute(
+          sql`select id, status, payload, result from harness_jobs where stage = 'form_read' and payload->>'vacancyId' = ${vacancyId} order by created_at`
+        )
+        .pipe(Effect.map((result) => result.rows as ReadonlyArray<Record<string, any>>))
+    )
+  )
+
+/** Pretends the form was last read `hours` ago. */
+export const ageVacancyForm = async (vacancyId: string, hours: number) =>
+  runAs(
+    "owner",
+    ownerTx((tx) =>
+      tx.execute(
+        sql`update vacancy_form_state set checked_at = now() - make_interval(hours => ${hours}) where vacancy_id = ${vacancyId}`
+      )
+    )
+  )
+
+export const vacancyFormState = async (userId: string, vacancyId: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const applications = yield* ApplicationService
+      return yield* applications.formGet(vacancyId)
+    })
+  )
+
 export const findApplication = async (applicationId: string) =>
   runAs(
     "owner",
@@ -1953,11 +1986,11 @@ export const applicationGet = async (userId: string, id: string) =>
     })
   )
 
-/** The external id and prepare job for an application, through the real `prepareJob`. */
+/** A form read for a vacancy, through the real `formReadJob`. */
 export const enqueuePrepareJob = async (input: {
   readonly userId: string
   readonly accountId: string
-  readonly applicationId: string
+  readonly applicationId?: string
   readonly vacancyId: string
   readonly externalId: string
   readonly sequence?: number
@@ -1965,16 +1998,14 @@ export const enqueuePrepareJob = async (input: {
   runAs(
     input.userId,
     ownerTx((tx) =>
-      prepareJob(tx, {
+      formReadJob(tx, {
         userId: input.userId,
         hhAccountId: input.accountId,
-        applicationId: input.applicationId,
         vacancyId: input.vacancyId,
         canonicalUrl: `https://hh.ru/vacancy/${input.externalId}`,
         externalId: input.externalId,
         sessionProfile: null,
-        priority: 0,
-        sequence: input.sequence ?? 1
+        priority: 0
       })
     )
   )
