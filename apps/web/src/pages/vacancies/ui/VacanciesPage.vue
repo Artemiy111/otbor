@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, h, ref } from "vue"
 import { useQuery } from "@pinia/colada"
-import { applicationApi } from "@/entities/application"
+import { applicationApi, respondedByVacancy } from "@/entities/application"
+import { resumeApi, resumeKeys } from "@/entities/resume"
 import { AccountChip, ALL_ACCOUNTS, useAccountFilter } from "@/entities/hh-account"
 import { accountFilterOptions } from "@/features/account-filter"
 import type { GateVerdict, VacancySummary } from "@otbor/contract"
@@ -43,22 +44,13 @@ const gateCache = new Map<string, GateVerdict>()
 
 const { accounts, accountId, hhAccountId, scopeKey, defaultAccountId } = useAccountFilter(ALL_ACCOUNTS)
 
-/** Applications that count as "this account responded to the vacancy". */
-const RESPONDED_STATES = new Set(["submitted", "submitting", "queued"])
 const applicationsQuery = useQuery({
   key: () => ["applications", "by-vacancy"],
   query: () => applicationApi.list({ limit: 2000 })
 })
-const respondedAccounts = computed(() => {
-  const byVacancy = new Map<string, string[]>()
-  for (const application of applicationsQuery.data.value ?? []) {
-    if (!RESPONDED_STATES.has(application.state)) continue
-    const list = byVacancy.get(application.vacancyId) ?? []
-    if (!list.includes(application.hhAccountId)) list.push(application.hhAccountId)
-    byVacancy.set(application.vacancyId, list)
-  }
-  return byVacancy
-})
+const respondedAccounts = computed(() => respondedByVacancy(applicationsQuery.data.value ?? []))
+const resumesQuery = useQuery({ key: () => resumeKeys.list(), query: () => resumeApi.list() })
+const resumes = computed(() => resumesQuery.data.value ?? [])
 
 const listQuery = useQuery({
   key: () =>
@@ -83,7 +75,7 @@ const vacancies = computed<ReadonlyArray<VacancySummary>>(() => {
   const items = listQuery.data.value?.items ?? []
   const account = hhAccountId.value
   if (account === undefined) return items
-  return items.filter((vacancy) => respondedAccounts.value.get(vacancy.id)?.includes(account))
+  return items.filter((vacancy) => respondedAccounts.value.get(vacancy.id)?.some((item) => item.accountId === account))
 })
 const total = computed(() => listQuery.data.value?.total ?? vacancies.value.length)
 
@@ -235,7 +227,15 @@ const columns: ColumnDef<VacancySummary>[] = [
         : h(
             "div",
             { class: "flex flex-wrap gap-1" },
-            ids.map((id) => h(AccountChip, { accountId: id, accounts: accounts.value }))
+            ids.map((item) =>
+              h(AccountChip, {
+                key: item.accountId,
+                accountId: item.accountId,
+                accounts: accounts.value,
+                resumeIds: item.resumeIds,
+                resumes: resumes.value
+              })
+            )
           )
     }
   },

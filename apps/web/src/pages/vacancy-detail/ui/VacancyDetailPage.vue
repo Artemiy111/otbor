@@ -5,6 +5,7 @@ import { CircleAlert, ExternalLink } from "@lucide/vue"
 import { applicationApi, applicationKeys } from "@/entities/application"
 import { contactApi, contactKeys } from "@/entities/contact"
 import { decisionApi, decisionKeys } from "@/entities/decision"
+import { resumeApi, resumeKeys } from "@/entities/resume"
 import { vacancyApi, vacancyKeys } from "@/entities/vacancy"
 import { useDefaultAccount } from "@/entities/hh-account"
 import { RefreshButton } from "@/features/refresh-button"
@@ -59,6 +60,8 @@ const data = computed(() => vacancyQuery.data.value)
 const contacts = computed(() => contactsQuery.data.value?.items ?? [])
 
 const { accounts, defaultAccountId } = useDefaultAccount()
+const resumesQuery = useQuery({ key: () => resumeKeys.list(), query: () => resumeApi.list() })
+const resumes = computed(() => resumesQuery.data.value ?? [])
 
 const highlightKeywords = ref(true)
 
@@ -286,6 +289,7 @@ watch(
             :applications="applications"
             :contacts="contacts"
             :accounts="accounts"
+            :resumes="resumes"
             :default-account-id="defaultAccountId"
             :hydrating="hydrating"
             @hydrate="hydrateNow"

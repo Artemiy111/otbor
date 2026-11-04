@@ -4,7 +4,8 @@ import { describeKitAnswer } from "@otbor/contract"
 import { useQuery } from "@pinia/colada"
 import { CircleAlert } from "@lucide/vue"
 import { applicationApi, applicationKeys } from "@/entities/application"
-import { hhAccountApi, hhAccountKeys, hhAccountNameById } from "@/entities/hh-account"
+import { AccountChip, hhAccountApi, hhAccountKeys } from "@/entities/hh-account"
+import { resumeApi, resumeKeys } from "@/entities/resume"
 import { RefreshButton } from "@/features/refresh-button"
 import {
   decisionReasonLabel,
@@ -50,9 +51,7 @@ const accountsQuery = useQuery({
   key: () => hhAccountKeys.list(),
   query: () => hhAccountApi.list()
 })
-const accountName = computed(() =>
-  hhAccountNameById(accountsQuery.data.value ?? [], data.value?.application.hhAccountId)
-)
+const resumesQuery = useQuery({ key: () => resumeKeys.list(), query: () => resumeApi.list() })
 
 const kitAnswers = computed(() =>
   (data.value?.kit?.answers ?? []).map((raw) => describeKitAnswer(raw, data.value?.form?.form))
@@ -61,12 +60,7 @@ const kitAnswers = computed(() =>
 const subtitle = computed(() => {
   const application = data.value?.application
   if (application === undefined) return undefined
-  return [
-    application.employerName ?? "Компания не указана",
-    application.resumeId ? `резюме ${application.resumeId}` : null
-  ]
-    .filter((part): part is string => typeof part === "string" && part !== "")
-    .join(" · ")
+  return application.employerName ?? "Компания не указана"
 })
 
 const cost = (value: number | null | undefined): string =>
@@ -106,7 +100,14 @@ const cost = (value: number | null | undefined): string =>
 
     <template v-else-if="data">
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Аккаунт" :value="accountName" />
+        <StatCard label="Аккаунт">
+          <AccountChip
+            :account-id="data.application.hhAccountId"
+            :accounts="accountsQuery.data.value ?? []"
+            :resume-ids="[data.application.resumeId]"
+            :resumes="resumesQuery.data.value ?? []"
+          />
+        </StatCard>
         <StatCard label="Создан" :value="formatDate(data.application.createdAt)" />
         <StatCard label="Обновлён" :value="formatDate(data.application.updatedAt)" />
         <StatCard label="Попыток" :value="data.attempts.length" />

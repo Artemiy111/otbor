@@ -2,7 +2,8 @@
 import { computed, ref, watch } from "vue"
 import { useQuery } from "@pinia/colada"
 import { CircleAlert, ExternalLink } from "@lucide/vue"
-import { applicationApi } from "@/entities/application"
+import { applicationApi, respondedByVacancy } from "@/entities/application"
+import { resumeApi, resumeKeys } from "@/entities/resume"
 import { AccountChip, useDefaultAccount } from "@/entities/hh-account"
 import { companyApi, companyKeys } from "@/entities/company"
 import { hydrationApi } from "@/entities/hydration"
@@ -103,22 +104,13 @@ const profileFacts = computed(() => {
 
 const { accounts } = useDefaultAccount()
 
-/** Applications that count as "this account responded to the vacancy". */
-const RESPONDED_STATES = new Set(["submitted", "submitting", "queued"])
 const applicationsQuery = useQuery({
   key: () => ["applications", "by-vacancy"],
   query: () => applicationApi.list({ limit: 2000 })
 })
-const respondedAccounts = computed(() => {
-  const byVacancy = new Map<string, string[]>()
-  for (const application of applicationsQuery.data.value ?? []) {
-    if (!RESPONDED_STATES.has(application.state)) continue
-    const list = byVacancy.get(application.vacancyId) ?? []
-    if (!list.includes(application.hhAccountId)) list.push(application.hhAccountId)
-    byVacancy.set(application.vacancyId, list)
-  }
-  return byVacancy
-})
+const respondedAccounts = computed(() => respondedByVacancy(applicationsQuery.data.value ?? []))
+const resumesQuery = useQuery({ key: () => resumeKeys.list(), query: () => resumeApi.list() })
+const resumes = computed(() => resumesQuery.data.value ?? [])
 
 const subtitle = computed(() => {
   const company = employer.value
@@ -274,10 +266,12 @@ const errorText = computed(() =>
                 <TableCell>
                   <div v-if="respondedAccounts.has(vacancy.id)" class="flex flex-wrap gap-1">
                     <AccountChip
-                      v-for="accountId in respondedAccounts.get(vacancy.id)"
-                      :key="accountId"
-                      :account-id="accountId"
+                      v-for="item in respondedAccounts.get(vacancy.id)"
+                      :key="item.accountId"
+                      :account-id="item.accountId"
                       :accounts="accounts"
+                      :resume-ids="item.resumeIds"
+                      :resumes="resumes"
                     />
                   </div>
                   <span v-else class="text-muted-foreground">—</span>

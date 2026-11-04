@@ -2,7 +2,7 @@
 import { computed } from "vue"
 import type { ApplicationRecord, ContactRecord, DecisionRecord, VacancyDetail } from "@otbor/contract"
 import { AccountChip } from "@/entities/hh-account"
-import type { HhAccountRecord } from "@otbor/contract"
+import type { HhAccountRecord, ResumeRecord } from "@otbor/contract"
 import {
   applicationPath,
   applicationRequestLabel,
@@ -24,6 +24,7 @@ const props = defineProps<{
   applications: ReadonlyArray<ApplicationRecord>
   contacts: ReadonlyArray<ContactRecord>
   accounts: ReadonlyArray<HhAccountRecord>
+  resumes: ReadonlyArray<ResumeRecord>
   defaultAccountId: string | undefined
   hydrating: boolean
 }>()
@@ -120,7 +121,12 @@ const section = "border-t border-border pt-3 first:border-t-0 first:pt-0"
       <h2 :class="sectionTitle">Отклики аккаунтов</h2>
       <ul v-if="applications.length > 0" class="space-y-1">
         <li v-for="application in applications" :key="application.id" class="flex items-center gap-2">
-          <AccountChip :account-id="application.hhAccountId" :accounts="accounts" />
+          <AccountChip
+            :account-id="application.hhAccountId"
+            :accounts="accounts"
+            :resume-ids="[application.resumeId]"
+            :resumes="resumes"
+          />
           <a :href="applicationPath(application.id)" class="hover:text-primary">
             {{ statusLabel(application.state) }}
           </a>
