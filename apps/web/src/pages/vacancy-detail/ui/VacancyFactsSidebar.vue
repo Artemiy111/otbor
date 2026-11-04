@@ -58,19 +58,18 @@ const section = "border-t border-border pt-3 first:border-t-0 first:pt-0"
         </Button>
       </div>
       <ul class="space-y-1">
-        <li v-if="hh">
-          Письмо на hh:
-          <b>{{ hh.letterRequired === null ? "не определено" : hh.letterRequired ? "обязательно" : "необязательно" }}</b>
+        <li v-if="hh?.letterRequired === true">
+          Письмо: <b>hh требует приложить</b>
         </li>
         <li v-if="text?.coverLetter.requested">
-          Письмо в тексте: <b>просят</b>
+          Письмо: <b>упомянуто в тексте</b>
           <p v-if="text.coverLetter.evidence" class="text-xs text-muted-foreground">
             «{{ text.coverLetter.evidence }}»
           </p>
         </li>
-        <li v-if="hh">
+        <li v-if="hh?.test.hasTest">
           Тест:
-          <b>{{ !hh.test.hasTest ? "нет" : hh.test.required === null ? "есть" : hh.test.required ? "обязательный" : "необязательный" }}</b>
+          <b>{{ hh.test.required === null ? "есть" : hh.test.required ? "обязательный" : "необязательный" }}</b>
         </li>
         <li v-for="request in text?.applicationRequests ?? []" :key="request.code">
           Просят: <b>{{ applicationRequestLabel(request.code) }}</b>

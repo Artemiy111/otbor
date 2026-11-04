@@ -19,14 +19,12 @@ const chips = computed<ReadonlyArray<Chip>>(() => {
   const out: Array<Chip> = []
   const hh = facts.hh
   if (hh?.letterRequired === true) {
-    out.push({ key: "letter", label: "письмо обязательно", variant: "warning" })
-  } else if (hh?.letterRequired === false) {
-    out.push({ key: "letter", label: "письмо необязательно", variant: "neutral" })
+    out.push({ key: "letter", label: "hh требует письмо", variant: "warning" })
   }
   if (facts.text.coverLetter.requested) {
     out.push({
       key: "letter-text",
-      label: "письмо просят в тексте",
+      label: "письмо в тексте",
       variant: "warning",
       title: facts.text.coverLetter.evidence ?? undefined
     })
