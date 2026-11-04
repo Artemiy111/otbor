@@ -65,6 +65,8 @@ import { FitJudgeService } from "../../src/services/FitJudgeService.ts"
 import { CrawlRunner, type CrawlRunnerResult } from "../../src/services/CrawlRunner.ts"
 import { CrawlService, type CrawlSavePageInput } from "../../src/services/CrawlService.ts"
 import { CurrentUser } from "../../src/services/CurrentUser.ts"
+import { AnalysisRunner } from "../../src/services/AnalysisRunner.ts"
+import { SystemOneClient } from "../../src/services/SystemOneClient.ts"
 import { EmployerHydrator } from "../../src/services/EmployerHydrator.ts"
 import { GateService, type GateServiceShape } from "../../src/services/GateService.ts"
 import { HydrationRunner } from "../../src/services/HydrationRunner.ts"
@@ -80,6 +82,7 @@ import { ResumeService } from "../../src/services/ResumeService.ts"
 import { prepareJob, submitJob } from "../../src/services/jobs.ts"
 import { NegotiationsSync } from "../../src/services/NegotiationsSync.ts"
 import { ResumeSync } from "../../src/services/ResumeSync.ts"
+import { VacancyAnalysisService } from "../../src/services/VacancyAnalysisService.ts"
 import { QueueService } from "../../src/services/QueueService.ts"
 import { recoverExpiredLeases } from "../../src/services/recovery.ts"
 import { ScheduleDispatcher } from "../../src/services/ScheduleDispatcher.ts"
@@ -180,6 +183,8 @@ export const dropTestDatabase = (base: string): Promise<void> =>
 export interface LayerOptions {
   readonly runner?: Layer.Layer<CrawlRunner, never, never>
   readonly hydrationRunner?: Layer.Layer<HydrationRunner, never, never>
+  /** Replaces the SystemOne model client (default: the configured HTTP one). */
+  readonly systemOne?: Layer.Layer<SystemOneClient, never, never>
   readonly mailGateway?: MailGateway
   readonly telegramGateway?: TelegramGateway
 }
@@ -228,6 +233,9 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
     options.hydrationRunner ??
     HydrationRunner.layer.pipe(Layer.provide(Layer.merge(shared, crawlStack)))
   const employers = EmployerHydrator.layer.pipe(Layer.provide(shared))
+  const analysisRunner = AnalysisRunner.layer.pipe(
+    Layer.provide(Layer.merge(shared, options.systemOne ?? SystemOneClient.layer))
+  )
   const evaluation = EvaluationRunner.layer.pipe(Layer.provide(shared))
   const fitRunner = FitJudgeRunner.layer.pipe(Layer.provide(shared))
   const resumeSyncService = ResumeSync.layer.pipe(Layer.provide(shared))
@@ -235,6 +243,7 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
     crawlStack,
     hydration,
     employers,
+    analysisRunner,
     evaluation,
     fitRunner,
     resumeSyncService,
@@ -256,6 +265,7 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
     // These services already depend only on Database + CurrentUser.
     BlacklistService.layer.pipe(Layer.provide(shared)),
     ResumeService.layer.pipe(Layer.provide(shared)),
+    VacancyAnalysisService.layer.pipe(Layer.provide(shared)),
     DecisionService.layer.pipe(Layer.provide(shared)),
     FitJudgeService.layer.pipe(Layer.provide(shared)),
     QueueService.layer.pipe(Layer.provide(shared)),
@@ -290,12 +300,14 @@ type Requirements =
   | ConversationService
   | HydrationRunner
   | EmployerHydrator
+  | AnalysisRunner
   | BlacklistService
   | DecisionService
   | EvaluationRunner
   | FitJudgeRunner
   | FitJudgeService
   | ResumeService
+  | VacancyAnalysisService
 
 export const runAs = <A, E>(
   userId: string,

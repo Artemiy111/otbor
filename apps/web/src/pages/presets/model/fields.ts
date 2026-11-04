@@ -4,7 +4,7 @@ import type {
   PresetOperator,
   PresetRule
 } from "@otbor/contract"
-import { roleFamilyLabel, seniorityLabel, statusLabel, workFormatLabel } from "@/shared/lib"
+import { ANALYSIS_LEVEL_LABELS, ANALYSIS_ROLE_LABELS, roleFamilyLabel, seniorityLabel, statusLabel, workFormatLabel } from "@/shared/lib"
 
 /**
  * Browser-side mirror of the preset whitelist. The backend owns enforcement;
@@ -58,6 +58,9 @@ const SELECT_OPS: ReadonlyArray<PresetOperator> = ["eq", "neq", "in", "not_in"]
 
 const OPTIONS = (...pairs: ReadonlyArray<readonly [string, string]>): ReadonlyArray<PresetFieldOption> =>
   pairs.map(([value, label]) => ({ value, label }))
+
+const ANALYSIS_ROLE_OPTIONS = OPTIONS(...Object.entries(ANALYSIS_ROLE_LABELS))
+const ANALYSIS_LEVEL_OPTIONS = OPTIONS(...Object.entries(ANALYSIS_LEVEL_LABELS))
 
 const SENIORITY_OPTIONS = OPTIONS(
   ["junior", seniorityLabel("junior")],
@@ -221,6 +224,24 @@ export const PRESET_FIELDS: ReadonlyArray<PresetFieldMeta> = [
     kind: "select",
     ops: SELECT_OPS,
     options: ROLE_FAMILY_OPTIONS
+  },
+  {
+    field: "analysis_role",
+    label: "Роль по анализу модели",
+    group: "Классификация",
+    kind: "select",
+    ops: SELECT_OPS,
+    options: ANALYSIS_ROLE_OPTIONS,
+    hint: "Роль, которую определила модель по тексту вакансии. Пусто, если модель не уверена."
+  },
+  {
+    field: "analysis_level",
+    label: "Уровень по анализу модели",
+    group: "Классификация",
+    kind: "select",
+    ops: SELECT_OPS,
+    options: ANALYSIS_LEVEL_OPTIONS,
+    hint: "Требуемый уровень по тексту вакансии. Пусто, если модель не уверена."
   },
   {
     field: "salary_from",

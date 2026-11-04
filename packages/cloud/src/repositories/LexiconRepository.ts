@@ -1,6 +1,6 @@
 import type { LexiconKeyword, PresetFilter, PresetRule } from "@otbor/contract"
 import type { LexiconEntryInput, LexiconMatch } from "@otbor/domain"
-import { matchLexicon, normalizeTerm } from "@otbor/domain"
+import { ANALYSIS_PROMPT_VERSION, matchLexicon, normalizeTerm } from "@otbor/domain"
 import { sql, type SQL } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
@@ -96,6 +96,11 @@ const textFieldSql = (field: PresetRule["field"]): SQL | null => {
       return sql`coalesce(vacancy.employment_form, '')`
     case "source":
       return sql`vacancy.source`
+    // Facts below the model's threshold are stored as null, so they read as ''.
+    case "analysis_role":
+      return sql`coalesce((select a.facts->'role'->>'value' from vacancy_analysis a where a.vacancy_id = vacancy.id and a.prompt_version = ${ANALYSIS_PROMPT_VERSION}), '')`
+    case "analysis_level":
+      return sql`coalesce((select a.facts->'requiredLevel'->>'value' from vacancy_analysis a where a.vacancy_id = vacancy.id and a.prompt_version = ${ANALYSIS_PROMPT_VERSION}), '')`
     default:
       return null
   }

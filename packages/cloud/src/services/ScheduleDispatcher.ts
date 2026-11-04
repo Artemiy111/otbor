@@ -5,6 +5,7 @@ import { Database } from "../db/Database.ts"
 import * as ScheduleRunRepository from "../repositories/ScheduleRunRepository.ts"
 import type { StoredSchedule } from "../repositories/ScheduleRepository.ts"
 import { CrawlRunner, type CrawlRunnerResult } from "./CrawlRunner.ts"
+import { AnalysisRunner } from "./AnalysisRunner.ts"
 import { DEFAULT_BATCH, MAX_BATCH } from "./decisionEvaluation.ts"
 import { EmployerHydrator } from "./EmployerHydrator.ts"
 import { EvaluationRunner } from "./EvaluationRunner.ts"
@@ -118,6 +119,7 @@ export class ScheduleDispatcher extends Context.Service<
       const evaluation = yield* EvaluationRunner
       const fit = yield* FitJudgeRunner
       const resumeSync = yield* ResumeSync
+      const analysis = yield* AnalysisRunner
 
       /**
        * Decides the vacancies a crawl or hydration pass just saved. It is a
@@ -320,6 +322,30 @@ export class ScheduleDispatcher extends Context.Service<
                   proxySource: result.proxySource,
                   stoppedBy: result.stoppedBy,
                   rotations: result.rotations,
+                  errors: result.errors
+                }
+              }
+            }
+
+            case "analysis": {
+              // Local SystemOne model over fully hydrated vacancies whose
+              // analysis is missing or stale. The target is not used.
+              const runId = context?.runId
+              const result = yield* analysis.run({
+                limit: intOption(options, "limit", 50, 1, 500),
+                delayMs: intOption(options, "delayMs", 0, 0, 60_000),
+                onProgress: (progress) => persistProgress(runId, { ...progress })
+              })
+              const error = result.errors.length === 0 ? null : result.errors.join("; ")
+              return {
+                ok: error === null,
+                error,
+                detail: {
+                  processed: result.processed,
+                  analysed: result.analysed,
+                  skipped: result.skipped,
+                  failed: result.failed,
+                  stoppedBy: result.stoppedBy,
                   errors: result.errors
                 }
               }

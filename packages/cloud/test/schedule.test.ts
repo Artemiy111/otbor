@@ -107,7 +107,8 @@ describe("schedule kinds", () => {
       "mail_sync",
       "telegram_sync",
       "hh_chat_sync",
-      "evaluate"
+      "evaluate",
+      "analysis"
     ]
 
     for (const kind of kinds) {

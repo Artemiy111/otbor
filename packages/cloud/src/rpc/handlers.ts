@@ -10,6 +10,8 @@ import { CurrentUser } from "../services/CurrentUser.ts"
 import { CrawlRunner } from "../services/CrawlRunner.ts"
 import { CrawlService } from "../services/CrawlService.ts"
 import { DecisionService } from "../services/DecisionService.ts"
+import { AnalysisRunner } from "../services/AnalysisRunner.ts"
+import { SystemOneClient } from "../services/SystemOneClient.ts"
 import { EmployerHydrator } from "../services/EmployerHydrator.ts"
 import { HydrationService } from "../services/HydrationService.ts"
 import { EvaluationRunner } from "../services/EvaluationRunner.ts"
@@ -33,6 +35,7 @@ import { SystemService } from "../services/SystemService.ts"
 import { TelegramGatewayProvider } from "../services/TelegramGatewayProvider.ts"
 import { TelegramService } from "../services/TelegramService.ts"
 import { TelegramSync } from "../services/TelegramSync.ts"
+import { VacancyAnalysisService } from "../services/VacancyAnalysisService.ts"
 import { WritingService } from "../services/WritingService.ts"
 
 /**
@@ -44,6 +47,8 @@ export const OtborHandlers = OtborRpcs.toLayer(
   Effect.gen(function*() {
     const system = yield* SystemService
     const corpus = yield* CorpusService
+    const vacancyAnalysis = yield* VacancyAnalysisService
+    const analysisRunner = yield* AnalysisRunner
     const hydrationStats = yield* HydrationService
     const proxy = yield* ProxyService
     const employerHydrator = yield* EmployerHydrator
@@ -94,6 +99,13 @@ export const OtborHandlers = OtborRpcs.toLayer(
 
       VacanciesList: (payload) => corpus.list(payload),
       VacanciesGet: ({ id }) => corpus.get(id),
+      VacancyAnalysisGet: ({ vacancyId }) => vacancyAnalysis.get(vacancyId),
+      AnalysisRun: ({ limit, delayMs }) =>
+        analysisRunner.run({
+          limit: Math.min(Math.max(limit ?? 20, 1), 500),
+          delayMs: Math.min(Math.max(delayMs ?? 0, 0), 60_000)
+        }),
+      AnalysisStatsGet: () => vacancyAnalysis.stats(),
       EmployersList: (payload) => corpus.employers(payload),
       EmployersGet: ({ id }) => corpus.employer(id),
       BlacklistList: (payload) => blacklist.list(payload),
@@ -249,6 +261,7 @@ const mailSync = MailSync.layer.pipe(Layer.provide(MailGatewayProvider.layer))
 const telegramSync = TelegramSync.layer.pipe(Layer.provide(TelegramGatewayProvider.layer))
 const hydration = HydrationRunner.layer.pipe(Layer.provide(crawlStack))
 const employers = EmployerHydrator.layer
+const analysisRunner = AnalysisRunner.layer.pipe(Layer.provide(SystemOneClient.layer))
 const evaluation = EvaluationRunner.layer
 const fitRunner = FitJudgeRunner.layer
 const resumeSyncService = ResumeSync.layer
@@ -259,6 +272,7 @@ const sourceStack = Layer.mergeAll(
   HydrationService.layer,
   ProxyService.layer,
   employers,
+  analysisRunner,
   evaluation,
   fitRunner,
   resumeSyncService,
@@ -288,6 +302,7 @@ export const OtborServices = Layer.mergeAll(
   WritingService.layer,
   DecisionService.layer,
   FitJudgeService.layer,
+  VacancyAnalysisService.layer,
   GateService.layer,
   ApplicationService.layer,
   PresetService.layer,

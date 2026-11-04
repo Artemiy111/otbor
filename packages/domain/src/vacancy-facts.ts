@@ -27,7 +27,7 @@ const EVIDENCE_LIMIT = 280
 const truncateEvidence = (sentence: string): string =>
   sentence.length <= EVIDENCE_LIMIT ? sentence : `${sentence.slice(0, EVIDENCE_LIMIT - 1).trimEnd()}…`
 
-const RED_FLAG_ORDER: ReadonlyArray<RedFlagCode> = [
+export const RED_FLAG_ORDER: ReadonlyArray<RedFlagCode> = [
   "no_contract",
   "job_scam",
   "salary_in_cash",

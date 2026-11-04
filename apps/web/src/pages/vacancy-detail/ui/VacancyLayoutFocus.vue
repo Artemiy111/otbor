@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { VacancyPage } from "../model"
+import VacancyAnalysisSection from "./VacancyAnalysisSection.vue"
 import VacancyApply from "./VacancyApply.vue"
 import VacancyDecision from "./VacancyDecision.vue"
 import VacancyDescription from "./VacancyDescription.vue"
@@ -33,6 +34,9 @@ const h2 = "mb-2 text-sm font-semibold"
           :hydrating="page.hydrating.value"
           @hydrate="page.hydrate"
         />
+      </div>
+      <div class="rounded-lg border border-border p-4">
+        <VacancyAnalysisSection :vacancy-id="page.data.value.vacancy.id" />
       </div>
       <section>
         <h2 :class="h2">Навыки</h2>

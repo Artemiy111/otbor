@@ -168,6 +168,7 @@ RULE FIELDS, operators and value shapes
 - work_format: in / not_in with a string array of remote, hybrid, onsite, field.
 - Number fields: salary_from, salary_to (in the vacancy's own currency; vacancies without a salary never match), published_days (published within N days: use lte), responses_total, description_length, skills_count, employer_vacancies, employer_rating, employer_reviews. Operators: gte, lte, eq, neq with a number. A null value (no rating, no reviews, no salary) never matches a number rule.
 - archived: is_true / is_false. gate: eq with match | unknown | reject. role_family: eq with a family name.
+- analysis_role, analysis_level (from the local vacancy analysis model, only where it was confident; otherwise empty, which matches nothing for eq/in): eq / neq / in / not_in. analysis_role: devops, sre, platform, sysadmin, security, backend, frontend, fullstack, mobile, qa, data, analyst, dba, support, manager, other. analysis_level (the level the text requires): intern, junior, middle, senior, staff, tech_lead, team_lead, head. Useful to see through an "unknown" seniority, e.g. {field:"analysis_level",op:"in",value:["middle","senior"]}.
 
 SENIORITY. vacancy.seniority is junior, middle, senior, lead or unknown. About two thirds of the corpus is "unknown" (the vacancy does not say), which is not the same as "not middle". For "around middle" use {field:"seniority", op:"in", value:["middle","unknown"]}; strict "middle" drops most of the corpus. A second, independent signal is experience (hh requirement): noExperience, between1And3 (junior to middle), between3And6 (middle to senior), moreThan6 (senior). For example add experience in ["between1And3","between3And6"], or seniority not_in ["senior","lead"]. Every result carries both, so say which signal you relied on.
 
@@ -208,7 +209,10 @@ export const VacanciesSearch = readTool("vacancies_search", {
 export const VacancyGet = readTool("vacancy_get", {
   description:
     "One vacancy in full: description text (trimmed to maxChars, `truncated` says if cut), skills, matched " +
-    "lexicon keywords, salary, employer, title gate verdict and the latest decision if any. `id` may be a " +
+    "lexicon keywords, salary, employer, title gate verdict, the latest decision if any and `analysis` (facts " +
+    "from the local vacancy model: role, required level, company type, test task, overtime, red flags and more, " +
+    "each {value, confidence}; only facts the model was confident about appear in `facts`, the rest are listed " +
+    "in `unknown`; null when the vacancy was not analysed). `id` may be a " +
     "vacancy UUID, a UUID prefix, an hh.ru vacancy URL or an hh external id (digits). URL/prefix lookups scan " +
     "the 1000 most recent vacancies.",
   parameters: Schema.Struct({
@@ -233,7 +237,14 @@ export const VacancyGet = readTool("vacancy_get", {
       typo: Schema.Boolean
     })),
     titleGate: NullableString,
-    decision: Schema.NullOr(DecisionBrief)
+    decision: Schema.NullOr(DecisionBrief),
+    analysis: Schema.NullOr(Schema.Struct({
+      model: Schema.String,
+      promptVersion: Schema.String,
+      analysedAt: Schema.String,
+      facts: Schema.Record(Schema.String, Schema.Unknown),
+      unknown: Schema.Array(Schema.String)
+    }))
   })
 })
 

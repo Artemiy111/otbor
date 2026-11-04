@@ -163,6 +163,7 @@ const LABELS: Record<string, string> = {
   blocked_low_fit: "Низкое соответствие",
   blocked_keywords: "Ключевые слова",
   blocked_seniority: "Уровень",
+  seniority: "Уровень",
   manual: "Вручную"
 }
 
@@ -251,7 +252,8 @@ const SCHEDULE_KIND_LABELS: Record<string, string> = {
   telegram_sync: "Синхронизация Telegram",
   hh_chat_sync: "Чаты hh",
   resume_sync: "Резюме hh",
-  evaluate: "Оценка вакансий"
+  evaluate: "Оценка вакансий",
+  analysis: "Анализ вакансий"
 }
 
 export const scheduleKindLabel = (value: string): string =>

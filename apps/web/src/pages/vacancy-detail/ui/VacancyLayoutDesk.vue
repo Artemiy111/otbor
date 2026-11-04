@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { VacancyPage } from "../model"
+import VacancyAnalysisSection from "./VacancyAnalysisSection.vue"
 import VacancyApply from "./VacancyApply.vue"
 import VacancyDecision from "./VacancyDecision.vue"
 import VacancyDescription from "./VacancyDescription.vue"
@@ -40,6 +41,9 @@ const h2 = "mb-2 text-sm font-semibold"
           />
         </div>
       </details>
+      <div class="rounded-lg border border-border p-4">
+        <VacancyAnalysisSection :vacancy-id="page.data.value.vacancy.id" />
+      </div>
       <div class="rounded-lg border border-border p-4">
         <VacancyDecision
           :decisions="page.decisions.value"

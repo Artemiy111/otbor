@@ -115,6 +115,28 @@ otbor schedule remove --id <id>
 `run-now` только принимает заявку: сам обход идёт в отдельном fiber, поэтому
 RPC возвращается до загрузки страницы hh.ru.
 
+## Анализ вакансий (SystemOne)
+
+Локальная модель (`clef-flash-4bit` под omlx) вытаскивает из вакансии факты:
+роль, уровень, тип компании, требования к отклику, красные флаги. Каждый факт
+хранится с уверенностью; ниже порога 0.8 он читается как «неизвестно».
+Сервер читается из окружения: `OTBOR_SYSTEMONE_URL`
+(по умолчанию `http://127.0.0.1:1111`), `OTBOR_SYSTEMONE_API_KEY` (секрет, не
+логируется), `OTBOR_SYSTEMONE_MODEL` (по умолчанию `clef-flash-4bit`),
+`OTBOR_SYSTEMONE_TIMEOUT_MS` (по умолчанию 60000).
+
+```bash
+otbor analysis run [--limit 20] [--delay 0] [--json]   # один ограниченный проход
+otbor analysis stats                                   # проанализировано / всего
+otbor analysis show <id|префикс|hh-URL>                # факты с уверенностью
+otbor schedule upsert --kind analysis --target global --interval 30
+```
+
+Проход последовательный; если SystemOne недоступен или отклонил ключ, он
+останавливается с понятной ошибкой (`stoppedBy`), а не помечает все вакансии
+сбойными. Расписание `analysis` принимает опции `limit` (50, максимум 500) и
+`delayMs`. Подробности: `docs/architecture/vacancy-analysis.md`.
+
 ## Очередь и harness
 
 Регистрация устройства выдаёт токен один раз и сохраняет локальную
