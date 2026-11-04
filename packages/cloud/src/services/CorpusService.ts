@@ -11,10 +11,12 @@ import type {
 } from "@otbor/contract"
 import { NotFound } from "@otbor/contract"
 import {
+  ANALYSIS_PROMPT_VERSION,
   detectVacancyTextFacts,
   extractContactsFromText,
   gateTitle,
   matchLexicon,
+  mergeTextFacts,
   titleCacheKey
 } from "@otbor/domain"
 import { Effect, Context, Layer } from "effect"
@@ -25,6 +27,7 @@ import * as ContactRepository from "../repositories/ContactRepository.ts"
 import * as LexiconRepository from "../repositories/LexiconRepository.ts"
 import * as DecisionRepository from "../repositories/DecisionRepository.ts"
 import * as EmployerRepository from "../repositories/EmployerRepository.ts"
+import * as VacancyAnalysisRepository from "../repositories/VacancyAnalysisRepository.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
 import { toStorageError, stableHash } from "./support.ts"
 
@@ -218,7 +221,8 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
                 const keywords = yield* LexiconRepository.matchesFor(tx, id)
                 const verdict = yield* DecisionRepository.findVerdict(tx, titleCacheKey(row.title))
                 const hhSignals = yield* VacancyRepository.hhSignalsOf(tx, id)
-                return { row, keywords, verdict, hhSignals }
+                const analysis = yield* VacancyAnalysisRepository.get(tx, id, ANALYSIS_PROMPT_VERSION)
+                return { row, keywords, verdict, hhSignals, analysis }
               })
             )
             .pipe(Effect.mapError(toStorageError("vacancy.get")))
@@ -236,7 +240,10 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
             titleVerdict: detail.verdict?.verdict ?? null,
             facts: {
               hh: detail.hhSignals,
-              text: detectVacancyTextFacts(detail.row.descriptionText)
+              text: mergeTextFacts(
+                detectVacancyTextFacts(detail.row.descriptionText),
+                detail.analysis?.facts ?? null
+              )
             },
             responsesTotal: detail.row.responsesTotal ?? null,
             responsesVacancy: detail.row.responsesVacancy ?? null

@@ -3,6 +3,7 @@ import type {
   DecisionRecord,
   EmployerSummary,
   HhAccountRecord,
+  VacancyAnalysis,
   VacancySummary
 } from "@otbor/contract"
 import { Schema } from "effect"
@@ -187,3 +188,27 @@ export const employerBrief = (e: EmployerSummary): EmployerBrief => ({
   blacklisted: e.blacklisted,
   siteUrl: e.siteUrl ?? null
 })
+
+/**
+ * A compact view of a stored analysis: only the facts the model was confident
+ * about, with their confidence; the rest are named in `unknown` instead of
+ * being rendered as values.
+ */
+export const analysisBrief = (analysis: VacancyAnalysis) => {
+  const facts: Record<string, unknown> = {}
+  const unknown: Array<string> = []
+  const add = (key: string, fact: { readonly value: unknown; readonly confidence: number } | null): void => {
+    if (fact === null) unknown.push(key)
+    else facts[key] = { value: fact.value, confidence: fact.confidence }
+  }
+  const { redFlags, ...rest } = analysis.facts
+  for (const [key, fact] of Object.entries(rest)) add(key, fact)
+  for (const [key, fact] of Object.entries(redFlags)) add(`redFlag.${key}`, fact)
+  return {
+    model: analysis.model,
+    promptVersion: analysis.promptVersion,
+    analysedAt: analysis.updatedAt,
+    facts,
+    unknown
+  }
+}

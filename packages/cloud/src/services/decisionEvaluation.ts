@@ -8,11 +8,15 @@ import type {
 } from "@otbor/contract"
 import { InvalidInput, NotFound } from "@otbor/contract"
 import {
+  ANALYSIS_PROMPT_VERSION,
   currentVersions,
   DEFAULT_APPLY_POLICY,
   decide,
+  detectVacancyTextFacts,
   gateTitle,
+  mergeTextFacts,
   titleCacheKey,
+  toDecisionAnalysis,
   type ApplyPolicy,
   type LexiconMatch,
   type RoleGateOutput,
@@ -25,6 +29,7 @@ import * as ApplicationRepository from "../repositories/ApplicationRepository.ts
 import * as BlacklistRepository from "../repositories/BlacklistRepository.ts"
 import * as DecisionRepository from "../repositories/DecisionRepository.ts"
 import * as LexiconRepository from "../repositories/LexiconRepository.ts"
+import * as VacancyAnalysisRepository from "../repositories/VacancyAnalysisRepository.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
 import { currentFitFor } from "./fitInputs.ts"
 import { stableHash, toStorageError } from "./support.ts"
@@ -116,11 +121,24 @@ export const evaluateInTx = (
   tx: Executor,
   userId: string,
   input: EvaluateInput,
-  hhAccountId: string | null
+  hhAccountId: string | null,
+  /** Analyses loaded for the whole batch in one query; omitted, this vacancy's is read here. */
+  preloaded?: { readonly analysis: VacancyAnalysisRepository.StoredAnalysis | null }
 ): RepoEffect<Evaluated | null> =>
   Effect.gen(function*() {
     const row = yield* VacancyRepository.findById(tx, input.vacancyId)
     if (row === null) return null
+
+    const analysis = preloaded === undefined
+      ? yield* VacancyAnalysisRepository.get(tx, input.vacancyId, ANALYSIS_PROMPT_VERSION)
+      : preloaded.analysis
+    const analysisSignal = analysis === null ? null : toDecisionAnalysis(analysis.facts)
+    // A confident model answer or the regex detector: an unpaid test task blocks
+    // under the default `human` policy, like a mandatory one.
+    const unpaidTest = mergeTextFacts(
+      detectVacancyTextFacts(row.descriptionText),
+      analysis?.facts ?? null
+    ).conditions?.testTask === "unpaid"
 
     const stored = yield* LexiconRepository.matchesFor(tx, input.vacancyId)
     const keywords = stored.map(toLexiconMatch)
@@ -185,8 +203,8 @@ export const evaluateInTx = (
       blacklist,
       applied,
       employerCooldown: false,
-      hasTest: false,
-      testRequired: false
+      hasTest: unpaidTest,
+      testRequired: unpaidTest
     }
 
     const inputHash = stableHash({
@@ -198,7 +216,10 @@ export const evaluateInTx = (
       applied,
       fit,
       fitJudgement: llm?.id,
-      policy: policy.version
+      policy: policy.version,
+      // Only what the cascade reads from the analysis, so an unrelated fact does not
+      // re-decide. Absent keys keep the hashes of vacancies without an analysis stable.
+      ...(analysisSignal === null && !unpaidTest ? {} : { analysis: analysisSignal, unpaidTest })
     })
 
     const decision = decide({
@@ -207,6 +228,7 @@ export const evaluateInTx = (
       keywords,
       blocks,
       policy,
+      analysis: analysisSignal,
       fitOverride: fit ?? undefined,
       now: new Date()
     })
@@ -225,7 +247,8 @@ export const evaluateInTx = (
       policyVersion: decision.policyVersion,
       rulesVersion: decision.rulesVersion,
       inputHash,
-      vacancyContentHash: row.contentHash
+      vacancyContentHash: row.contentHash,
+      restamp: analysis !== null
     })
 
     return { record, cache: cached === null ? gateRules : null }
@@ -300,6 +323,7 @@ export const makeEvaluator = (database: Database["Service"]): Evaluator => {
         userId,
         policyVersion: currentVersions.policyVersion,
         rulesVersion: currentVersions.rulesVersion,
+        analysisPromptVersion: ANALYSIS_PROMPT_VERSION,
         vacancyIds: input.vacancyIds
       }
 
@@ -326,19 +350,23 @@ export const makeEvaluator = (database: Database["Service"]): Evaluator => {
       for (const chunk of chunked(ids, CHUNK)) {
         const results = yield* database
           .asUser(userId, (tx) =>
-            Effect.forEach(chunk, (vacancyId) =>
-              evaluateInTx(
-                tx,
-                userId,
-                {
-                  vacancyId,
-                  resumeId: input.resumeId,
+            Effect.gen(function*() {
+              const analyses = yield* VacancyAnalysisRepository.getMany(tx, chunk, ANALYSIS_PROMPT_VERSION)
+              return yield* Effect.forEach(chunk, (vacancyId) =>
+                evaluateInTx(
+                  tx,
+                  userId,
+                  {
+                    vacancyId,
+                    resumeId: input.resumeId,
+                    hhAccountId,
+                    includeBlacklisted: input.includeBlacklisted
+                  },
                   hhAccountId,
-                  includeBlacklisted: input.includeBlacklisted
-                },
-                hhAccountId
+                  { analysis: analyses.get(vacancyId) ?? null }
+                )
               )
-            )
+            })
           )
           .pipe(Effect.mapError(toStorageError("decision.evaluateBatch")))
 

@@ -17,6 +17,7 @@ import {
   statusLabel
 } from "@/shared/lib"
 import { Button, StatusBadge } from "@/shared/ui"
+import VacancyAnalysisSection from "./VacancyAnalysisSection.vue"
 
 const props = defineProps<{
   data: VacancyDetail
@@ -102,6 +103,8 @@ const section = "border-t border-border pt-3 first:border-t-0 first:pt-0"
         </template>
       </dl>
     </section>
+
+    <VacancyAnalysisSection :vacancy-id="data.vacancy.id" />
 
     <section :class="section">
       <h2 :class="sectionTitle">Решение</h2>

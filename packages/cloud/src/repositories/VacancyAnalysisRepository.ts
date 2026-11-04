@@ -1,6 +1,6 @@
 import type { VacancyAnalysis, VacancyAnalysisFacts } from "@otbor/contract"
 import type { AnalysisInput } from "@otbor/domain"
-import { and, eq, gt, isNull, or, sql } from "drizzle-orm"
+import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
 import { employer, vacancy, vacancyAnalysis } from "../db/tables.ts"
@@ -49,6 +49,20 @@ export const get = (
     .where(and(eq(vacancyAnalysis.vacancyId, vacancyId), eq(vacancyAnalysis.promptVersion, promptVersion)))
     .limit(1)
     .pipe(Effect.map((rows) => rows[0] ?? null))
+
+/** One query for a batch: the stored analyses of `vacancyIds` under the prompt version, by vacancy id. */
+export const getMany = (
+  tx: Executor,
+  vacancyIds: ReadonlyArray<string>,
+  promptVersion: string
+): RepoEffect<ReadonlyMap<string, StoredAnalysis>> =>
+  vacancyIds.length === 0
+    ? Effect.succeed(new Map())
+    : tx
+        .select()
+        .from(vacancyAnalysis)
+        .where(and(inArray(vacancyAnalysis.vacancyId, [...vacancyIds]), eq(vacancyAnalysis.promptVersion, promptVersion)))
+        .pipe(Effect.map((rows) => new Map(rows.map((row) => [row.vacancyId, row]))))
 
 export interface UpsertAnalysisInput {
   readonly vacancyId: string

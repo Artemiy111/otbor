@@ -163,6 +163,7 @@ const LABELS: Record<string, string> = {
   blocked_low_fit: "Низкое соответствие",
   blocked_keywords: "Ключевые слова",
   blocked_seniority: "Уровень",
+  seniority: "Уровень",
   manual: "Вручную"
 }
 

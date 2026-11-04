@@ -1086,7 +1086,11 @@ export const PresetField = Schema.Literals([
   /** hh employer rating, 0-5; rules never match employers without one. */
   "employer_rating",
   /** Number of hh employer reviews; a company-size proxy. */
-  "employer_reviews"
+  "employer_reviews",
+  /** Role from the vacancy analysis (devops, sre, backend, ...); unknown when the model was not confident. */
+  "analysis_role",
+  /** Required level from the vacancy analysis (junior, middle, senior, tech_lead, ...); unknown when not confident. */
+  "analysis_level"
 ])
 
 export type PresetField = typeof PresetField.Type

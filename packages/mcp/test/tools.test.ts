@@ -136,6 +136,26 @@ const fake = {
     const n = Number(vacancyId.slice(-12))
     return n === 3 ? Effect.fail({ _tag: "NotFound", entity: "vacancy", id: vacancyId }) : Effect.succeed(detail(n))
   },
+  VacancyAnalysisGet: ({ vacancyId }: { vacancyId: string }) =>
+    Effect.succeed(
+      vacancyId.endsWith("000000000001")
+        ? {
+            vacancyId,
+            promptVersion: "a4",
+            inputHash: "h",
+            model: "clef-flash-4bit",
+            threshold: 0.8,
+            latencyMs: 1000,
+            createdAt: "2026-11-01T00:00:00.000Z",
+            updatedAt: "2026-11-01T00:00:00.000Z",
+            facts: {
+              role: { value: "devops", confidence: 0.97 },
+              testTask: null,
+              redFlags: { stress: null, scam: { value: false, confidence: 0.9 } }
+            }
+          }
+        : null
+    ),
   FitJudgementGet: ({ vacancyId }: { vacancyId: string }) =>
     Effect.succeed(
       vacancyId.endsWith("000000000007")
@@ -320,6 +340,19 @@ describe("mcp tools", () => {
     const top = await withClient(FakeApi, (c) => c.callTool({ name: "vacancies_top", arguments: { account: "side" } }))
     expect((top.structuredContent as { items: Array<{ vacancyId: string; account: { name: string } }> }).items)
       .toMatchObject([{ vacancyId: id(3), account: { name: "Side" } }])
+  })
+
+  test("vacancy_get carries a compact analysis: confident facts only, the rest listed as unknown", async () => {
+    const result = await withClient(FakeApi, (c) => c.callTool({ name: "vacancy_get", arguments: { id: id(1) } }))
+    const analysis = (result.structuredContent as { analysis: { facts: Record<string, unknown>; unknown: Array<string> } }).analysis
+    expect(analysis.facts.role).toEqual({ value: "devops", confidence: 0.97 })
+    expect(analysis.facts["redFlag.scam"]).toEqual({ value: false, confidence: 0.9 })
+    expect(analysis.unknown).toContain("testTask")
+    expect(analysis.unknown).toContain("redFlag.stress")
+    expect("testTask" in analysis.facts).toBe(false)
+
+    const none = await withClient(FakeApi, (c) => c.callTool({ name: "vacancy_get", arguments: { id: id(2) } }))
+    expect((none.structuredContent as { analysis: unknown }).analysis).toBeNull()
   })
 
   test("an unknown account is a clear error listing the accounts", async () => {

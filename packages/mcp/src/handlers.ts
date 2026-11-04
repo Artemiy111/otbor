@@ -20,6 +20,7 @@ import {
   accountDirectory,
   accountName,
   accountRef,
+  analysisBrief,
   applicationBrief,
   clamp,
   decisionBrief,
@@ -367,6 +368,9 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
       const { directory } = yield* accountsFor(run(rpc.HhAccountsList()), undefined)
       const decisions = yield* run(scanDecisions(rpc, undefined)).pipe(Effect.catch(() => Effect.succeed([])))
       const latest = decisions.find((d) => d.vacancyId === id)
+      const stored = yield* run(rpc.VacancyAnalysisGet({ vacancyId: id as VacancyId })).pipe(
+        Effect.catch(() => Effect.succeed(null))
+      )
       const description = truncate(detail.descriptionText, maxChars)
       const v = detail.vacancy
       return {
@@ -387,7 +391,8 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
           typo: k.typo
         })),
         titleGate: detail.titleVerdict ?? null,
-        decision: latest === undefined ? null : decisionBrief(latest, 8, directory)
+        decision: latest === undefined ? null : decisionBrief(latest, 8, directory),
+        analysis: stored === null ? null : analysisBrief(stored)
       }
     }),
 

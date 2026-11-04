@@ -162,6 +162,12 @@ export interface PersistDecisionInput {
   readonly inputHash: string
   /** `vacancy.content_hash` the decision was made for (drives staleness). */
   readonly vacancyContentHash: string
+  /**
+   * Re-stamp an existing row with the same inputs. A decision made with a stored
+   * analysis sets this, so it stays newer than the analysis row (staleness
+   * compares the two) even when the analysis changed nothing the decision reads.
+   */
+  readonly restamp?: boolean
 }
 
 const selectDecision = sql`
@@ -203,7 +209,8 @@ export const persist = (
           vacancyContentHash: sql`excluded.vacancy_content_hash`,
           createdAt: sql`now()`
         },
-        setWhere: sql`${decision.vacancyContentHash} is null or exists (
+        setWhere: sql`${input.restamp === true ? sql`true` : sql`false`}
+          or ${decision.vacancyContentHash} is null or exists (
           select 1 from decision newer
           where newer.user_id = ${decision.userId}
             and newer.vacancy_id = ${decision.vacancyId}
@@ -319,6 +326,8 @@ export interface StaleVacanciesOptions {
   /** Include vacancies whose decision is current. */
   readonly force?: boolean
   readonly vacancyIds?: ReadonlyArray<string>
+  /** Also stale: the vacancy's analysis (this prompt version) is newer than its decision. */
+  readonly analysisPromptVersion?: string
 }
 
 /**
@@ -329,7 +338,7 @@ export interface StaleVacanciesOptions {
 const staleFrom = (options: StaleVacanciesOptions) => sql`
   from vacancy
   left join lateral (
-    select x.vacancy_content_hash, x.policy_version, x.rules_version
+    select x.vacancy_content_hash, x.policy_version, x.rules_version, x.created_at
     from decision x
     where x.user_id = ${options.userId} and x.vacancy_id = vacancy.id
     order by x.created_at desc, x.id desc
@@ -346,6 +355,14 @@ const staleFrom = (options: StaleVacanciesOptions) => sql`
       or d.vacancy_content_hash is distinct from vacancy.content_hash
       or d.policy_version <> ${options.policyVersion}
       or (d.rules_version <> 0 and d.rules_version < ${options.rulesVersion})
+      ${options.analysisPromptVersion === undefined
+        ? sql``
+        : sql`or exists (
+            select 1 from vacancy_analysis a
+            where a.vacancy_id = vacancy.id
+              and a.prompt_version = ${options.analysisPromptVersion}
+              and a.updated_at > d.created_at
+          )`}
     )
 `
 

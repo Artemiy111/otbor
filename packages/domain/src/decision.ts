@@ -9,6 +9,7 @@ import type {
   TestsPolicy,
   WorkFormat
 } from "@otbor/contract"
+import { analysisRoleMatch, analysisSeniority, type DecisionAnalysis } from "./analysis/decision.ts"
 import { normalizeTerm } from "./text.ts"
 import type { LexiconMatch } from "./lexicon.ts"
 import { matchedTerms } from "./lexicon.ts"
@@ -90,6 +91,12 @@ export interface DecideInput {
   readonly keywords: ReadonlyArray<LexiconMatch>
   readonly blocks: HardBlockInput
   readonly policy?: ApplyPolicy
+  /**
+   * The stored vacancy analysis, when there is one for the current prompt
+   * version. It can promote an `unknown` title to a `match` and fill an
+   * `unknown` seniority; it never overrides a title `reject`.
+   */
+  readonly analysis?: DecisionAnalysis | null
   /** An LLM fit, when one has been computed. Deterministic fit is used otherwise. */
   readonly fitOverride?: number
   readonly now: Date
@@ -213,10 +220,27 @@ const computeFreshness = (
  */
 export const decide = (input: DecideInput): DecisionResult => {
   const policy = input.policy ?? DEFAULT_APPLY_POLICY
-  const { vacancy, gate, blocks } = input
+  const { blocks } = input
 
-  const gateReason: DecisionReason =
-    gate.verdict === "reject"
+  // The title gate is first and a title `reject` is final. Only an `unknown`
+  // title may be promoted by a confident analysis.
+  const roleMatch = input.gate.verdict === "unknown" ? analysisRoleMatch(input.analysis) : null
+  const gate: DecideInput["gate"] = roleMatch === null
+    ? input.gate
+    : { ...input.gate, verdict: "match", roleFamily: policy.role, weak: [] }
+
+  // Seniority only fills a gap: a stored value is never overridden.
+  const levelFact = analysisSeniority(input.vacancy.seniority, input.analysis)
+  const vacancy: VacancySignal = levelFact === null
+    ? input.vacancy
+    : { ...input.vacancy, seniority: levelFact.seniority }
+  const levelDetail = levelFact === null
+    ? null
+    : `analysis: ${levelFact.level} -> ${levelFact.seniority} (${levelFact.confidence.toFixed(2)})`
+
+  const gateReason: DecisionReason = roleMatch !== null
+    ? reason("role_match", `analysis (${roleMatch.role} ${roleMatch.confidence.toFixed(2)})`, 1)
+    : gate.verdict === "reject"
       ? reason("role_rejected", gate.rejectedBy ?? "negative rule", 1)
       : gate.verdict === "unknown"
         ? reason(
@@ -346,7 +370,10 @@ export const decide = (input: DecideInput): DecisionResult => {
       roleFamily: gate.roleFamily,
       fit: 0,
       priority: 0,
-      reasons: [reason("blocked_seniority", vacancy.seniority), gateReason],
+      reasons: [
+        reason("blocked_seniority", levelDetail ?? vacancy.seniority),
+        gateReason
+      ],
       policyVersion: policy.version,
       rulesVersion: gate.rulesVersion
     }
@@ -388,6 +415,7 @@ export const decide = (input: DecideInput): DecisionResult => {
   if (vacancy.workFormats.includes("remote")) {
     reasons.push(reason("remote", "remote", 1))
   }
+  if (levelDetail !== null) reasons.push(reason("seniority", levelDetail, 1))
   reasons.push(
     reason("freshness", ageHours === null ? "unknown" : `${Math.round(ageHours)}h old`, freshness)
   )

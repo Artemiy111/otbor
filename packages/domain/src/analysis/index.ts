@@ -1,3 +1,4 @@
+export * from "./decision.ts"
 export * from "./interpret.ts"
 export * from "./merge.ts"
 export * from "./questions.ts"
