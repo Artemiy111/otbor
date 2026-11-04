@@ -550,8 +550,7 @@ application (
   state text not null,               -- draft | queued | submitting | submitted
                                      -- | skipped | needs_human | failed
   decision jsonb not null default '{}',
-  created_at timestamptz not null, updated_at timestamptz not null,
-  unique (hh_account_id, vacancy_id)
+  created_at timestamptz not null, updated_at timestamptz not null
 );
 
 application_kit (

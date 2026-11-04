@@ -4,9 +4,7 @@ import { useMutation, useQuery } from "@pinia/colada"
 import type { ApplicationRecord, HhAccountRecord } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert } from "@lucide/vue"
-import PrototypeAccountResume from "./PrototypeAccountResume.vue"
-import PrototypeSwitcher from "./PrototypeSwitcher.vue"
-import { resumeApi } from "@/entities/resume"
+import { resumeApi, resumeKeys } from "@/entities/resume"
 import { applicationApi, applicationKeys } from "@/entities/application"
 import { AccountChip, hhAccountNameById, useAccountFilter } from "@/entities/hh-account"
 import { accountFilterOptions } from "@/features/account-filter"
@@ -75,15 +73,7 @@ const syncMutation = useMutation({
   }
 })
 
-// PROTOTYPE
-const protoVariants = [
-  { key: "A", label: "Кружок + бейдж резюме" },
-  { key: "B", label: "Метка резюме на кружке" },
-  { key: "C", label: "Кружок + hovercard" },
-  { key: "D", label: "Составная плашка" }
-]
-const variant = ref(new URLSearchParams(window.location.search).get("variant") ?? "A")
-const resumesQuery = useQuery({ key: () => ["proto-resumes"], query: () => resumeApi.list() })
+const resumesQuery = useQuery({ key: () => resumeKeys.list(), query: () => resumeApi.list() })
 const resumes = computed(() => resumesQuery.data.value ?? [])
 
 const applications = computed<ReadonlyArray<ApplicationRecord>>(() => query.data.value ?? [])
@@ -145,11 +135,10 @@ const columns: ColumnDef<ApplicationRecord>[] = [
       onChange: (value) => (accountId.value = value)
     }),
     cell: ({ row }) =>
-      h(PrototypeAccountResume, {
-        variant: variant.value,
+      h(AccountChip, {
         accountId: row.original.hhAccountId,
-        resumeId: row.original.resumeId,
         accounts: accounts.value,
+        resumeIds: [row.original.resumeId],
         resumes: resumes.value
       })
   },
@@ -207,6 +196,5 @@ const columns: ColumnDef<ApplicationRecord>[] = [
         <span class="pb-2 text-xs text-muted-foreground">Показано: {{ applications.length }}</span>
       </template>
     </DataTable>
-    <PrototypeSwitcher v-model="variant" :variants="protoVariants" />
   </section>
 </template>

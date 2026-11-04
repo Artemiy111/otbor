@@ -82,9 +82,9 @@ guide doesn't cover, search through the source code in `node_modules/effect/src`
 - IDs are UUIDv7, generated in Postgres (`uuidv7()` on Postgres 18) and are the
   same value inside and outside the system. Vendor IDs live in
   `external_id` + `source`, never in a primary key.
-- One account gets at most one application per vacancy. Submit is at-most-once:
-  an intent row is written before the click, ambiguity goes to reconcile, never
-  to a second submit.
+- Submit is at-most-once per application: an intent row is written before the
+  click, ambiguity goes to reconcile, never to a second submit. One account may
+  apply to the same vacancy with different resumes.
 - The harness is untrusted. It may fill and click, but it cannot decide what
   counts as success. The cloud reconciles every result.
 

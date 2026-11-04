@@ -32,6 +32,7 @@ import {
   filterableHeader,
   sortableHeader
 } from "@/shared/ui"
+import { resumeApi, resumeKeys } from "@/entities/resume"
 import { PageHeader } from "@/widgets/page-header"
 
 const verdict = ref("all")
@@ -46,6 +47,9 @@ const query = useQuery({
       hhAccountId: hhAccountId.value
     })
 })
+
+const resumesQuery = useQuery({ key: () => resumeKeys.list(), query: () => resumeApi.list() })
+const resumes = computed(() => resumesQuery.data.value ?? [])
 
 const decisions = computed<ReadonlyArray<DecisionRecord>>(() => query.data.value ?? [])
 
@@ -152,7 +156,12 @@ const columns: ColumnDef<DecisionRecord>[] = [
       onChange: (value) => (accountId.value = value)
     }),
     cell: ({ row }) =>
-      h(AccountChip, { accountId: row.original.hhAccountId, accounts: accounts.value })
+      h(AccountChip, {
+        accountId: row.original.hhAccountId,
+        accounts: accounts.value,
+        resumeIds: [row.original.resumeId],
+        resumes: resumes.value
+      })
   },
   {
     id: "role",

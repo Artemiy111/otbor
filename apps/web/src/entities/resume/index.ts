@@ -1,2 +1,2 @@
 export { resumeApi, type ResumeUpsertInput } from "./api"
-export { resumeKeys } from "./model"
+export { resumeCode, resumeKeys } from "./model"
