@@ -7,6 +7,7 @@ import { CircleAlert, Pencil, Plus, RefreshCw, Search, Trash2, X } from "@lucide
 import { AccountChip, hhAccountApi, hhAccountKeys } from "@/entities/hh-account"
 import { keywordApi, keywordKeys } from "@/entities/keyword"
 import { presetApi, presetKeys } from "@/entities/preset"
+import { resumeApi, resumeKeys } from "@/entities/resume"
 import { RefreshButton } from "@/features/refresh-button"
 import { describeError, formatNumber } from "@/shared/lib"
 import {
@@ -209,7 +210,11 @@ const saveErrorText = computed(() => {
   return error === null ? null : describeError(error)
 })
 
-const accountsColumn = (
+const resumesQuery = useQuery({ key: () => resumeKeys.list(), query: () => resumeApi.list() })
+const resumes = computed(() => resumesQuery.data.value ?? [])
+
+/** Chips per account, with the codes of the resumes that contain the keyword. */
+const resumeColumn = (
   id: string,
   title: string,
   pick: (keyword: LexiconKeyword) => ReadonlyArray<string>
@@ -219,13 +224,26 @@ const accountsColumn = (
   enableGlobalFilter: false,
   header: sortableHeader<LexiconKeyword>(title),
   cell: ({ row }) => {
-    const ids = pick(row.original)
-    if (ids.length === 0) return h("span", { class: "text-sm text-muted-foreground" }, "—")
+    const byAccount = new Map<string, string[]>()
+    for (const resumeId of pick(row.original)) {
+      const resume = resumes.value.find((item) => item.id === resumeId)
+      if (resume === undefined) continue
+      const list = byAccount.get(resume.hhAccountId) ?? []
+      list.push(resumeId)
+      byAccount.set(resume.hhAccountId, list)
+    }
+    if (byAccount.size === 0) return h("span", { class: "text-sm text-muted-foreground" }, "—")
     return h(
       "div",
       { class: "flex flex-wrap gap-1" },
-      ids.map((accountId) =>
-        h(AccountChip, { key: accountId, accountId, accounts: accounts.value })
+      [...byAccount].map(([accountId, resumeIds]) =>
+        h(AccountChip, {
+          key: accountId,
+          accountId,
+          accounts: accounts.value,
+          resumeIds,
+          resumes: resumes.value
+        })
       )
     )
   }
@@ -348,8 +366,8 @@ const columns: ColumnDef<LexiconKeyword>[] = [
         )
       ])
   },
-  accountsColumn("resumes", "В резюме", (keyword) => keyword.resumeAccountIds),
-  accountsColumn("resumeSkills", "В навыках резюме", (keyword) => keyword.resumeSkillAccountIds)
+  resumeColumn("resumes", "В резюме", (keyword) => keyword.resumeIds),
+  resumeColumn("resumeSkills", "В навыках резюме", (keyword) => keyword.resumeSkillIds)
 ]
 </script>
 

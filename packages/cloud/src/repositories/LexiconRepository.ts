@@ -24,6 +24,8 @@ interface Entry {
   skillVacancyCount: number
   resumeAccountIds: Array<string>
   resumeSkillAccountIds: Array<string>
+  resumeIds: Array<string>
+  resumeSkillIds: Array<string>
   aliases: Array<{ id: string; alias: string; normalizedAlias: string; typo: boolean }>
   aliasStats: Array<AliasStat>
 }
@@ -355,6 +357,8 @@ export const loadEntries = (tx: Executor): RepoEffect<ReadonlyArray<LexiconEntry
           skillVacancyCount: 0,
           resumeAccountIds: [],
           resumeSkillAccountIds: [],
+          resumeIds: [],
+          resumeSkillIds: [],
           aliases: [],
           aliasStats: [],
         }
@@ -381,6 +385,8 @@ const toRecord = (entry: {
   skillVacancyCount?: number
   resumeAccountIds?: ReadonlyArray<string>
   resumeSkillAccountIds?: ReadonlyArray<string>
+  resumeIds?: ReadonlyArray<string>
+  resumeSkillIds?: ReadonlyArray<string>
   aliases: ReadonlyArray<{ id: string; alias: string; normalizedAlias: string; typo: boolean }>
   aliasStats?: ReadonlyArray<AliasStat>
 }): LexiconKeyword => ({
@@ -391,6 +397,8 @@ const toRecord = (entry: {
   skillVacancyCount: entry.skillVacancyCount ?? 0,
   resumeAccountIds: (entry.resumeAccountIds ?? []) as LexiconKeyword["resumeAccountIds"],
   resumeSkillAccountIds: (entry.resumeSkillAccountIds ?? []) as LexiconKeyword["resumeSkillAccountIds"],
+  resumeIds: (entry.resumeIds ?? []) as LexiconKeyword["resumeIds"],
+  resumeSkillIds: (entry.resumeSkillIds ?? []) as LexiconKeyword["resumeSkillIds"],
   aliases: entry.aliases.map((alias) => ({
     id: alias.id as LexiconKeyword["aliases"][number]["id"],
     alias: alias.alias,
@@ -501,6 +509,8 @@ export const list = (
           skillVacancyCount: Number(raw.skill_count ?? 0),
           resumeAccountIds: [],
           resumeSkillAccountIds: [],
+          resumeIds: [],
+          resumeSkillIds: [],
           aliases: [],
           aliasStats: []
         }
@@ -579,7 +589,7 @@ export const list = (
 
     if (entries.size > 0) {
       const resumes = yield* tx.execute(sql`
-        select hh_account_id, title, text, about, skills from resume
+        select id, hh_account_id, title, text, about, skills from resume
       `)
       const lexicon: ReadonlyArray<LexiconEntryInput> = [...entries.values()].map((entry) => ({
         id: entry.id,
@@ -588,6 +598,7 @@ export const list = (
         aliases: entry.aliases
       }))
       for (const raw of resumes.rows as unknown as ReadonlyArray<{
+        id: string
         hh_account_id: string
         title: string
         text: string
@@ -607,6 +618,12 @@ export const list = (
             !entry.resumeAccountIds.includes(raw.hh_account_id)
           ) {
             entry.resumeAccountIds.push(raw.hh_account_id)
+          }
+          if ((match.inTitle || match.inBody) && !entry.resumeIds.includes(raw.id)) {
+            entry.resumeIds.push(raw.id)
+          }
+          if (match.inSkills && !entry.resumeSkillIds.includes(raw.id)) {
+            entry.resumeSkillIds.push(raw.id)
           }
           if (match.inSkills && !entry.resumeSkillAccountIds.includes(raw.hh_account_id)) {
             entry.resumeSkillAccountIds.push(raw.hh_account_id)

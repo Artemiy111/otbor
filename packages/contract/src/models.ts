@@ -753,6 +753,10 @@ export const LexiconKeyword = Schema.Struct({
   resumeAccountIds: Schema.Array(HhAccountId),
   /** hh accounts whose resume skills list contains this keyword. */
   resumeSkillAccountIds: Schema.Array(HhAccountId),
+  /** Resumes (per resume, not per account) whose title, text or about contain this keyword. */
+  resumeIds: Schema.Array(ResumeId),
+  /** Resumes whose skills list contains this keyword. */
+  resumeSkillIds: Schema.Array(ResumeId),
   aliases: Schema.Array(KeywordAliasRecord),
   aliasStats: Schema.Array(KeywordAliasStat)
 })
