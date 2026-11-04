@@ -5,6 +5,7 @@ import type { BlacklistRecord, BlacklistScope, BlacklistTarget } from "@otbor/co
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert, Plus, Search, Trash2, Upload } from "@lucide/vue"
 import { blacklistApi, blacklistKeys } from "@/entities/blacklist"
+import { AccountChip, hhAccountApi, hhAccountKeys } from "@/entities/hh-account"
 import { RefreshButton } from "@/features/refresh-button"
 import { describeError, formatDate } from "@/shared/lib"
 import {
@@ -81,7 +82,43 @@ const query = useQuery({
     })
 })
 
-const records = computed<ReadonlyArray<BlacklistRecord>>(() => query.data.value?.items ?? [])
+const accountsQuery = useQuery({
+  key: () => hhAccountKeys.list(),
+  query: () => hhAccountApi.list()
+})
+const accounts = computed(() => accountsQuery.data.value ?? [])
+
+interface BlacklistRow extends BlacklistRecord {
+  readonly ids: ReadonlyArray<string>
+  readonly accountIds: ReadonlyArray<string>
+}
+
+/** The same target hidden by several accounts is one row with several circles. */
+const records = computed<ReadonlyArray<BlacklistRow>>(() => {
+  const groups = new Map<string, BlacklistRow>()
+  for (const item of query.data.value?.items ?? []) {
+    const key = `${item.scope}:${item.targetType}:${item.externalId}`
+    const prev = groups.get(key)
+    if (prev === undefined) {
+      groups.set(key, {
+        ...item,
+        ids: [item.id],
+        accountIds: item.hhAccountId == null ? [] : [item.hhAccountId]
+      })
+    } else {
+      groups.set(key, {
+        ...prev,
+        ids: [...prev.ids, item.id],
+        accountIds:
+          item.hhAccountId == null || prev.accountIds.includes(item.hhAccountId)
+            ? prev.accountIds
+            : [...prev.accountIds, item.hhAccountId],
+        updatedAt: item.updatedAt > prev.updatedAt ? item.updatedAt : prev.updatedAt
+      })
+    }
+  }
+  return [...groups.values()]
+})
 const total = computed(() => query.data.value?.total ?? 0)
 
 const search = () => {
@@ -157,10 +194,10 @@ const removingId = ref<string | null>(null)
 const removeMutation = useMutation<{ readonly deleted: boolean }, string>({
   mutation: (id) => blacklistApi.remove(id)
 })
-const removeRecord = async (id: string) => {
-  removingId.value = id
+const removeRecord = async (row: BlacklistRow) => {
+  removingId.value = row.id
   try {
-    await removeMutation.mutate(id)
+    for (const id of row.ids) await removeMutation.mutateAsync(id)
     await query.refetch()
   } catch (cause) {
     // eslint-disable-next-line no-console
@@ -239,10 +276,10 @@ const onFile = async (event: Event) => {
   importText.value = await file.text()
 }
 
-const columns: ColumnDef<BlacklistRecord>[] = [
+const columns: ColumnDef<BlacklistRow>[] = [
   {
     accessorKey: "name",
-    header: sortableHeader<BlacklistRecord>("Название"),
+    header: sortableHeader<BlacklistRow>("Название"),
     cell: ({ row }) =>
       h("div", { class: "max-w-[260px]" }, [
         h("div", { class: "font-medium" }, row.original.name ?? "—"),
@@ -252,30 +289,45 @@ const columns: ColumnDef<BlacklistRecord>[] = [
   {
     id: "targetType",
     accessorFn: (row) => row.targetType,
-    header: sortableHeader<BlacklistRecord>("Тип"),
+    header: sortableHeader<BlacklistRow>("Тип"),
     cell: ({ row }) => h(Badge, { variant: "secondary" }, () => targetTypeLabel(row.original.targetType))
   },
   {
     id: "scope",
     accessorFn: (row) => row.scope,
-    header: sortableHeader<BlacklistRecord>("Область"),
+    header: sortableHeader<BlacklistRow>("Область"),
     cell: ({ row }) => h("span", null, scopeLabels[row.original.scope])
+  },
+  {
+    id: "account",
+    accessorFn: (row) => row.accountIds.join(","),
+    header: "Аккаунт hh",
+    cell: ({ row }) =>
+      row.original.accountIds.length === 0
+        ? h("span", { class: "text-muted-foreground" }, "—")
+        : h(
+            "div",
+            { class: "flex items-center gap-1" },
+            row.original.accountIds.map((id) =>
+              h(AccountChip, { accountId: id, accounts: accounts.value })
+            )
+          )
   },
   {
     id: "source",
     accessorFn: (row) => row.source,
-    header: sortableHeader<BlacklistRecord>("Источник"),
+    header: sortableHeader<BlacklistRow>("Источник"),
     cell: ({ row }) => h("span", { class: "text-xs text-muted-foreground" }, sourceLabel(row.original.source))
   },
   {
     id: "reason",
     accessorFn: (row) => row.reason ?? "",
-    header: sortableHeader<BlacklistRecord>("Причина"),
+    header: sortableHeader<BlacklistRow>("Причина"),
     cell: ({ row }) => h("span", { class: "text-xs text-muted-foreground" }, row.original.reason ?? "—")
   },
   {
     accessorKey: "updatedAt",
-    header: sortableHeader<BlacklistRecord>("Обновлён"),
+    header: sortableHeader<BlacklistRow>("Обновлён"),
     cell: ({ row }) =>
       h("span", { class: "whitespace-nowrap text-muted-foreground text-xs" }, formatDate(row.original.updatedAt))
   },
@@ -289,7 +341,7 @@ const columns: ColumnDef<BlacklistRecord>[] = [
           variant: "ghost",
           size: "sm",
           disabled: removingId.value === row.original.id,
-          onClick: () => void removeRecord(row.original.id)
+          onClick: () => void removeRecord(row.original)
         },
         () => h(Trash2, { class: "h-4 w-4" })
       )
