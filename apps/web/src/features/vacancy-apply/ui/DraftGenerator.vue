@@ -115,6 +115,14 @@ const settle = () => {
       return
     }
   }
+  // Nothing saved yet: Claude Code on Haiku 5.5 with low effort is cheap and fast.
+  const haiku = find("claude", "haiku")
+  if (haiku !== null && harnessOk("claude")) {
+    provider.value = "claude"
+    model.value = haiku.id
+    effort.value = resolveHarnessEffort(haiku, "low")
+    return
+  }
   const harness = catalog.value.harnesses.find((item) => item.available && item.models.length > 0)
   if (harness === undefined) {
     provider.value = catalog.value.harnesses[0]?.id ?? ""
