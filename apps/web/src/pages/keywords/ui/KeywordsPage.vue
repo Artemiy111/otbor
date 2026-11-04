@@ -4,6 +4,7 @@ import { useQuery } from "@pinia/colada"
 import type { KeywordMatchLocation, LexiconKeyword } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert, Search } from "@lucide/vue"
+import { AccountChip, hhAccountApi, hhAccountKeys } from "@/entities/hh-account"
 import { keywordApi, keywordKeys } from "@/entities/keyword"
 import { presetApi, presetKeys } from "@/entities/preset"
 import { RefreshButton } from "@/features/refresh-button"
@@ -47,8 +48,13 @@ const query = useQuery({
     })
 })
 
+const accountsQuery = useQuery({
+  key: () => hhAccountKeys.list(),
+  query: () => hhAccountApi.list()
+})
+const accounts = computed(() => accountsQuery.data.value ?? [])
+
 const keywords = computed<ReadonlyArray<LexiconKeyword>>(() => query.data.value ?? [])
-const enabledCount = computed(() => keywords.value.filter((keyword) => keyword.enabled).length)
 const presets = computed(() => presetsQuery.data.value ?? [])
 const selectedPreset = computed(() =>
   presets.value.find((preset) => preset.id === presetId.value)
@@ -147,14 +153,19 @@ const columns: ColumnDef<LexiconKeyword>[] = [
     }
   },
   {
-    accessorKey: "enabled",
-    header: sortableHeader<LexiconKeyword>("Состояние"),
-    cell: ({ row }) =>
-      h(
-        Badge,
-        { variant: row.original.enabled ? "success" : "neutral" },
-        () => (row.original.enabled ? "Включено" : "Выключено")
+    id: "resumes",
+    accessorFn: (row) => row.resumeAccountIds.length,
+    enableGlobalFilter: false,
+    header: sortableHeader<LexiconKeyword>("В резюме"),
+    cell: ({ row }) => {
+      const ids = row.original.resumeAccountIds
+      if (ids.length === 0) return h("span", { class: "text-sm text-muted-foreground" }, "—")
+      return h(
+        "div",
+        { class: "flex flex-wrap gap-1" },
+        ids.map((id) => h(AccountChip, { key: id, accountId: id, accounts: accounts.value }))
       )
+    }
   }
 ]
 </script>
@@ -163,7 +174,7 @@ const columns: ColumnDef<LexiconKeyword>[] = [
   <section>
     <PageHeader
       title="Ключевые слова"
-      description="Словарь терминов и алиасов. Включённые слова участвуют в разборе вакансий."
+      description="Словарь терминов и алиасов. В колонке «В резюме» — аккаунты, в резюме которых есть слово."
     >
       <template #actions>
         <RefreshButton :loading="query.isLoading.value" @refresh="refresh" />
@@ -224,7 +235,7 @@ const columns: ColumnDef<LexiconKeyword>[] = [
     </p>
 
     <p class="mb-3 text-xs text-muted-foreground">
-      Терминов: {{ formatNumber(keywords.length) }} · включено: {{ formatNumber(enabledCount) }}
+      Терминов: {{ formatNumber(keywords.length) }}
     </p>
 
     <p v-if="selectedPreset" class="mb-3 text-xs text-muted-foreground">

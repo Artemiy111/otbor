@@ -130,9 +130,6 @@ const clear = () => {
             @change="toggle(keyword.term)"
           />
           <span class="min-w-0 truncate">{{ keyword.term }}</span>
-          <span v-if="!keyword.enabled" class="shrink-0 text-[10px] text-muted-foreground">
-            выключено
-          </span>
         </label>
       </div>
     </div>

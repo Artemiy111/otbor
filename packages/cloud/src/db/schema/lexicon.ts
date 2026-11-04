@@ -23,7 +23,6 @@ export const keyword = pgTable(
     id: uuidPk(),
     term: text("term").notNull(),
     normalizedTerm: text("normalized_term").notNull(),
-    enabled: boolean("enabled").notNull().default(true),
     notes: text("notes"),
     createdBy: text("created_by").notNull().default("user"),
     createdAt: createdAt(),

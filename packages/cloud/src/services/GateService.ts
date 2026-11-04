@@ -40,7 +40,6 @@ export interface GateServiceShape {
   readonly lexiconUpsert: (input: {
     readonly term: string
     readonly aliases?: ReadonlyArray<string>
-    readonly enabled?: boolean
   }) => Effect.Effect<LexiconKeyword, ApiError>
   readonly lexiconRemove: (id: string) => Effect.Effect<boolean, ApiError>
 }

@@ -75,12 +75,4 @@ describe("matchLexicon", () => {
     expect(matchedTerms(matches, "title")).toEqual(["kubernetes"])
     expect(matchedTerms(matches, "body")).toEqual(["kubernetes", "terraform"])
   })
-
-  test("disabled entries are ignored", () => {
-    const matches = matchLexicon(
-      [{ id: "x", term: "Kubernetes", aliases: [], enabled: false }],
-      { title: "Kubernetes", body: "", skills: [] }
-    )
-    expect(matches).toHaveLength(0)
-  })
 })

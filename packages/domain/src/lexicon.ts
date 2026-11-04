@@ -19,7 +19,6 @@ export interface LexiconEntryInput {
   readonly term: string
   readonly normalizedTerm?: string
   readonly aliases: ReadonlyArray<LexiconAliasInput>
-  readonly enabled?: boolean
 }
 
 export interface LexiconMatch {
@@ -96,8 +95,6 @@ export const matchLexicon = (
   }
 
   for (const entry of entries) {
-    if (entry.enabled === false) continue
-
     const forms: Candidate[] = [
       {
         aliasId: null,

@@ -1,6 +1,6 @@
 import type { LexiconKeyword, PresetFilter, PresetRule } from "@otbor/contract"
 import type { LexiconEntryInput, LexiconMatch } from "@otbor/domain"
-import { normalizeTerm } from "@otbor/domain"
+import { matchLexicon, normalizeTerm } from "@otbor/domain"
 import { sql, type SQL } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
@@ -20,8 +20,8 @@ interface Entry {
   readonly id: string
   readonly term: string
   readonly normalizedTerm: string
-  readonly enabled: boolean
   readonly vacancyCount: number
+  resumeAccountIds: Array<string>
   aliases: Array<{ id: string; alias: string; normalizedAlias: string; typo: boolean }>
   aliasStats: Array<AliasStat>
 }
@@ -311,7 +311,7 @@ const vacancyCountSql = (
 export const loadEntries = (tx: Executor): RepoEffect<ReadonlyArray<LexiconEntryInput>> =>
   Effect.gen(function*() {
     const rows = yield* tx.execute(sql`
-      select k.id, k.term, k.normalized_term, k.enabled,
+      select k.id, k.term, k.normalized_term,
              a.id as alias_id, a.alias, a.normalized_alias, a.typo
       from keyword k
       left join keyword_alias a on a.keyword_id = k.id
@@ -324,7 +324,6 @@ export const loadEntries = (tx: Executor): RepoEffect<ReadonlyArray<LexiconEntry
       id: string
       term: string
       normalized_term: string
-      enabled: boolean
       alias_id: string | null
       alias: string | null
       normalized_alias: string | null
@@ -336,10 +335,10 @@ export const loadEntries = (tx: Executor): RepoEffect<ReadonlyArray<LexiconEntry
           id: raw.id,
           term: raw.term,
           normalizedTerm: raw.normalized_term,
-          enabled: raw.enabled,
           vacancyCount: 0,
+          resumeAccountIds: [],
           aliases: [],
-        aliasStats: [],
+          aliasStats: [],
         }
         entries.set(raw.id, entry)
       }
@@ -360,16 +359,16 @@ const toRecord = (entry: {
   id: string
   term: string
   normalizedTerm: string
-  enabled: boolean
   vacancyCount: number
+  resumeAccountIds?: ReadonlyArray<string>
   aliases: ReadonlyArray<{ id: string; alias: string; normalizedAlias: string; typo: boolean }>
   aliasStats?: ReadonlyArray<AliasStat>
 }): LexiconKeyword => ({
   id: entry.id as LexiconKeyword["id"],
   term: entry.term,
   normalizedTerm: entry.normalizedTerm,
-  enabled: entry.enabled,
   vacancyCount: entry.vacancyCount,
+  resumeAccountIds: (entry.resumeAccountIds ?? []) as LexiconKeyword["resumeAccountIds"],
   aliases: entry.aliases.map((alias) => ({
     id: alias.id as LexiconKeyword["aliases"][number]["id"],
     alias: alias.alias,
@@ -436,7 +435,7 @@ export const list = (
 
     const rows = yield* tx.execute(sql`
       with matching as (
-        select k.id, k.term, k.normalized_term, k.enabled
+        select k.id, k.term, k.normalized_term
         from keyword k
         where ${pattern === null
           ? sql`true`
@@ -449,7 +448,7 @@ export const list = (
         order by k.term
         limit ${limit}
       )
-      select matching.id, matching.term, matching.normalized_term, matching.enabled,
+      select matching.id, matching.term, matching.normalized_term,
              a.id as alias_id, a.alias, a.normalized_alias, a.typo,
              ${vacancyCountSql(filter, sql`matching.id`, context)} as vacancy_count
       from matching
@@ -462,7 +461,6 @@ export const list = (
       id: string
       term: string
       normalized_term: string
-      enabled: boolean
       alias_id: string | null
       alias: string | null
       normalized_alias: string | null
@@ -475,8 +473,8 @@ export const list = (
           id: raw.id,
           term: raw.term,
           normalizedTerm: raw.normalized_term,
-          enabled: raw.enabled,
           vacancyCount: Number(raw.vacancy_count ?? 0),
+          resumeAccountIds: [],
           aliases: [],
           aliasStats: []
         }
@@ -553,13 +551,43 @@ export const list = (
       }
     }
 
+    if (entries.size > 0) {
+      const resumes = yield* tx.execute(sql`
+        select hh_account_id, title, text, about, skills from resume
+      `)
+      const lexicon: ReadonlyArray<LexiconEntryInput> = [...entries.values()].map((entry) => ({
+        id: entry.id,
+        term: entry.term,
+        normalizedTerm: entry.normalizedTerm,
+        aliases: entry.aliases
+      }))
+      for (const raw of resumes.rows as unknown as ReadonlyArray<{
+        hh_account_id: string
+        title: string
+        text: string
+        about: string
+        skills: ReadonlyArray<string> | null
+      }>) {
+        const matches = matchLexicon(lexicon, {
+          title: raw.title,
+          body: `${raw.text}\n${raw.about}`,
+          skills: raw.skills ?? []
+        })
+        for (const match of matches) {
+          const entry = entries.get(match.keywordId)
+          if (entry !== undefined && !entry.resumeAccountIds.includes(raw.hh_account_id)) {
+            entry.resumeAccountIds.push(raw.hh_account_id)
+          }
+        }
+      }
+    }
+
     return [...entries.values()].map(toRecord)
   })
 
 export interface UpsertKeywordInput {
   readonly term: string
   readonly aliases?: ReadonlyArray<string>
-  readonly enabled?: boolean
 }
 
 export const upsert = (
@@ -570,16 +598,15 @@ export const upsert = (
     const normalized = normalizeTerm(input.term)
     const [row] = yield* tx
       .insert(keyword)
-      .values({ term: input.term.trim(), normalizedTerm: normalized, enabled: input.enabled ?? true })
+      .values({ term: input.term.trim(), normalizedTerm: normalized })
       .onConflictDoUpdate({
         target: keyword.normalizedTerm,
         set: {
           term: sql`excluded.term`,
-          enabled: sql`excluded.enabled`,
           updatedAt: sql`now()`
         }
       })
-      .returning({ id: keyword.id, term: keyword.term, normalizedTerm: keyword.normalizedTerm, enabled: keyword.enabled })
+      .returning({ id: keyword.id, term: keyword.term, normalizedTerm: keyword.normalizedTerm })
 
     const keywordId = row!.id
     const aliases = [...new Set((input.aliases ?? []).map((alias) => alias.trim()).filter((alias) => alias.length > 0))]

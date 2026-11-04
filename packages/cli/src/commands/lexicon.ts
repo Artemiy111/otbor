@@ -33,12 +33,11 @@ const list = Command.make(
 
     yield* Console.log(
       table(
-        ["id", "term", "aliases", "enabled"],
+        ["id", "term", "aliases"],
         keywords.map((keyword) => [
           shortId(keyword.id),
           keyword.term,
-          `${keyword.aliases.length}`,
-          keyword.enabled ? "yes" : "no"
+          `${keyword.aliases.length}`
         ])
       )
     )
@@ -52,18 +51,13 @@ const add = Command.make(
     aliases: Flag.String("alias").pipe(
       Flag.withDescription("Additional form of the same term (repeatable)"),
       Flag.between(0, 50)
-    ),
-    disabled: Flag.Boolean("disabled").pipe(
-      Flag.withDescription("Store the term without matching it"),
-      Flag.withDefault(false)
     )
   },
-  Effect.fn(function*({ term, aliases, disabled }) {
+  Effect.fn(function*({ term, aliases }) {
     const api = yield* Api
     const keyword = yield* api.LexiconUpsert({
       term,
-      aliases,
-      enabled: !disabled
+      aliases
     })
     yield* Console.log(`${keyword.id}  ${keyword.term}  (${keyword.aliases.length} alias(es))`)
   })

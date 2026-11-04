@@ -732,8 +732,7 @@ export const LexiconList = Rpc.make("LexiconList", {
 export const LexiconUpsert = Rpc.make("LexiconUpsert", {
   payload: Schema.Struct({
     term: Schema.String,
-    aliases: Schema.optional(Schema.Array(Schema.String)),
-    enabled: Schema.optional(Schema.Boolean)
+    aliases: Schema.optional(Schema.Array(Schema.String))
   }),
   success: LexiconKeyword,
   error: ApiError
