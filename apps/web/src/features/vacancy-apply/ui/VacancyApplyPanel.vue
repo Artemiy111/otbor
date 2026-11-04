@@ -403,12 +403,7 @@ const maxLetter = 10_000
         <LoaderCircle class="size-4 animate-spin" />
         Читаю форму отклика на hh…
       </div>
-      <p
-        v-else-if="form === null && data.facts?.hh?.test.hasTest === false"
-        class="text-xs text-muted-foreground"
-      >
-        У этой вакансии нет теста: нужно только письмо.
-      </p>
+      <template v-else-if="form === null && data.facts?.hh?.test.hasTest === false" />
       <div
         v-else-if="form === null"
         class="rounded-md border border-dashed border-border p-3 text-muted-foreground"
