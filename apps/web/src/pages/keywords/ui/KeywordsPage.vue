@@ -184,6 +184,18 @@ const columns: ColumnDef<LexiconKeyword>[] = [
       )
   },
   {
+    accessorKey: "skillVacancyCount",
+    header: sortableHeader<LexiconKeyword>("В навыках HH", "right"),
+    cell: ({ row }) =>
+      row.original.skillVacancyCount === 0
+        ? h("span", { class: "block text-right text-sm text-muted-foreground" }, "—")
+        : h(
+            "span",
+            { class: "block tabular-nums text-right" },
+            formatNumber(row.original.skillVacancyCount)
+          )
+  },
+  {
     id: "aliases",
     accessorFn: (row) => row.aliases.map((alias) => alias.alias).join(" "),
     enableGlobalFilter: false,

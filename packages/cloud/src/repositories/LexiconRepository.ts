@@ -21,6 +21,7 @@ interface Entry {
   readonly term: string
   readonly normalizedTerm: string
   readonly vacancyCount: number
+  skillVacancyCount: number
   resumeAccountIds: Array<string>
   aliases: Array<{ id: string; alias: string; normalizedAlias: string; typo: boolean }>
   aliasStats: Array<AliasStat>
@@ -308,6 +309,20 @@ const vacancyCountSql = (
   )`
 }
 
+/** Vacancies where hh itself lists the keyword as a skill; ignores the location filter. */
+const skillCountSql = (
+  filter: PresetFilter,
+  keywordId: SQL,
+  context: VacancyFilterContext
+): SQL => sql`(
+    select count(distinct vk.vacancy_id)::int
+    from vacancy_keyword vk
+    join vacancy on vacancy.id = vk.vacancy_id
+    where vk.keyword_id = ${keywordId}
+      and vk.in_skills
+      and ${vacancyFilterSql(filter, context)}
+  )`
+
 export const loadEntries = (tx: Executor): RepoEffect<ReadonlyArray<LexiconEntryInput>> =>
   Effect.gen(function*() {
     const rows = yield* tx.execute(sql`
@@ -336,6 +351,7 @@ export const loadEntries = (tx: Executor): RepoEffect<ReadonlyArray<LexiconEntry
           term: raw.term,
           normalizedTerm: raw.normalized_term,
           vacancyCount: 0,
+          skillVacancyCount: 0,
           resumeAccountIds: [],
           aliases: [],
           aliasStats: [],
@@ -360,6 +376,7 @@ const toRecord = (entry: {
   term: string
   normalizedTerm: string
   vacancyCount: number
+  skillVacancyCount?: number
   resumeAccountIds?: ReadonlyArray<string>
   aliases: ReadonlyArray<{ id: string; alias: string; normalizedAlias: string; typo: boolean }>
   aliasStats?: ReadonlyArray<AliasStat>
@@ -368,6 +385,7 @@ const toRecord = (entry: {
   term: entry.term,
   normalizedTerm: entry.normalizedTerm,
   vacancyCount: entry.vacancyCount,
+  skillVacancyCount: entry.skillVacancyCount ?? 0,
   resumeAccountIds: (entry.resumeAccountIds ?? []) as LexiconKeyword["resumeAccountIds"],
   aliases: entry.aliases.map((alias) => ({
     id: alias.id as LexiconKeyword["aliases"][number]["id"],
@@ -450,7 +468,8 @@ export const list = (
       )
       select matching.id, matching.term, matching.normalized_term,
              a.id as alias_id, a.alias, a.normalized_alias, a.typo,
-             ${vacancyCountSql(filter, sql`matching.id`, context)} as vacancy_count
+             ${vacancyCountSql(filter, sql`matching.id`, context)} as vacancy_count,
+             ${skillCountSql(filter, sql`matching.id`, context)} as skill_count
       from matching
       left join keyword_alias a on a.keyword_id = matching.id
       order by matching.term, a.alias
@@ -466,6 +485,7 @@ export const list = (
       normalized_alias: string | null
       typo: boolean | null
       vacancy_count: number | string | null
+      skill_count: number | string | null
     }>) {
       let entry = entries.get(raw.id)
       if (entry === undefined) {
@@ -474,6 +494,7 @@ export const list = (
           term: raw.term,
           normalizedTerm: raw.normalized_term,
           vacancyCount: Number(raw.vacancy_count ?? 0),
+          skillVacancyCount: Number(raw.skill_count ?? 0),
           resumeAccountIds: [],
           aliases: [],
           aliasStats: []
