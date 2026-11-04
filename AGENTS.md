@@ -87,3 +87,17 @@ guide doesn't cover, search through the source code in `node_modules/effect/src`
   to a second submit.
 - The harness is untrusted. It may fill and click, but it cannot decide what
   counts as success. The cloud reconciles every result.
+
+## Agent skills
+
+### Issue tracker
+
+Задачи живут в GitHub Issues репозитория `Artemiy111/otbor` (через `gh` CLI). См. `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Словарь по умолчанию: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. См. `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: один `GLOSSARY.md` и `docs/adr/` в корне репозитория. См. `docs/agents/domain.md`.
