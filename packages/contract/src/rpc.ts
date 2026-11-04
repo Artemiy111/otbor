@@ -31,6 +31,7 @@ import {
   HhAccountId,
   HarnessId,
   HarnessJobId,
+  KeywordAliasId,
   KeywordId,
   LeaseId,
   MailAccountId,
@@ -740,6 +741,22 @@ export const LexiconUpsert = Rpc.make("LexiconUpsert", {
   error: ApiError
 })
 
+export const LexiconAliasAdd = Rpc.make("LexiconAliasAdd", {
+  payload: Schema.Struct({
+    keywordId: KeywordId,
+    alias: Schema.String,
+    typo: Schema.optional(Schema.Boolean)
+  }),
+  success: LexiconKeyword,
+  error: ApiError
+})
+
+export const LexiconAliasRemove = Rpc.make("LexiconAliasRemove", {
+  payload: Schema.Struct({ id: KeywordAliasId }),
+  success: Schema.Struct({ id: KeywordAliasId, deleted: Schema.Boolean }),
+  error: ApiError
+})
+
 export const LexiconRemove = Rpc.make("LexiconRemove", {
   payload: Schema.Struct({ id: KeywordId }),
   success: Schema.Struct({ id: KeywordId, deleted: Schema.Boolean }),
@@ -1256,6 +1273,8 @@ export const OtborRpcs = RpcGroup.make(
   TitlesSetUserVerdict,
   LexiconList,
   LexiconUpsert,
+  LexiconAliasAdd,
+  LexiconAliasRemove,
   LexiconRemove,
   DecisionsList,
   DecisionsEvaluateBatch,

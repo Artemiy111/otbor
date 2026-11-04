@@ -3,7 +3,7 @@ import { computed, h, ref } from "vue"
 import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
 import type { KeywordMatchLocation, LexiconKeyword } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
-import { CircleAlert, Pencil, Plus, Search, Trash2 } from "@lucide/vue"
+import { CircleAlert, Pencil, Plus, Search, Trash2, X } from "@lucide/vue"
 import { AccountChip, hhAccountApi, hhAccountKeys } from "@/entities/hh-account"
 import { keywordApi, keywordKeys } from "@/entities/keyword"
 import { presetApi, presetKeys } from "@/entities/preset"
@@ -88,13 +88,21 @@ const queryCache = useQueryCache()
 const editorOpen = ref(false)
 const editingId = ref<string | undefined>(undefined)
 const termDraft = ref("")
-const aliasesDraft = ref("")
+const newAliasesDraft = ref("")
+const aliasDraft = ref("")
+
+/** The keyword being edited, live from the list so alias changes show up at once. */
+const editing = computed(() =>
+  keywords.value.find((keyword) => keyword.id === editingId.value)
+)
 
 const openEditor = (keyword?: LexiconKeyword) => {
   editingId.value = keyword?.id
   termDraft.value = keyword?.term ?? ""
-  aliasesDraft.value = keyword?.aliases.map((alias) => alias.alias).join("\n") ?? ""
+  newAliasesDraft.value = ""
+  aliasDraft.value = ""
   saveMutation.reset()
+  aliasMutation.reset()
   editorOpen.value = true
 }
 
@@ -107,24 +115,41 @@ const parseAliases = (text: string): Array<string> => [
   )
 ]
 
+const invalidate = () => queryCache.invalidateQueries({ key: keywordKeys.all })
+
+// Create sends the initial aliases; a rename sends none and leaves them alone.
 const saveMutation = useMutation({
   mutation: () =>
     keywordApi.save({
       id: editingId.value,
       term: termDraft.value.trim(),
-      aliases: parseAliases(aliasesDraft.value)
+      aliases: editingId.value === undefined ? parseAliases(newAliasesDraft.value) : undefined
     }),
   onSuccess: async () => {
     editorOpen.value = false
-    await queryCache.invalidateQueries({ key: keywordKeys.all })
+    await invalidate()
   }
 })
 
+const aliasMutation = useMutation({
+  mutation: async (change: { add: string } | { remove: string }) => {
+    if ("add" in change) return keywordApi.addAlias(editingId.value!, change.add)
+    return keywordApi.removeAlias(change.remove)
+  },
+  onSuccess: async () => {
+    aliasDraft.value = ""
+    await invalidate()
+  }
+})
+
+const addAlias = () => {
+  const alias = aliasDraft.value.trim()
+  if (alias !== "") aliasMutation.mutate({ add: alias })
+}
+
 const removeMutation = useMutation({
   mutation: (id: string) => keywordApi.remove(id),
-  onSuccess: async () => {
-    await queryCache.invalidateQueries({ key: keywordKeys.all })
-  }
+  onSuccess: invalidate
 })
 
 const confirmRemove = (keyword: LexiconKeyword) => {
@@ -133,9 +158,10 @@ const confirmRemove = (keyword: LexiconKeyword) => {
   }
 }
 
-const saveErrorText = computed(() =>
-  saveMutation.error.value === null ? null : describeError(saveMutation.error.value)
-)
+const saveErrorText = computed(() => {
+  const error = saveMutation.error.value ?? aliasMutation.error.value
+  return error === null ? null : describeError(error)
+})
 
 const columns: ColumnDef<LexiconKeyword>[] = [
   {
@@ -358,7 +384,7 @@ const columns: ColumnDef<LexiconKeyword>[] = [
         <SheetHeader>
           <SheetTitle>{{ editingId ? "Изменить слово" : "Новое слово" }}</SheetTitle>
           <SheetDescription>
-            Алиасы — другие написания того же термина, по одному на строку или через запятую.
+            Алиасы — другие написания того же термина. При создании — по одному на строку или через запятую; у существующего слова добавляются и удаляются по одному сразу.
           </SheetDescription>
         </SheetHeader>
         <form class="flex flex-1 flex-col gap-4 px-4 pb-4" @submit.prevent="saveMutation.mutate()">
@@ -366,13 +392,59 @@ const columns: ColumnDef<LexiconKeyword>[] = [
             <Label for="keyword-term">Термин</Label>
             <Input id="keyword-term" v-model="termDraft" placeholder="Kubernetes" required />
           </div>
-          <div class="space-y-1.5">
+          <div v-if="editingId === undefined" class="space-y-1.5">
             <Label for="keyword-aliases">Алиасы</Label>
-            <Textarea id="keyword-aliases" v-model="aliasesDraft" rows="8" placeholder="k8s&#10;кубернетес" />
+            <Textarea
+              id="keyword-aliases"
+              v-model="newAliasesDraft"
+              rows="6"
+              placeholder="k8s&#10;кубернетес"
+            />
+          </div>
+          <div v-else class="space-y-1.5">
+            <Label for="keyword-alias-new">Алиасы</Label>
+            <div class="flex flex-wrap gap-1">
+              <Badge
+                v-for="alias in editing?.aliases ?? []"
+                :key="alias.id"
+                variant="secondary"
+                class="gap-1 font-normal"
+              >
+                {{ alias.alias }}
+                <button
+                  type="button"
+                  class="opacity-60 hover:opacity-100"
+                  title="Удалить алиас"
+                  :disabled="aliasMutation.isLoading.value"
+                  @click="aliasMutation.mutate({ remove: alias.id })"
+                >
+                  <X class="h-3 w-3" />
+                </button>
+              </Badge>
+              <span v-if="(editing?.aliases.length ?? 0) === 0" class="text-sm text-muted-foreground">
+                Алиасов нет
+              </span>
+            </div>
+            <div class="flex gap-2">
+              <Input
+                id="keyword-alias-new"
+                v-model="aliasDraft"
+                placeholder="Новый алиас"
+                @keydown.enter.prevent="addAlias"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                :disabled="aliasDraft.trim() === '' || aliasMutation.isLoading.value"
+                @click="addAlias"
+              >
+                Добавить
+              </Button>
+            </div>
           </div>
           <p v-if="saveErrorText" class="text-sm text-destructive">{{ saveErrorText }}</p>
           <Button type="submit" :disabled="termDraft.trim() === '' || saveMutation.isLoading.value">
-            Сохранить
+            {{ editingId ? "Переименовать" : "Создать" }}
           </Button>
         </form>
       </SheetContent>

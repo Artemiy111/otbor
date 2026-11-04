@@ -183,6 +183,9 @@ export const OtborHandlers = OtborRpcs.toLayer(
 
       LexiconList: (payload) => gate.lexiconList(payload),
       LexiconUpsert: (payload) => gate.lexiconUpsert(payload),
+      LexiconAliasAdd: (payload) => gate.lexiconAliasAdd(payload),
+      LexiconAliasRemove: ({ id }) =>
+        gate.lexiconAliasRemove(id).pipe(Effect.map((deleted) => ({ id, deleted }))),
       LexiconRemove: ({ id }) =>
         gate.lexiconRemove(id).pipe(Effect.map((deleted) => ({ id, deleted }))),
 

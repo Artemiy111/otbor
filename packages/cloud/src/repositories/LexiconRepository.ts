@@ -617,6 +617,8 @@ export const upsert = (
         .returning({ id: keyword.id, term: keyword.term, normalizedTerm: keyword.normalizedTerm })
 
     const keywordId = row!.id
+    // `aliases` undefined means "leave the aliases alone" (a rename).
+    const touchAliases = input.aliases !== undefined
     const aliases = [...new Set((input.aliases ?? []).map((alias) => alias.trim()).filter((alias) => alias.length > 0))]
     const normalizedAliases = aliases.map(normalizeTerm).filter((alias) => alias !== normalized)
 
@@ -641,7 +643,7 @@ export const upsert = (
         where keyword_id = ${keywordId}
           and normalized_alias not in (${keep})
       `)
-    } else {
+    } else if (touchAliases) {
       yield* tx.delete(keywordAlias).where(sql`${keywordAlias.keywordId} = ${keywordId}`)
     }
 
@@ -649,6 +651,44 @@ export const upsert = (
     const updated = entries.find((entry) => entry.id === keywordId)
     return updated ?? toRecord({ ...row!, vacancyCount: 0, aliases: [] })
   })
+
+const loadOne = (tx: Executor, keywordId: string, term: string): RepoEffect<LexiconKeyword> =>
+  list(tx, { query: term, limit: 5000 }).pipe(
+    Effect.map((entries) => entries.find((entry) => entry.id === keywordId)!)
+  )
+
+/** Adds one alias to a keyword; an existing alias keeps its id and stats. */
+export const addAlias = (
+  tx: Executor,
+  input: { readonly keywordId: string; readonly alias: string; readonly typo?: boolean }
+): RepoEffect<LexiconKeyword> =>
+  Effect.gen(function*() {
+    const alias = input.alias.trim()
+    const [owner] = yield* tx
+      .select({ term: keyword.term, normalizedTerm: keyword.normalizedTerm })
+      .from(keyword)
+      .where(sql`${keyword.id} = ${input.keywordId}`)
+    const normalizedAlias = normalizeTerm(alias)
+    if (owner !== undefined && alias !== "" && normalizedAlias !== owner.normalizedTerm) {
+      yield* tx
+        .insert(keywordAlias)
+        .values({
+          keywordId: input.keywordId,
+          alias,
+          normalizedAlias,
+          typo: input.typo ?? false
+        })
+        .onConflictDoNothing()
+    }
+    return yield* loadOne(tx, input.keywordId, owner!.term)
+  })
+
+export const removeAlias = (tx: Executor, id: string): RepoEffect<boolean> =>
+  tx
+    .delete(keywordAlias)
+    .where(sql`${keywordAlias.id} = ${id}`)
+    .returning({ id: keywordAlias.id })
+    .pipe(Effect.map((rows) => rows.length > 0))
 
 export const remove = (tx: Executor, id: string): RepoEffect<boolean> =>
   tx

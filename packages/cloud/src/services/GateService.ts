@@ -42,6 +42,12 @@ export interface GateServiceShape {
     readonly term: string
     readonly aliases?: ReadonlyArray<string>
   }) => Effect.Effect<LexiconKeyword, ApiError>
+  readonly lexiconAliasAdd: (input: {
+    readonly keywordId: string
+    readonly alias: string
+    readonly typo?: boolean
+  }) => Effect.Effect<LexiconKeyword, ApiError>
+  readonly lexiconAliasRemove: (id: string) => Effect.Effect<boolean, ApiError>
   readonly lexiconRemove: (id: string) => Effect.Effect<boolean, ApiError>
 }
 
@@ -153,6 +159,16 @@ export class GateService extends Context.Service<GateService, GateServiceShape>(
           .asOwner((tx) => LexiconRepository.upsert(tx, input))
           .pipe(Effect.mapError(toStorageError("lexicon.upsert")))
 
+      const lexiconAliasAdd: GateServiceShape["lexiconAliasAdd"] = (input) =>
+        database
+          .asOwner((tx) => LexiconRepository.addAlias(tx, input))
+          .pipe(Effect.mapError(toStorageError("lexicon.aliasAdd")))
+
+      const lexiconAliasRemove: GateServiceShape["lexiconAliasRemove"] = (id) =>
+        database
+          .asOwner((tx) => LexiconRepository.removeAlias(tx, id))
+          .pipe(Effect.mapError(toStorageError("lexicon.aliasRemove")))
+
       const lexiconRemove: GateServiceShape["lexiconRemove"] = (id) =>
         database
           .asOwner((tx) => LexiconRepository.remove(tx, id))
@@ -163,6 +179,8 @@ export class GateService extends Context.Service<GateService, GateServiceShape>(
         setUserVerdict,
         lexiconList,
         lexiconUpsert,
+        lexiconAliasAdd,
+        lexiconAliasRemove,
         lexiconRemove
       })
     })
