@@ -9,6 +9,7 @@ import { type FormAnswer, InvalidInput, type UserId } from "@otbor/contract"
 import { Effect } from "effect"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import { ResumeService } from "../../src/services/ResumeService.ts"
 import { ApplicationService } from "../../src/services/ApplicationService.ts"
 import { CurrentUser } from "../../src/services/CurrentUser.ts"
 import { HydrationRunner, VacancyPageFetch } from "../../src/services/HydrationRunner.ts"
@@ -97,12 +98,39 @@ if (!enabled || serverUrl === null) {
         }).pipe(pages(html, status))
       )
 
-    const createManual = (userId: string, vacancyId: string, hhAccountId: string) =>
+    const createManual = (userId: string, vacancyId: string, hhAccountId: string, resumeId?: string) =>
       support.runAs(
         userId,
         Effect.gen(function*() {
           const applications = yield* ApplicationService
-          return yield* applications.createManual({ vacancyId, hhAccountId })
+          return yield* applications.createManual({ vacancyId, hhAccountId, resumeId: resumeId as any })
+        })
+      )
+
+    const createResume = (
+      userId: string,
+      hhAccountId: string,
+      externalId: string,
+      title: string,
+      isActive = false
+    ) =>
+      support.runAs(
+        userId,
+        Effect.gen(function*() {
+          const resumes = yield* ResumeService
+          return yield* resumes.upsert({
+            hhAccountId: hhAccountId as any,
+            source: "hh",
+            externalId,
+            title,
+            text: title,
+            about: "",
+            skills: [],
+            experience: [],
+            education: [],
+            workFormats: [],
+            isActive
+          })
         })
       )
 
@@ -179,6 +207,39 @@ if (!enabled || serverUrl === null) {
       const third = await createManual(tenant.userId, vacancyId, other)
       expect(third.created).toBe(true)
       expect(third.application.id).not.toBe(first.application.id)
+    }, 60_000)
+
+    test("one account applies to the same vacancy with different resumes, once per resume", async () => {
+      const tenant = await support.seedTenant("manual-resumes")
+      const vacancyId = await support.seedVacancy("manual-resumes")
+      const first = await createResume(tenant.userId, tenant.accountId, "res-1", "DevOps")
+      const second = await createResume(tenant.userId, tenant.accountId, "res-2", "Platform")
+
+      const a = await createManual(tenant.userId, vacancyId, tenant.accountId, first.id)
+      const b = await createManual(tenant.userId, vacancyId, tenant.accountId, second.id)
+      expect(a.created).toBe(true)
+      expect(b.created).toBe(true)
+      expect(b.application.id).not.toBe(a.application.id)
+
+      // the same resume again is the same application
+      const again = await createManual(tenant.userId, vacancyId, tenant.accountId, first.id)
+      expect(again.created).toBe(false)
+      expect(again.application.id).toBe(a.application.id)
+
+      // no resume named reuses an existing application instead of making a third
+      const unnamed = await createManual(tenant.userId, vacancyId, tenant.accountId)
+      expect(unnamed.created).toBe(false)
+
+      // applied with one resume blocks that resume only
+      const withFirst = await support.evaluateVacancy(tenant.userId, {
+        vacancyId, hhAccountId: tenant.accountId, fit: 90, resumeId: first.id
+      })
+      expect(withFirst.reasons.map((reason) => reason.code)).toContain("blocked_applied")
+      const third = await createResume(tenant.userId, tenant.accountId, "res-3", "Backend")
+      const withThird = await support.evaluateVacancy(tenant.userId, {
+        vacancyId, hhAccountId: tenant.accountId, fit: 90, resumeId: third.id
+      })
+      expect(withThird.reasons.map((reason) => reason.code)).not.toContain("blocked_applied")
     }, 60_000)
 
     test("approve still enforces the kit and the at-most-once submit for a manual application", async () => {

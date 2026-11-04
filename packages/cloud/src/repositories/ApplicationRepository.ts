@@ -72,6 +72,23 @@ export const create = (
   }
 ): RepoEffect<{ readonly record: ApplicationRecord; readonly created: boolean }> =>
   Effect.gen(function*() {
+    // No resume named: reuse whatever application the account already has for
+    // this vacancy, so a retry never makes a second, resume-less row.
+    if (input.resumeId === null) {
+      const [existing] = yield* tx
+        .select({ id: application.id })
+        .from(application)
+        .where(
+          sql`${application.hhAccountId} = ${input.hhAccountId} and ${application.vacancyId} = ${input.vacancyId}`
+        )
+        .orderBy(sql`${application.createdAt} asc`)
+        .limit(1)
+      if (existing !== undefined) {
+        const found = yield* find(tx, input.userId, existing.id)
+        return { record: found!.application, created: false }
+      }
+    }
+
     const inserted = yield* tx
       .insert(application)
       .values({
@@ -83,7 +100,9 @@ export const create = (
         decisionId: input.decisionId,
         state: input.state
       })
-      .onConflictDoNothing({ target: [application.hhAccountId, application.vacancyId] })
+      .onConflictDoNothing({
+        target: [application.hhAccountId, application.vacancyId, application.resumeId]
+      })
       .returning({ id: application.id })
 
     const id =
@@ -92,7 +111,9 @@ export const create = (
         .select({ id: application.id })
         .from(application)
         .where(
-          sql`${application.hhAccountId} = ${input.hhAccountId} and ${application.vacancyId} = ${input.vacancyId}`
+          sql`${application.hhAccountId} = ${input.hhAccountId}
+            and ${application.vacancyId} = ${input.vacancyId}
+            and ${application.resumeId} is not distinct from ${input.resumeId}`
         )
         .limit(1)
       )[0]?.id
@@ -188,15 +209,26 @@ export const findAny = (tx: Executor, id: string): RepoEffect<ApplicationRecord 
       )
     )
 
+/**
+ * Whether the account already applied to the vacancy with this resume. An
+ * application whose resume is unknown (imported from hh) counts for every
+ * resume; with no resume asked about, any application counts.
+ */
 export const existsForVacancy = (
   tx: Executor,
   hhAccountId: string,
-  vacancyId: string
+  vacancyId: string,
+  resumeId: string | null = null
 ): RepoEffect<boolean> =>
   tx
     .select({ id: application.id })
     .from(application)
-    .where(sql`${application.hhAccountId} = ${hhAccountId} and ${application.vacancyId} = ${vacancyId}`)
+    .where(
+      resumeId === null
+        ? sql`${application.hhAccountId} = ${hhAccountId} and ${application.vacancyId} = ${vacancyId}`
+        : sql`${application.hhAccountId} = ${hhAccountId} and ${application.vacancyId} = ${vacancyId}
+            and (${application.resumeId} = ${resumeId} or ${application.resumeId} is null)`
+    )
     .limit(1)
     .pipe(Effect.map((rows) => rows.length > 0))
 

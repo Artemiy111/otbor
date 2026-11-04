@@ -256,7 +256,7 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                   userId: currentUser.userId,
                   hhAccountId: input.hhAccountId,
                   vacancyId: vacancy.id,
-                  resumeId: input.resumeId ?? null,
+                  resumeId: input.resumeId ?? decision.resumeId ?? null,
                   streamId: null,
                   decisionId: decision.id,
                   state

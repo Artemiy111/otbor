@@ -254,7 +254,12 @@ export const application = pgTable(
     updatedAt: updatedAt()
   },
   (table) => [
-    uniqueIndex("application_account_vacancy_idx").on(table.hhAccountId, table.vacancyId),
+    // Created `nulls not distinct` in migration 0023 (drizzle cannot express it on an index).
+    uniqueIndex("application_account_vacancy_resume_idx").on(
+      table.hhAccountId,
+      table.vacancyId,
+      table.resumeId
+    ),
     uniqueIndex("application_id_user_idx").on(table.id, table.userId),
     index("application_user_state_idx").on(table.userId, table.state, table.updatedAt)
   ]

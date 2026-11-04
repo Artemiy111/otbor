@@ -88,9 +88,16 @@ export const importTopics = (
       const respondedAt = parseDate(topic.changedAt)
       const result = yield* tx.execute(sql`
         insert into application (user_id, hh_account_id, vacancy_id, state, origin, hh_status, hh_responded_at)
-        values (${input.userId}, ${input.hhAccountId}, ${vacancyId}, 'submitted', 'imported',
-                ${topic.state}, ${respondedAt})
-        on conflict (hh_account_id, vacancy_id) do update
+        select ${input.userId}, ${input.hhAccountId}, ${vacancyId}, 'submitted', 'imported',
+               ${topic.state}, ${respondedAt}
+        -- An application otbor made itself already covers this vacancy.
+        where not exists (
+          select 1 from application own
+          where own.hh_account_id = ${input.hhAccountId}
+            and own.vacancy_id = ${vacancyId}
+            and own.origin <> 'imported'
+        )
+        on conflict (hh_account_id, vacancy_id, resume_id) do update
         set hh_status = excluded.hh_status,
             hh_responded_at = excluded.hh_responded_at,
             updated_at = now()

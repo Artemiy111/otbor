@@ -152,10 +152,6 @@ export const evaluateInTx = (
           weak: [] as ReadonlyArray<string>
         }
 
-    const applied = hhAccountId === null
-      ? false
-      : yield* ApplicationRepository.existsForVacancy(tx, hhAccountId, row.id)
-
     // The blacklist is a soft filter: the layers are computed even when
     // included, and only a caller that did not ask for them turns the match
     // into a block.
@@ -177,6 +173,11 @@ export const evaluateInTx = (
       : null
     const fit = input.fit ?? llm?.judgement.fit ?? null
     const resumeId = input.resumeId ?? llm?.resumeId ?? null
+
+    // Applied means applied with this resume: another resume may still apply.
+    const applied = hhAccountId === null
+      ? false
+      : yield* ApplicationRepository.existsForVacancy(tx, hhAccountId, row.id, resumeId)
 
     const policy: ApplyPolicy = DEFAULT_APPLY_POLICY
     const blocks = {
