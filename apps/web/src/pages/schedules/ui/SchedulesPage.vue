@@ -3,7 +3,7 @@ import { computed, h, onUnmounted, ref } from "vue"
 import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
 import type { CrawlSchedule, ScheduleRun, SourceSyncKind } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
-import { CircleAlert } from "@lucide/vue"
+import { CircleAlert, Plus } from "@lucide/vue"
 import { mailAccountApi, mailAccountKeys } from "@/entities/mail-account"
 import { scheduleApi, scheduleKeys, type ScheduleUpsertInput } from "@/entities/schedule"
 import { scheduleRunApi, scheduleRunKeys } from "@/entities/schedule-run"
@@ -29,6 +29,11 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
   sortableHeader
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
@@ -107,6 +112,8 @@ const confirmDeleteId = ref<string | null>(null)
 const removingId = ref<string | null>(null)
 const runningId = ref<string | null>(null)
 
+const dialogOpen = ref(false)
+
 const isEditing = computed(() => editingId.value !== null)
 const isSaving = computed(() => upsertMutation.isLoading.value)
 const isListPending = computed(() => query.isPending.value)
@@ -173,7 +180,18 @@ const resetForm = () => {
   formError.value = null
 }
 
+const openCreate = () => {
+  resetForm()
+  dialogOpen.value = true
+}
+
+const onDialogOpenChange = (open: boolean) => {
+  dialogOpen.value = open
+  if (!open) resetForm()
+}
+
 const fillForm = (schedule: CrawlSchedule) => {
+  dialogOpen.value = true
   editingId.value = schedule.id
   const nextKind = schedule.kind === "source" ? "search" : schedule.kind
   kind.value = nextKind
@@ -262,6 +280,7 @@ const submit = async () => {
       ...(Object.keys(options).length === 0 ? {} : { options })
     })
     resetForm()
+    dialogOpen.value = false
     noticeTone.value = "info"
     notice.value = wasEditing ? "Обход обновлён." : "Обход создан."
     await queryCache.invalidateQueries({ key: scheduleKeys.all })
@@ -306,17 +325,6 @@ const runNow = async (schedule: CrawlSchedule) => {
   }
 }
 
-const kindVariant = (value: string): "info" | "secondary" | "neutral" | "warning" => {
-  switch (value) {
-    case "source":
-      return "info"
-    case "hh_chat_sync":
-      return "warning"
-    default:
-      return "info"
-  }
-}
-
 const targetText = (schedule: CrawlSchedule): string => {
   switch (schedule.kind) {
     case "mail_sync": {
@@ -340,9 +348,9 @@ const columns: ColumnDef<CrawlSchedule>[] = [
     header: sortableHeader<CrawlSchedule>("Вид"),
     cell: ({ row }) =>
       h(
-        Badge,
-        { variant: kindVariant(row.original.kind) },
-        () => scheduleKindLabel(row.original.kind)
+        "span",
+        { class: "whitespace-nowrap font-medium" },
+        scheduleKindLabel(row.original.kind)
       )
   },
   {
@@ -482,6 +490,18 @@ const columns: ColumnDef<CrawlSchedule>[] = [
     }
   }
 ]
+const RUN_STATUS: Record<
+  ScheduleRun["status"],
+  { label: string; variant: "info" | "success" | "destructive" }
+> = {
+  running: { label: "Выполняется", variant: "info" },
+  done: { label: "Готово", variant: "success" },
+  error: { label: "Ошибка", variant: "destructive" }
+}
+
+const formatDetailValue = (value: unknown): string =>
+  typeof value === "object" && value !== null ? JSON.stringify(value) : String(value)
+
 const runColumns: ColumnDef<ScheduleRun>[] = [
   {
     id: "schedule",
@@ -493,15 +513,18 @@ const runColumns: ColumnDef<ScheduleRun>[] = [
     id: "kind",
     accessorFn: (row) => row.kind,
     header: sortableHeader<ScheduleRun>("Вид"),
-    cell: ({ row }) => h("span", null, row.original.kind)
+    cell: ({ row }) =>
+      h("span", { class: "whitespace-nowrap" }, scheduleKindLabel(row.original.kind))
   },
   {
     id: "status",
     accessorFn: (row) => row.status,
     header: sortableHeader<ScheduleRun>("Статус"),
     cell: ({ row }) =>
-      h(Badge, { variant: row.original.status === "done" ? "success" : "secondary" }, () =>
-        row.original.status
+      h(
+        Badge,
+        { variant: RUN_STATUS[row.original.status].variant, class: "whitespace-nowrap" },
+        () => RUN_STATUS[row.original.status].label
       )
   },
   {
@@ -511,7 +534,19 @@ const runColumns: ColumnDef<ScheduleRun>[] = [
     cell: ({ row }) => {
       const detail = row.original.detail
       if (detail === null || detail === undefined) return h("span", { class: "text-muted-foreground" }, "—")
-      return h("span", { class: "text-xs" }, JSON.stringify(detail))
+      const entries =
+        typeof detail === "object" && !Array.isArray(detail)
+          ? Object.entries(detail as Record<string, unknown>)
+          : [["", detail] as [string, unknown]]
+      if (entries.length === 0) return h("span", { class: "text-muted-foreground" }, "—")
+      return h(
+        "dl",
+        { class: "grid max-w-[320px] grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs", title: JSON.stringify(detail) },
+        entries.flatMap(([key, value]) => [
+          h("dt", { class: "text-muted-foreground" }, key),
+          h("dd", { class: "truncate tabular-nums" }, formatDetailValue(value))
+        ])
+      )
     }
   },
   {
@@ -520,7 +555,11 @@ const runColumns: ColumnDef<ScheduleRun>[] = [
     header: "Ошибка",
     cell: ({ row }) =>
       row.original.error
-        ? h("span", { class: "text-xs text-destructive" }, row.original.error)
+        ? h(
+            "span",
+            { class: "block max-w-[260px] truncate text-xs text-destructive", title: row.original.error },
+            row.original.error
+          )
         : h("span", { class: "text-muted-foreground" }, "—")
   },
   {
@@ -548,6 +587,10 @@ const runColumns: ColumnDef<ScheduleRun>[] = [
     >
       <template #actions>
         <RefreshButton :loading="query.isLoading.value" @refresh="query.refetch()" />
+        <Button @click="openCreate">
+          <Plus />
+          Новый обход
+        </Button>
       </template>
     </PageHeader>
 
@@ -569,23 +612,26 @@ const runColumns: ColumnDef<ScheduleRun>[] = [
       <AlertDescription>{{ notice }}</AlertDescription>
     </Alert>
 
-    <Card class="mb-4">
-      <CardHeader>
-        <CardTitle>{{ isEditing ? "Изменить обход" : "Новый обход" }}</CardTitle>
-        <CardDescription>
-          Один запланированный запуск выполняет одну ограниченную операцию выбранного вида.
-          «Запустить» только принимает запрос: работа идёт в фоне.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form class="space-y-4" @submit.prevent="submit">
+    <Sheet :open="dialogOpen" @update:open="onDialogOpenChange">
+      <SheetContent
+        side="top"
+        class="inset-x-auto top-1/2 left-1/2 max-h-[90vh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border data-[state=closed]:slide-out-to-top-0 data-[state=open]:slide-in-from-top-0"
+      >
+        <SheetHeader>
+          <SheetTitle>{{ isEditing ? "Изменить обход" : "Новый обход" }}</SheetTitle>
+          <SheetDescription>
+            Один запланированный запуск выполняет одну ограниченную операцию выбранного вида.
+          </SheetDescription>
+        </SheetHeader>
+        <div class="px-4 pb-4">
+<form class="space-y-4" @submit.prevent="submit">
           <Alert v-if="formError" variant="destructive">
             <CircleAlert />
             <AlertTitle>Проверьте форму</AlertTitle>
             <AlertDescription>{{ formError }}</AlertDescription>
           </Alert>
 
-          <div class="grid gap-4 md:grid-cols-2">
+          <div class="grid gap-4 sm:grid-cols-2">
             <div class="space-y-2">
               <Label for="schedule-kind">Вид обхода</Label>
               <Select :model-value="kind" @update:model-value="(value) => changeKind(String(value))">
@@ -614,7 +660,7 @@ const runColumns: ColumnDef<ScheduleRun>[] = [
               <p class="text-xs text-muted-foreground">Не меньше 5 минут.</p>
             </div>
 
-            <div v-if="isAccountTarget" class="space-y-2 md:col-span-2">
+            <div v-if="isAccountTarget" class="space-y-2 sm:col-span-2">
               <Label for="schedule-account">
                 {{ kind === "mail_sync" ? "Почтовый аккаунт" : "Telegram-аккаунт" }}
               </Label>
@@ -655,7 +701,7 @@ const runColumns: ColumnDef<ScheduleRun>[] = [
               </p>
             </div>
 
-            <div v-else-if="isChat" class="space-y-2 md:col-span-2">
+            <div v-else-if="isChat" class="space-y-2 sm:col-span-2">
               <Label for="schedule-chat-target">Цель</Label>
               <Input
                 id="schedule-chat-target"
@@ -668,7 +714,7 @@ const runColumns: ColumnDef<ScheduleRun>[] = [
             </div>
           </div>
 
-          <div v-if="hasOptions" class="grid gap-4 border-t border-border pt-4 md:grid-cols-2">
+          <div v-if="hasOptions" class="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
             <template v-if="kind === 'mail_sync'">
               <div class="space-y-2">
                 <Label for="schedule-mail-days">Дней</Label>
@@ -744,7 +790,7 @@ const runColumns: ColumnDef<ScheduleRun>[] = [
             </template>
 
             <template v-else-if="kind === 'hh_chat_sync'">
-              <p class="text-xs text-muted-foreground md:col-span-2">
+              <p class="text-xs text-muted-foreground sm:col-span-2">
                 Настройки чатов hh появятся вместе с browser harness.
               </p>
             </template>
@@ -755,11 +801,10 @@ const runColumns: ColumnDef<ScheduleRun>[] = [
               {{ isEditing ? "Сохранить" : "Создать обход" }}
             </Button>
             <Button
-              v-if="isEditing"
               type="button"
               variant="outline"
               :disabled="isSaving"
-              @click="resetForm"
+              @click="onDialogOpenChange(false)"
             >
               Отмена
             </Button>
@@ -774,8 +819,9 @@ const runColumns: ColumnDef<ScheduleRun>[] = [
             </Label>
           </div>
         </form>
-      </CardContent>
-    </Card>
+        </div>
+      </SheetContent>
+    </Sheet>
 
     <DataTable
       :columns="columns"
@@ -786,7 +832,7 @@ const runColumns: ColumnDef<ScheduleRun>[] = [
       filter-label="Поиск"
       filter-placeholder="Вид, цель, состояние или ошибка"
       empty-title="Расписаний нет"
-      empty-description="Создайте обход в форме выше, чтобы worker запускал поиск или синхронизацию по расписанию."
+      empty-description="Нажмите «Новый обход», чтобы синхронизация шла по расписанию."
     >
       <template #toolbar>
         <span class="pb-2 text-xs text-muted-foreground">Обходов: {{ schedules.length }}</span>
