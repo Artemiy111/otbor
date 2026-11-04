@@ -403,12 +403,20 @@ const maxLetter = 10_000
         <LoaderCircle class="size-4 animate-spin" />
         Читаю форму отклика на hh…
       </div>
+      <p
+        v-else-if="form === null && data.facts?.hh?.test.hasTest === false"
+        class="text-xs text-muted-foreground"
+      >
+        У этой вакансии нет теста: нужно только письмо.
+      </p>
       <div
         v-else-if="form === null"
         class="rounded-md border border-dashed border-border p-3 text-muted-foreground"
       >
-        Форму отклика с hh ещё не читали. Если у вакансии есть тест, вопросы появятся здесь после чтения;
-        письмо можно писать уже сейчас, а форма обновится перед отправкой.
+        Про тест у этой вакансии пока ничего не известно, форму ещё не читали.
+        <Button variant="ghost" size="sm" :disabled="busy !== null || accountId === ''" @click="refreshClick">
+          Прочитать форму
+        </Button>
       </div>
       <div v-else class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         <span>
