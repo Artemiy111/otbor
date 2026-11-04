@@ -9,7 +9,12 @@ import {
   proxyLabel,
   type ProxyConfig
 } from "@otbor/crawler"
-import { extractEmployer, type EmployerProfileDraft } from "@otbor/hh"
+import {
+  employerReviewsWidgetUrl,
+  extractEmployer,
+  parseEmployerReviewsWidget,
+  type EmployerProfileDraft
+} from "@otbor/hh"
 import { Cause, Context, Effect, Layer } from "effect"
 import { Database } from "../db/Database.ts"
 import * as EmployerRepository from "../repositories/EmployerRepository.ts"
@@ -270,7 +275,30 @@ export class EmployerHydrator extends Context.Service<
             )
           )
 
-          return { kind: "ok" as const, patch }
+          // The profile page rarely carries the rating; hh serves it from a
+          // separate reviews widget. Best effort: a widget failure keeps the profile.
+          const widgetUrl = employerReviewsWidgetUrl(target.externalId)
+          const widget = yield* Effect.tryPromise({
+            try: () => fetchPage(widgetUrl, proxy),
+            catch: (error) => error
+          }).pipe(
+            Effect.map((reply) =>
+              reply.status === 200 ? parseEmployerReviewsWidget(reply.html) : null
+            ),
+            Effect.catchCause(() => Effect.succeed(null))
+          )
+
+          return {
+            kind: "ok" as const,
+            patch: widget === null
+              ? patch
+              : {
+                ...patch,
+                rating: widget.rating ?? patch.rating,
+                reviewsCount: widget.reviewsCount ?? patch.reviewsCount,
+                recommendationsPercent: widget.recommendationsPercent ?? patch.recommendationsPercent
+              }
+          }
         }).pipe(
           Effect.catchCause((cause) => {
             const error = Cause.squash(cause)

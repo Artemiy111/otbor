@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
-import { extractEmployer } from "../src/employer.ts"
+import { extractEmployer, parseEmployerReviewsWidget } from "../src/employer.ts"
 
 const page = (payload: unknown): string =>
   `<html><body><template id="HH-Lux-InitialState">${JSON.stringify(payload)}</template></body></html>`
@@ -71,4 +71,32 @@ describe("extractEmployer", () => {
     expect(error._tag).toBe("HhParseError")
     expect(error.code).toBe("employer_missing")
   })
+})
+
+describe("parseEmployerReviewsWidget", () => {
+  test("reads the JSON widget", () => {
+    expect(
+      parseEmployerReviewsWidget(
+        JSON.stringify({ employerReviews: { totalRating: "4.3", reviewsCount: 120, recommendationsPercent: 87 } })
+      )
+    ).toEqual({ rating: 4.3, reviewsCount: 120, recommendationsPercent: 87 })
+  })
+
+  test("reads the HTML shell state", () => {
+    const state = JSON.stringify({ employerReviews: { totalRating: 3.9, reviewsCount: 5 } }).replace(/"/g, "&quot;")
+    const html = `<template class="x EmployerReviewsFront-InitialState">${state}</template>`
+    expect(parseEmployerReviewsWidget(html)).toEqual({ rating: 3.9, reviewsCount: 5, recommendationsPercent: null })
+  })
+
+  test("returns null for unknown bodies", () => {
+    expect(parseEmployerReviewsWidget("<html></html>")).toBeNull()
+  })
+})
+
+test("reads aggregateRating from the state", async () => {
+  const draft = await Effect.runPromise(
+    extractEmployer(page({ organization: { id: 9, companySiteUrl: "https://a.ru", aggregateRating: { ratingValue: "4.1", ratingCount: 33 } } }), { externalId: "9" })
+  )
+  expect(draft.rating).toBe(4.1)
+  expect(draft.reviewsCount).toBe(33)
 })

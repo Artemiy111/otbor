@@ -78,6 +78,7 @@ const collectCandidates = (value: Json, externalId: string | null, out: Candidat
     "logos" in record ||
     "logoUrls" in record ||
     "employerRating" in record ||
+    "aggregateRating" in record ||
     "reviewsCount" in record
   if (looksLikeEmployer) {
     out.push({
@@ -130,16 +131,19 @@ const mergeCandidate = (
 ): EmployerProfileDraft => {
   const record = candidate.record
   const industries = industriesOf(record)
+  const aggregate = asRecord(record.aggregateRating)
   return {
     ...draft,
     name: draft.name ?? nameOf(record),
     rating:
       draft.rating ??
+      (aggregate === null ? null : asNumber(aggregate.ratingValue)) ??
       asNumber(record.rating) ??
       asNumber(record.employerRating) ??
       asNumber(record.ratingSummary),
     reviewsCount:
       draft.reviewsCount ??
+      (aggregate === null ? null : asNumber(aggregate.ratingCount) ?? asNumber(aggregate.reviewCount)) ??
       asNumber(record.reviewsCount) ??
       asNumber(record.reviews),
     recommendationsPercent:
@@ -180,7 +184,7 @@ const fromJsonLd = (html: string, externalId: string | null): EmployerProfileDra
         externalId: externalId ?? "",
         name: asString(record.name),
         rating: aggregate === null ? null : asNumber(aggregate.ratingValue),
-        reviewsCount: aggregate === null ? null : asNumber(aggregate.reviewCount),
+        reviewsCount: aggregate === null ? null : asNumber(aggregate.ratingCount) ?? asNumber(aggregate.reviewCount),
         recommendationsPercent: null,
         siteUrl: absoluteUrl(record.url),
         logoUrl: absoluteUrl(record.logo) ?? absoluteUrl(logo?.url),
@@ -265,3 +269,62 @@ export const EmployerProfile = Schema.Struct({
   logoUrl: Schema.NullOr(Schema.String),
   industries: Schema.Array(Schema.String)
 })
+
+export interface EmployerReviewsWidget {
+  readonly rating: number | null
+  readonly reviewsCount: number | null
+  readonly recommendationsPercent: number | null
+}
+
+export const employerReviewsWidgetUrl = (employerId: string, vacancyId?: string): string => {
+  const url = new URL("https://hh.ru/employer_reviews/proxy_components/small_widget")
+  url.searchParams.set("employerId", employerId)
+  if (vacancyId !== undefined) url.searchParams.set("vacancyId", vacancyId)
+  url.searchParams.set("is_magritte", "True")
+  url.searchParams.set("is_on_employer_page", "False")
+  return url.toString()
+}
+
+const decodeHtml = (value: string): string =>
+  value
+    .replace(/&quot;/g, '"')
+    .replace(/&#34;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+
+const fromReviews = (node: Json): EmployerReviewsWidget | null => {
+  const reviews = asRecord(asRecord(node)?.employerReviews)
+  if (reviews === null) return null
+  return {
+    rating: asNumber(reviews.totalRating),
+    reviewsCount: asNumber(reviews.reviewsCount),
+    recommendationsPercent: asNumber(reviews.recommendationsPercent)
+  }
+}
+
+/**
+ * hh's small reviews widget: JSON (`employerReviews`) or an HTML shell with the
+ * same state in `EmployerReviewsFront-InitialState`. Null when neither is found.
+ */
+export const parseEmployerReviewsWidget = (body: string): EmployerReviewsWidget | null => {
+  const text = body.trim()
+  if (text.startsWith("{")) {
+    try {
+      return fromReviews(JSON.parse(text))
+    } catch {
+      return null
+    }
+  }
+  const match = text.match(
+    /<template[^>]*class="[^"]*EmployerReviewsFront-InitialState[^"]*"[^>]*>([\s\S]*?)<\/template>/
+  )
+  if (match?.[1] === undefined) return null
+  try {
+    return fromReviews(JSON.parse(decodeHtml(match[1])))
+  } catch {
+    return null
+  }
+}
