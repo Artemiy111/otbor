@@ -127,3 +127,30 @@ export const VacancyAnalysis = Schema.Struct({
   updatedAt: Schema.String
 })
 export type VacancyAnalysis = typeof VacancyAnalysis.Type
+
+/** One bounded analysis pass triggered by hand (`otbor analysis run`). */
+export const AnalysisRunInput = Schema.Struct({
+  limit: Schema.optional(Schema.Int),
+  delayMs: Schema.optional(Schema.Int)
+})
+export type AnalysisRunInput = typeof AnalysisRunInput.Type
+
+export const AnalysisRunResult = Schema.Struct({
+  processed: Schema.Int,
+  analysed: Schema.Int,
+  skipped: Schema.Int,
+  failed: Schema.Int,
+  errors: Schema.Array(Schema.String),
+  /** Set when the model server was down or rejected the key and the pass ended early. */
+  stoppedBy: Schema.NullOr(Schema.Literals(["unreachable", "unauthorized"]))
+})
+export type AnalysisRunResult = typeof AnalysisRunResult.Type
+
+export const AnalysisStats = Schema.Struct({
+  promptVersion: Schema.String,
+  /** Fully hydrated vacancies. */
+  total: Schema.Int,
+  /** Of those, with a stored analysis for the prompt version. */
+  analysed: Schema.Int
+})
+export type AnalysisStats = typeof AnalysisStats.Type

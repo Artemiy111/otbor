@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import { Rpc, type RpcClient, type RpcClientError, RpcGroup } from "effect/rpc"
-import { VacancyAnalysis } from "./analysis.ts"
+import { AnalysisRunInput, AnalysisRunResult, AnalysisStats, VacancyAnalysis } from "./analysis.ts"
 import {
   BlacklistScope,
   EmployerBlacklistView,
@@ -144,6 +144,18 @@ export const VacanciesGet = Rpc.make("VacanciesGet", {
 export const VacancyAnalysisGet = Rpc.make("VacancyAnalysisGet", {
   payload: Schema.Struct({ vacancyId: VacancyId }),
   success: Schema.NullOr(VacancyAnalysis),
+  error: ApiError
+})
+
+/** One bounded pass of the local model over vacancies without a current analysis. Waits for the pass. */
+export const AnalysisRun = Rpc.make("AnalysisRun", {
+  payload: AnalysisRunInput,
+  success: AnalysisRunResult,
+  error: ApiError
+})
+
+export const AnalysisStatsGet = Rpc.make("AnalysisStatsGet", {
+  success: AnalysisStats,
   error: ApiError
 })
 
@@ -1256,6 +1268,8 @@ export const OtborRpcs = RpcGroup.make(
   VacanciesList,
   VacanciesGet,
   VacancyAnalysisGet,
+  AnalysisRun,
+  AnalysisStatsGet,
   EmployersList,
   EmployersGet,
   BlacklistList,
