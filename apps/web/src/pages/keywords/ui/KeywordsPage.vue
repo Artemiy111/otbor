@@ -246,7 +246,12 @@ const columns: ColumnDef<LexiconKeyword>[] = [
             () => [
               stat.alias,
               stat.typo ? h("span", { class: "ml-1 text-[10px] opacity-60" }, "опечатка") : null,
-              h("span", { class: "ml-1 text-muted-foreground" }, `${stat.share}%`)
+              h(
+                "span",
+                { class: "ml-1 text-muted-foreground" },
+                // Math.round in the API turns a tiny share into 0%; don't claim "never".
+                `${stat.share === 0 && stat.mentions > 0 ? "<1" : stat.share}% · ${formatNumber(stat.vacancies)}`
+              )
             ]
           )
         ),
