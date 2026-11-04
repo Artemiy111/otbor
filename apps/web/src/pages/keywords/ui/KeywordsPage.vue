@@ -127,6 +127,7 @@ const editingId = ref<string | undefined>(undefined)
 const termDraft = ref("")
 const newAliasesDraft = ref("")
 const aliasDraft = ref("")
+const aliasTypoDraft = ref(false)
 
 /** The keyword being edited, live from the list so alias changes show up at once. */
 const editing = computed(() =>
@@ -138,6 +139,7 @@ const openEditor = (keyword?: LexiconKeyword) => {
   termDraft.value = keyword?.term ?? ""
   newAliasesDraft.value = ""
   aliasDraft.value = ""
+  aliasTypoDraft.value = false
   saveMutation.reset()
   aliasMutation.reset()
   editorOpen.value = true
@@ -169,19 +171,26 @@ const saveMutation = useMutation({
 })
 
 const aliasMutation = useMutation({
-  mutation: async (change: { add: string } | { remove: string }) => {
-    if ("add" in change) return keywordApi.addAlias(editingId.value!, change.add)
-    return keywordApi.removeAlias(change.remove)
+  mutation: async (
+    change:
+      | { add: string; typo: boolean }
+      | { remove: string }
+      | { id: string; typo: boolean }
+  ) => {
+    if ("add" in change) return keywordApi.addAlias(editingId.value!, change.add, change.typo)
+    if ("remove" in change) return keywordApi.removeAlias(change.remove)
+    return keywordApi.setAliasTypo(change.id, change.typo)
   },
   onSuccess: async () => {
     aliasDraft.value = ""
+    aliasTypoDraft.value = false
     await invalidate()
   }
 })
 
 const addAlias = () => {
   const alias = aliasDraft.value.trim()
-  if (alias !== "") aliasMutation.mutate({ add: alias })
+  if (alias !== "") aliasMutation.mutate({ add: alias, typo: aliasTypoDraft.value })
 }
 
 const removeMutation = useMutation({
@@ -486,6 +495,16 @@ const columns: ColumnDef<LexiconKeyword>[] = [
                 {{ alias.alias }}
                 <button
                   type="button"
+                  class="text-[10px] underline-offset-2 hover:underline"
+                  :class="alias.typo ? '' : 'opacity-50'"
+                  :title="alias.typo ? 'Это опечатка. Нажмите, чтобы снять' : 'Отметить как опечатку'"
+                  :disabled="aliasMutation.isLoading.value"
+                  @click="aliasMutation.mutate({ id: alias.id, typo: !alias.typo })"
+                >
+                  {{ alias.typo ? "опечатка" : "не опечатка" }}
+                </button>
+                <button
+                  type="button"
                   class="opacity-60 hover:opacity-100"
                   title="Удалить алиас"
                   :disabled="aliasMutation.isLoading.value"
@@ -498,6 +517,10 @@ const columns: ColumnDef<LexiconKeyword>[] = [
                 Алиасов нет
               </span>
             </div>
+            <label class="flex items-center gap-2 text-xs text-muted-foreground">
+              <input v-model="aliasTypoDraft" type="checkbox" />
+              Новый алиас — опечатка
+            </label>
             <div class="flex gap-2">
               <Input
                 id="keyword-alias-new"

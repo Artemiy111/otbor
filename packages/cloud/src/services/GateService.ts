@@ -47,6 +47,10 @@ export interface GateServiceShape {
     readonly alias: string
     readonly typo?: boolean
   }) => Effect.Effect<LexiconKeyword, ApiError>
+  readonly lexiconAliasSetTypo: (input: {
+    readonly id: string
+    readonly typo: boolean
+  }) => Effect.Effect<LexiconKeyword, ApiError>
   readonly lexiconAliasRemove: (id: string) => Effect.Effect<boolean, ApiError>
   readonly lexiconRemove: (id: string) => Effect.Effect<boolean, ApiError>
 }
@@ -164,6 +168,11 @@ export class GateService extends Context.Service<GateService, GateServiceShape>(
           .asOwner((tx) => LexiconRepository.addAlias(tx, input))
           .pipe(Effect.mapError(toStorageError("lexicon.aliasAdd")))
 
+      const lexiconAliasSetTypo: GateServiceShape["lexiconAliasSetTypo"] = (input) =>
+        database
+          .asOwner((tx) => LexiconRepository.setAliasTypo(tx, input))
+          .pipe(Effect.mapError(toStorageError("lexicon.aliasSetTypo")))
+
       const lexiconAliasRemove: GateServiceShape["lexiconAliasRemove"] = (id) =>
         database
           .asOwner((tx) => LexiconRepository.removeAlias(tx, id))
@@ -180,6 +189,7 @@ export class GateService extends Context.Service<GateService, GateServiceShape>(
         lexiconList,
         lexiconUpsert,
         lexiconAliasAdd,
+        lexiconAliasSetTypo,
         lexiconAliasRemove,
         lexiconRemove
       })

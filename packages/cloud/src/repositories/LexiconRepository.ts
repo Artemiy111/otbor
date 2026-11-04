@@ -716,6 +716,23 @@ export const addAlias = (
     return yield* loadOne(tx, input.keywordId, owner!.term)
   })
 
+export const setAliasTypo = (
+  tx: Executor,
+  input: { readonly id: string; readonly typo: boolean }
+): RepoEffect<LexiconKeyword> =>
+  Effect.gen(function*() {
+    const [row] = yield* tx
+      .update(keywordAlias)
+      .set({ typo: input.typo })
+      .where(sql`${keywordAlias.id} = ${input.id}`)
+      .returning({ keywordId: keywordAlias.keywordId })
+    const [owner] = yield* tx
+      .select({ term: keyword.term })
+      .from(keyword)
+      .where(sql`${keyword.id} = ${row?.keywordId ?? null}`)
+    return yield* loadOne(tx, row!.keywordId, owner!.term)
+  })
+
 export const removeAlias = (tx: Executor, id: string): RepoEffect<boolean> =>
   tx
     .delete(keywordAlias)

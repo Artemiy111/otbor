@@ -25,8 +25,12 @@ export const keywordApi = {
     ),
   rematch: () => call((client) => client.LexiconRematch()),
   rematchStatus: () => call((client) => client.LexiconRematchStatus()),
-  addAlias: (keywordId: string, alias: string) =>
-    call((client) => client.LexiconAliasAdd({ keywordId: keywordId as KeywordId, alias })),
+  addAlias: (keywordId: string, alias: string, typo = false) =>
+    call((client) =>
+      client.LexiconAliasAdd({ keywordId: keywordId as KeywordId, alias, typo })
+    ),
+  setAliasTypo: (id: string, typo: boolean) =>
+    call((client) => client.LexiconAliasSetTypo({ id: id as KeywordAliasId, typo })),
   removeAlias: (id: string) =>
     call((client) => client.LexiconAliasRemove({ id: id as KeywordAliasId })),
   remove: (id: string) => call((client) => client.LexiconRemove({ id: id as KeywordId })),

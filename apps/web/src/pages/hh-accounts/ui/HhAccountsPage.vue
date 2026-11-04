@@ -4,7 +4,7 @@ import { useQuery, useQueryCache } from "@pinia/colada"
 import type { HhAccountRecord } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert } from "@lucide/vue"
-import { hhAccountApi, hhAccountColor, hhAccountKeys } from "@/entities/hh-account"
+import { hhAccountApi, hhAccountColor, hhAccountKeys, useDefaultAccount } from "@/entities/hh-account"
 import { RefreshButton } from "@/features/refresh-button"
 import { describeError, formatDate } from "@/shared/lib"
 import {
@@ -27,17 +27,43 @@ const accounts = computed<ReadonlyArray<HhAccountRecord>>(() => query.data.value
 
 const queryCache = useQueryCache()
 const actionError = ref<string | null>(null)
+const { defaultAccountId } = useDefaultAccount()
+
+/**
+ * The upsert payload that keeps every stored field. Optional fields left out
+ * of the request reach the server as `null` and would wipe the session profile
+ * and the name, so each one is sent explicitly.
+ */
+const keep = (account: HhAccountRecord) => ({
+  id: account.id,
+  label: account.label,
+  isDefault: account.isDefault,
+  sessionProfile: account.sessionProfile ?? undefined,
+  firstName: account.firstName ?? undefined,
+  lastName: account.lastName ?? undefined,
+  areaName: account.areaName ?? undefined
+})
 
 /** `null` goes back to the automatic colour. Other fields are passed through unchanged. */
 const saveColor = async (account: HhAccountRecord, color: string | null) => {
   actionError.value = null
   try {
-    await hhAccountApi.upsert({
-      id: account.id,
-      label: account.label,
-      isDefault: account.isDefault,
-      color
-    })
+    await hhAccountApi.upsert({ ...keep(account), color })
+    await queryCache.invalidateQueries({ key: hhAccountKeys.all })
+  } catch (error) {
+    actionError.value = describeError(error)
+  }
+}
+
+/**
+ * Makes the account the default one for the CLI, the harness and the header
+ * switcher (the switcher keeps its own pick in the browser, so it is updated too).
+ */
+const makeDefault = async (account: HhAccountRecord) => {
+  actionError.value = null
+  try {
+    await hhAccountApi.upsert({ ...keep(account), isDefault: true })
+    defaultAccountId.value = account.id
     await queryCache.invalidateQueries({ key: hhAccountKeys.all })
   } catch (error) {
     actionError.value = describeError(error)
@@ -102,9 +128,18 @@ const columns: ColumnDef<HhAccountRecord>[] = [
     accessorFn: (row) => (row.isDefault ? "да" : "нет"),
     header: sortableHeader<HhAccountRecord>("По умолчанию"),
     cell: ({ row }) =>
-      h(Badge, { variant: row.original.isDefault ? "success" : "secondary" }, () =>
-        row.original.isDefault ? "Да" : "Нет"
-      )
+      row.original.isDefault
+        ? h(Badge, { variant: "success" }, () => "Да")
+        : h(
+            Button,
+            {
+              variant: "outline",
+              size: "sm",
+              class: "h-7 px-2 text-xs",
+              onClick: () => void makeDefault(row.original)
+            },
+            () => "Сделать основным"
+          )
   },
   {
     accessorKey: "createdAt",
@@ -127,7 +162,7 @@ const refresh = () => void query.refetch()
 
     <Alert v-if="actionError" variant="destructive" class="mb-4">
       <CircleAlert />
-      <AlertTitle>Не удалось сохранить цвет</AlertTitle>
+      <AlertTitle>Не удалось сохранить аккаунт</AlertTitle>
       <AlertDescription>{{ actionError }}</AlertDescription>
     </Alert>
 

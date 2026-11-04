@@ -773,6 +773,12 @@ export const LexiconAliasAdd = Rpc.make("LexiconAliasAdd", {
   error: ApiError
 })
 
+export const LexiconAliasSetTypo = Rpc.make("LexiconAliasSetTypo", {
+  payload: Schema.Struct({ id: KeywordAliasId, typo: Schema.Boolean }),
+  success: LexiconKeyword,
+  error: ApiError
+})
+
 export const LexiconAliasRemove = Rpc.make("LexiconAliasRemove", {
   payload: Schema.Struct({ id: KeywordAliasId }),
   success: Schema.Struct({ id: KeywordAliasId, deleted: Schema.Boolean }),
@@ -1298,6 +1304,7 @@ export const OtborRpcs = RpcGroup.make(
   LexiconRematch,
   LexiconRematchStatus,
   LexiconAliasAdd,
+  LexiconAliasSetTypo,
   LexiconAliasRemove,
   LexiconRemove,
   DecisionsList,

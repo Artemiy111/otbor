@@ -186,6 +186,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
       LexiconRematch: () => corpus.rematchStart(),
       LexiconRematchStatus: () => corpus.rematchStatus(),
       LexiconAliasAdd: (payload) => gate.lexiconAliasAdd(payload),
+      LexiconAliasSetTypo: (payload) => gate.lexiconAliasSetTypo(payload),
       LexiconAliasRemove: ({ id }) =>
         gate.lexiconAliasRemove(id).pipe(Effect.map((deleted) => ({ id, deleted }))),
       LexiconRemove: ({ id }) =>
