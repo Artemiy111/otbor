@@ -112,7 +112,7 @@ if (!enabled || serverUrl === null) {
       hhAccountId: string,
       externalId: string,
       title: string,
-      isActive = false
+      isActive = true
     ) =>
       support.runAs(
         userId,
