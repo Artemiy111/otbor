@@ -48,3 +48,10 @@ export {
   testTaskLabel,
   type ConditionFact
 } from "./vacancy-facts"
+export {
+  employmentFormLabel,
+  experienceLabel,
+  titleVerdictLabel,
+  workFormatText
+} from "./vacancy-labels"
+export { makeResumeMatcher } from "./resume-match"

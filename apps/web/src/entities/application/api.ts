@@ -4,7 +4,10 @@ import type {
   ApplicationId,
   ApplicationRecord,
   DecisionId,
-  HhAccountId
+  HhAccountId,
+  KitAnswer,
+  KitRecord,
+  VacancyId
 } from "@otbor/contract"
 import { call } from "@/shared/api"
 
@@ -21,7 +24,37 @@ export interface ApplicationCreateFromDecisionInput {
   readonly mode?: "drafts" | "auto"
 }
 
+export interface ApplicationSetKitInput {
+  readonly applicationId: string
+  readonly formHash: string
+  readonly letter: string | null
+  readonly answers: ReadonlyArray<KitAnswer>
+}
+
 export const applicationApi = {
+  createManual: (input: {
+    readonly vacancyId: string
+    readonly hhAccountId: string
+    readonly resumeId?: string
+  }): Promise<{ readonly application: ApplicationRecord; readonly created: boolean }> =>
+    call((client) =>
+      client.ApplicationsCreateManual({
+        vacancyId: input.vacancyId as VacancyId,
+        hhAccountId: input.hhAccountId as HhAccountId,
+        resumeId: input.resumeId
+      })
+    ),
+  setKit: (input: ApplicationSetKitInput): Promise<KitRecord> =>
+    call((client) =>
+      client.ApplicationsSetKit({
+        applicationId: input.applicationId as ApplicationId,
+        formHash: input.formHash,
+        letter: input.letter,
+        answers: input.answers
+      })
+    ),
+  approve: (id: string): Promise<ApplicationRecord> =>
+    call((client) => client.ApplicationsApprove({ id: id as ApplicationId })),
   syncRun: (hhAccountId: string): Promise<NegotiationsSyncStatus> =>
     call((client) => client.NegotiationsSyncRun({ hhAccountId: hhAccountId as HhAccountId })),
   syncStatus: (hhAccountId: string): Promise<NegotiationsSyncStatus> =>
