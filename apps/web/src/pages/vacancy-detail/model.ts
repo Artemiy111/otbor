@@ -78,8 +78,6 @@ export const useVacancyPage = (id: () => string) => {
   /** hh fields, text detectors and the model, lined up per parameter. */
   const recon = computed(() => (data.value ? buildRecon(data.value, analysis.value?.facts ?? null) : []))
   const reconMap = computed(() => reconByKey(recon.value))
-  // Which presentation of the facts block is shown (a prototype switch).
-  const passportView = useStorage<"chips" | "matrix" | "digest">("otbor.vacancy-passport", "chips")
   const isLoading = computed(() => vacancyQuery.isLoading.value)
   const errorText = computed(() =>
     vacancyQuery.error.value === null ? null : describeError(vacancyQuery.error.value)
@@ -132,7 +130,6 @@ export const useVacancyPage = (id: () => string) => {
     analysisPending: computed(() => analysisQuery.isPending.value),
     recon,
     reconMap,
-    passportView,
     decisions,
     applications,
     isLoading,

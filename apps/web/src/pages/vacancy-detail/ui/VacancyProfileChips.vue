@@ -30,7 +30,7 @@ const valueText = (row: ReconRow): { text: string; note: string | null } => {
         .filter((t): t is string => t !== null && t !== texts[0])
     )
   ]
-  return { text: texts[0] ?? row.label, note: wordings.length > 0 ? `по тексту: ${wordings.join(", ")}` : null }
+  return { text: texts[0] === undefined || texts[0] === "да" ? row.label : texts[0], note: wordings.length > 0 ? `по тексту: ${wordings.join(", ")}` : null }
 }
 
 const PROFILE_LABEL: Record<string, string> = {

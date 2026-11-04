@@ -12,7 +12,6 @@ import VacancyLayoutFocus from "./VacancyLayoutFocus.vue"
 import VacancyLayoutSwitch from "./VacancyLayoutSwitch.vue"
 import VacancyMetaLine from "./VacancyMetaLine.vue"
 import VacancyProfileChips from "./VacancyProfileChips.vue"
-import VacancyPassportSwitch from "./VacancyPassportSwitch.vue"
 import VacancyStatusBar from "./VacancyStatusBar.vue"
 
 const props = defineProps<{ id: string }>()
@@ -70,7 +69,6 @@ const data = page.data
           <VacancyProfileChips :data="data" :recon="page.recon.value" />
         </div>
         <div class="flex flex-wrap items-center gap-3">
-          <VacancyPassportSwitch v-model="page.passportView.value" />
           <VacancyLayoutSwitch v-model="layout" />
         </div>
       </div>

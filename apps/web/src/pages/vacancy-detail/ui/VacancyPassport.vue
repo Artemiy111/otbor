@@ -9,7 +9,6 @@ import {
   formatNumber,
   RECON_GROUPS,
   RECON_SOURCES,
-  stanceOf,
   type ReconGroup,
   type ReconRow
 } from "@/shared/lib"
@@ -19,7 +18,6 @@ import ReconDots from "./ReconDots.vue"
 
 const props = defineProps<{ page: VacancyPage; data: VacancyDetail; contacts: ReadonlyArray<ContactRecord> }>()
 
-const variant = computed(() => props.page.passportView.value)
 const rows = computed(() => props.page.recon.value)
 // The profile lives in the header chips; this block is about the response and the risks.
 const order: ReadonlyArray<ReconGroup> = ["apply", "risk", "perk"]
@@ -80,19 +78,6 @@ const chipClass = (row: ReconRow): string => {
   return "border-border bg-card"
 }
 
-const cellText = (row: ReconRow, id: "hh" | "text" | "ai"): string => {
-  const cell = row.cells[id]
-  if (cell.norm === null && cell.text === null) return "—"
-  if (cell.norm === "нет") return "нет"
-  return cell.text ?? "да"
-}
-const cellClass = (row: ReconRow, id: "hh" | "text" | "ai"): string => {
-  const stance = stanceOf(row, id)
-  if (stance === "silent") return "text-muted-foreground/40"
-  if (stance === "other") return row.conflict ? "text-red-300" : "text-muted-foreground"
-  return row.conflict ? "text-amber-200" : "text-foreground"
-}
-
 const wanted = new Set(["probation", "interviewStages", "vacation", "sickLeave"])
 const numbers = computed(() =>
   (props.data.facts?.text.conditions ? conditionFacts(props.data.facts.text.conditions) : [])
@@ -122,8 +107,8 @@ const cap = "text-[10px] font-semibold uppercase tracking-wide text-muted-foregr
 
     <p v-if="all.length === 0" class="text-xs text-muted-foreground">Особых требований к отклику, рисков и плюсов не найдено.</p>
 
-    <!-- A: chips with a three-letter source mark -->
-    <div v-else-if="variant === 'chips'" class="space-y-1.5">
+    <!-- chips with a source mark per parameter -->
+    <div v-else class="space-y-1.5">
       <div v-for="entry in groups" :key="entry.group" class="flex flex-wrap items-center gap-1.5">
         <span :class="cap" class="w-full sm:w-auto sm:min-w-[5.5rem]">{{ entry.title }}</span>
         <span
@@ -136,66 +121,6 @@ const cap = "text-[10px] font-semibold uppercase tracking-wide text-muted-foregr
           {{ chipLabel(row) }}
           <ReconDots :row="row" />
         </span>
-      </div>
-    </div>
-
-    <!-- B: matrix -->
-    <div v-else-if="variant === 'matrix'" class="overflow-x-auto rounded-lg border border-border">
-      <table class="w-full text-xs">
-        <thead class="bg-muted/40 text-muted-foreground">
-          <tr>
-            <th class="px-2 py-1 text-left font-medium">Параметр</th>
-            <th v-for="source in RECON_SOURCES" :key="source.id" class="px-2 py-1 text-left font-medium" :title="source.name">
-              {{ source.short }}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <template v-for="entry in groups" :key="entry.group">
-            <tr>
-              <td colspan="4" class="bg-muted/20 px-2 pb-0.5 pt-1.5" :class="cap">{{ entry.title }}</td>
-            </tr>
-            <tr
-              v-for="row in entry.rows"
-              :key="row.key"
-              class="border-t border-border/50"
-              :class="row.conflict ? 'bg-amber-500/5' : ''"
-              :title="row.evidence ? `«${row.evidence}»` : undefined"
-            >
-              <td class="px-2 py-0.5">
-                <span v-if="row.conflict" class="mr-1 text-amber-300">≠</span>{{ row.label }}
-              </td>
-              <td v-for="source in RECON_SOURCES" :key="source.id" class="px-2 py-0.5" :class="cellClass(row, source.id)">
-                {{ cellText(row, source.id) }}
-              </td>
-            </tr>
-          </template>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- C: digest: only what needs attention, the rest folded -->
-    <div v-else class="space-y-2">
-      <div v-if="conflicts.length > 0" class="rounded-lg border border-amber-500/40 bg-amber-500/5 p-2">
-        <div :class="cap" class="mb-1 text-amber-300">Источники расходятся</div>
-        <ul class="space-y-0.5 text-xs">
-          <li v-for="row in conflicts" :key="row.key" :title="row.evidence">
-            <b>{{ row.label }}:</b>
-            <template v-for="(item, index) in RECON_SOURCES" :key="item.id">
-              <span class="ml-2 text-muted-foreground">{{ item.short }}</span> {{ cellText(row, item.id) }}
-            </template>
-          </li>
-        </ul>
-      </div>
-      <div v-for="entry in groups" :key="entry.group" class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span :class="cap">{{ entry.title }}</span>
-        <span
-          v-for="row in entry.rows.filter((r) => !r.conflict)"
-          :key="row.key"
-          :title="tip(row)"
-          class="rounded px-1.5 py-0.5 text-xs"
-          :class="entry.group === 'risk' ? 'bg-red-500/10 text-red-200' : entry.group === 'perk' ? 'bg-emerald-500/10 text-emerald-200' : 'bg-muted/50'"
-        >{{ chipLabel(row) }}</span>
       </div>
     </div>
 
