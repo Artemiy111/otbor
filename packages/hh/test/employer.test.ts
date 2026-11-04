@@ -39,6 +39,59 @@ describe("extractEmployer", () => {
     })
   })
 
+  test("reads the full profile from the real employerInfo shape", async () => {
+    const draft = await Effect.runPromise(
+      extractEmployer(
+        page({
+          employerInfo: {
+            id: 1455,
+            name: "HeadHunter",
+            category: "company",
+            sizeCategory: null,
+            address: "Россия",
+            site: { hostname: "hh.ru", href: "https://hh.ru/" },
+            industries: [{ id: 7, trl: "Информационные технологии", items: [541] }],
+            hrBrand: null,
+            badges: [{ type: "TOP", description: "Лучший", year: 2025 }],
+            description: "&lt;p&gt;Компания &lt;strong&gt;HeadHunter&lt;/strong&gt; &amp;amp; друзья&lt;/p&gt;",
+            accreditedITEmployer: true,
+                  accepted: true,
+            isTrusted: true,
+            isIdentifiedByEsia: false,
+                        employerCountryCode: "RU"
+          },
+          employerOrganizationSchema: {
+            name: "HeadHunter",
+            logoUrl: "/employer-logo/1.png",
+            siteUrl: "https://hh.ru/",
+            aggregateRating: { ratingValue: "4.5", ratingCount: 255 }
+          },
+          activeEmployerVacancyCount: 40,
+          employerHeaderPictureWebPath: "/branding-pictures/1.jpeg"
+        }),
+        { externalId: "1455" }
+      )
+    )
+
+    expect(draft).toMatchObject({
+      externalId: "1455",
+      name: "HeadHunter",
+      rating: 4.5,
+      reviewsCount: 255,
+      siteUrl: "https://hh.ru/",
+      siteHost: "hh.ru",
+      logoUrl: "https://hh.ru/employer-logo/1.png",
+      industries: ["Информационные технологии"],
+      category: "company",
+      address: "Россия",
+      trusted: true,
+      accreditedIt: true,
+      activeVacancies: 40,
+      descriptionText: "Компания HeadHunter & друзья",
+      badges: [{ type: "TOP", description: "Лучший", url: null, year: 2025 }]
+    })
+  })
+
   test("falls back to JSON-LD when the initial state is absent", async () => {
     const html = `<html><head><script type="application/ld+json">${JSON.stringify({
       "@type": "Organization",

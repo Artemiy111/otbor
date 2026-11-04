@@ -1,4 +1,4 @@
-import type { BlacklistScope, EmployerBlacklistView, EmployerHydrationMissing, EmployerHydrationTarget, EmployerSummary } from "@otbor/contract"
+import type { BlacklistScope, EmployerBlacklistView, EmployerProfile, EmployerHydrationMissing, EmployerHydrationTarget, EmployerSummary } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
@@ -169,6 +169,40 @@ export const list = (tx: Executor, filter: EmployerFilter = {}) => {
   })
 }
 
+const profileSelect = sql`
+  select e.category, e.size_category, e.address, e.site_host, e.description_text,
+         e.badges, e.trusted, e.accredited_it, e.active_vacancies, e.profile_fetched_at
+  from employer e
+`
+
+const toProfile = (row: Record<string, unknown>): EmployerProfile | null => {
+  if (row.profile_fetched_at === null || row.profile_fetched_at === undefined) return null
+  const text = (value: unknown) => (typeof value === "string" ? value : null)
+  const flag = (value: unknown) => (typeof value === "boolean" ? value : null)
+  const int = (value: unknown) => (value === null || value === undefined ? null : Number(value))
+  const badges = Array.isArray(row.badges) ? row.badges : []
+  return {
+    category: text(row.category),
+    sizeCategory: text(row.size_category),
+    address: text(row.address),
+    siteHost: text(row.site_host),
+    descriptionText: text(row.description_text),
+    badges: badges.map((item) => {
+      const badge = (item ?? {}) as Record<string, unknown>
+      return {
+        type: text(badge.type),
+        description: text(badge.description),
+        url: text(badge.url),
+        year: int(badge.year)
+      }
+    }),
+    trusted: flag(row.trusted),
+    accreditedIt: flag(row.accredited_it),
+    activeVacancies: int(row.active_vacancies),
+    fetchedAt: isoOf(row.profile_fetched_at)
+  }
+}
+
 export const findById = (
   tx: Executor,
   id: string,
@@ -185,8 +219,16 @@ export const findById = (
       Effect.flatMap((result) => {
         const row = result.rows[0] as unknown as EmployerRow | undefined
         if (row === undefined) return Effect.succeed(null)
-        return VacancyRepository.listByEmployer(tx, id).pipe(
-          Effect.map((vacancies) => ({ employer: toSummary(row), vacancies }))
+        return tx.execute(sql`${profileSelect} where e.id = ${id}`).pipe(
+          Effect.flatMap((profileResult) =>
+            VacancyRepository.listByEmployer(tx, id).pipe(
+              Effect.map((vacancies) => ({
+                employer: toSummary(row),
+                profile: toProfile((profileResult.rows[0] ?? {}) as Record<string, unknown>),
+                vacancies
+              }))
+            )
+          )
         )
       })
     )
@@ -344,43 +386,74 @@ export interface EmployerProfilePatch {
   readonly siteUrl?: string | null
   readonly logoUrl?: string | null
   readonly industries?: ReadonlyArray<string>
+  readonly category?: string | null
+  readonly sizeCategory?: string | null
+  readonly address?: string | null
+  readonly siteHost?: string | null
+  readonly descriptionText?: string | null
+  readonly badges?: ReadonlyArray<unknown>
+  readonly trusted?: boolean | null
+  readonly accreditedIt?: boolean | null
+  readonly activeVacancies?: number | null
 }
 
+/**
+ * Profile write. A field the page did not carry keeps the stored value
+ * (`coalesce`), so a thinner page never wipes a fuller one.
+ */
 export const applyProfile = (
   tx: Executor,
   id: string,
   patch: EmployerProfilePatch
-): RepoEffect<void> =>
-  tx
+): RepoEffect<void> => {
+  const industries = JSON.stringify(patch.industries ?? [])
+  const badges = JSON.stringify(patch.badges ?? [])
+
+  // Same expression is used for the update and for the "did anything change" check.
+  const keep = (column: ReturnType<typeof sql.raw>, value: unknown) =>
+    sql`coalesce(${value ?? null}, ${column})`
+  const col = (name: string) => sql.raw(`e.${name}`)
+  const newIndustries = sql`case when ${industries}::jsonb = '[]'::jsonb then e.industries else ${industries}::jsonb end`
+  const newBadges = sql`case when ${badges}::jsonb = '[]'::jsonb then e.badges else ${badges}::jsonb end`
+
+  return tx
     .execute(sql`
       update employer as e set
-        name = coalesce(${patch.name ?? null}, e.name),
-        rating = coalesce(${patch.rating ?? null}, e.rating),
-        reviews_count = coalesce(${patch.reviewsCount ?? null}, e.reviews_count),
-        recommendations_percent = coalesce(${patch.recommendationsPercent ?? null}, e.recommendations_percent),
-        site_url = coalesce(${patch.siteUrl ?? null}, e.site_url),
-        logo_url = coalesce(${patch.logoUrl ?? null}, e.logo_url),
-        industries = case
-          when ${JSON.stringify(patch.industries ?? [])}::jsonb = '[]'::jsonb then e.industries
-          else ${JSON.stringify(patch.industries ?? [])}::jsonb
-        end,
+        name = ${keep(col("name"), patch.name)},
+        rating = ${keep(col("rating"), patch.rating)},
+        reviews_count = ${keep(col("reviews_count"), patch.reviewsCount)},
+        recommendations_percent = ${keep(col("recommendations_percent"), patch.recommendationsPercent)},
+        site_url = ${keep(col("site_url"), patch.siteUrl)},
+        logo_url = ${keep(col("logo_url"), patch.logoUrl)},
+        industries = ${newIndustries},
+        category = ${keep(col("category"), patch.category)},
+        size_category = ${keep(col("size_category"), patch.sizeCategory)},
+        address = ${keep(col("address"), patch.address)},
+        site_host = ${keep(col("site_host"), patch.siteHost)},
+        description_text = ${keep(col("description_text"), patch.descriptionText)},
+        badges = ${newBadges},
+        trusted = ${keep(col("trusted"), patch.trusted)},
+        accredited_it = ${keep(col("accredited_it"), patch.accreditedIt)},
+        active_vacancies = ${keep(col("active_vacancies"), patch.activeVacancies)},
+        profile_fetched_at = now(),
         -- A page that only repeats what we already store must not push the
         -- company to the back of the oldest-first queue for another month.
         updated_at = case
           when row(
             e.name, e.rating, e.reviews_count, e.recommendations_percent,
-            e.site_url, e.logo_url, e.industries
+            e.site_url, e.logo_url, e.industries, e.description_text,
+            e.category, e.address
           ) is distinct from row(
-            coalesce(${patch.name ?? null}, e.name),
-            coalesce(${patch.rating ?? null}, e.rating),
-            coalesce(${patch.reviewsCount ?? null}, e.reviews_count),
-            coalesce(${patch.recommendationsPercent ?? null}, e.recommendations_percent),
-            coalesce(${patch.siteUrl ?? null}, e.site_url),
-            coalesce(${patch.logoUrl ?? null}, e.logo_url),
-            case
-              when ${JSON.stringify(patch.industries ?? [])}::jsonb = '[]'::jsonb then e.industries
-              else ${JSON.stringify(patch.industries ?? [])}::jsonb
-            end
+            ${keep(col("name"), patch.name)},
+            ${keep(col("rating"), patch.rating)},
+            ${keep(col("reviews_count"), patch.reviewsCount)},
+            ${keep(col("recommendations_percent"), patch.recommendationsPercent)},
+            ${keep(col("site_url"), patch.siteUrl)},
+            ${keep(col("logo_url"), patch.logoUrl)},
+            ${newIndustries},
+            ${keep(col("description_text"), patch.descriptionText)},
+            ${keep(col("category"), patch.category)},
+            ${keep(col("address"), patch.address)}
           )
           then now()
           else e.updated_at
@@ -388,3 +461,4 @@ export const applyProfile = (
       where e.id = ${id}
     `)
     .pipe(Effect.asVoid)
+}

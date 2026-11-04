@@ -441,8 +441,25 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
     employer_get: Effect.fn("mcp.employer_get")(function*(params) {
       const detail = yield* run(rpc.EmployersGet({ id: params.id as EmployerId }))
       const max = clamp(params.vacanciesLimit, 10, 50)
+      const maxChars = clamp(params.maxChars, 4000, 20000)
+      const profile = detail.profile ?? null
+      const about = profile?.descriptionText == null ? null : truncate(profile.descriptionText, maxChars)
       return {
         employer: employerBrief(detail.employer),
+        profile: profile === null
+          ? null
+          : {
+            category: profile.category,
+            address: profile.address,
+            siteHost: profile.siteHost,
+            description: about?.text ?? null,
+            truncated: about?.truncated ?? false,
+            badges: profile.badges.flatMap((b) => (b.description ?? b.type) === null ? [] : [(b.description ?? b.type)!]),
+            trusted: profile.trusted,
+            accreditedIt: profile.accreditedIt,
+            activeVacancies: profile.activeVacancies,
+            fetchedAt: profile.fetchedAt
+          },
         vacancies: detail.vacancies.slice(0, max).map(vacancyBrief),
         vacanciesTotal: detail.vacancies.length
       }

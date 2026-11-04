@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect"
 import { initialStatePayload } from "./extract.ts"
 import { HhParseError } from "./errors.ts"
+import { decodeEntities, htmlToText } from "./text.ts"
 
 /**
  * hh employer pages carry their data in the same `HH-Lux-InitialState`
@@ -19,6 +20,24 @@ export interface EmployerProfileDraft {
   readonly siteUrl: string | null
   readonly logoUrl: string | null
   readonly industries: ReadonlyArray<string>
+  /** `company`, `agency`, `private_recruiter`... as hh names the employer kind. */
+  readonly category: string | null
+  readonly sizeCategory: string | null
+  readonly address: string | null
+  readonly siteHost: string | null
+  /** The "about the company" text, tags stripped. */
+  readonly descriptionText: string | null
+  readonly badges: ReadonlyArray<EmployerBadge>
+  readonly trusted: boolean | null
+  readonly accreditedIt: boolean | null
+  readonly activeVacancies: number | null
+}
+
+export interface EmployerBadge {
+  readonly type: string | null
+  readonly description: string | null
+  readonly url: string | null
+  readonly year: number | null
 }
 
 export interface ExtractEmployerOptions {
@@ -35,6 +54,8 @@ const asRecord = (value: Json): Record<string, Json> | null =>
 
 const asString = (value: Json): string | null =>
   typeof value === "string" && value.trim() !== "" ? value.trim() : null
+
+const asBoolean = (value: Json): boolean | null => (typeof value === "boolean" ? value : null)
 
 const asNumber = (value: Json): number | null => {
   if (typeof value === "number" && Number.isFinite(value)) return value
@@ -156,6 +177,70 @@ const mergeCandidate = (
   }
 }
 
+const badgesOf = (value: Json): EmployerBadge[] => {
+  const node = asRecord(value)
+  const list = Array.isArray(value) ? value : Array.isArray(node?.badge) ? node.badge : []
+  return list.flatMap((item) => {
+    const badge = asRecord(item)
+    if (badge === null) return []
+    return [{
+      type: asString(badge.type) ?? asString(badge["@type"]),
+      description: asString(badge.description),
+      url: asString(badge.url) ?? asString(badge["@url"]),
+      year: asNumber(badge.year)
+    }]
+  })
+}
+
+/**
+ * hh double-escapes the description inside the state JSON (`&lt;p&gt;`), so a
+ * string without a tag but with `&lt;` is decoded once to real HTML.
+ */
+const descriptionHtmlOf = (value: Json): string | null => {
+  const raw = asString(value)
+  if (raw === null) return null
+  const html = !raw.includes("<") && raw.includes("&lt;") ? decodeEntities(raw) : raw
+  return html.trim() === "" ? null : html
+}
+
+/**
+ * The real page shape: `employerInfo` (profile), `employerOrganizationSchema`
+ * (rating, logo, site), `employerLogo`, `activeEmployerVacancyCount`. Returns
+ * null when the state has none of it so the heuristic walk can take over.
+ */
+const fromEmployerState = (
+  state: Record<string, Json>,
+  externalId: string
+): EmployerProfileDraft | null => {
+  const info = asRecord(state.employerInfo)
+  if (info === null) return null
+  const organization = asRecord(state.employerOrganizationSchema)
+  const aggregate = asRecord(organization?.aggregateRating)
+  const site = asRecord(info.site)
+  const descriptionHtml = descriptionHtmlOf(info.description)
+  const descriptionText = descriptionHtml === null ? null : htmlToText(descriptionHtml) || null
+
+  return {
+    externalId: asString(info.id) ?? externalId,
+    name: asString(info.name) ?? asString(organization?.name),
+    rating: aggregate === null ? null : asNumber(aggregate.ratingValue),
+    reviewsCount: aggregate === null ? null : asNumber(aggregate.ratingCount),
+    recommendationsPercent: null,
+    siteUrl: absoluteUrl(site?.href) ?? absoluteUrl(organization?.siteUrl),
+    logoUrl: absoluteUrl(organization?.logoUrl) ?? absoluteUrl(asRecord(state.employerLogo)?.logoUrl),
+    industries: industriesOf(info),
+    category: asString(info.category),
+    sizeCategory: asString(info.sizeCategory),
+    address: asString(info.address),
+    siteHost: asString(site?.hostname),
+    descriptionText,
+    badges: badgesOf(info.badges),
+    trusted: asBoolean(info.isTrusted),
+    accreditedIt: asBoolean(info.accreditedITEmployer),
+    activeVacancies: asNumber(state.activeEmployerVacancyCount),
+  }
+}
+
 const JSON_LD = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
 
 const fromJsonLd = (html: string, externalId: string | null): EmployerProfileDraft[] => {
@@ -188,12 +273,25 @@ const fromJsonLd = (html: string, externalId: string | null): EmployerProfileDra
         recommendationsPercent: null,
         siteUrl: absoluteUrl(record.url),
         logoUrl: absoluteUrl(record.logo) ?? absoluteUrl(logo?.url),
-        industries: industriesOf(record)
+        industries: industriesOf(record),
+        ...EMPTY_PROFILE
       })
     }
   }
   return drafts
 }
+
+const EMPTY_PROFILE = {
+  category: null,
+  sizeCategory: null,
+  address: null,
+  siteHost: null,
+  descriptionText: null,
+  badges: [],
+  trusted: null,
+  accreditedIt: null,
+  activeVacancies: null,
+} as const
 
 const emptyDraft = (externalId: string): EmployerProfileDraft => ({
   externalId,
@@ -203,7 +301,8 @@ const emptyDraft = (externalId: string): EmployerProfileDraft => ({
   recommendationsPercent: null,
   siteUrl: null,
   logoUrl: null,
-  industries: []
+  industries: [],
+  ...EMPTY_PROFILE
 })
 
 const hasData = (draft: EmployerProfileDraft): boolean =>
@@ -213,7 +312,8 @@ const hasData = (draft: EmployerProfileDraft): boolean =>
   draft.recommendationsPercent !== null ||
   draft.siteUrl !== null ||
   draft.logoUrl !== null ||
-  draft.industries.length > 0
+  draft.industries.length > 0 ||
+  draft.descriptionText !== null
 
 /**
  * Reads profile fields from an employer page. Tolerates unknown state shapes:
@@ -235,6 +335,10 @@ export const extractEmployer = (
       } catch {
         json = null
       }
+
+      const state = asRecord(json)
+      const real = state === null ? null : fromEmployerState(state, externalId)
+      if (real !== null && hasData(real)) return real
 
       if (json !== null) {
         const candidates: Candidate[] = []
@@ -267,7 +371,8 @@ export const EmployerProfile = Schema.Struct({
   recommendationsPercent: Schema.NullOr(Schema.Int),
   siteUrl: Schema.NullOr(Schema.String),
   logoUrl: Schema.NullOr(Schema.String),
-  industries: Schema.Array(Schema.String)
+  industries: Schema.Array(Schema.String),
+  descriptionText: Schema.NullOr(Schema.String)
 })
 
 export interface EmployerReviewsWidget {

@@ -72,6 +72,34 @@ watch(
 const data = computed(() => query.data.value)
 const employer = computed(() => data.value?.employer)
 const vacancies = computed(() => data.value?.vacancies ?? [])
+const profile = computed(() => data.value?.profile ?? null)
+
+const CATEGORY_LABELS: Record<string, string> = {
+  company: "Организация",
+  agency: "Кадровое агентство",
+  project_director: "Проект",
+  private_recruiter: "Частный рекрутер",
+  private_individual: "Частное лицо",
+  self_employed: "Самозанятый"
+}
+
+/** Short facts from the hh profile; flags that are not true are left out. */
+const profileFacts = computed(() => {
+  const p = profile.value
+  if (p === null) return []
+  const facts: Array<string> = []
+  if (p.category !== null) facts.push(CATEGORY_LABELS[p.category.toLowerCase()] ?? p.category)
+  if (p.sizeCategory !== null) facts.push(p.sizeCategory)
+  if (p.address !== null) facts.push(p.address)
+  if (p.activeVacancies !== null) facts.push(`${formatNumber(p.activeVacancies)} вакансий на hh`)
+  if (p.trusted === true) facts.push("надёжный работодатель")
+  if (p.accreditedIt === true) facts.push("аккредитованная IT-компания")
+  for (const badge of p.badges) {
+    const label = badge.description ?? badge.type
+    if (label !== null) facts.push(badge.year === null ? label : `${label}, ${badge.year}`)
+  }
+  return facts
+})
 
 const { accounts } = useDefaultAccount()
 
@@ -186,6 +214,24 @@ const errorText = computed(() =>
               <span>external_id: <code class="font-mono">{{ employer.externalId }}</code></span>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card v-if="profile !== null" class="mt-4">
+        <CardHeader>
+          <CardTitle>О компании</CardTitle>
+          <CardDescription>Описание со страницы работодателя на hh.ru.</CardDescription>
+        </CardHeader>
+        <CardContent class="space-y-3">
+          <div v-if="profileFacts.length > 0" class="flex flex-wrap gap-1.5">
+            <Badge v-for="fact in profileFacts" :key="fact" variant="secondary" class="font-normal">
+              {{ fact }}
+            </Badge>
+          </div>
+          <p v-if="profile.descriptionText" class="whitespace-pre-line text-sm leading-relaxed">
+            {{ profile.descriptionText }}
+          </p>
+          <p v-else class="text-sm text-muted-foreground">Компания не заполнила описание.</p>
         </CardContent>
       </Card>
 

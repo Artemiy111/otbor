@@ -354,13 +354,28 @@ export const EmployersList = readTool("employers_list", {
 })
 
 export const EmployerGet = readTool("employer_get", {
-  description: "One employer with its rating, reviews and the vacancies we hold for it.",
+  description:
+    "One employer with its rating, reviews, the company profile from its hh page (about text, category, address, " +
+    "trust flags; `profile` is null until the page was hydrated) and the vacancies we hold for it.",
   parameters: Schema.Struct({
     id: Schema.String.annotate({ description: "Employer id (UUID)" }),
-    vacanciesLimit: limit("Max vacancies to include (default 10, max 50)")
+    vacanciesLimit: limit("Max vacancies to include (default 10, max 50)"),
+    maxChars: limit("Max characters of the company description (default 4000, max 20000)")
   }),
   success: Schema.Struct({
     employer: EmployerBrief,
+    profile: Schema.NullOr(Schema.Struct({
+      category: Schema.NullOr(Schema.String),
+      address: Schema.NullOr(Schema.String),
+      siteHost: Schema.NullOr(Schema.String),
+      description: Schema.NullOr(Schema.String),
+      truncated: Schema.Boolean,
+      badges: Schema.Array(Schema.String),
+      trusted: Schema.NullOr(Schema.Boolean),
+      accreditedIt: Schema.NullOr(Schema.Boolean),
+      activeVacancies: Schema.NullOr(Schema.Int),
+      fetchedAt: Schema.NullOr(Schema.String)
+    })),
     vacancies: Schema.Array(VacancyBrief),
     vacanciesTotal: Schema.Int
   })

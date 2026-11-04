@@ -193,8 +193,34 @@ export const EmployerSummary = Schema.Struct({
 
 export type EmployerSummary = typeof EmployerSummary.Type
 
+export const EmployerBadge = Schema.Struct({
+  type: Schema.NullOr(Schema.String),
+  description: Schema.NullOr(Schema.String),
+  url: Schema.NullOr(Schema.String),
+  year: Schema.NullOr(Schema.Number)
+})
+export type EmployerBadge = typeof EmployerBadge.Type
+
+/** What hh's `/employer/{id}` page says about the company. Null fields were not on the page. */
+export const EmployerProfile = Schema.Struct({
+  category: Schema.NullOr(Schema.String),
+  sizeCategory: Schema.NullOr(Schema.String),
+  address: Schema.NullOr(Schema.String),
+  siteHost: Schema.NullOr(Schema.String),
+  descriptionText: Schema.NullOr(Schema.String),
+  badges: Schema.Array(EmployerBadge),
+  trusted: Schema.NullOr(Schema.Boolean),
+  accreditedIt: Schema.NullOr(Schema.Boolean),
+  activeVacancies: Schema.NullOr(Schema.Int),
+  /** Null until the employer page has been hydrated at least once. */
+  fetchedAt: Schema.NullOr(Schema.String)
+})
+export type EmployerProfile = typeof EmployerProfile.Type
+
 export const EmployerDetail = Schema.Struct({
   employer: EmployerSummary,
+  /** Absent for employers that were never hydrated from their page. */
+  profile: Schema.optional(Schema.NullOr(EmployerProfile)),
   vacancies: Schema.Array(VacancySummary)
 })
 

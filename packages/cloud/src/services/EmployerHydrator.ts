@@ -355,7 +355,16 @@ export class EmployerHydrator extends Context.Service<
               recommendationsPercent: patch.recommendationsPercent,
               siteUrl: patch.siteUrl,
               logoUrl: patch.logoUrl,
-              industries: patch.industries
+              industries: patch.industries,
+              category: patch.category,
+              sizeCategory: patch.sizeCategory,
+              address: patch.address,
+              siteHost: patch.siteHost,
+              descriptionText: patch.descriptionText,
+              badges: patch.badges,
+              trusted: patch.trusted,
+              accreditedIt: patch.accreditedIt,
+              activeVacancies: patch.activeVacancies
             })
           )
           .pipe(
