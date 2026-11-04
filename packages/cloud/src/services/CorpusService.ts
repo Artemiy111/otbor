@@ -10,7 +10,13 @@ import type {
   VacancySummary
 } from "@otbor/contract"
 import { NotFound } from "@otbor/contract"
-import { extractContactsFromText, gateTitle, matchLexicon, titleCacheKey } from "@otbor/domain"
+import {
+  detectVacancyTextFacts,
+  extractContactsFromText,
+  gateTitle,
+  matchLexicon,
+  titleCacheKey
+} from "@otbor/domain"
 import { Effect, Context, Layer } from "effect"
 import type { Executor } from "../db/Database.ts"
 import { Database } from "../db/Database.ts"
@@ -58,6 +64,9 @@ const persistDraft = (tx: Executor, draft: VacancyDraft, contactUserId: string) 
 
     if (existing !== null && existing.contentHash === hash) {
       yield* VacancyRepository.touch(tx, existing.id)
+      if (draft.hhSignals !== undefined) {
+        yield* VacancyRepository.mergeHhSignals(tx, existing.id, draft.hhSignals)
+      }
       return { status: "skipped" as const, row: existing }
     }
 
@@ -195,7 +204,8 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
                 if (row === null) return null
                 const keywords = yield* LexiconRepository.matchesFor(tx, id)
                 const verdict = yield* DecisionRepository.findVerdict(tx, titleCacheKey(row.title))
-                return { row, keywords, verdict }
+                const hhSignals = yield* VacancyRepository.hhSignalsOf(tx, id)
+                return { row, keywords, verdict, hhSignals }
               })
             )
             .pipe(Effect.mapError(toStorageError("vacancy.get")))
@@ -210,7 +220,13 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
             descriptionHtml: detail.row.descriptionHtml,
             skills: detail.row.skills,
             keywords: detail.keywords.map(toKeywordMatch),
-            titleVerdict: detail.verdict?.verdict ?? null
+            titleVerdict: detail.verdict?.verdict ?? null,
+            facts: {
+              hh: detail.hhSignals,
+              text: detectVacancyTextFacts(detail.row.descriptionText)
+            },
+            responsesTotal: detail.row.responsesTotal ?? null,
+            responsesVacancy: detail.row.responsesVacancy ?? null
           }
         })
 

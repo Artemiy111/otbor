@@ -155,3 +155,70 @@ describe("text helpers", () => {
     )
   })
 })
+
+describe("hh signals", () => {
+  const url = "https://hh.ru/vacancy/12345"
+  const withState = (extra: Record<string, unknown>, vacancy: Record<string, unknown> = {}) => {
+    const base = rawVacancy.vacancyView.vacancyFull.vacancy
+    return {
+      ...extra,
+      vacancyView: { vacancyFull: { vacancy: { ...base, ...vacancy } } }
+    }
+  }
+
+  test("reads letter, test, schedule and validity", async () => {
+    const draft = await Effect.runPromise(
+      extractVacancy(
+        page(
+          withState(
+            {
+              applicantVacancyResponseStatuses: {
+                "12345": {
+                  test: { hasTests: true, testId: 99, required: true },
+                  shortVacancy: { "@responseLetterRequired": true }
+                }
+              }
+            },
+            {
+              validToTimeIso: "2026-12-01T00:00:00+03:00",
+              workScheduleByDays: [{ workScheduleByDaysElement: ["FIVE_ON_TWO_OFF"] }],
+              workingHours: ["HOURS_8"]
+            }
+          )
+        ),
+        { url, fetchedAt: "2026-11-04T00:00:00.000Z" }
+      )
+    )
+    expect(draft.hhSignals).toEqual({
+      capturedAt: "2026-11-04T00:00:00.000Z",
+      letterRequired: true,
+      test: { hasTest: true, required: true },
+      validUntil: "2026-12-01T00:00:00+03:00",
+      workScheduleDays: ["FIVE_ON_TWO_OFF"],
+      workingHours: ["HOURS_8"]
+    })
+  })
+
+  test("absent data yields nulls, never an error", async () => {
+    const draft = await Effect.runPromise(extractVacancy(page(rawVacancy), { url }))
+    expect(draft.hhSignals?.letterRequired).toBeNull()
+    expect(draft.hhSignals?.test).toEqual({ hasTest: false, required: null })
+    expect(draft.hhSignals?.workScheduleDays).toEqual([])
+  })
+
+  test("vacancy-level letter flag and userTestId", async () => {
+    const draft = await Effect.runPromise(
+      extractVacancy(
+        page(
+          withState(
+            { applicantVacancyResponseStatuses: { "12345": { shortVacancy: { userTestId: "5" } } } },
+            { responseLetterRequired: false }
+          )
+        ),
+        { url }
+      )
+    )
+    expect(draft.hhSignals?.letterRequired).toBe(false)
+    expect(draft.hhSignals?.test.hasTest).toBe(true)
+  })
+})

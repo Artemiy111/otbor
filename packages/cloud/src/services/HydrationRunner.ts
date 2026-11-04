@@ -102,7 +102,9 @@ export interface HydrationRunnerShape {
   readonly hydrateOne: (
     userId: string,
     id: string,
-    proxyMode?: ProxyMode
+    proxyMode?: ProxyMode,
+    /** Fetch even when the stored text is complete (re-captures hh signals). */
+    force?: boolean
   ) => Effect.Effect<boolean, ApiError>
   /**
    * Manual mode: make sure one vacancy (hh URL or external id) is in the
@@ -485,7 +487,8 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
       const hydrateOne = Effect.fn("HydrationRunner.hydrateOne")(function*(
         userId: string,
         id: string,
-        proxyMode: ProxyMode = "auto"
+        proxyMode: ProxyMode = "auto",
+        force: boolean = false
       ) {
         const config = yield* prepareProxy(proxyMode)
 
@@ -509,6 +512,7 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
         }
 
         if (
+          !force &&
           !VacancyRepository.needsHydration({
             descriptionHtml: row.descriptionHtml,
             descriptionText: row.descriptionText

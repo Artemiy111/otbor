@@ -1,4 +1,4 @@
-import type { EmployerDraft, SalaryDraft, VacancyDraft } from "@otbor/contract"
+import type { EmployerDraft, HhVacancySignals, SalaryDraft, VacancyDraft } from "@otbor/contract"
 import { Effect, Schema } from "effect"
 import { HhParseError } from "./errors.ts"
 import { decodeOnce, decodeEntities, htmlToText } from "./text.ts"
@@ -66,6 +66,10 @@ const HhVacancy = Schema.Struct({
   publicationTimeIso: Schema.optional(Schema.NullOr(Schema.String)),
   lastChangeTimeIso: Schema.optional(Schema.NullOr(Schema.String)),
   validToTimeIso: Schema.optional(Schema.NullOr(Schema.String)),
+  // Shapes vary (string[] or [{ workScheduleByDaysElement: [...] }]); flattened defensively.
+  workScheduleByDays: Schema.optional(Schema.NullOr(Schema.Unknown)),
+  workingHours: Schema.optional(Schema.NullOr(Schema.Unknown)),
+  responseLetterRequired: Schema.optional(Schema.NullOr(Schema.Boolean)),
   status: Schema.optional(Schema.NullOr(HhStatus)),
   professionalRoles: Schema.optional(
     Schema.NullOr(
@@ -84,7 +88,32 @@ const ExtraVacancyFields = Schema.Struct({
   vacancyResponsesCount: Schema.optional(Schema.NullOr(Schema.Number))
 })
 
+const HhResponseStatus = Schema.Struct({
+  test: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        hasTests: Schema.optional(Schema.NullOr(Schema.Boolean)),
+        testId: Schema.optional(Schema.NullOr(HhId)),
+        required: Schema.optional(Schema.NullOr(Schema.Boolean))
+      })
+    )
+  ),
+  shortVacancy: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        "@responseLetterRequired": Schema.optional(Schema.NullOr(Schema.Boolean)),
+        responseLetterRequired: Schema.optional(Schema.NullOr(Schema.Boolean)),
+        userTestPresent: Schema.optional(Schema.NullOr(Schema.Boolean)),
+        userTestId: Schema.optional(Schema.NullOr(HhId))
+      })
+    )
+  )
+})
+
 const HhInitialState = Schema.Struct({
+  applicantVacancyResponseStatuses: Schema.optional(
+    Schema.NullOr(Schema.Record(Schema.String, Schema.NullOr(HhResponseStatus)))
+  ),
   vacancyView: Schema.optional(
     Schema.NullOr(
       Schema.Struct({
@@ -231,6 +260,63 @@ const vacancyFromState = (state: HhInitialState): HhVacancy | null => {
   return state.vacancyView?.vacancy ?? null
 }
 
+const positiveId = (value: number | string | null | undefined): boolean => {
+  const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN
+  return Number.isFinite(n) && n > 0
+}
+
+const flattenStrings = (value: unknown): ReadonlyArray<string> => {
+  const out = new Set<string>()
+  const visit = (item: unknown, depth: number): void => {
+    if (depth > 3) return
+    if (typeof item === "string") {
+      if (item.trim() !== "") out.add(item.trim())
+    } else if (Array.isArray(item)) {
+      for (const x of item) visit(x, depth + 1)
+    } else if (item !== null && typeof item === "object") {
+      for (const x of Object.values(item)) visit(x, depth + 1)
+    }
+  }
+  visit(value, 0)
+  return [...out]
+}
+
+export const readHhSignals = (
+  state: HhInitialState,
+  vacancy: HhVacancy,
+  externalId: string,
+  capturedAt: string
+): HhVacancySignals => {
+  const status = state.applicantVacancyResponseStatuses?.[externalId] ?? null
+  const test = status?.test ?? null
+  const short = status?.shortVacancy ?? null
+  const hasTest =
+    test?.hasTests === true ||
+    short?.userTestPresent === true ||
+    positiveId(test?.testId) ||
+    positiveId(short?.userTestId)
+  const letter =
+    typeof short?.["@responseLetterRequired"] === "boolean"
+      ? short["@responseLetterRequired"]
+      : typeof short?.responseLetterRequired === "boolean"
+        ? short.responseLetterRequired
+        : typeof vacancy.responseLetterRequired === "boolean"
+          ? vacancy.responseLetterRequired
+          : null
+
+  return {
+    capturedAt,
+    letterRequired: letter,
+    test: {
+      hasTest,
+      required: hasTest && typeof test?.required === "boolean" ? test.required : null
+    },
+    validUntil: asString(vacancy.validToTimeIso),
+    workScheduleDays: flattenStrings(vacancy.workScheduleByDays),
+    workingHours: flattenStrings(vacancy.workingHours)
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /* Public API                                                                 */
 /* -------------------------------------------------------------------------- */
@@ -291,6 +377,12 @@ export const extractFromState = (
       skills: normalizeSkills(vacancy.keySkills),
       responsesTotal: asNumber(extra?.totalResponsesCount),
       responsesVacancy: asNumber(extra?.vacancyResponsesCount),
+      hhSignals: readHhSignals(
+        state,
+        vacancy,
+        externalId,
+        options.fetchedAt ?? new Date().toISOString()
+      ),
       raw: vacancy
     } satisfies VacancyDraft
   })

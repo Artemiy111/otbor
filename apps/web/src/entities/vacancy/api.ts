@@ -30,8 +30,8 @@ export const vacancyApi = {
     ),
   get: (id: string): Promise<VacancyDetail> =>
     call((client) => client.VacanciesGet({ id: id as VacancyId })),
-  hydrate: (id: string): Promise<{ readonly hydrated: boolean }> =>
-    call((client) => client.VacanciesHydrateOne({ id: id as VacancyId })),
+  hydrate: (id: string, force = false): Promise<{ readonly hydrated: boolean }> =>
+    call((client) => client.VacanciesHydrateOne({ id: id as VacancyId, force: force || undefined })),
   titlePreview: (title: string): Promise<{ readonly verdict: GateVerdict }> =>
     call((client) => client.TitlesPreview({ title }))
 }

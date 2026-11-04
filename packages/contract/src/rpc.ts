@@ -248,7 +248,9 @@ export const VacanciesHydrateOne = Rpc.make("VacanciesHydrateOne", {
   payload: Schema.Struct({
     id: VacancyId,
     /** Defaults to the configured proxy when one is set, direct otherwise. */
-    proxyMode: Schema.optional(ProxyMode)
+    proxyMode: Schema.optional(ProxyMode),
+    /** Fetch the page even when the stored text is already complete (re-captures hh signals). */
+    force: Schema.optional(Schema.Boolean)
   }),
   success: Schema.Struct({ hydrated: Schema.Boolean }),
   error: ApiError
@@ -275,7 +277,8 @@ export const VacancyFetch = Rpc.make("VacancyFetch", {
 export const VacancyHydrate = Rpc.make("VacancyHydrate", {
   payload: Schema.Struct({
     id: VacancyId,
-    proxyMode: Schema.optional(ProxyMode)
+    proxyMode: Schema.optional(ProxyMode),
+    force: Schema.optional(Schema.Boolean)
   }),
   success: Schema.Struct({ hydrated: Schema.Boolean }),
   error: ApiError

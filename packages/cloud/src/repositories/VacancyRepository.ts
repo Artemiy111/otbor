@@ -1,5 +1,7 @@
+import { HhVacancySignals as HhVacancySignalsSchema } from "@otbor/contract"
 import type {
   BlacklistScope,
+  HhVacancySignals,
   EmployerDraft,
   HydrationTarget,
   SalaryDraft,
@@ -7,7 +9,7 @@ import type {
   VacancySummary
 } from "@otbor/contract"
 import { eq, sql } from "drizzle-orm"
-import { Effect } from "effect"
+import { Effect, Schema } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
 import { employer, vacancy, vacancyResponseSample, vacancySkill, vacancySnapshot } from "../db/tables.ts"
 import * as BlacklistRepository from "./BlacklistRepository.ts"
@@ -39,6 +41,8 @@ export interface VacancyRow {
   readonly descriptionHtml: string | null
   readonly workFormats: ReadonlyArray<string>
   readonly skills: ReadonlyArray<string>
+  readonly responsesTotal?: number | null
+  readonly responsesVacancy?: number | null
   readonly blacklistLayers?: ReadonlyArray<BlacklistScope> | null
 }
 
@@ -186,7 +190,8 @@ export const upsertVacancy = (tx: Executor, input: UpsertVacancyInput) => {
     hydrationStatus: needsHydration(draft) ? "stub" : "full",
     contentHash: input.contentHash,
     responsesTotal: draft.responsesTotal ?? null,
-    responsesVacancy: draft.responsesVacancy ?? null
+    responsesVacancy: draft.responsesVacancy ?? null,
+    signals: draft.hhSignals === undefined ? {} : { hh: draft.hhSignals }
   }
 
   return tx
@@ -218,6 +223,8 @@ export const upsertVacancy = (tx: Executor, input: UpsertVacancyInput) => {
         contentHash: sql`excluded.content_hash`,
         responsesTotal: sql`excluded.responses_total`,
         responsesVacancy: sql`excluded.responses_vacancy`,
+        // jsonb merge: a stub draft ({}) leaves stored keys, `hh` replaces only `hh`.
+        signals: sql`${vacancy.signals} || excluded.signals`,
         lastSeenAt: sql`now()`
       }
     })
@@ -265,6 +272,32 @@ export const insertSnapshot = (
     })
     .onConflictDoNothing()
 
+/** Merge `signals.hh` into an existing row without touching other keys. */
+export const mergeHhSignals = (tx: Executor, id: string, signals: HhVacancySignals) =>
+  tx
+    .update(vacancy)
+    .set({ signals: sql`${vacancy.signals} || ${JSON.stringify({ hh: signals })}::jsonb` })
+    .where(sql`${vacancy.id} = ${id}`)
+    .pipe(Effect.asVoid)
+
+const decodeHhSignals = Schema.decodeUnknownOption(HhVacancySignalsSchema)
+
+/** Stored `signals.hh`, decoded defensively; missing or invalid gives null. */
+export const hhSignalsOf = (tx: Executor, vacancyId: string) =>
+  tx
+    .select({ hh: sql<unknown>`${vacancy.signals} -> 'hh'` })
+    .from(vacancy)
+    .where(sql`${vacancy.id} = ${vacancyId}`)
+    .limit(1)
+    .pipe(
+      Effect.map((rows): HhVacancySignals | null => {
+        const raw = rows[0]?.hh
+        if (raw === null || raw === undefined) return null
+        const decoded = decodeHhSignals(raw)
+        return decoded._tag === "Some" ? decoded.value : null
+      })
+    )
+
 export const touch = (tx: Executor, id: string) =>
   tx
     .update(vacancy)
@@ -304,6 +337,8 @@ export const insertResponseSample = (
 
 export const rowSelection = {
   id: vacancy.id,
+  responsesTotal: vacancy.responsesTotal,
+  responsesVacancy: vacancy.responsesVacancy,
   source: vacancy.source,
   externalId: vacancy.externalId,
   canonicalUrl: vacancy.canonicalUrl,

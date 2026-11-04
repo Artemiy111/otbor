@@ -38,3 +38,13 @@ export {
   type StatusTone,
   workFormatLabel
 } from "./status"
+export {
+  applicationRequestLabel,
+  businessTripsLabel,
+  conditionFacts,
+  overtimeLabel,
+  redFlagLabel,
+  scheduleCodeLabel,
+  testTaskLabel,
+  type ConditionFact
+} from "./vacancy-facts"
