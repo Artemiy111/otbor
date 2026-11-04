@@ -88,6 +88,14 @@ describe("parseEmployerReviewsWidget", () => {
     expect(parseEmployerReviewsWidget(html)).toEqual({ rating: 3.9, reviewsCount: 5, recommendationsPercent: null })
   })
 
+  test("decodes numeric entities such as the escaped backslash", () => {
+    const state = JSON.stringify({ employerReviews: { totalRating: "4.4", reviewsCount: 7, recommendationsPercent: 83, note: 'a "b"' } })
+      .replace(/\\/g, "&#92;")
+      .replace(/"/g, "&quot;")
+    const html = `<template style="display: none" class="EmployerReviewsFront-InitialState">${state}</template>`
+    expect(parseEmployerReviewsWidget(html)).toEqual({ rating: 4.4, reviewsCount: 7, recommendationsPercent: 83 })
+  })
+
   test("returns null for unknown bodies", () => {
     expect(parseEmployerReviewsWidget("<html></html>")).toBeNull()
   })

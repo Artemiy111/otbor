@@ -285,15 +285,22 @@ export const employerReviewsWidgetUrl = (employerId: string, vacancyId?: string)
   return url.toString()
 }
 
+const NAMED_ENTITIES: Record<string, string> = {
+  quot: '"',
+  lt: "<",
+  gt: ">",
+  nbsp: " ",
+  amp: "&",
+  apos: "'"
+}
+
+/** One pass, so `&amp;quot;` is not decoded twice. Covers `&#92;` (backslash) and `&#34;`. */
 const decodeHtml = (value: string): string =>
-  value
-    .replace(/&quot;/g, '"')
-    .replace(/&#34;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
+  value.replace(/&(?:#(\d+)|#x([0-9a-f]+)|(\w+));/gi, (whole, dec, hex, name) => {
+    if (dec !== undefined) return String.fromCodePoint(Number(dec))
+    if (hex !== undefined) return String.fromCodePoint(parseInt(hex, 16))
+    return NAMED_ENTITIES[String(name).toLowerCase()] ?? whole
+  })
 
 const fromReviews = (node: Json): EmployerReviewsWidget | null => {
   const reviews = asRecord(asRecord(node)?.employerReviews)
