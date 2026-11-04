@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, h, ref } from "vue"
+import { computed, h, onBeforeUnmount, ref } from "vue"
 import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
 import type { KeywordMatchLocation, LexiconKeyword } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
-import { CircleAlert, Pencil, Plus, Search, Trash2, X } from "@lucide/vue"
+import { CircleAlert, Pencil, Plus, RefreshCw, Search, Trash2, X } from "@lucide/vue"
 import { AccountChip, hhAccountApi, hhAccountKeys } from "@/entities/hh-account"
 import { keywordApi, keywordKeys } from "@/entities/keyword"
 import { presetApi, presetKeys } from "@/entities/preset"
@@ -85,6 +85,43 @@ const refresh = () => {
 }
 
 const queryCache = useQueryCache()
+
+// Matches are stored at ingest, so after a dictionary edit old vacancies must
+// be re-matched. The cloud runs it detached; we poll its progress.
+const rematchProgress = ref<{ running: boolean; processed: number; total: number } | null>(null)
+let rematchTimer: ReturnType<typeof setInterval> | undefined
+
+const stopPolling = () => {
+  if (rematchTimer !== undefined) clearInterval(rematchTimer)
+  rematchTimer = undefined
+}
+
+const pollRematch = () => {
+  stopPolling()
+  rematchTimer = setInterval(async () => {
+    try {
+      const progress = await keywordApi.rematchStatus()
+      rematchProgress.value = progress
+      if (!progress.running) {
+        stopPolling()
+        await invalidate()
+      }
+    } catch {
+      stopPolling()
+    }
+  }, 2000)
+}
+
+const rematchMutation = useMutation({
+  mutation: () => keywordApi.rematch(),
+  onSuccess: (result) => {
+    rematchProgress.value = result.progress
+    if (result.progress.running) pollRematch()
+  }
+})
+
+onBeforeUnmount(stopPolling)
+
 const editorOpen = ref(false)
 const editingId = ref<string | undefined>(undefined)
 const termDraft = ref("")
@@ -314,6 +351,19 @@ const columns: ColumnDef<LexiconKeyword>[] = [
       description="Словарь терминов и алиасов. «В резюме» — аккаунты, у которых слово есть в тексте резюме; «В навыках резюме» — в списке навыков."
     >
       <template #actions>
+        <Button
+          type="button"
+          variant="outline"
+          title="Заново найти слова и алиасы во всех собранных вакансиях"
+          :disabled="rematchProgress?.running || rematchMutation.isLoading.value"
+          @click="rematchMutation.mutate()"
+        >
+          <RefreshCw class="h-4 w-4" :class="{ 'animate-spin': rematchProgress?.running }" />
+          <template v-if="rematchProgress?.running">
+            Пересчёт {{ formatNumber(rematchProgress.processed) }} / {{ formatNumber(rematchProgress.total) }}
+          </template>
+          <template v-else>Пересчитать</template>
+        </Button>
         <Button type="button" @click="openEditor()">
           <Plus class="h-4 w-4" /> Добавить
         </Button>

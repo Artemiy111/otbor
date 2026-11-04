@@ -23,6 +23,8 @@ export const keywordApi = {
     call((client) =>
       client.LexiconUpsert({ ...input, id: input.id as KeywordId | undefined })
     ),
+  rematch: () => call((client) => client.LexiconRematch()),
+  rematchStatus: () => call((client) => client.LexiconRematchStatus()),
   addAlias: (keywordId: string, alias: string) =>
     call((client) => client.LexiconAliasAdd({ keywordId: keywordId as KeywordId, alias })),
   removeAlias: (id: string) =>

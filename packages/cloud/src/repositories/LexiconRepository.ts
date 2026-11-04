@@ -723,6 +723,50 @@ export const removeAlias = (tx: Executor, id: string): RepoEffect<boolean> =>
     .returning({ id: keywordAlias.id })
     .pipe(Effect.map((rows) => rows.length > 0))
 
+export interface RematchRow {
+  readonly id: string
+  readonly title: string
+  readonly descriptionText: string | null
+  readonly skills: ReadonlyArray<string>
+}
+
+export const countVacancies = (tx: Executor): RepoEffect<number> =>
+  tx.execute(sql`select count(*)::int as n from vacancy`).pipe(
+    Effect.map((result) => numberValue((result.rows[0] as { n: unknown }).n))
+  )
+
+/** Keyset page of vacancies (by id) for the batch re-match. */
+export const rematchPage = (
+  tx: Executor,
+  afterId: string | null,
+  limit: number
+): RepoEffect<ReadonlyArray<RematchRow>> =>
+  tx.execute(sql`
+    select v.id, v.title, v.description_text,
+           coalesce((
+             select json_agg(s.term order by s.position nulls last)
+             from vacancy_skill s where s.vacancy_id = v.id
+           ), '[]'::json) as skills
+    from vacancy v
+    ${afterId === null ? sql`` : sql`where v.id > ${afterId}`}
+    order by v.id
+    limit ${limit}
+  `).pipe(
+    Effect.map((result) =>
+      (result.rows as unknown as ReadonlyArray<{
+        id: string
+        title: string
+        description_text: string | null
+        skills: ReadonlyArray<string> | string
+      }>).map((row) => ({
+        id: row.id,
+        title: row.title,
+        descriptionText: row.description_text,
+        skills: typeof row.skills === "string" ? JSON.parse(row.skills) : row.skills
+      }))
+    )
+  )
+
 export const remove = (tx: Executor, id: string): RepoEffect<boolean> =>
   tx
     .delete(keyword)

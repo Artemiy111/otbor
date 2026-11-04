@@ -128,6 +128,14 @@ const persistDraft = (tx: Executor, draft: VacancyDraft, contactUserId: string) 
     return { status: existing === null ? ("inserted" as const) : ("updated" as const), row: row! }
   })
 
+export interface RematchProgress {
+  readonly running: boolean
+  readonly processed: number
+  readonly total: number
+}
+
+const REMATCH_BATCH = 200
+
 export interface CorpusServiceShape {
   readonly ingest: (
     drafts: ReadonlyArray<VacancyDraft>,
@@ -139,6 +147,11 @@ export interface CorpusServiceShape {
   >
   readonly get: (id: string) => Effect.Effect<VacancyDetail, ApiError>
   readonly recomputeKeywords: (id: string) => Effect.Effect<number, ApiError>
+  readonly rematchStart: () => Effect.Effect<
+    { readonly started: boolean; readonly progress: RematchProgress },
+    ApiError
+  >
+  readonly rematchStatus: () => Effect.Effect<RematchProgress, ApiError>
   readonly hydrationTargets: (
     filter: VacancyRepository.HydrationFilter
   ) => Effect.Effect<ReadonlyArray<HydrationTarget>, ApiError>
@@ -253,6 +266,54 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
           return count
         })
 
+      // Single-flight state of the batch re-match; one process, one run.
+      let rematch: RematchProgress = { running: false, processed: 0, total: 0 }
+
+      const rematchBatches = Effect.gen(function*() {
+        let afterId: string | null = null
+        while (true) {
+          const page: ReadonlyArray<LexiconRepository.RematchRow> = yield* database.asOwner((tx) =>
+            Effect.gen(function*() {
+              const rows = yield* LexiconRepository.rematchPage(tx, afterId, REMATCH_BATCH)
+              // Entries are reloaded per batch so edits made mid-run are picked up.
+              const entries = yield* LexiconRepository.loadEntries(tx)
+              for (const row of rows) {
+                const matches = matchLexicon(entries, {
+                  title: row.title,
+                  body: row.descriptionText ?? "",
+                  skills: row.skills
+                })
+                yield* LexiconRepository.replaceMatches(tx, row.id, matches)
+              }
+              return rows
+            })
+          )
+          if (page.length === 0) return
+          afterId = page[page.length - 1]!.id
+          rematch = { ...rematch, processed: rematch.processed + page.length }
+        }
+      })
+
+      const rematchStart: CorpusServiceShape["rematchStart"] = () =>
+        Effect.gen(function*() {
+          if (rematch.running) return { started: false, progress: rematch }
+          const total = yield* database
+            .asOwner((tx) => LexiconRepository.countVacancies(tx))
+            .pipe(Effect.mapError(toStorageError("lexicon.rematch")))
+          rematch = { running: true, processed: 0, total }
+          yield* rematchBatches.pipe(
+            Effect.tapCause((cause) => Effect.logError("lexicon rematch failed", cause)),
+            Effect.ignore,
+            Effect.ensuring(Effect.sync(() => {
+              rematch = { ...rematch, running: false }
+            })),
+            Effect.forkDetach
+          )
+          return { started: true, progress: rematch }
+        })
+
+      const rematchStatus: CorpusServiceShape["rematchStatus"] = () => Effect.sync(() => rematch)
+
       const hydrationTargets: CorpusServiceShape["hydrationTargets"] = (filter) =>
         database
           .asUser(currentUser.userId, (tx) => VacancyRepository.listNeedingHydration(tx, filter))
@@ -284,6 +345,8 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
         list,
         get,
         recomputeKeywords,
+        rematchStart,
+        rematchStatus,
         hydrationTargets,
         employers,
         employer

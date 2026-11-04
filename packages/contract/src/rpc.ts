@@ -741,6 +741,28 @@ export const LexiconUpsert = Rpc.make("LexiconUpsert", {
   error: ApiError
 })
 
+/** Progress of the background re-match of every vacancy against the lexicon. */
+export const LexiconRematchProgress = Schema.Struct({
+  running: Schema.Boolean,
+  processed: Schema.Int,
+  total: Schema.Int
+})
+
+/**
+ * Matches are derived data stored at ingest, so a dictionary edit does not
+ * touch old vacancies. This starts a detached batch re-match and returns at
+ * once; `started` is false when one is already running.
+ */
+export const LexiconRematch = Rpc.make("LexiconRematch", {
+  success: Schema.Struct({ started: Schema.Boolean, progress: LexiconRematchProgress }),
+  error: ApiError
+})
+
+export const LexiconRematchStatus = Rpc.make("LexiconRematchStatus", {
+  success: LexiconRematchProgress,
+  error: ApiError
+})
+
 export const LexiconAliasAdd = Rpc.make("LexiconAliasAdd", {
   payload: Schema.Struct({
     keywordId: KeywordId,
@@ -1273,6 +1295,8 @@ export const OtborRpcs = RpcGroup.make(
   TitlesSetUserVerdict,
   LexiconList,
   LexiconUpsert,
+  LexiconRematch,
+  LexiconRematchStatus,
   LexiconAliasAdd,
   LexiconAliasRemove,
   LexiconRemove,
