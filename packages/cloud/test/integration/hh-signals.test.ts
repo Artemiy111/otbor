@@ -98,4 +98,33 @@ if (!enabled || serverUrl === null) {
     )
     expect((kept.rows[0] as { signals: Record<string, unknown> }).signals.other).toBe(1)
   })
+
+  test("backfill lists complete vacancies without signals.hh until they are captured", async () => {
+    const tenant = await support.seedTenant("hh-backfill")
+    const externalId = `bf-${Math.random().toString(36).slice(2, 10)}`
+    const full: VacancyDraft = {
+      externalId,
+      canonicalUrl: `https://hh.ru/vacancy/${externalId}`,
+      title: "Platform Engineer",
+      descriptionHtml: "<p>x</p>",
+      descriptionText: "Строим платформу на Kubernetes и Terraform. ".repeat(20)
+    }
+    const first = await support.corpusIngest(tenant.userId, [full])
+    const id = first.items[0]!.id
+    const pending = () =>
+      support.runAs(
+        tenant.userId,
+        Effect.gen(function*() {
+          const database = yield* Database
+          const rows = yield* database.asOwner((tx) =>
+            VacancyRepository.listNeedingHydration(tx, { limit: 500, missingHhSignals: true })
+          )
+          return rows.map((row) => row.id)
+        })
+      )
+    expect(await pending()).toContain(id)
+
+    await support.corpusIngest(tenant.userId, [{ ...full, hhSignals: signals(false) }])
+    expect(await pending()).not.toContain(id)
+  })
 }

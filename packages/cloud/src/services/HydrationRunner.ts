@@ -360,9 +360,23 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
         const config = yield* prepareProxy(proxyMode)
         const proxy = proxyState(proxyMode, config)
 
+        // Stubs first; spare capacity backfills hh response signals (letter
+        // required, test, schedule) on vacancies hydrated before they were read.
         const targets = yield* database
           .asUser(userId, (tx) =>
-            VacancyRepository.listNeedingHydration(tx, { limit, onlyDue: true })
+            Effect.gen(function*() {
+              const stubs = yield* VacancyRepository.listNeedingHydration(tx, {
+                limit,
+                onlyDue: true
+              })
+              if (stubs.length >= limit) return stubs
+              const backfill = yield* VacancyRepository.listNeedingHydration(tx, {
+                limit: limit - stubs.length,
+                onlyDue: true,
+                missingHhSignals: true
+              })
+              return [...stubs, ...backfill]
+            })
           )
           .pipe(
             Effect.mapError(

@@ -419,6 +419,11 @@ export interface HydrationFilter {
    * but a hydration pass must only take targets whose retry time has come.
    */
   readonly onlyDue?: boolean
+  /**
+   * Backfill mode: instead of stubs, list complete, non-archived vacancies whose
+   * hh response signals (letter required, test, schedule) were never captured.
+   */
+  readonly missingHhSignals?: boolean
 }
 
 /**
@@ -447,11 +452,19 @@ export const listNeedingHydration = (tx: Executor, filter: HydrationFilter = {})
     .leftJoin(employer, eq(vacancy.employerId, employer.id))
     .where(sql`
       ${vacancy.source} = 'hh'
-      and (
-        ${vacancy.hydrationStatus} <> 'full'
-        or ${vacancy.descriptionHtml} is null
-        or coalesce(length(btrim(${vacancy.descriptionText})), 0) < ${min}
-      )
+      and ${filter.missingHhSignals === true
+        ? sql`(
+            ${vacancy.hydrationStatus} = 'full'
+            and ${vacancy.descriptionHtml} is not null
+            and coalesce(length(btrim(${vacancy.descriptionText})), 0) >= ${min}
+            and not ${vacancy.archived}
+            and (${vacancy.signals} -> 'hh') is null
+          )`
+        : sql`(
+            ${vacancy.hydrationStatus} <> 'full'
+            or ${vacancy.descriptionHtml} is null
+            or coalesce(length(btrim(${vacancy.descriptionText})), 0) < ${min}
+          )`}
       ${filter.onlyDue === true
         ? sql`and ${HydrationAttemptRepository.notDeferredSql("vacancy", sql`${vacancy.id}`)}`
         : sql``}
