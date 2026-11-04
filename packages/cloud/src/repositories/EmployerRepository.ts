@@ -18,6 +18,7 @@ export interface EmployerRow {
   readonly logo_url: string | null
   readonly industries: ReadonlyArray<string>
   readonly vacancy_count: number
+  readonly responded_account_ids?: ReadonlyArray<string> | null
   readonly blacklist_layers?: ReadonlyArray<BlacklistScope> | null
 }
 
@@ -35,10 +36,14 @@ export const toSummary = (row: EmployerRow): EmployerSummary => {
     logoUrl: row.logo_url,
     industries: row.industries,
     vacancyCount: Number(row.vacancy_count),
+    respondedAccountIds: [...(row.responded_account_ids ?? [])] as EmployerSummary["respondedAccountIds"] & string[],
     blacklisted: blacklistLayers.length > 0,
     blacklistLayers
   }
 }
+
+/** Application states that count as "the account responded". */
+const RESPONDED_STATES = "'submitted', 'submitting', 'queued'"
 
 const selection = (options: {
   readonly userId?: string
@@ -47,6 +52,11 @@ const selection = (options: {
   select e.id, e.source, e.external_id, e.name, e.rating, e.reviews_count,
          e.recommendations_percent, e.site_url, e.logo_url, e.industries,
          count(v.id) filter (where not v.archived)::int as vacancy_count,
+         coalesce((
+           select array_agg(distinct a.hh_account_id::text)
+           from application a join vacancy av on av.id = a.vacancy_id
+           where av.employer_id = e.id and a.state in (${sql.raw(RESPONDED_STATES)})
+         ), '{}') as responded_account_ids,
          ${BlacklistRepository.layersSql({
            userId: options.userId,
            hhAccountId: options.hhAccountId ?? null,
@@ -63,6 +73,8 @@ export interface EmployerFilter {
   readonly offset?: number
   readonly includeBlacklisted?: boolean
   readonly hhAccountId?: string
+  /** Only employers this account responded to. */
+  readonly respondedAccountId?: string
   readonly userId?: string
 }
 
@@ -81,10 +93,19 @@ export const list = (tx: Executor, filter: EmployerFilter = {}) => {
         vacancyExternalId: sql`null::text`
       })}`
 
+  const respondedClause = filter.respondedAccountId === undefined
+    ? sql`true`
+    : sql`exists (
+        select 1 from application a join vacancy av on av.id = a.vacancy_id
+        where av.employer_id = e.id
+          and a.hh_account_id = ${filter.respondedAccountId}::uuid
+          and a.state in (${sql.raw(RESPONDED_STATES)})
+      )`
+
   return Effect.gen(function*() {
     const rows = yield* tx.execute(sql`
       ${selection(filter)}
-      where ${nameClause} and ${blacklistClause}
+      where ${nameClause} and ${blacklistClause} and ${respondedClause}
       group by e.id
       order by vacancy_count desc, e.name
       limit ${limit} offset ${offset}
@@ -92,7 +113,7 @@ export const list = (tx: Executor, filter: EmployerFilter = {}) => {
 
     const total = yield* tx.execute(sql`
       select count(*)::int as count from employer e
-      where ${nameClause} and ${blacklistClause}
+      where ${nameClause} and ${blacklistClause} and ${respondedClause}
     `)
 
     return {

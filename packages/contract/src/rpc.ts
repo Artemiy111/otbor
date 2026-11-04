@@ -143,7 +143,9 @@ export const EmployersList = Rpc.make("EmployersList", {
     offset: Schema.optional(Schema.Int),
     /** The companies page toggle: `true` shows blacklisted employers. */
     includeBlacklisted: Schema.optional(Schema.Boolean),
-    hhAccountId: Schema.optional(HhAccountId)
+    hhAccountId: Schema.optional(HhAccountId),
+    /** Only employers this hh account has responded to. */
+    respondedAccountId: Schema.optional(HhAccountId)
   }),
   success: Schema.Struct({
     items: Schema.Array(EmployerSummary),

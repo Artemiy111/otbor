@@ -5,6 +5,9 @@ import type { EmployerSummary } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { ChevronLeft, ChevronRight, CircleAlert, Search } from "@lucide/vue"
 import { companyApi, companyKeys } from "@/entities/company"
+import { AccountChip, ALL_ACCOUNTS, useAccountFilter } from "@/entities/hh-account"
+import { accountFilterOptions } from "@/features/account-filter"
+import { blacklistVisibilityOptions } from "@/features/blacklist-filter"
 import { RefreshButton } from "@/features/refresh-button"
 import { companyPath, describeError, formatNumber, formatRating } from "@/shared/lib"
 import {
@@ -16,6 +19,7 @@ import {
   DataTable,
   Input,
   Label,
+  filterableHeader,
   sortableHeader
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
@@ -26,6 +30,7 @@ const appliedQuery = ref("")
 const draft = ref("")
 const offset = ref(0)
 const includeBlacklisted = ref(false)
+const { accounts, accountId, hhAccountId, scopeKey, defaultAccountId } = useAccountFilter(ALL_ACCOUNTS)
 
 const query = useQuery({
   key: () =>
@@ -33,13 +38,15 @@ const query = useQuery({
       query: appliedQuery.value,
       offset: offset.value,
       includeBlacklisted: includeBlacklisted.value,
+      respondedAccountId: scopeKey.value
     }),
   query: () =>
     companyApi.list({
       query: appliedQuery.value === "" ? undefined : appliedQuery.value,
       limit: PAGE_SIZE,
       offset: offset.value,
-      includeBlacklisted: includeBlacklisted.value
+      includeBlacklisted: includeBlacklisted.value,
+      respondedAccountId: hhAccountId.value
     })
 })
 
@@ -49,6 +56,11 @@ const companies = computed<ReadonlyArray<EmployerSummary>>(
 const total = computed(() => query.data.value?.total ?? 0)
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)))
 const page = computed(() => Math.floor(offset.value / PAGE_SIZE) + 1)
+
+// A filter change starts from the first page.
+watch([hhAccountId, includeBlacklisted], () => {
+  offset.value = 0
+})
 
 watch(totalPages, (pages) => {
   if (page.value > pages) offset.value = (pages - 1) * PAGE_SIZE
@@ -132,9 +144,33 @@ const columns: ColumnDef<EmployerSummary>[] = [
     }
   },
   {
+    id: "accounts",
+    enableSorting: false,
+    enableGlobalFilter: false,
+    header: filterableHeader<EmployerSummary>("Аккаунты", {
+      value: () => accountId.value,
+      options: () => accountFilterOptions(accounts.value, defaultAccountId.value),
+      onChange: (value) => (accountId.value = value)
+    }),
+    cell: ({ row }) => {
+      const ids = row.original.respondedAccountIds ?? []
+      return ids.length === 0
+        ? h("span", { class: "text-muted-foreground" }, "—")
+        : h(
+            "div",
+            { class: "flex flex-wrap gap-1" },
+            ids.map((id) => h(AccountChip, { accountId: id, accounts: accounts.value }))
+          )
+    }
+  },
+  {
     id: "blacklisted",
     accessorFn: (row) => row.blacklisted,
-    header: sortableHeader<EmployerSummary>("Чёрный список"),
+    header: filterableHeader<EmployerSummary>("Чёрный список", {
+      value: () => (includeBlacklisted.value ? "show" : "hide"),
+      options: () => blacklistVisibilityOptions,
+      onChange: (value) => (includeBlacklisted.value = value === "show")
+    }),
     cell: ({ row }) => {
       const layers = row.original.blacklistLayers ?? []
       if (!row.original.blacklisted) {
@@ -182,10 +218,6 @@ const columns: ColumnDef<EmployerSummary>[] = [
           />
         </div>
       </div>
-      <label class="flex items-center gap-2 text-sm">
-        <input v-model="includeBlacklisted" type="checkbox" class="size-4 rounded border-input accent-primary" />
-        Показывать заблокированные
-      </label>
       <Button type="submit" :disabled="query.isLoading.value">Найти</Button>
       <Button type="button" variant="outline" :disabled="query.isLoading.value" @click="reset">
         Сбросить

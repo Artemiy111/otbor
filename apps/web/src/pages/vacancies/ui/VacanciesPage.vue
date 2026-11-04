@@ -8,6 +8,7 @@ import type { GateVerdict, VacancySummary } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert } from "@lucide/vue"
 import { vacancyApi, vacancyKeys } from "@/entities/vacancy"
+import { blacklistVisibilityOptions } from "@/features/blacklist-filter"
 import { vacancyArchiveOptions, vacancyGateOptions } from "@/features/vacancy-filter"
 import { RefreshButton } from "@/features/refresh-button"
 import {
@@ -146,9 +147,6 @@ const columns: ColumnDef<VacancySummary>[] = [
             vacancy.archived
               ? h(Badge, { variant: "neutral", class: "text-[10px]" }, () => "архив")
               : null,
-            vacancy.blacklisted
-              ? h(Badge, { variant: "destructive", class: "text-[10px]" }, () => "заблокирована")
-              : null
           ]
         )
       ])
@@ -206,6 +204,20 @@ const columns: ColumnDef<VacancySummary>[] = [
         ? h("span", { class: "text-xs text-muted-foreground" }, "…")
         : h("span", { class: "text-xs text-muted-foreground" }, "—")
     }
+  },
+  {
+    id: "blacklisted",
+    accessorFn: (row) => row.blacklisted,
+    enableGlobalFilter: false,
+    header: filterableHeader<VacancySummary>("Чёрный список", {
+      value: () => (includeBlacklisted.value ? "show" : "hide"),
+      options: () => blacklistVisibilityOptions,
+      onChange: (value) => (includeBlacklisted.value = value === "show")
+    }),
+    cell: ({ row }) =>
+      row.original.blacklisted
+        ? h(Badge, { variant: "destructive", class: "text-[10px]" }, () => "заблокирована")
+        : h("span", { class: "text-xs text-muted-foreground" }, "—")
   },
   {
     id: "accounts",
@@ -280,13 +292,6 @@ const refresh = () => {
       empty-description="Измените запрос, проверку заголовка или включите архивные. Если корпус пуст, создайте расписание поиска на странице «Обход» и запустите его."
       @update:visible-rows="visibleRows = $event"
     >
-      <template #toolbar>
-        <label class="flex items-center gap-2 text-sm">
-          <input v-model="includeBlacklisted" type="checkbox" class="size-4 rounded border-input accent-primary" />
-          Показывать заблокированные
-        </label>
-      </template>
-
       <template #summary="{ table }">
         <p class="mb-3 text-xs text-muted-foreground">
           Проверка заголовка — правило, не ИИ: «подходит» значит, что заголовок похож на

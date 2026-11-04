@@ -160,6 +160,8 @@ export const EmployerSummary = Schema.Struct({
   logoUrl: Schema.optional(Schema.NullOr(Schema.String)),
   industries: Schema.Array(Schema.String),
   vacancyCount: Schema.Int,
+  /** hh accounts that responded to at least one vacancy of this employer. */
+  respondedAccountIds: Schema.optional(Schema.Array(HhAccountId)),
   blacklisted: Schema.Boolean,
   blacklistLayers: Schema.Array(BlacklistScope)
 })

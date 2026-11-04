@@ -7,6 +7,7 @@ export interface CompanyListInput {
   readonly offset?: number
   readonly includeBlacklisted?: boolean
   readonly hhAccountId?: string
+  readonly respondedAccountId?: string
 }
 
 export interface CompanyListResult {
@@ -22,7 +23,8 @@ export const companyApi = {
         limit: input.limit,
         offset: input.offset,
         includeBlacklisted: input.includeBlacklisted,
-        hhAccountId: input.hhAccountId as any
+        hhAccountId: input.hhAccountId as any,
+        respondedAccountId: input.respondedAccountId as any
       })
     ),
   get: (id: string): Promise<EmployerDetail> =>

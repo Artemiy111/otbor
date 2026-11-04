@@ -2,6 +2,7 @@ export interface CompanyListKey {
   readonly query: string
   readonly offset: number
   readonly includeBlacklisted: boolean
+  readonly respondedAccountId: string
 }
 
 export const companyKeys = {
