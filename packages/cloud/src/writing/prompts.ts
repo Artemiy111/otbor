@@ -509,3 +509,135 @@ export const buildResumePrompt = (input: ResumePromptInput): WritingPrompt => {
     promptVersion: RESUME_PROMPT_VERSION
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Draft: cover letter and employer-test answers in one call                  */
+/* -------------------------------------------------------------------------- */
+
+export const DRAFT_PROMPT_VERSION = "draft-v1"
+
+export interface DraftQuestion {
+  readonly id: string
+  readonly kind: "single" | "multiple" | "text" | "code"
+  readonly text: string
+  readonly required: boolean
+  readonly maxLength?: number | null
+  readonly options: ReadonlyArray<{ readonly id: string; readonly label: string }>
+}
+
+export interface DraftPromptInput {
+  readonly vacancy: VacancyContext
+  readonly resumeText?: string | null
+  /** `absent`: hh does not take a letter; `optional`/`required` otherwise. */
+  readonly coverLetter: "required" | "optional" | "absent"
+  readonly questions: ReadonlyArray<DraftQuestion>
+  readonly notes?: string | null
+  readonly language?: WritingLanguageOption
+}
+
+const DRAFT_SYSTEM: Record<WritingLanguage, string> = {
+  ru: [
+    "Ты помогаешь соискателю откликнуться на вакансию на hh.ru: пишешь сопроводительное",
+    "письмо и заполняешь тест работодателя. Всё пишется от первого лица соискателя.",
+    "",
+    "Источники, которым можно верить: VACANCY, RESUME и APPLICANT NOTES.",
+    "",
+    "Общие правила:",
+    "- Не выдумывай компании, проекты, технологии, метрики, образование, зарплату и",
+    "  другие факты, которых нет в RESUME или APPLICANT NOTES.",
+    "- Никогда не пиши, что чего-то «нет в резюме» или «не указано». Если факта нет,",
+    "  просто не упоминай его.",
+    "- Не используй тире (—, –), эмодзи, Markdown, списки и восклицательные знаки.",
+    "  Для диапазонов пиши «от … до …» или дефис: 400-700.",
+    "- Не оборачивай названия компаний, должностей и технологий в кавычки.",
+    "",
+    "Письмо:",
+    "- Читает рекрутер, у которого уже есть резюме и вакансия. Начни с приветствия,",
+    "  без подписи и формального завершения.",
+    "- Выбери 2-3 релевантных факта, не пересказывай резюме целиком. Пиши живо, без",
+    "  канцелярита и общих слов вроде «стрессоустойчивость».",
+    "- Если письмо не принимается (COVER LETTER: absent), верни в letter пустую строку.",
+    "",
+    "Тест:",
+    "- Ответь на КАЖДЫЙ вопрос из QUESTIONS, который не помечен как code.",
+    "- Для вопросов с вариантами (single, multiple) верни optionIds: id вариантов из",
+    "  списка вопроса, и только их. single: ровно один id.",
+    "- Для text верни text: от одного до четырёх предложений, не длиннее maxLength.",
+    "- Вопрос об использовании программы, технологии или сервиса («Вы работали с X?»)",
+    "  закрывай ответом «Да», если вариант такой есть.",
+    "- Вопрос про зарплату закрывай конкретной цифрой: число из APPLICANT NOTES или",
+    "  резюме, иначе середина вилки вакансии. Без знака рубля, уклончивых ответов нет.",
+    "- Вопросы типа code пропусти: их соискатель решает сам.",
+    "",
+    "Верни строго один JSON-объект без Markdown и комментариев:",
+    '{"letter":"текст письма","answers":[{"questionId":"id вопроса","optionIds":["id варианта"],"text":"ответ"}]}',
+    "В answers для вопроса с вариантами указывай optionIds, для текстового text."
+  ].join("\n"),
+  en: [
+    "You help an applicant respond to an hh.ru vacancy: you write the cover letter and",
+    "fill in the employer's test. Everything is written in the applicant's first person.",
+    "",
+    "Trusted sources: VACANCY, RESUME and APPLICANT NOTES.",
+    "",
+    "General rules:",
+    "- Do not invent companies, projects, technologies, metrics, education, salary or",
+    "  any fact that is not in RESUME or APPLICANT NOTES.",
+    "- Never write that something is missing from the resume. If a fact is unknown,",
+    "  leave it out.",
+    "- No em or en dashes, emoji, Markdown, lists or exclamation marks.",
+    "- Do not wrap company names, job titles or technologies in quotes.",
+    "",
+    "Letter: the reader is a recruiter who already has the resume and the vacancy.",
+    "Start with a greeting, no signature. Pick 2-3 relevant facts, do not retell the",
+    "resume. If the letter is not accepted (COVER LETTER: absent), return an empty letter.",
+    "",
+    "Test: answer EVERY question in QUESTIONS that is not of kind code.",
+    "- For single/multiple return optionIds, only ids from that question's options;",
+    "  single: exactly one id.",
+    "- For text return text: one to four sentences, within maxLength.",
+    "- A question like \"have you used X?\" is answered yes when such an option exists.",
+    "- For salary give a concrete number from the notes or resume, else the middle of",
+    "  the vacancy range; no evasive answers.",
+    "- Skip code questions: the applicant solves them.",
+    "",
+    "Return exactly one JSON object, no Markdown, no comments:",
+    '{"letter":"cover letter text","answers":[{"questionId":"question id","optionIds":["option id"],"text":"answer"}]}'
+  ].join("\n")
+}
+
+const draftQuestionBlock = (questions: ReadonlyArray<DraftQuestion>): string =>
+  questions.length === 0
+    ? "- none"
+    : questions
+        .map((question, index) =>
+          [
+            `${index + 1}. id=${question.id} kind=${question.kind} required=${question.required}` +
+              (question.maxLength != null ? ` maxLength=${question.maxLength}` : ""),
+            `   ${text(question.text)}`,
+            ...question.options.map((option) => `   - optionId=${option.id}: ${text(option.label)}`)
+          ].join("\n")
+        )
+        .join("\n")
+
+export const buildDraftPrompt = (input: DraftPromptInput): WritingPrompt => {
+  const language = resolveLanguage(input.language, vacancyHaystack(input.vacancy))
+  const user = [
+    `LANGUAGE: ${language}${language === "ru" ? " (пиши по-русски)" : " (write in English)"}`,
+    "",
+    vacancyBlock(language, input.vacancy),
+    "",
+    resumeBlock(language, input.resumeText),
+    "",
+    applicantNotesBlock(language, input.notes),
+    "",
+    `COVER LETTER: ${input.coverLetter}`,
+    "",
+    "QUESTIONS:",
+    draftQuestionBlock(input.questions),
+    "",
+    language === "ru"
+      ? "Верни только JSON-объект по схеме. Без Markdown и комментариев."
+      : "Return only the JSON object in the given shape. No Markdown, no comments."
+  ].join("\n")
+  return { system: DRAFT_SYSTEM[language], user, language, promptVersion: DRAFT_PROMPT_VERSION }
+}

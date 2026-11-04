@@ -43,6 +43,7 @@ const gateway = (overrides: Partial<HarnessGatewayShape> = {}) =>
       leaseNext: () => Effect.die("leaseNext"),
       heartbeat: () => Effect.succeed({ ok: true, reason: null }),
       complete: () => Effect.die("complete"),
+      reportCatalog: () => Effect.succeed({ ok: true }),
       ...overrides
     })
   )

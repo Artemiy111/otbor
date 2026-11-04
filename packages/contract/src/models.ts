@@ -1022,10 +1022,51 @@ export const InferencePayload = Schema.Struct({
   system: Schema.optional(Schema.String),
   model: Schema.optional(Schema.String),
   /** Optional JSON schema the agent should satisfy with its answer. */
-  jsonSchema: Schema.optional(Schema.Unknown)
+  jsonSchema: Schema.optional(Schema.Unknown),
+  /** ACP agent id from the harness catalog (`opencode`, `claude`). Default: the harness default. */
+  harness: Schema.optional(Schema.String),
+  /** Reasoning effort / thinking level, one of the model's `efforts`. */
+  effort: Schema.optional(Schema.String)
 })
 
 export type InferencePayload = typeof InferencePayload.Type
+
+/**
+ * What a harness can run: ACP agents (OpenCode, Claude Code ...), their models
+ * and the effort levels each model accepts. Probed by the harness itself and
+ * reported to the cloud; the cloud never starts an agent.
+ */
+export const AgentModel = Schema.Struct({
+  id: Schema.String,
+  label: Schema.String,
+  /** Allowed effort values; empty: the model has no effort choice. */
+  efforts: Schema.Array(Schema.String),
+  defaultEffort: Schema.optional(Schema.NullOr(Schema.String)),
+  /** Shown under the name, e.g. subscription vs API credits. */
+  variant: Schema.optional(Schema.NullOr(Schema.String))
+})
+
+export type AgentModel = typeof AgentModel.Type
+
+export const AgentHarness = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  /** False when the agent could not be started or is not signed in. */
+  available: Schema.Boolean,
+  error: Schema.NullOr(Schema.String),
+  models: Schema.Array(AgentModel),
+  defaultModel: Schema.NullOr(Schema.String)
+})
+
+export type AgentHarness = typeof AgentHarness.Type
+
+export const AgentCatalog = Schema.Struct({
+  harnesses: Schema.Array(AgentHarness),
+  /** When the harness last probed its agents; null if none ever reported. */
+  reportedAt: Schema.NullOr(Schema.String)
+})
+
+export type AgentCatalog = typeof AgentCatalog.Type
 
 export const InferenceResult = Schema.Struct({
   text: Schema.String,

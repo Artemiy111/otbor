@@ -1,5 +1,6 @@
 import { AcpClient } from "@otbor/acp"
 import {
+  type AgentHarness,
   type HarnessExit,
   type HarnessJob,
   type LeaseId,
@@ -10,15 +11,18 @@ import {
   ReconcileJobPayload,
   SubmitJobPayload
 } from "@otbor/contract"
-import { Deferred, Duration, Effect, Fiber, type Layer, Option, Schema } from "effect"
+import { Cause, Deferred, Duration, Effect, Fiber, type Layer, Option, Schema } from "effect"
 import { BrowserExecutor } from "./browser/executor.ts"
 import { HarnessGateway } from "./client.ts"
 import type { HarnessConfig } from "./config.ts"
-import { runInferenceExit } from "./inference.ts"
+import { probeCatalog } from "./catalog.ts"
+import { payloadHarness, runInferenceExit } from "./inference.ts"
 
 /** The cloud lease is 120s; a third of it keeps a slow prompt alive. */
 export const HEARTBEAT_INTERVAL = Duration.seconds(30)
 const RETRY_DELAY = Duration.seconds(5)
+/** How often the catalog of agents, models and efforts is probed and reported. */
+export const CATALOG_REPORT_INTERVAL = Duration.minutes(30)
 
 export const BROWSER_UNAVAILABLE_MESSAGE =
   "browser executor is not part of this harness build; only inference jobs are supported"
@@ -75,12 +79,16 @@ const heartbeatLoop = (
   })
 
 /**
- * Test seam: production uses `AcpClient.layer` (one agent process per job),
+ * Test seam: production starts the agent named by the job payload
+ * (`AcpClient.layerFor`, one agent process per job),
  * while unit tests inject a fake ACP layer and a short heartbeat interval.
  */
 export interface RunJobOptions {
   readonly heartbeatEvery?: Duration.Input
   readonly acpLayer?: Layer.Layer<AcpClient>
+  /** What `runHarness` reports as the catalog; default: probe the real agents. */
+  readonly probe?: Effect.Effect<ReadonlyArray<AgentHarness>>
+  readonly catalogEvery?: Duration.Input
   /** Browser work. Without one, browser jobs are answered as blocked. */
   readonly browserLayer?: Layer.Layer<BrowserExecutor>
 }
@@ -226,11 +234,17 @@ export const runJob = Effect.fn("Harness.runJob")(
       )
     } else {
       work = runInferenceExit(job.payload).pipe(
-        Effect.provide(options.acpLayer ?? AcpClient.layer),
-        Effect.catchTag("ConfigError", (error) =>
+        Effect.provide(
+          options.acpLayer ?? AcpClient.layerFor(payloadHarness(job.payload))
+        ),
+        // The agent could not start (unknown id, not installed, not logged in)
+        // or the environment is misconfigured: say why, never fall back.
+        Effect.catch((error) =>
           Effect.succeed<HarnessExit>({
             tag: "inference_failed",
-            message: `ACP configuration error: ${error.message}`
+            message: error._tag === "ConfigError"
+              ? `ACP configuration error: ${error.message}`
+              : error.message
           })
         ),
         Effect.map((exit): JobOutcome => ({ _tag: "complete", exit }))
@@ -321,6 +335,32 @@ const leaseOnce = (config: HarnessConfig, runOptions: RunJobOptions) =>
   })
 
 /**
+ * Probe the agents and tell the cloud what this harness can run. Failures are
+ * logged and swallowed: a missing catalog must never stop job processing.
+ */
+export const reportCatalogOnce = (config: HarnessConfig, options: RunJobOptions = {}) =>
+  Effect.gen(function*() {
+    const gateway = yield* HarnessGateway
+    const harnesses = yield* options.probe ?? probeCatalog()
+    yield* gateway.reportCatalog({
+      harnessId: config.harnessId,
+      token: config.token,
+      harnesses
+    })
+    yield* Effect.logInfo("reported agent catalog", {
+      agents: harnesses.map((agent) => ({
+        id: agent.id,
+        available: agent.available,
+        models: agent.models.length
+      }))
+    })
+  }).pipe(
+    Effect.catchCause((cause) =>
+      Effect.logWarning("agent catalog was not reported", Cause.squash(cause))
+    )
+  )
+
+/**
  * Long-poll for work until stopped. `config.once` reads exactly one lease per
  * invocation (including an empty answer), which keeps tests and one-shot cron
  * jobs simple.
@@ -336,6 +376,17 @@ export const runHarness = Effect.fn("Harness.runHarness")(function*(
     waitSeconds: config.waitSeconds,
     once: config.once
   })
+
+  // Inference harnesses publish what they can run: once now, then every 30
+  // minutes, in the background so a slow `claude` start never delays a lease.
+  if (config.kinds.includes("inference") && !config.once) {
+    yield* Effect.forkChild(
+      reportCatalogOnce(config, runOptions).pipe(
+        Effect.andThen(Effect.sleep(runOptions.catalogEvery ?? CATALOG_REPORT_INTERVAL)),
+        Effect.forever
+      )
+    )
+  }
 
   while (true) {
     const result = yield* leaseOnce(config, runOptions).pipe(Effect.result)

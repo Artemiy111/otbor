@@ -36,6 +36,7 @@ import { TelegramGatewayProvider } from "../services/TelegramGatewayProvider.ts"
 import { TelegramService } from "../services/TelegramService.ts"
 import { TelegramSync } from "../services/TelegramSync.ts"
 import { VacancyAnalysisService } from "../services/VacancyAnalysisService.ts"
+import { AgentCatalogService } from "../services/AgentCatalogService.ts"
 import { WritingService } from "../services/WritingService.ts"
 
 /**
@@ -57,6 +58,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const crawl = yield* CrawlService
     const inference = yield* InferenceService
     const writing = yield* WritingService
+    const agentCatalog = yield* AgentCatalogService
     const decisions = yield* DecisionService
     const fitJudge = yield* FitJudgeService
     const gate = yield* GateService
@@ -240,6 +242,9 @@ export const OtborHandlers = OtborRpcs.toLayer(
 
       InferenceEnqueue: (payload) => inference.enqueue(payload),
       InferenceGet: ({ id }) => inference.get(id),
+      HarnessReportCatalog: (payload) => agentCatalog.report(payload),
+      AgentCatalogGet: () => agentCatalog.get(),
+      DraftGenerate: (payload) => writing.draft(payload),
 
       WritingCoverLetter: (payload) => writing.coverLetter(payload),
       WritingAnswers: (payload) => writing.answers(payload),
@@ -302,6 +307,7 @@ export const OtborServices = Layer.mergeAll(
   ConversationService.layer,
   InferenceService.layer,
   WritingService.layer,
+  AgentCatalogService.layer,
   DecisionService.layer,
   FitJudgeService.layer,
   VacancyAnalysisService.layer,

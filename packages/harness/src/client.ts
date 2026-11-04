@@ -1,4 +1,5 @@
 import type {
+  AgentHarness,
   HarnessExit,
   HarnessId,
   HarnessJob,
@@ -46,8 +47,14 @@ export interface CompleteResult {
   readonly message?: string | null
 }
 
+export interface ReportCatalogInput {
+  readonly harnessId: HarnessId
+  readonly token: string
+  readonly harnesses: ReadonlyArray<AgentHarness>
+}
+
 /**
- * The edge worker only needs three calls from the one RPC group. Keeping the
+ * The edge worker only needs four calls from the one RPC group. Keeping the
  * surface this small means the run loop cannot accidentally write product data:
  * it leases, it keeps the lease alive, and it reports one typed exit.
  */
@@ -61,6 +68,10 @@ export interface HarnessGatewayShape {
   readonly complete: (
     input: CompleteInput
   ) => Effect.Effect<CompleteResult, HarnessGatewayError>
+  /** What this harness can run: agents, models, efforts. */
+  readonly reportCatalog: (
+    input: ReportCatalogInput
+  ) => Effect.Effect<{ readonly ok: boolean }, HarnessGatewayError>
 }
 
 const describe = (cause: unknown): string =>
@@ -79,7 +90,9 @@ const fromApi = (api: OtborApi): HarnessGatewayShape => ({
   heartbeat: (input) =>
     api.HarnessHeartbeat(input).pipe(Effect.mapError(gatewayError("heartbeat"))),
   complete: (input) =>
-    api.HarnessComplete(input).pipe(Effect.mapError(gatewayError("complete")))
+    api.HarnessComplete(input).pipe(Effect.mapError(gatewayError("complete"))),
+  reportCatalog: (input) =>
+    api.HarnessReportCatalog(input).pipe(Effect.mapError(gatewayError("report catalog")))
 })
 
 /**

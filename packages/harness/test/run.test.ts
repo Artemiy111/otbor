@@ -10,6 +10,7 @@ import {
 import { parseHarnessConfig } from "../src/config.ts"
 import {
   BROWSER_UNAVAILABLE_MESSAGE,
+  reportCatalogOnce,
   runHarness,
   runJob
 } from "../src/run.ts"
@@ -55,6 +56,7 @@ const gatewayLayer = (overrides: Partial<HarnessGatewayShape>) =>
       leaseNext: () => Effect.die("leaseNext should not be called"),
       heartbeat: () => Effect.die("heartbeat should not be called"),
       complete: () => Effect.die("complete should not be called"),
+      reportCatalog: () => Effect.succeed({ ok: true }),
       ...overrides
     })
   )
@@ -238,5 +240,44 @@ describe("runHarness", () => {
     )
 
     expect(leases).toBe(1)
+  })
+})
+
+describe("reportCatalogOnce", () => {
+  const catalog = [
+    { id: "claude", name: "Claude Code", available: true, error: null, models: [], defaultModel: null }
+  ]
+
+  test("sends the probed catalog with the device token", async () => {
+    const sent: Array<unknown> = []
+    const config = await makeConfig({ OTBOR_HARNESS_KINDS: "inference" })
+    await Effect.runPromise(
+      reportCatalogOnce(config, { probe: Effect.succeed(catalog) }).pipe(
+        Effect.provide(
+          gatewayLayer({
+            reportCatalog: (input) => {
+              sent.push(input)
+              return Effect.succeed({ ok: true })
+            }
+          })
+        )
+      )
+    )
+
+    expect(sent).toEqual([{ harnessId: config.harnessId, token: "device-token", harnesses: catalog }])
+  })
+
+  test("a failing report is swallowed so the harness keeps running", async () => {
+    const config = await makeConfig({ OTBOR_HARNESS_KINDS: "inference" })
+    await Effect.runPromise(
+      reportCatalogOnce(config, { probe: Effect.succeed(catalog) }).pipe(
+        Effect.provide(
+          gatewayLayer({
+            reportCatalog: () =>
+              Effect.fail(new HarnessGatewayError({ message: "report catalog: down" }))
+          })
+        )
+      )
+    )
   })
 })

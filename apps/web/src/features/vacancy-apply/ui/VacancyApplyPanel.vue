@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue"
+import { computed, nextTick, reactive, ref, watch } from "vue"
 import { useQuery } from "@pinia/colada"
 import { useIntervalFn } from "@vueuse/core"
-import { CircleAlert, CircleCheck, LoaderCircle, Send } from "@lucide/vue"
+import { CircleAlert, CircleCheck, LoaderCircle, Send, Undo2 } from "@lucide/vue"
+import type { GeneratedDraft } from "@otbor/domain"
 import type {
   ApplicationRecord,
   FormQuestion,
@@ -15,6 +16,7 @@ import type {
 import { applicationApi, applicationKeys } from "@/entities/application"
 import { describeError, formatDate, statusLabel } from "@/shared/lib"
 import AccountResumePicker from "./AccountResumePicker.vue"
+import DraftGenerator from "./DraftGenerator.vue"
 import { Alert, AlertDescription, AlertTitle, Badge, Button, StatusBadge, Textarea } from "@/shared/ui"
 
 const props = defineProps<{
@@ -196,6 +198,16 @@ const isAnswered = (question: FormQuestion): boolean => {
 const sameSet = (a: ReadonlyArray<string>, b: ReadonlyArray<string>) =>
   a.length === b.length && [...a].sort().join("|") === [...b].sort().join("|")
 
+/** Answers exactly as the model wrote them; any edit by the operator makes them "human". */
+const modelAnswers = new Map<string, AnswerState>()
+const fromModel = (question: FormQuestion, answer: AnswerState): boolean => {
+  const given = modelAnswers.get(question.id)
+  if (given === undefined) return false
+  return question.kind === "single" || question.kind === "multiple"
+    ? sameSet(answer.optionIds, given.optionIds)
+    : answer.text.trim() === given.text.trim()
+}
+
 const buildAnswers = (): Array<KitAnswer> => {
   const out: Array<KitAnswer> = []
   for (const question of questions.value) {
@@ -211,13 +223,78 @@ const buildAnswers = (): Array<KitAnswer> => {
     out.push({
       questionId: question.id,
       ...(choice ? { optionIds: [...answer.optionIds] } : { text: answer.text.trim() }),
-      source: asHinted ? "hint" : "human",
+      source: asHinted ? "hint" : fromModel(question, answer) ? "model" : "human",
       hard: asHinted ? hint.hard : false,
       needsHuman: false
     })
   }
   return out
 }
+
+/* ---- generated draft ------------------------------------------------------ */
+
+interface Snapshot {
+  letter: string
+  answers: Record<string, AnswerState>
+  signature: string
+}
+const snapshot = ref<Snapshot | null>(null)
+const generatedInfo = ref<{
+  model: string | null
+  durationMs: number | null
+  problems: ReadonlyArray<string>
+} | null>(null)
+
+const signatureNow = () => JSON.stringify([letter.value, answers])
+
+const applyGenerated = (
+  draft: GeneratedDraft,
+  meta: { model: string | null; durationMs: number | null }
+) => {
+  errorText.value = null
+  notice.value = null
+  const previous: Snapshot = {
+    letter: letter.value,
+    answers: JSON.parse(JSON.stringify(answers)) as Record<string, AnswerState>,
+    signature: ""
+  }
+  if (draft.letter !== null && letterRule.value !== "absent") letter.value = draft.letter.slice(0, maxLetter)
+  modelAnswers.clear()
+  for (const item of draft.answers) {
+    const question = questions.value.find((candidate) => candidate.id === item.questionId)
+    if (question === undefined) continue
+    const choice = question.kind === "single" || question.kind === "multiple"
+    const next: AnswerState = choice
+      ? { optionIds: [...(item.optionIds ?? [])], text: "" }
+      : { optionIds: [], text: item.text ?? "" }
+    answers[question.id] = next
+    modelAnswers.set(question.id, { optionIds: [...next.optionIds], text: next.text })
+  }
+  generatedInfo.value = { model: meta.model, durationMs: meta.durationMs, problems: draft.problems }
+  const changed = previous.letter.trim() !== "" || Object.values(previous.answers).some(
+    (answer) => answer.optionIds.length > 0 || answer.text.trim() !== ""
+  )
+  void nextTick(() => {
+    if (changed) snapshot.value = { ...previous, signature: signatureNow() }
+  })
+  notice.value = "Письмо и ответы подставлены. Проверьте их и отредактируйте перед сохранением."
+}
+
+const undoGenerated = () => {
+  const saved = snapshot.value
+  if (saved === null) return
+  letter.value = saved.letter
+  for (const name of Object.keys(answers)) delete answers[name]
+  Object.assign(answers, saved.answers)
+  modelAnswers.clear()
+  snapshot.value = null
+  notice.value = "Подстановка отменена."
+}
+
+// The undo is offered only until the next edit or save.
+watch([letter, answers], () => {
+  if (snapshot.value !== null && snapshot.value.signature !== signatureNow()) snapshot.value = null
+}, { deep: true, flush: "post" })
 
 /* ---- what is missing ----------------------------------------------------- */
 
@@ -322,6 +399,7 @@ const saveDraft = async () => {
     const id = await ensureApplication()
     await saveKit(id)
     await detailQuery.refetch()
+    snapshot.value = null
     notice.value = "Черновик сохранён."
   } catch (error) {
     errorText.value = explain(error)
@@ -350,6 +428,7 @@ const send = async () => {
     confirming.value = false
     await detailQuery.refetch()
     emit("changed")
+    snapshot.value = null
     notice.value = "Отклик поставлен в очередь на отправку."
   } catch (error) {
     errorText.value = explain(error)
@@ -437,6 +516,36 @@ const maxLetter = 10_000
         <AlertTitle>{{ statusLabel(state) }}</AlertTitle>
         <AlertDescription>Проверьте ответы и отправьте ещё раз, либо откройте отклик, чтобы увидеть попытки.</AlertDescription>
       </Alert>
+
+      <!-- generator: one model call for the letter and the test answers -->
+      <div class="space-y-2 rounded-md border border-border p-3">
+        <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Составить с помощью модели
+        </span>
+        <DraftGenerator
+          :vacancy-id="vacancyId"
+          :account-id="accountId"
+          :resume-id="resumeId"
+          :questions="questions"
+          :disabled="busy !== null"
+          @generated="applyGenerated"
+          @failed="(reason) => (errorText = reason)"
+        />
+        <div v-if="generatedInfo" class="space-y-1 text-xs text-muted-foreground">
+          <p>
+            Составила: {{ generatedInfo.model ?? "модель не указана" }}<template
+              v-if="generatedInfo.durationMs !== null"
+            >, {{ (generatedInfo.durationMs / 1000).toFixed(1) }} с</template>. Ничего не сохранено и не отправлено.
+          </p>
+          <ul v-if="generatedInfo.problems.length > 0" class="list-disc space-y-0.5 pl-5 text-amber-300">
+            <li v-for="problem in generatedInfo.problems" :key="problem">{{ problem }}</li>
+          </ul>
+        </div>
+        <Button v-if="snapshot" variant="ghost" size="sm" @click="undoGenerated">
+          <Undo2 class="size-4" />
+          Отменить подстановку
+        </Button>
+      </div>
 
       <!-- letter -->
       <div class="space-y-1.5">

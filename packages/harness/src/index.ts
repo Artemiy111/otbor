@@ -5,7 +5,8 @@ export {
   type CompleteResult,
   type HarnessGatewayShape,
   type HeartbeatInput,
-  type LeaseNextInput
+  type LeaseNextInput,
+  type ReportCatalogInput
 } from "./client.ts"
 export {
   DEFAULT_API_URL,
@@ -15,8 +16,19 @@ export {
   type HarnessConfig
 } from "./config.ts"
 export {
+  agentHarness,
+  effortsOf,
+  probeAgent,
+  probeCatalog,
+  probeClient,
+  toAgentModel,
+  unavailableHarness
+} from "./catalog.ts"
+export {
   InferenceFailed,
   decodeInferencePayload,
+  payloadHarness,
+  selectModelAndEffort,
   inferencePrompt,
   runAcpPrompt,
   runInferenceExit,
@@ -25,6 +37,8 @@ export {
 export {
   BROWSER_UNAVAILABLE_MESSAGE,
   HEARTBEAT_INTERVAL,
+  CATALOG_REPORT_INTERVAL,
+  reportCatalogOnce,
   runHarness,
   runJob,
   type JobOutcome,

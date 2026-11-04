@@ -1,4 +1,4 @@
-import type { HarnessRegistration, JobKind } from "@otbor/contract"
+import type { AgentCatalog, AgentHarness, HarnessRegistration, JobKind } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import { hashesEqual } from "../auth/harnessToken.ts"
@@ -134,3 +134,30 @@ export const find = (
       lastSeenAt: (row.lastSeenAt ?? new Date()).toISOString()
     }
   })
+
+/** What a harness probed. Replaces the previous catalog of that harness. */
+export const saveCatalog = (
+  tx: Executor,
+  harnessId: string,
+  harnesses: ReadonlyArray<AgentHarness>
+): RepoEffect<void> =>
+  tx
+    .update(harness)
+    .set({ catalog: harnesses, catalogAt: new Date() })
+    .where(sql`${harness.id} = ${harnessId}`)
+    .pipe(Effect.asVoid)
+
+/** The most recently reported catalog of the user's harnesses. */
+export const latestCatalog = (tx: Executor, userId: string): RepoEffect<AgentCatalog> =>
+  tx
+    .select({ catalog: harness.catalog, catalogAt: harness.catalogAt })
+    .from(harness)
+    .where(sql`${harness.userId} = ${userId} and ${harness.catalog} is not null`)
+    .orderBy(sql`${harness.catalogAt} desc`)
+    .limit(1)
+    .pipe(
+      Effect.map((rows) => ({
+        harnesses: rows[0]?.catalog ?? [],
+        reportedAt: rows[0]?.catalogAt?.toISOString() ?? null
+      }))
+    )

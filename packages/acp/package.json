@@ -12,6 +12,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@agentclientprotocol/claude-agent-acp": "0.100.0",
     "@agentclientprotocol/sdk": "2.2.0",
     "effect": "4.1.0",
     "zod": "^4.6.7"

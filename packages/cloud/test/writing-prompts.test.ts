@@ -245,3 +245,28 @@ describe("resume prompt", () => {
     expect(prompt.user).toContain("TARGET ROLE: the roles already present in the resume")
   })
 })
+
+describe("buildDraftPrompt", () => {
+  test("lists question ids and option ids and states the letter rule", async () => {
+    const { buildDraftPrompt } = await import("../src/writing/prompts.ts")
+    const prompt = buildDraftPrompt({
+      vacancy: { title: "DevOps", employer: "Acme", description: "k8s", skills: ["kubernetes"] },
+      resumeText: "5 лет в DevOps",
+      coverLetter: "required",
+      language: "ru",
+      questions: [
+        {
+          id: "387049547",
+          kind: "single",
+          text: "Формат работы?",
+          required: true,
+          options: [{ id: "387049548", label: "Удалённо" }]
+        }
+      ]
+    })
+    expect(prompt.user).toContain("COVER LETTER: required")
+    expect(prompt.user).toContain("id=387049547 kind=single required=true")
+    expect(prompt.user).toContain("optionId=387049548: Удалённо")
+    expect(prompt.system).toContain("JSON-объект")
+  })
+})

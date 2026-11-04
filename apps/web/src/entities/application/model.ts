@@ -3,6 +3,8 @@ export const applicationKeys = {
   list: (state: string, account = "all") => ["applications", "list", state, account] as const,
   vacancy: (vacancyId: string) => ["applications", "vacancy", vacancyId] as const,
   detail: (id: string) => ["applications", "detail", id] as const,
+  agentCatalog: ["agent-catalog"] as const,
+  inference: (id: string) => ["inference", id] as const,
   vacancyForm: (vacancyId: string) => ["applications", "vacancy-form", vacancyId] as const
 }
 

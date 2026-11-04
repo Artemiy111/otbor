@@ -21,7 +21,11 @@ The saved registration lives in `~/.otbor/harness.json` (0600). CLI flags
 
 The ACP agent itself is configured by the `@otbor/acp` package:
 `OTBOR_ACP_BIN` (default `opencode`), `OTBOR_ACP_CWD` and
-`OTBOR_ACP_TIMEOUT_SECONDS`.
+`OTBOR_ACP_TIMEOUT_SECONDS`. Agents: `opencode` and `claude` (Claude Code through
+`@agentclientprotocol/claude-agent-acp`, on the local `claude` subscription login);
+`OTBOR_ACP_AGENTS` (JSON array) overrides or adds agents. An inference job picks
+its agent, model and effort with `harness`, `model`, `effort` in the payload, and
+the harness reports a catalog of what it can run every 30 minutes.
 
 ## Behaviour
 

@@ -47,6 +47,8 @@ import {
 } from "./ids.ts"
 import { ApiError } from "./errors.ts"
 import {
+  AgentCatalog,
+  AgentHarness,
   ApplicationDetail,
   VacancyFormState,
   ApplicationRecord,
@@ -1163,6 +1165,42 @@ export const InferenceEnqueue = Rpc.make("InferenceEnqueue", {
   error: ApiError
 })
 
+/** Harness side: the agents, models and efforts this harness found by probing. */
+export const HarnessReportCatalog = Rpc.make("HarnessReportCatalog", {
+  payload: Schema.Struct({
+    harnessId: HarnessId,
+    token: Schema.String,
+    harnesses: Schema.Array(AgentHarness)
+  }),
+  success: Schema.Struct({ ok: Schema.Boolean }),
+  error: ApiError
+})
+
+/** Web side: what the operator can pick from. Never starts an agent. */
+export const AgentCatalogGet = Rpc.make("AgentCatalogGet", {
+  payload: Schema.Struct({}),
+  success: AgentCatalog,
+  error: ApiError
+})
+
+/**
+ * Draft the cover letter and the employer-test answers of a vacancy in one
+ * model call. Needs a stored form (`VacancyFormGet`) so questions and option
+ * ids are known. The result is text in the job; the web parses and shows it.
+ */
+export const DraftGenerate = Rpc.make("DraftGenerate", {
+  payload: Schema.Struct({
+    vacancyId: VacancyId,
+    hhAccountId: HhAccountId,
+    resumeId: Schema.optional(Schema.String),
+    harness: Schema.String,
+    model: Schema.optional(Schema.String),
+    effort: Schema.optional(Schema.String)
+  }),
+  success: Schema.Struct({ job: HarnessJob }),
+  error: ApiError
+})
+
 export const InferenceGet = Rpc.make("InferenceGet", {
   payload: Schema.Struct({ id: HarnessJobId }),
   success: HarnessJob,
@@ -1382,6 +1420,9 @@ export const OtborRpcs = RpcGroup.make(
   HarnessComplete,
   HarnessRevoke,
   InferenceEnqueue,
+  HarnessReportCatalog,
+  AgentCatalogGet,
+  DraftGenerate,
   InferenceGet,
   WritingCoverLetter,
   WritingAnswers,

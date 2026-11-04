@@ -14,11 +14,18 @@ import {
   Semaphore,
   Stream
 } from "effect"
-import { spawn, type ChildProcess } from "node:child_process"
+import { execFile, spawn, type ChildProcess } from "node:child_process"
 import { mkdir } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import { tmpdir } from "node:os"
 import { Readable, Writable } from "node:stream"
+import {
+  type AcpAgentDef,
+  type AgentRegistry,
+  agentChildEnv,
+  resolveAgents,
+  signedOutMessage
+} from "./agents.ts"
 
 export class AcpError extends Schema.TaggedError<AcpError>()("AcpError", {
   message: Schema.String
@@ -29,7 +36,7 @@ export class AcpUnavailable extends Schema.TaggedError<AcpUnavailable>()("AcpUna
 }) {}
 
 export interface AcpOptions {
-  readonly bin: string
+  readonly agent: AcpAgentDef
   readonly cwd: string
   readonly timeout: Duration.Input
 }
@@ -109,26 +116,14 @@ export class AcpClient extends Context.Service<
     ) => Effect.Effect<void, AcpError | AcpUnavailable>
   }
 >()("otbor/acp/AcpClient") {
+  /**
+   * The default agent (`opencode`, or `OTBOR_ACP_BIN` / `OTBOR_ACP_DEFAULT_AGENT`).
+   * A missing or unauthenticated agent must not take the whole server down:
+   * descriptions fall back to a template instead.
+   */
   static readonly layer = Layer.unwrap(
-    Effect.gen(function*() {
-      const bin = yield* Config.String("OTBOR_ACP_BIN").pipe(Config.withDefault("opencode"))
-      const cwd = yield* Config.String("OTBOR_ACP_CWD").pipe(
-        Config.withDefault(join(tmpdir(), "otbor-acp"))
-      )
-      const timeoutSeconds = yield* Config.Int("OTBOR_ACP_TIMEOUT_SECONDS").pipe(Config.withDefault(120))
-
-      const live = Layer.effect(
-        AcpClient,
-        make({
-          bin,
-          cwd: resolve(cwd),
-          timeout: Duration.seconds(timeoutSeconds)
-        })
-      )
-
-      // A missing or unauthenticated agent must not take the whole server down:
-      // descriptions fall back to a template instead.
-      return live.pipe(
+    Effect.map(Effect.suspend(() => agentLayerConfig(undefined)), (live) =>
+      live.pipe(
         Layer.catchCause((cause) =>
           Layer.mergeAll(
             Layer.effectDiscard(
@@ -151,8 +146,16 @@ export class AcpClient extends Context.Service<
           )
         )
       )
-    })
+    )
   )
+
+  /**
+   * A session on the named agent (default agent when `agentId` is undefined).
+   * Unlike `layer`, failures are not swallowed: the caller reports why the
+   * agent could not run, instead of silently using something else.
+   */
+  static readonly layerFor = (agentId: string | undefined) =>
+    Layer.unwrap(Effect.suspend(() => agentLayerConfig(agentId)))
 
   /** Useful when ACP is disabled: every prompt fails with `AcpUnavailable`. */
   static readonly layerUnavailable = Layer.succeed(AcpClient)(
@@ -167,6 +170,44 @@ export class AcpClient extends Context.Service<
   )
 }
 
+export interface AcpConfig {
+  readonly registry: AgentRegistry
+  readonly cwd: string
+  readonly timeout: Duration.Duration
+}
+
+/** Agents, working directory and timeout from the `OTBOR_ACP_*` environment. */
+export const loadAcpConfig = Effect.fnUntraced(function*() {
+  const text = (name: string) => Config.String(name).pipe(Config.withDefault(""))
+  const cwd = yield* Config.String("OTBOR_ACP_CWD").pipe(
+    Config.withDefault(join(tmpdir(), "otbor-acp"))
+  )
+  const timeoutSeconds = yield* Config.Int("OTBOR_ACP_TIMEOUT_SECONDS").pipe(Config.withDefault(120))
+  const env = {
+    OTBOR_ACP_BIN: yield* text("OTBOR_ACP_BIN"),
+    OTBOR_ACP_AGENTS: yield* text("OTBOR_ACP_AGENTS"),
+    OTBOR_ACP_DEFAULT_AGENT: yield* text("OTBOR_ACP_DEFAULT_AGENT")
+  }
+  const registry = yield* Effect.try({
+    try: () => resolveAgents(env),
+    catch: (cause) =>
+      new AcpUnavailable({ message: cause instanceof Error ? cause.message : String(cause) })
+  })
+  return { registry, cwd: resolve(cwd), timeout: Duration.seconds(timeoutSeconds) } satisfies AcpConfig
+})
+
+const agentLayerConfig = Effect.fnUntraced(function*(agentId: string | undefined) {
+  const { registry, cwd, timeout } = yield* loadAcpConfig()
+  const wanted = agentId?.trim() || registry.defaultId
+  const agent = registry.agents.find((candidate) => candidate.id === wanted)
+  if (agent === undefined) {
+    return yield* new AcpUnavailable({
+      message: `unknown ACP agent "${wanted}"; known: ${registry.agents.map((a) => a.id).join(", ")}`
+    })
+  }
+  return Layer.effect(AcpClient, makeAcpClient({ agent, cwd, timeout }))
+})
+
 const acpError = (operation: string, cause: unknown) =>
   new AcpError({
     message: `${operation}: ${cause instanceof Error ? cause.message : String(cause)}`
@@ -180,9 +221,11 @@ const tryAcp = <A>(operation: string, run: () => Promise<A>) =>
 
 const spawnAcp = (options: AcpOptions) =>
   Effect.callback<ChildProcess, AcpUnavailable>((resume) => {
-    const child = spawn(options.bin, ["acp"], {
+    const { agent } = options
+    const label = [agent.command, ...agent.args].join(" ")
+    const child = spawn(agent.command, [...agent.args], {
       cwd: options.cwd,
-      env: { ...process.env, OTBOR_ACP_CHILD: "1" },
+      env: agentChildEnv(agent) as NodeJS.ProcessEnv,
       stdio: ["pipe", "pipe", "pipe"]
     })
 
@@ -190,7 +233,7 @@ const spawnAcp = (options: AcpOptions) =>
       resume(
         Effect.fail(
           new AcpUnavailable({
-            message: `Unable to start "${options.bin} acp": ${cause.message}`
+            message: `Unable to start ${agent.name} ("${label}"): ${cause.message}`
           })
         )
       )
@@ -250,8 +293,9 @@ const toConfigOptions = (
     }
   })
 
-const make = Effect.fnUntraced(function*(options: AcpOptions) {
-  yield* Effect.logDebug("Starting ACP agent", { bin: options.bin, cwd: options.cwd })
+/** Start one agent process and a session on it; closed with the surrounding scope. */
+export const makeAcpClient = Effect.fnUntraced(function*(options: AcpOptions) {
+  yield* Effect.logDebug("Starting ACP agent", { agent: options.agent.id, cwd: options.cwd })
 
   // The ACP cwd may point at a dedicated temp directory. It must exist before
   // spawn, and keeping ACP outside the repo also prevents the nested opencode
@@ -376,7 +420,17 @@ const make = Effect.fnUntraced(function*(options: AcpOptions) {
   }
 
   const session = yield* Effect.acquireRelease(
-    tryAcp("session/new", () => connection.agent.buildSession(options.cwd).start()),
+    tryAcp("session/new", () =>
+      connection.agent
+        .buildSession({
+          cwd: options.cwd,
+          mcpServers: [],
+          ...(options.agent.sessionMeta === undefined
+            ? {}
+            : { _meta: { ...options.agent.sessionMeta } })
+        })
+        .start()
+    ),
     (session) => Effect.sync(() => session.dispose())
   )
 
@@ -575,3 +629,40 @@ const make = Effect.fnUntraced(function*(options: AcpOptions) {
     setConfigOption
   })
 })
+
+// -- option discovery --------------------------------------------------------
+
+const EFFORT_IDS = ["effort", "thought_level", "reasoning_effort", "reasoning"]
+
+/** The model selector of a session: `category: "model"` or the id `model`. */
+export const findModelOption = (
+  options: ReadonlyArray<AcpConfigOption>
+): AcpConfigOption | undefined =>
+  options.find((option) => option.category === "model") ??
+  options.find((option) => option.id === "model")
+
+/** The effort / thinking-level selector: `thought_level` category or a known id. */
+export const findEffortOption = (
+  options: ReadonlyArray<AcpConfigOption>
+): AcpConfigOption | undefined =>
+  options.find((option) => option.category === "thought_level") ??
+  options.find((option) => EFFORT_IDS.includes(option.id))
+
+/**
+ * Sign-in state of an agent that has an `authCheck`: a message when it is
+ * signed out, null otherwise (signed in, no check, or the check itself failed).
+ */
+export const checkAgentLogin = (agent: AcpAgentDef): Effect.Effect<string | null> =>
+  agent.authCheck === undefined
+    ? Effect.succeed(null)
+    : Effect.callback<string | null>((resume) => {
+        const child = execFile(
+          agent.command,
+          [...agent.authCheck!.args],
+          { env: agentChildEnv(agent) as NodeJS.ProcessEnv, timeout: 20_000 },
+          (_error, stdout) => resume(Effect.succeed(signedOutMessage(agent, String(stdout))))
+        )
+        return Effect.sync(() => {
+          child.kill()
+        })
+      })

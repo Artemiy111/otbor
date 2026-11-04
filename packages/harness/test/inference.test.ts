@@ -4,6 +4,7 @@ import { Effect, Layer, Stream } from "effect"
 import {
   decodeInferencePayload,
   inferencePrompt,
+  payloadHarness,
   runAcpPrompt,
   runInferenceExit
 } from "../src/inference.ts"
@@ -112,22 +113,22 @@ describe("runAcpPrompt", () => {
     expect(artifacts).toEqual({
       text: "answer",
       model: "fake/model",
+      effort: null,
       usage: { input_tokens: 3, output_tokens: 2 },
       providerResponse: { stopReason: "end_turn", usage: { input_tokens: 3 } },
       durationMs: 42
     })
   })
 
-  test("falls back to the requested model when the session exposes none", async () => {
-    const artifacts = await Effect.runPromise(
+  test("fails instead of falling back when the agent has no model option", async () => {
+    const error = await Effect.runPromise(
       runAcpPrompt({ prompt: "hello", model: "requested/model" }).pipe(
-        Effect.provide(
-          acpLayer([doneEvent()], { ...session, configOptions: [] })
-        )
+        Effect.provide(acpLayer([doneEvent()], { ...session, configOptions: [] })),
+        Effect.flip
       )
     )
 
-    expect(artifacts.model).toBe("requested/model")
+    expect(error.message).toContain('cannot select model "requested/model"')
   })
 
   test("applies the requested model through session config", async () => {
@@ -193,6 +194,116 @@ describe("runAcpPrompt", () => {
     expect(seen).toContain("be brief")
     expect(seen).toContain("hello")
     expect(seen).toContain("Respond with JSON only")
+  })
+})
+
+const claudeLikeOptions = (model: string, effort: string): AcpSessionInfo["configOptions"] => [
+  {
+    id: "model",
+    category: "model",
+    currentValue: model,
+    options: [{ value: "default" }, { value: "sonnet" }, { value: "haiku" }]
+  },
+  {
+    id: "effort",
+    category: "thought_level",
+    currentValue: effort,
+    // Haiku has no effort levels; Sonnet has low..high.
+    options: model === "haiku"
+      ? []
+      : [{ value: "default" }, { value: "low" }, { value: "high" }]
+  }
+]
+
+/** A fake agent whose effort list depends on the selected model, like Claude Code. */
+const switchingAgent = (calls: Array<readonly [string, string]>, failOn?: string) => {
+  let model = "default"
+  let effort = "default"
+  const info = (): AcpSessionInfo => ({ ...session, configOptions: claudeLikeOptions(model, effort) })
+  return Layer.succeed(AcpClient)(
+    AcpClient.of({
+      prompt: () => Effect.succeed("answer"),
+      promptEvents: () => Stream.fromIterable([doneEvent()]),
+      sessionId: Effect.succeed(session.sessionId),
+      session: Effect.sync(info),
+      setConfigOption: (id, value) =>
+        value === failOn
+          ? Effect.fail(new AcpError({ message: "Internal error" }))
+          : Effect.sync(() => {
+              calls.push([id, value])
+              if (id === "model") model = value
+              if (id === "effort") effort = value
+            })
+    })
+  )
+}
+
+describe("model and effort selection", () => {
+  test("selects the model first, then the effort of that model", async () => {
+    const calls: Array<readonly [string, string]> = []
+    const artifacts = await Effect.runPromise(
+      runAcpPrompt({ prompt: "hi", model: "sonnet", effort: "high" }).pipe(
+        Effect.provide(switchingAgent(calls))
+      )
+    )
+
+    expect(calls).toEqual([["model", "sonnet"], ["effort", "high"]])
+    expect(artifacts.model).toBe("sonnet")
+    expect(artifacts.effort).toBe("high")
+  })
+
+  test("an effort the model does not offer is a clear error", async () => {
+    const calls: Array<readonly [string, string]> = []
+    const exit = await Effect.runPromise(
+      runInferenceExit({ prompt: "hi", model: "sonnet", effort: "max" }).pipe(
+        Effect.provide(switchingAgent(calls))
+      )
+    )
+
+    expect(exit.tag).toBe("inference_failed")
+    expect(exit.message).toContain('effort "max" is not offered')
+    expect(exit.message).toContain("low, high")
+  })
+
+  test("a model without effort levels rejects an effort request", async () => {
+    const exit = await Effect.runPromise(
+      runInferenceExit({ prompt: "hi", model: "haiku", effort: "low" }).pipe(
+        Effect.provide(switchingAgent([]))
+      )
+    )
+
+    expect(exit.tag).toBe("inference_failed")
+    expect(exit.message).toContain('cannot select effort "low"')
+  })
+
+  test("an unknown model lists what the agent offers", async () => {
+    const exit = await Effect.runPromise(
+      runInferenceExit({ prompt: "hi", model: "gpt-9" }).pipe(
+        Effect.provide(switchingAgent([]))
+      )
+    )
+
+    expect(exit.tag).toBe("inference_failed")
+    expect(exit.message).toContain('model "gpt-9" is not offered')
+    expect(exit.message).toContain("default, sonnet, haiku")
+  })
+
+  test("a refused selection reports the agent's reason, with no fallback", async () => {
+    const exit = await Effect.runPromise(
+      runInferenceExit({ prompt: "hi", model: "sonnet" }).pipe(
+        Effect.provide(switchingAgent([], "sonnet"))
+      )
+    )
+
+    expect(exit.tag).toBe("inference_failed")
+    expect(exit.message).toContain('could not select model "sonnet"')
+    expect(exit.message).toContain("Internal error")
+  })
+
+  test("payloadHarness reads the agent id from a raw payload", () => {
+    expect(payloadHarness({ prompt: "x", harness: " claude " })).toBe("claude")
+    expect(payloadHarness({ prompt: "x" })).toBeUndefined()
+    expect(payloadHarness("x")).toBeUndefined()
   })
 })
 

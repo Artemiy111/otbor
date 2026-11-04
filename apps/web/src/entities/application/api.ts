@@ -1,4 +1,7 @@
 import type {
+  AgentCatalog,
+  HarnessJob,
+  HarnessJobId,
   NegotiationsSyncStatus,
   ApplicationDetail,
   ApplicationId,
@@ -62,6 +65,27 @@ export const applicationApi = {
         force: input.force
       })
     ),
+  agentCatalog: (): Promise<AgentCatalog> => call((client) => client.AgentCatalogGet({})),
+  draftGenerate: (input: {
+    readonly vacancyId: string
+    readonly hhAccountId: string
+    readonly resumeId?: string
+    readonly harness: string
+    readonly model?: string
+    readonly effort?: string
+  }): Promise<{ readonly job: HarnessJob }> =>
+    call((client) =>
+      client.DraftGenerate({
+        vacancyId: input.vacancyId as VacancyId,
+        hhAccountId: input.hhAccountId as HhAccountId,
+        resumeId: input.resumeId,
+        harness: input.harness,
+        model: input.model,
+        effort: input.effort
+      })
+    ),
+  inferenceGet: (id: string): Promise<HarnessJob> =>
+    call((client) => client.InferenceGet({ id: id as HarnessJobId })),
   setKit: (input: ApplicationSetKitInput): Promise<KitRecord> =>
     call((client) =>
       client.ApplicationsSetKit({

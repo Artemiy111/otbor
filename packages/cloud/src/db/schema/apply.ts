@@ -1,4 +1,4 @@
-import type { KitAnswer } from "@otbor/contract"
+import type { AgentHarness, KitAnswer } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import {
   boolean,
@@ -364,6 +364,9 @@ export const harness = pgTable("harness", {
   kinds: jsonb("kinds").$type<ReadonlyArray<string>>().notNull().default([]),
   tokenHash: text("token_hash"),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  /** Agents, models and efforts the harness probed (`AgentHarness[]`). */
+  catalog: jsonb("catalog").$type<ReadonlyArray<AgentHarness>>(),
+  catalogAt: timestamp("catalog_at", { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt()
 })
