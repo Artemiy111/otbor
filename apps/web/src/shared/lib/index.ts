@@ -3,6 +3,7 @@ export {
   ANALYSIS_ROLE_LABELS,
   describeAnalysis,
   type AnalysisRow,
+  type AnalysisTone,
   type AnalysisView
 } from "./analysis"
 export { cn } from "./cn"
