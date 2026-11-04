@@ -1,4 +1,5 @@
 import type {
+  NegotiationsSyncStatus,
   ApplicationDetail,
   ApplicationId,
   ApplicationRecord,
@@ -21,6 +22,10 @@ export interface ApplicationCreateFromDecisionInput {
 }
 
 export const applicationApi = {
+  syncRun: (hhAccountId: string): Promise<NegotiationsSyncStatus> =>
+    call((client) => client.NegotiationsSyncRun({ hhAccountId: hhAccountId as HhAccountId })),
+  syncStatus: (hhAccountId: string): Promise<NegotiationsSyncStatus> =>
+    call((client) => client.NegotiationsSyncStatus({ hhAccountId: hhAccountId as HhAccountId })),
   list: (input: ApplicationListInput): Promise<ReadonlyArray<ApplicationRecord>> =>
     call((client) => client.ApplicationsList({ ...input, hhAccountId: input.hhAccountId as HhAccountId | undefined })),
   get: (id: string): Promise<ApplicationDetail> =>

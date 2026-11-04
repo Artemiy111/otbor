@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h, ref } from "vue"
-import { useQuery } from "@pinia/colada"
+import { useMutation, useQuery } from "@pinia/colada"
 import type { ApplicationRecord, HhAccountRecord } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert } from "@lucide/vue"
@@ -21,6 +21,7 @@ import {
 } from "@/shared/lib"
 import {
   Alert,
+  Button,
   AlertDescription,
   AlertTitle,
   DataTable,
@@ -42,6 +43,36 @@ const query = useQuery({
       state: state.value === "all" ? undefined : state.value,
       hhAccountId: hhAccountId.value
     })
+})
+
+const syncMessage = ref("")
+const syncMutation = useMutation({
+  mutation: async () => {
+    const targets = hhAccountId.value ? [hhAccountId.value] : accounts.value.map((a) => a.id as string)
+    const lines: string[] = []
+    for (const id of targets) {
+      const name = hhAccountNameById(accounts.value, id as HhAccountRecord["id"])
+      let status = await applicationApi.syncRun(id)
+      syncMessage.value = `${name}: задача в очереди, жду гарнесс…`
+      const deadline = Date.now() + 180_000
+      while (!["done", "failed", "needs_human"].includes(status.status) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 2_000))
+        status = await applicationApi.syncStatus(id)
+      }
+      const c = status.counts
+      lines.push(
+        status.status === "done" && c
+          ? `${name}: импортировано ${c.imported}, обновлено ${c.updated}, без изменений ${c.unchanged}` +
+              (c.unknownVacancy > 0 ? `, вакансии нет в базе: ${c.unknownVacancy}` : "") +
+              (c.complete ? "" : " (список прочитан не до конца)")
+          : `${name}: ${status.status}${status.message ? ` — ${status.message}` : ""}`
+      )
+      syncMessage.value = lines.join(" · ")
+    }
+  },
+  onSettled() {
+    void query.refetch()
+  }
 })
 
 // PROTOTYPE
@@ -142,9 +173,18 @@ const columns: ColumnDef<ApplicationRecord>[] = [
       description="Один устойчивый процесс на отклик. Состоянием владеет облако, а не harness."
     >
       <template #actions>
+        <Button
+          variant="outline"
+          :disabled="syncMutation.isLoading.value || accounts.length === 0"
+          @click="syncMutation.mutate()"
+        >
+          {{ syncMutation.isLoading.value ? "Синхронизирую…" : "Синхронизировать с hh" }}
+        </Button>
         <RefreshButton :loading="query.isLoading.value" @refresh="query.refetch()" />
       </template>
     </PageHeader>
+
+    <p v-if="syncMessage" class="mb-4 text-sm text-muted-foreground">{{ syncMessage }}</p>
 
     <Alert v-if="query.error.value" variant="destructive" class="mb-4">
       <CircleAlert />
