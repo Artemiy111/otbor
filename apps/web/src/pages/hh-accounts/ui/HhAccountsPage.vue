@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, h } from "vue"
-import { useQuery } from "@pinia/colada"
+import { computed, h, ref } from "vue"
+import { useQuery, useQueryCache } from "@pinia/colada"
 import type { HhAccountRecord } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert } from "@lucide/vue"
-import { hhAccountApi, hhAccountKeys } from "@/entities/hh-account"
+import { hhAccountApi, hhAccountColor, hhAccountKeys } from "@/entities/hh-account"
 import { RefreshButton } from "@/features/refresh-button"
 import { describeError, formatDate } from "@/shared/lib"
 import {
@@ -25,7 +25,55 @@ const query = useQuery({
 
 const accounts = computed<ReadonlyArray<HhAccountRecord>>(() => query.data.value ?? [])
 
+const queryCache = useQueryCache()
+const actionError = ref<string | null>(null)
+
+/** `null` goes back to the automatic colour. Other fields are passed through unchanged. */
+const saveColor = async (account: HhAccountRecord, color: string | null) => {
+  actionError.value = null
+  try {
+    await hhAccountApi.upsert({
+      id: account.id,
+      label: account.label,
+      isDefault: account.isDefault,
+      color
+    })
+    await queryCache.invalidateQueries({ key: hhAccountKeys.all })
+  } catch (error) {
+    actionError.value = describeError(error)
+  }
+}
+
 const columns: ColumnDef<HhAccountRecord>[] = [
+  {
+    id: "color",
+    enableSorting: false,
+    header: "Цвет",
+    cell: ({ row }) =>
+      h("div", { class: "flex items-center gap-2" }, [
+        h("input", {
+          type: "color",
+          value: hhAccountColor(row.original),
+          class: "h-7 w-9 cursor-pointer rounded border border-input bg-transparent p-0.5",
+          "aria-label": `Цвет аккаунта ${row.original.label}`,
+          // `change` fires once the picker closes, so one pick is one request.
+          onChange: (event: Event) =>
+            void saveColor(row.original, (event.target as HTMLInputElement).value)
+        }),
+        row.original.color
+          ? h(
+              Button,
+              {
+                variant: "ghost",
+                size: "sm",
+                class: "h-7 px-2 text-xs",
+                onClick: () => void saveColor(row.original, null)
+              },
+              () => "Сбросить"
+            )
+          : null
+      ])
+  },
   {
     accessorKey: "label",
     header: sortableHeader<HhAccountRecord>("Аккаунт"),
@@ -76,6 +124,12 @@ const refresh = () => void query.refetch()
         <RefreshButton :loading="query.isLoading.value" @refresh="refresh" />
       </template>
     </PageHeader>
+
+    <Alert v-if="actionError" variant="destructive" class="mb-4">
+      <CircleAlert />
+      <AlertTitle>Не удалось сохранить цвет</AlertTitle>
+      <AlertDescription>{{ actionError }}</AlertDescription>
+    </Alert>
 
     <Alert v-if="query.error.value" variant="destructive" class="mb-4">
       <CircleAlert />

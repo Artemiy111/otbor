@@ -12,6 +12,7 @@ export const hhAccountApi = {
     firstName?: string
     lastName?: string
     areaName?: string
+    color?: string | null
   }): Promise<HhAccountRecord> =>
     call((client) =>
       client.HhAccountUpsert({
@@ -21,7 +22,8 @@ export const hhAccountApi = {
         sessionProfile: input.sessionProfile,
         firstName: input.firstName,
         lastName: input.lastName,
-        areaName: input.areaName
+        areaName: input.areaName,
+        color: input.color
       })
     ),
   remove: (id: string): Promise<{ readonly id: HhAccountId; readonly deleted: boolean }> =>

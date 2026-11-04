@@ -14,6 +14,7 @@ export interface HhAccountUpsertInput {
   readonly firstName?: string | null
   readonly lastName?: string | null
   readonly areaName?: string | null
+  readonly color?: string | null
 }
 
 export interface HhAccountServiceShape {
@@ -52,6 +53,9 @@ export class HhAccountService extends Context.Service<HhAccountService, HhAccoun
           if (label === "") {
             return yield* new InvalidInput({ message: "hh account label must not be empty" })
           }
+          if (input.color != null && !/^#[0-9a-fA-F]{6}$/.test(input.color)) {
+            return yield* new InvalidInput({ message: "hh account color must look like #rrggbb" })
+          }
 
           const record = yield* database
             .asUser(currentUser.userId, (tx) =>
@@ -74,7 +78,8 @@ export class HhAccountService extends Context.Service<HhAccountService, HhAccoun
                 sessionProfile: input.sessionProfile,
                 firstName: input.firstName,
                 lastName: input.lastName,
-                areaName: input.areaName
+                areaName: input.areaName,
+                color: input.color
                 })
               })
             )

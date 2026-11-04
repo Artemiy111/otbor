@@ -24,6 +24,7 @@ const sorted = computed(() => props.column.getIsSorted())
 </script>
 
 <template>
+  <div class="space-y-1">
   <div :class="cn('flex items-center', props.align === 'right' && 'justify-end')">
     <Button
       v-if="props.column.getCanSort()"
@@ -45,5 +46,7 @@ const sorted = computed(() => props.column.getIsSorted())
     <span v-else class="text-xs font-medium normal-case text-muted-foreground">
       {{ props.title }}
     </span>
+  </div>
+  <slot name="filter" />
   </div>
 </template>

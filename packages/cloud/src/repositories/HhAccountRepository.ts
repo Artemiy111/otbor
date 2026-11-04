@@ -14,6 +14,7 @@ export interface StoredHhAccount {
   readonly phone: string | null
   readonly area_name: string | null
   readonly session_profile: string | null
+  readonly color?: string | null
   readonly session_state?: string | null
   readonly session_last_ok_at?: Date | string | null
   readonly session_last_error?: string | null
@@ -33,6 +34,7 @@ export const toRecord = (row: StoredHhAccount): HhAccountRecord => ({
   firstName: row.first_name,
   lastName: row.last_name,
   areaName: row.area_name,
+  color: row.color ?? null,
   session:
     row.session_state === null || row.session_state === undefined
       ? null
@@ -51,7 +53,7 @@ export const toRecord = (row: StoredHhAccount): HhAccountRecord => ({
 
 const selection = sql`
   select a.id, a.user_id, a.label, a.is_default, a.first_name, a.last_name, a.email,
-         a.phone, a.area_name, a.session_profile, a.created_at, a.updated_at,
+         a.phone, a.area_name, a.session_profile, a.color, a.created_at, a.updated_at,
          s.state as session_state, s.last_ok_at as session_last_ok_at,
          s.last_error as session_last_error, s.updated_at as session_updated_at
   from hh_account a
@@ -108,6 +110,8 @@ export interface UpsertHhAccountInput {
   readonly firstName?: string | null
   readonly lastName?: string | null
   readonly areaName?: string | null
+  /** `undefined` keeps the stored colour, `null` clears it. */
+  readonly color?: string | null
   readonly now?: Date
 }
 
@@ -141,6 +145,7 @@ export const upsert = (
           first_name = ${input.firstName === undefined ? existing.first_name : input.firstName},
           last_name = ${input.lastName === undefined ? existing.last_name : input.lastName},
           area_name = ${input.areaName === undefined ? existing.area_name : input.areaName},
+          color = ${input.color === undefined ? (existing.color ?? null) : input.color},
           updated_at = ${now}
         where id = ${existing.id}::uuid
         returning id
@@ -150,13 +155,14 @@ export const upsert = (
 
     const inserted = yield* tx.execute(sql`
       insert into hh_account (
-        user_id, label, is_default, session_profile, first_name, last_name, area_name
+        user_id, label, is_default, session_profile, first_name, last_name, area_name, color
       ) values (
         ${input.userId}, ${label}, ${isDefault},
         ${input.sessionProfile ?? null},
         ${input.firstName ?? null},
         ${input.lastName ?? null},
-        ${input.areaName ?? null}
+        ${input.areaName ?? null},
+        ${input.color ?? null}
       )
       returning id
     `)

@@ -5,7 +5,7 @@ import type { HarnessJob } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert } from "@lucide/vue"
 import { queueJobApi, queueJobKeys } from "@/entities/queue-job"
-import { QueueStatusFilter } from "@/features/queue-filter"
+import { queueStatusOptions } from "@/features/queue-filter"
 import { RefreshButton } from "@/features/refresh-button"
 import {
   describeError,
@@ -24,6 +24,7 @@ import {
   DataTable,
   Skeleton,
   StatusBadge,
+  filterableHeader,
   sortableHeader
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
@@ -107,7 +108,11 @@ const columns: ColumnDef<HarnessJob>[] = [
   {
     id: "status",
     accessorFn: (row) => statusLabel(row.status),
-    header: sortableHeader<HarnessJob>("Статус"),
+    header: filterableHeader<HarnessJob>("Статус", {
+      value: () => status.value,
+      options: () => queueStatusOptions,
+      onChange: (value) => (status.value = value)
+    }),
     cell: ({ row }) => h(StatusBadge, { value: row.original.status, raw: true })
   },
   {
@@ -215,7 +220,6 @@ const refresh = () => {
         empty-description="Новая работа браузера и генерации появится здесь после постановки в очередь."
       >
         <template #toolbar>
-          <QueueStatusFilter v-model="status" />
           <span class="pb-2 text-xs text-muted-foreground">Заданий: {{ jobs.length }}</span>
         </template>
       </DataTable>

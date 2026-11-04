@@ -14,6 +14,7 @@ import { KeywordsPage } from "@/pages/keywords"
 import { MailPage } from "@/pages/mail"
 import { PresetsPage } from "@/pages/presets"
 import { QueuePage } from "@/pages/queue"
+import { SettingsPage } from "@/pages/settings"
 import { SchedulesPage } from "@/pages/schedules"
 import { SearchPage } from "@/pages/search"
 import { TelegramPage } from "@/pages/telegram"
@@ -54,5 +55,6 @@ const applicationId = computed(() =>
     <ResumesPage v-else-if="route.name === 'resumes'" />
     <HhAccountsPage v-else-if="route.name === 'accounts'" />
     <BlacklistPage v-else-if="route.name === 'blacklist'" />
+    <SettingsPage v-else-if="route.name === 'settings'" />
   </AppShell>
 </template>

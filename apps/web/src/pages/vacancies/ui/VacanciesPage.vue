@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, h, ref } from "vue"
 import { useQuery } from "@pinia/colada"
-import { useAccountScope } from "@/entities/hh-account"
+import { applicationApi } from "@/entities/application"
+import { AccountChip, ALL_ACCOUNTS, useAccountFilter } from "@/entities/hh-account"
+import { accountFilterOptions } from "@/features/account-filter"
 import type { GateVerdict, VacancySummary } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert } from "@lucide/vue"
 import { vacancyApi, vacancyKeys } from "@/entities/vacancy"
-import { VacancyGateFilter } from "@/features/vacancy-filter"
+import { vacancyArchiveOptions, vacancyGateOptions } from "@/features/vacancy-filter"
 import { RefreshButton } from "@/features/refresh-button"
 import {
   companyPath,
@@ -23,13 +25,8 @@ import {
   Badge,
   Button,
   DataTable,
-  Label,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   StatusBadge,
+  filterableHeader,
   sortableHeader
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
@@ -43,7 +40,24 @@ const includeBlacklisted = ref(false)
 
 const gateCache = new Map<string, GateVerdict>()
 
-const { hhAccountId } = useAccountScope()
+const { accounts, accountId, hhAccountId, scopeKey, defaultAccountId } = useAccountFilter(ALL_ACCOUNTS)
+
+/** Applications that count as "this account responded to the vacancy". */
+const RESPONDED_STATES = new Set(["submitted", "submitting", "queued"])
+const applicationsQuery = useQuery({
+  key: () => ["applications", "by-vacancy"],
+  query: () => applicationApi.list({ limit: 2000 })
+})
+const respondedAccounts = computed(() => {
+  const byVacancy = new Map<string, string[]>()
+  for (const application of applicationsQuery.data.value ?? []) {
+    if (!RESPONDED_STATES.has(application.state)) continue
+    const list = byVacancy.get(application.vacancyId) ?? []
+    if (!list.includes(application.hhAccountId)) list.push(application.hhAccountId)
+    byVacancy.set(application.vacancyId, list)
+  }
+  return byVacancy
+})
 
 const listQuery = useQuery({
   key: () =>
@@ -51,7 +65,7 @@ const listQuery = useQuery({
       gate: gate.value,
       includeArchived: archived.value === "all",
       includeBlacklisted: includeBlacklisted.value,
-      hhAccountId: hhAccountId.value ?? ""
+      hhAccountId: scopeKey.value
     }),
   query: () =>
     vacancyApi.list({
@@ -64,9 +78,12 @@ const listQuery = useQuery({
     })
 })
 
-const vacancies = computed<ReadonlyArray<VacancySummary>>(
-  () => listQuery.data.value?.items ?? []
-)
+const vacancies = computed<ReadonlyArray<VacancySummary>>(() => {
+  const items = listQuery.data.value?.items ?? []
+  const account = hhAccountId.value
+  if (account === undefined) return items
+  return items.filter((vacancy) => respondedAccounts.value.get(vacancy.id)?.includes(account))
+})
 const total = computed(() => listQuery.data.value?.total ?? vacancies.value.length)
 
 const visibleRows = ref<ReadonlyArray<VacancySummary>>([])
@@ -105,7 +122,11 @@ const isLoading = computed(() => listQuery.isLoading.value || gatesQuery.isLoadi
 const columns: ColumnDef<VacancySummary>[] = [
   {
     accessorKey: "title",
-    header: sortableHeader<VacancySummary>("Вакансия"),
+    header: filterableHeader<VacancySummary>("Вакансия", {
+      value: () => archived.value,
+      options: () => vacancyArchiveOptions,
+      onChange: (value) => (archived.value = value)
+    }),
     cell: ({ row }) => {
       const vacancy = row.original
       return h("div", { class: "max-w-[420px]" }, [
@@ -173,13 +194,37 @@ const columns: ColumnDef<VacancySummary>[] = [
     id: "gate",
     enableSorting: false,
     enableGlobalFilter: false,
-    header: "Проверка",
+    header: filterableHeader<VacancySummary>("Проверка", {
+      value: () => gate.value,
+      options: () => vacancyGateOptions,
+      onChange: (value) => (gate.value = value)
+    }),
     cell: ({ row }) => {
       const verdict = gateFor(row.original.title)
       if (verdict !== null) return h(StatusBadge, { value: verdict })
       return gatesQuery.isPending.value
         ? h("span", { class: "text-xs text-muted-foreground" }, "…")
         : h("span", { class: "text-xs text-muted-foreground" }, "—")
+    }
+  },
+  {
+    id: "accounts",
+    enableSorting: false,
+    enableGlobalFilter: false,
+    header: filterableHeader<VacancySummary>("Аккаунты", {
+      value: () => accountId.value,
+      options: () => accountFilterOptions(accounts.value, defaultAccountId.value),
+      onChange: (value) => (accountId.value = value)
+    }),
+    cell: ({ row }) => {
+      const ids = respondedAccounts.value.get(row.original.id) ?? []
+      return ids.length === 0
+        ? h("span", { class: "text-muted-foreground" }, "—")
+        : h(
+            "div",
+            { class: "flex flex-wrap gap-1" },
+            ids.map((id) => h(AccountChip, { accountId: id, accounts: accounts.value }))
+          )
     }
   },
   {
@@ -236,19 +281,6 @@ const refresh = () => {
       @update:visible-rows="visibleRows = $event"
     >
       <template #toolbar>
-        <VacancyGateFilter v-model="gate" />
-        <div class="space-y-1.5">
-          <Label for="vacancy-archived" class="text-xs text-muted-foreground">Архив</Label>
-          <Select v-model="archived">
-            <SelectTrigger id="vacancy-archived" class="w-[150px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="active">Только активные</SelectItem>
-              <SelectItem value="all">С архивными</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
         <label class="flex items-center gap-2 text-sm">
           <input v-model="includeBlacklisted" type="checkbox" class="size-4 rounded border-input accent-primary" />
           Показывать заблокированные

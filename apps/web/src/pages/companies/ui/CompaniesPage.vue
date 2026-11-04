@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, h, ref, watch } from "vue"
 import { useQuery } from "@pinia/colada"
-import { useAccountScope } from "@/entities/hh-account"
 import type { EmployerSummary } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { ChevronLeft, ChevronRight, CircleAlert, Search } from "@lucide/vue"
@@ -28,23 +27,19 @@ const draft = ref("")
 const offset = ref(0)
 const includeBlacklisted = ref(false)
 
-const { hhAccountId } = useAccountScope()
-
 const query = useQuery({
   key: () =>
     companyKeys.list({
       query: appliedQuery.value,
       offset: offset.value,
       includeBlacklisted: includeBlacklisted.value,
-      hhAccountId: hhAccountId.value ?? ""
     }),
   query: () =>
     companyApi.list({
       query: appliedQuery.value === "" ? undefined : appliedQuery.value,
       limit: PAGE_SIZE,
       offset: offset.value,
-      includeBlacklisted: includeBlacklisted.value,
-      hhAccountId: hhAccountId.value
+      includeBlacklisted: includeBlacklisted.value
     })
 })
 

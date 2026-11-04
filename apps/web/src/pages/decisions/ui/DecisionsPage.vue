@@ -7,8 +7,9 @@ import { CircleAlert, FilePlus2 } from "@lucide/vue"
 import { applicationApi } from "@/entities/application"
 import { decisionApi, decisionKeys } from "@/entities/decision"
 import { applicationKeys } from "@/entities/application/model"
-import { AccountChip, hhAccountNameById, useAccountScope } from "@/entities/hh-account"
-import { DecisionVerdictFilter } from "@/features/decision-filter"
+import { AccountChip, hhAccountNameById, useAccountFilter } from "@/entities/hh-account"
+import { accountFilterOptions } from "@/features/account-filter"
+import { decisionVerdictOptions } from "@/features/decision-filter"
 import { RefreshButton } from "@/features/refresh-button"
 import {
   applicationPath,
@@ -28,15 +29,16 @@ import {
   Button,
   DataTable,
   StatusBadge,
+  filterableHeader,
   sortableHeader
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
 
 const verdict = ref("all")
-const { accounts, accountId, hhAccountId } = useAccountScope()
+const { accounts, accountId, hhAccountId, scopeKey, defaultAccountId } = useAccountFilter()
 
 const query = useQuery({
-  key: () => decisionKeys.list(verdict.value, accountId.value),
+  key: () => decisionKeys.list(verdict.value, scopeKey.value),
   query: () =>
     decisionApi.list({
       limit: 200,
@@ -117,7 +119,11 @@ const columns: ColumnDef<DecisionRecord>[] = [
   {
     id: "verdict",
     accessorFn: (row) => statusLabel(row.verdict),
-    header: sortableHeader<DecisionRecord>("Вердикт"),
+    header: filterableHeader<DecisionRecord>("Вердикт", {
+      value: () => verdict.value,
+      options: () => decisionVerdictOptions,
+      onChange: (value) => (verdict.value = value)
+    }),
     cell: ({ row }) => h(StatusBadge, { value: row.original.verdict })
   },
   {
@@ -140,7 +146,11 @@ const columns: ColumnDef<DecisionRecord>[] = [
   {
     id: "account",
     accessorFn: (row) => hhAccountNameById(accounts.value, row.hhAccountId),
-    header: sortableHeader<DecisionRecord>("Аккаунт"),
+    header: filterableHeader<DecisionRecord>("Аккаунт", {
+      value: () => accountId.value,
+      options: () => accountFilterOptions(accounts.value, defaultAccountId.value),
+      onChange: (value) => (accountId.value = value)
+    }),
     cell: ({ row }) =>
       h(AccountChip, { accountId: row.original.hhAccountId, accounts: accounts.value })
   },
@@ -221,7 +231,6 @@ const columns: ColumnDef<DecisionRecord>[] = [
       empty-description="Оцените вакансию, чтобы сохранить артефакт решения."
     >
       <template #toolbar>
-        <DecisionVerdictFilter v-model="verdict" />
         <span class="pb-2 text-xs text-muted-foreground">Показано: {{ decisions.length }}</span>
       </template>
     </DataTable>

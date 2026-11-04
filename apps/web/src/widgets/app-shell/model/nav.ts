@@ -13,6 +13,7 @@ import {
   Mail,
   MessageCircle,
   Search,
+  Settings,
   Send,
   FileText,
   SlidersHorizontal,
@@ -40,7 +41,8 @@ export const navSections: ReadonlyArray<NavSection> = [
     label: "Обзор",
     items: [
       { id: "health", label: "Здоровье", href: "/health", icon: HeartPulse },
-      { id: "accounts", label: "Аккаунты hh", href: "/accounts", icon: User }
+      { id: "accounts", label: "Аккаунты hh", href: "/accounts", icon: User },
+      { id: "settings", label: "Настройки", href: "/settings", icon: Settings }
     ]
   },
   {

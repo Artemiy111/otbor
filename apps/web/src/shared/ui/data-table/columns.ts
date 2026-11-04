@@ -6,6 +6,7 @@ import type {
   Updater
 } from "@tanstack/vue-table"
 import DataTableColumnHeader from "./DataTableColumnHeader.vue"
+import DataTableHeaderFilter, { type HeaderFilterOption } from "./DataTableHeaderFilter.vue"
 
 export type ColumnAlign = "left" | "right"
 
@@ -18,6 +19,31 @@ export const sortableHeader =
   <TData extends RowData>(title: string, align: ColumnAlign = "left") =>
   (context: HeaderContext<TData, unknown>) =>
     h(DataTableColumnHeader, { column: context.column, title, align })
+
+/** A header with a title (sortable when the column allows it) and a select filter below it. */
+export const filterableHeader =
+  <TData extends RowData>(
+    title: string,
+    filter: {
+      readonly value: () => string
+      readonly options: () => ReadonlyArray<HeaderFilterOption>
+      readonly onChange: (value: string) => void
+    },
+    align: ColumnAlign = "left"
+  ) =>
+  (context: HeaderContext<TData, unknown>) =>
+    h(
+      DataTableColumnHeader,
+      { column: context.column, title, align },
+      {
+        filter: () =>
+          h(DataTableHeaderFilter, {
+            modelValue: filter.value(),
+            options: filter.options(),
+            "onUpdate:modelValue": filter.onChange
+          })
+      }
+    )
 
 export interface TextColumnOptions<TData extends RowData> {
   readonly id: string

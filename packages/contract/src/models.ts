@@ -508,6 +508,8 @@ export const HhAccountRecord = Schema.Struct({
   firstName: Schema.optional(Schema.NullOr(Schema.String)),
   lastName: Schema.optional(Schema.NullOr(Schema.String)),
   areaName: Schema.optional(Schema.NullOr(Schema.String)),
+  /** Operator-chosen colour, `#rrggbb`; null/absent means the automatic colour. */
+  color: Schema.optional(Schema.NullOr(Schema.String)),
   session: Schema.optional(Schema.NullOr(HhSessionRecord)),
   createdAt: Schema.String,
   updatedAt: Schema.String

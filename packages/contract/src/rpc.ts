@@ -642,7 +642,9 @@ export const HhAccountUpsert = Rpc.make("HhAccountUpsert", {
     sessionProfile: Schema.optional(Schema.NullOr(Schema.String)),
     firstName: Schema.optional(Schema.NullOr(Schema.String)),
     lastName: Schema.optional(Schema.NullOr(Schema.String)),
-    areaName: Schema.optional(Schema.NullOr(Schema.String))
+    areaName: Schema.optional(Schema.NullOr(Schema.String)),
+    /** `#rrggbb`, or null to go back to the automatic colour. */
+    color: Schema.optional(Schema.NullOr(Schema.String))
   }),
   success: HhAccountRecord,
   error: ApiError

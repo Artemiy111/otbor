@@ -31,6 +31,7 @@ export const hhAccount = pgTable(
     phone: text("phone"),
     areaName: text("area_name"),
     sessionProfile: text("session_profile"),
+    color: text("color"),
     createdAt: createdAt(),
     updatedAt: updatedAt()
   },

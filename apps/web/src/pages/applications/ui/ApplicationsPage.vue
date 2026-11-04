@@ -5,8 +5,9 @@ import type { ApplicationRecord, HhAccountRecord } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert } from "@lucide/vue"
 import { applicationApi, applicationKeys } from "@/entities/application"
-import { AccountChip, hhAccountNameById, useAccountScope } from "@/entities/hh-account"
-import { ApplicationStateFilter } from "@/features/application-filter"
+import { AccountChip, hhAccountNameById, useAccountFilter } from "@/entities/hh-account"
+import { accountFilterOptions } from "@/features/account-filter"
+import { applicationStateOptions } from "@/features/application-filter"
 import { RefreshButton } from "@/features/refresh-button"
 import {
   applicationPath,
@@ -21,16 +22,17 @@ import {
   AlertTitle,
   DataTable,
   StatusBadge,
+  filterableHeader,
   sortableHeader,
   textColumn
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
 
 const state = ref("all")
-const { accounts, accountId, hhAccountId } = useAccountScope()
+const { accounts, accountId, hhAccountId, scopeKey, defaultAccountId } = useAccountFilter()
 
 const query = useQuery({
-  key: () => applicationKeys.list(state.value, accountId.value),
+  key: () => applicationKeys.list(state.value, scopeKey.value),
   query: () =>
     applicationApi.list({
       limit: 200,
@@ -45,7 +47,11 @@ const columns: ColumnDef<ApplicationRecord>[] = [
   {
     id: "state",
     accessorFn: (row) => statusLabel(row.state),
-    header: sortableHeader<ApplicationRecord>("Состояние"),
+    header: filterableHeader<ApplicationRecord>("Состояние", {
+      value: () => state.value,
+      options: () => applicationStateOptions,
+      onChange: (value) => (state.value = value)
+    }),
     cell: ({ row }) =>
       h("div", null, [
         h(StatusBadge, { value: row.original.state }),
@@ -88,7 +94,11 @@ const columns: ColumnDef<ApplicationRecord>[] = [
   {
     id: "hhAccountId",
     accessorFn: (row) => hhAccountNameById(accounts.value, row.hhAccountId),
-    header: sortableHeader<ApplicationRecord>("Аккаунт"),
+    header: filterableHeader<ApplicationRecord>("Аккаунт", {
+      value: () => accountId.value,
+      options: () => accountFilterOptions(accounts.value, defaultAccountId.value),
+      onChange: (value) => (accountId.value = value)
+    }),
     cell: ({ row }) =>
       h(AccountChip, { accountId: row.original.hhAccountId, accounts: accounts.value })
   },
@@ -134,7 +144,6 @@ const columns: ColumnDef<ApplicationRecord>[] = [
       empty-description="Отклик появится здесь, когда решение станет рабочим процессом."
     >
       <template #toolbar>
-        <ApplicationStateFilter v-model="state" />
         <span class="pb-2 text-xs text-muted-foreground">Показано: {{ applications.length }}</span>
       </template>
     </DataTable>
