@@ -12,6 +12,7 @@
   "dependencies": {
     "@lucide/vue": "^1.66.0",
     "@otbor/contract": "workspace:*",
+    "@otbor/domain": "workspace:*",
     "@pinia/colada": "^1.4.9",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/vue-table": "^8.21.3",

@@ -84,14 +84,27 @@ export const titleCacheKey = (input: string): string => {
 export const escapeRegExp = (input: string): string =>
   input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
-/** Regex that matches a normalized term with Unicode word boundaries. */
-export const termPattern = (term: string): RegExp => {
-  const body = normalizeTerm(term)
+const termBody = (term: string): string =>
+  normalizeTerm(term)
     .split(/\s+/)
     .map((part) => escapeRegExp(part).replace(/е/g, "[её]"))
     .join("[\\s\\u00a0]+")
 
-  return new RegExp(`(?<![\\p{L}\\p{N}_])${body}(?![\\p{L}\\p{N}_])`, "giu")
+/** Regex that matches a normalized term with Unicode word boundaries. */
+export const termPattern = (term: string): RegExp =>
+  new RegExp(`(?<![\\p{L}\\p{N}_])${termBody(term)}(?![\\p{L}\\p{N}_])`, "giu")
+
+/**
+ * One regex for several terms, with the same word boundaries as `termPattern`.
+ * Longer terms come first so `kubernetes` wins over `k`. Returns null for an
+ * empty list. Used for highlighting, so it matches the raw (not normalized) text.
+ */
+export const termsPattern = (terms: ReadonlyArray<string>): RegExp | null => {
+  const bodies = [...new Set(terms.map(normalizeTerm).filter((term) => term !== ""))]
+    .sort((a, b) => b.length - a.length)
+    .map(termBody)
+  if (bodies.length === 0) return null
+  return new RegExp(`(?<![\\p{L}\\p{N}_])(?:${bodies.join("|")})(?![\\p{L}\\p{N}_])`, "giu")
 }
 
 /** Count word-boundary matches without building a match array. */

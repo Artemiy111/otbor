@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { matchLexicon, matchedTerms } from "../src/lexicon.ts"
 import type { LexiconEntryInput } from "../src/lexicon.ts"
+import { termsPattern } from "../src/text.ts"
 
 const entries: ReadonlyArray<LexiconEntryInput> = [
   {
@@ -74,5 +75,17 @@ describe("matchLexicon", () => {
     })
     expect(matchedTerms(matches, "title")).toEqual(["kubernetes"])
     expect(matchedTerms(matches, "body")).toEqual(["kubernetes", "terraform"])
+  })
+})
+
+describe("termsPattern", () => {
+  test("highlights whole words only", () => {
+    const pattern = termsPattern(["ии", "kubernetes"])!
+    const hit = (text: string) => text.match(pattern)?.[0] ?? null
+    expect(hit("Опыт с ИИ.")).toBe("ИИ")
+    expect(hit("метрики телеметрии")).toBeNull()
+    expect(hit("позиции и функции")).toBeNull()
+    expect(hit("Kubernetes")).toBe("Kubernetes")
+    expect(termsPattern([])).toBeNull()
   })
 })

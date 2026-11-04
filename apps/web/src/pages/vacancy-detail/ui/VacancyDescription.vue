@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue"
 import type { VacancyDetail } from "@otbor/contract"
+import { termsPattern } from "@otbor/domain"
 import { Button, EmptyState } from "@/shared/ui"
 
 const props = withDefaults(defineProps<{ data: VacancyDetail; collapsible?: boolean }>(), {
@@ -12,12 +13,9 @@ const expanded = ref(!props.collapsible)
 const html = computed(() => {
   const text = props.data.descriptionText
   if (text.trim() === "" || !highlight.value) return null
-  const forms = [...new Set(props.data.keywords.map((item) => item.matchedForm).filter(Boolean))].sort(
-    (a, b) => b.length - a.length
-  )
-  if (forms.length === 0) return null
+  const pattern = termsPattern(props.data.keywords.map((item) => item.matchedForm))
+  if (pattern === null) return null
   const escaped = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-  const pattern = new RegExp(`(${forms.map((form) => form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "giu")
   return escaped.replace(
     pattern,
     (match) => `<mark class="rounded bg-amber-200/60 px-0.5 text-foreground dark:bg-amber-400/30">${match}</mark>`
