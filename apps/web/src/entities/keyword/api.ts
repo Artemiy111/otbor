@@ -1,4 +1,4 @@
-import type { KeywordMatchLocation, LexiconKeyword, PresetId } from "@otbor/contract"
+import type { KeywordId, KeywordMatchLocation, LexiconKeyword, PresetId } from "@otbor/contract"
 import { call } from "@/shared/api"
 
 export interface KeywordListInput {
@@ -10,7 +10,19 @@ export interface KeywordListInput {
   readonly location?: KeywordMatchLocation
 }
 
+export interface KeywordSaveInput {
+  /** Present when editing an existing keyword. */
+  readonly id?: string
+  readonly term: string
+  readonly aliases: ReadonlyArray<string>
+}
+
 export const keywordApi = {
+  save: (input: KeywordSaveInput): Promise<LexiconKeyword> =>
+    call((client) =>
+      client.LexiconUpsert({ ...input, id: input.id as KeywordId | undefined })
+    ),
+  remove: (id: string) => call((client) => client.LexiconRemove({ id: id as KeywordId })),
   list: (input: KeywordListInput): Promise<ReadonlyArray<LexiconKeyword>> =>
     call((client) =>
       client.LexiconList({

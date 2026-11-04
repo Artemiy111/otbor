@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, h, ref } from "vue"
-import { useQuery } from "@pinia/colada"
+import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
 import type { KeywordMatchLocation, LexiconKeyword } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
-import { CircleAlert, Search } from "@lucide/vue"
+import { CircleAlert, Pencil, Plus, Search, Trash2 } from "@lucide/vue"
 import { AccountChip, hhAccountApi, hhAccountKeys } from "@/entities/hh-account"
 import { keywordApi, keywordKeys } from "@/entities/keyword"
 import { presetApi, presetKeys } from "@/entities/preset"
@@ -23,6 +23,12 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  Textarea,
   sortableHeader
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
@@ -77,6 +83,59 @@ const reset = () => {
 const refresh = () => {
   void query.refetch()
 }
+
+const queryCache = useQueryCache()
+const editorOpen = ref(false)
+const editingId = ref<string | undefined>(undefined)
+const termDraft = ref("")
+const aliasesDraft = ref("")
+
+const openEditor = (keyword?: LexiconKeyword) => {
+  editingId.value = keyword?.id
+  termDraft.value = keyword?.term ?? ""
+  aliasesDraft.value = keyword?.aliases.map((alias) => alias.alias).join("\n") ?? ""
+  saveMutation.reset()
+  editorOpen.value = true
+}
+
+const parseAliases = (text: string): Array<string> => [
+  ...new Set(
+    text
+      .split(/[\n,]/)
+      .map((alias) => alias.trim())
+      .filter((alias) => alias !== "")
+  )
+]
+
+const saveMutation = useMutation({
+  mutation: () =>
+    keywordApi.save({
+      id: editingId.value,
+      term: termDraft.value.trim(),
+      aliases: parseAliases(aliasesDraft.value)
+    }),
+  onSuccess: async () => {
+    editorOpen.value = false
+    await queryCache.invalidateQueries({ key: keywordKeys.all })
+  }
+})
+
+const removeMutation = useMutation({
+  mutation: (id: string) => keywordApi.remove(id),
+  onSuccess: async () => {
+    await queryCache.invalidateQueries({ key: keywordKeys.all })
+  }
+})
+
+const confirmRemove = (keyword: LexiconKeyword) => {
+  if (window.confirm(`Удалить «${keyword.term}» и его алиасы?`)) {
+    removeMutation.mutate(keyword.id)
+  }
+}
+
+const saveErrorText = computed(() =>
+  saveMutation.error.value === null ? null : describeError(saveMutation.error.value)
+)
 
 const columns: ColumnDef<LexiconKeyword>[] = [
   {
@@ -153,6 +212,35 @@ const columns: ColumnDef<LexiconKeyword>[] = [
     }
   },
   {
+    id: "actions",
+    enableSorting: false,
+    enableGlobalFilter: false,
+    header: "",
+    cell: ({ row }) =>
+      h("div", { class: "flex justify-end gap-1" }, [
+        h(
+          Button,
+          {
+            variant: "ghost",
+            size: "icon",
+            title: "Изменить",
+            onClick: () => openEditor(row.original)
+          },
+          () => h(Pencil, { class: "h-4 w-4" })
+        ),
+        h(
+          Button,
+          {
+            variant: "ghost",
+            size: "icon",
+            title: "Удалить",
+            onClick: () => confirmRemove(row.original)
+          },
+          () => h(Trash2, { class: "h-4 w-4" })
+        )
+      ])
+  },
+  {
     id: "resumes",
     accessorFn: (row) => row.resumeAccountIds.length,
     enableGlobalFilter: false,
@@ -177,6 +265,9 @@ const columns: ColumnDef<LexiconKeyword>[] = [
       description="Словарь терминов и алиасов. В колонке «В резюме» — аккаунты, в резюме которых есть слово."
     >
       <template #actions>
+        <Button type="button" @click="openEditor()">
+          <Plus class="h-4 w-4" /> Добавить
+        </Button>
         <RefreshButton :loading="query.isLoading.value" @refresh="refresh" />
       </template>
     </PageHeader>
@@ -261,5 +352,30 @@ const columns: ColumnDef<LexiconKeyword>[] = [
       :empty-title="appliedQuery === '' ? 'Словарь пуст' : 'Ничего не найдено'"
       empty-description="Добавьте термины через CLI или измените поисковый запрос."
     />
+
+    <Sheet v-model:open="editorOpen">
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>{{ editingId ? "Изменить слово" : "Новое слово" }}</SheetTitle>
+          <SheetDescription>
+            Алиасы — другие написания того же термина, по одному на строку или через запятую.
+          </SheetDescription>
+        </SheetHeader>
+        <form class="flex flex-1 flex-col gap-4 px-4 pb-4" @submit.prevent="saveMutation.mutate()">
+          <div class="space-y-1.5">
+            <Label for="keyword-term">Термин</Label>
+            <Input id="keyword-term" v-model="termDraft" placeholder="Kubernetes" required />
+          </div>
+          <div class="space-y-1.5">
+            <Label for="keyword-aliases">Алиасы</Label>
+            <Textarea id="keyword-aliases" v-model="aliasesDraft" rows="8" placeholder="k8s&#10;кубернетес" />
+          </div>
+          <p v-if="saveErrorText" class="text-sm text-destructive">{{ saveErrorText }}</p>
+          <Button type="submit" :disabled="termDraft.trim() === '' || saveMutation.isLoading.value">
+            Сохранить
+          </Button>
+        </form>
+      </SheetContent>
+    </Sheet>
   </section>
 </template>

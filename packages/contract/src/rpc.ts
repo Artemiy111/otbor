@@ -731,6 +731,8 @@ export const LexiconList = Rpc.make("LexiconList", {
 
 export const LexiconUpsert = Rpc.make("LexiconUpsert", {
   payload: Schema.Struct({
+    /** Edit this keyword (and rename it) instead of matching by term. */
+    id: Schema.optional(KeywordId),
     term: Schema.String,
     aliases: Schema.optional(Schema.Array(Schema.String))
   }),

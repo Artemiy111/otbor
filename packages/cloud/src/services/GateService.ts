@@ -38,6 +38,7 @@ export interface GateServiceShape {
     readonly location?: KeywordMatchLocation
   }) => Effect.Effect<ReadonlyArray<LexiconKeyword>, ApiError>
   readonly lexiconUpsert: (input: {
+    readonly id?: string
     readonly term: string
     readonly aliases?: ReadonlyArray<string>
   }) => Effect.Effect<LexiconKeyword, ApiError>

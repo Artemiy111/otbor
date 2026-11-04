@@ -586,6 +586,8 @@ export const list = (
   })
 
 export interface UpsertKeywordInput {
+  /** When set, this row is renamed/edited instead of matched by term. */
+  readonly id?: string
   readonly term: string
   readonly aliases?: ReadonlyArray<string>
 }
@@ -596,17 +598,23 @@ export const upsert = (
 ): RepoEffect<LexiconKeyword> =>
   Effect.gen(function*() {
     const normalized = normalizeTerm(input.term)
-    const [row] = yield* tx
-      .insert(keyword)
-      .values({ term: input.term.trim(), normalizedTerm: normalized })
-      .onConflictDoUpdate({
-        target: keyword.normalizedTerm,
-        set: {
-          term: sql`excluded.term`,
-          updatedAt: sql`now()`
-        }
-      })
-      .returning({ id: keyword.id, term: keyword.term, normalizedTerm: keyword.normalizedTerm })
+    const [row] = input.id !== undefined
+      ? yield* tx
+        .update(keyword)
+        .set({ term: input.term.trim(), normalizedTerm: normalized, updatedAt: sql`now()` })
+        .where(sql`${keyword.id} = ${input.id}`)
+        .returning({ id: keyword.id, term: keyword.term, normalizedTerm: keyword.normalizedTerm })
+      : yield* tx
+        .insert(keyword)
+        .values({ term: input.term.trim(), normalizedTerm: normalized })
+        .onConflictDoUpdate({
+          target: keyword.normalizedTerm,
+          set: {
+            term: sql`excluded.term`,
+            updatedAt: sql`now()`
+          }
+        })
+        .returning({ id: keyword.id, term: keyword.term, normalizedTerm: keyword.normalizedTerm })
 
     const keywordId = row!.id
     const aliases = [...new Set((input.aliases ?? []).map((alias) => alias.trim()).filter((alias) => alias.length > 0))]

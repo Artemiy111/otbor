@@ -1,2 +1,2 @@
-export { keywordApi, type KeywordListInput } from "./api"
+export { keywordApi, type KeywordListInput, type KeywordSaveInput } from "./api"
 export { keywordKeys } from "./model"
