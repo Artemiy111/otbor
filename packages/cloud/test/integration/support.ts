@@ -79,7 +79,7 @@ import { MailService, type MailAccountUpsertInput } from "../../src/services/Mai
 import { MailSync } from "../../src/services/MailSync.ts"
 import { PresetService } from "../../src/services/PresetService.ts"
 import { ResumeService } from "../../src/services/ResumeService.ts"
-import { formReadJob, submitJob } from "../../src/services/jobs.ts"
+import { formReadJob, inferenceJob, submitJob } from "../../src/services/jobs.ts"
 import { NegotiationsSync } from "../../src/services/NegotiationsSync.ts"
 import { ResumeSync } from "../../src/services/ResumeSync.ts"
 import { VacancyAnalysisService } from "../../src/services/VacancyAnalysisService.ts"
@@ -1985,6 +1985,19 @@ export const applicationGet = async (userId: string, id: string) =>
       return yield* applications.get(id)
     })
   )
+
+/** An inference job through the real `inferenceJob`; returns its stored payload. */
+export const enqueueInferencePayload = async (
+  userId: string,
+  accountId: string,
+  payload: Parameters<typeof inferenceJob>[1]["payload"]
+) =>
+  runAs(
+    userId,
+    ownerTx((tx) =>
+      inferenceJob(tx, { userId, hhAccountId: accountId, payload, idempotencyKey: `test:${Math.random()}` })
+    )
+  ).then((job) => job.payload as Record<string, unknown>)
 
 /** A form read for a vacancy, through the real `formReadJob`. */
 export const enqueuePrepareJob = async (input: {

@@ -203,7 +203,9 @@ export const inferenceJob = (
       prompt: input.payload.prompt,
       ...(input.payload.system === undefined ? {} : { system: input.payload.system }),
       ...(input.payload.model === undefined ? {} : { model: input.payload.model }),
-      ...(input.payload.jsonSchema === undefined ? {} : { jsonSchema: input.payload.jsonSchema })
+      ...(input.payload.jsonSchema === undefined ? {} : { jsonSchema: input.payload.jsonSchema }),
+      ...(input.payload.harness === undefined ? {} : { harness: input.payload.harness }),
+      ...(input.payload.effort === undefined ? {} : { effort: input.payload.effort })
     },
     idempotencyKey: input.idempotencyKey
   })

@@ -209,6 +209,17 @@ if (!enabled || serverUrl === null) {
       expect(third.application.id).not.toBe(first.application.id)
     }, 60_000)
 
+    test("an inference job keeps the chosen harness, model and effort", async () => {
+      const tenant = await support.seedTenant("infer-payload")
+      const payload = await support.enqueueInferencePayload(tenant.userId, tenant.accountId, {
+        prompt: "p",
+        harness: "claude",
+        model: "haiku",
+        effort: "low"
+      })
+      expect(payload).toMatchObject({ prompt: "p", harness: "claude", model: "haiku", effort: "low" })
+    })
+
     test("one account applies to the same vacancy with different resumes, once per resume", async () => {
       const tenant = await support.seedTenant("manual-resumes")
       const vacancyId = await support.seedVacancy("manual-resumes")
