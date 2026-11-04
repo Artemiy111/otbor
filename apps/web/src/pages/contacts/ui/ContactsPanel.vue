@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
 import type { ContactKind, ContactRecord, ContactSource } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert, Download, Mail, Send } from "@lucide/vue"
+import { AccountChip, hhAccountApi, hhAccountKeys } from "@/entities/hh-account"
 import { contactApi, contactKeys, type ContactsExtractResult } from "@/entities/contact"
 import {
   contactHref,
@@ -53,6 +54,12 @@ const query = useQuery({
       offset: 0
     })
 })
+
+const accountsQuery = useQuery({
+  key: () => hhAccountKeys.list(),
+  query: () => hhAccountApi.list()
+})
+const accounts = computed(() => accountsQuery.data.value ?? [])
 
 const queryCache = useQueryCache()
 const contacts = computed<ReadonlyArray<ContactRecord>>(() => query.data.value?.items ?? [])
@@ -172,6 +179,21 @@ const columns: ColumnDef<ContactRecord>[] = [
         { variant: row.original.source === "hh_vacancy" ? "info" : "secondary" },
         () => contactSourceLabel(row.original.source)
       )
+  },
+  {
+    id: "hhAccount",
+    enableSorting: false,
+    header: "Аккаунт hh",
+    cell: ({ row }) =>
+      row.original.hhAccountIds.length === 0
+        ? h("span", { class: "text-muted-foreground" }, "—")
+        : h(
+            "div",
+            { class: "flex items-center gap-1" },
+            row.original.hhAccountIds.map((id) =>
+              h(AccountChip, { accountId: id, accounts: accounts.value })
+            )
+          )
   },
   {
     id: "vacancy",

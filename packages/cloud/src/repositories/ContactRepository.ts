@@ -26,6 +26,7 @@ export interface ContactRow {
   readonly employer_id: string | null
   readonly first_seen_at: Date | string
   readonly last_seen_at: Date | string
+  readonly hh_account_ids?: ReadonlyArray<string> | null
 }
 
 const iso = (value: Date | string): string =>
@@ -45,7 +46,8 @@ export const toRecord = (row: ContactRow): ContactRecord => ({
   vacancyId: row.vacancy_id as VacancyId | null,
   employerId: row.employer_id as ContactRecord["employerId"],
   firstSeenAt: iso(row.first_seen_at),
-  lastSeenAt: iso(row.last_seen_at)
+  lastSeenAt: iso(row.last_seen_at),
+  hhAccountIds: row.hh_account_ids ?? []
 })
 
 export interface ContactFilter {
@@ -59,7 +61,18 @@ export interface ContactFilter {
 
 const selection = sql`
   select id, person_name, person_role, kind, value, url, source, confidence,
-         evidence, is_bot, vacancy_id, employer_id, first_seen_at, last_seen_at
+         evidence, is_bot, vacancy_id, employer_id, first_seen_at, last_seen_at,
+         coalesce((
+           select array_agg(distinct cv.account_id order by cv.account_id)
+           from (
+             select c.account_id
+             from conversation_vacancy link
+             join conversation c on c.id = link.conversation_id
+             where link.vacancy_id = contact.vacancy_id
+               and c.channel = 'hh_chat'
+               and c.account_id <> ''
+           ) cv
+         ), '{}') as hh_account_ids
   from contact
 `
 

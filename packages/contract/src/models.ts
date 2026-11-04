@@ -524,7 +524,9 @@ export const ContactRecord = Schema.Struct({
   ...ContactSummary.fields,
   evidence: Schema.NullOr(Schema.String),
   employerId: Schema.NullOr(EmployerId),
-  firstSeenAt: Schema.String
+  firstSeenAt: Schema.String,
+  /** hh accounts whose hh chat is about this contact's vacancy. */
+  hhAccountIds: Schema.Array(Schema.String)
 })
 
 export type ContactRecord = typeof ContactRecord.Type
