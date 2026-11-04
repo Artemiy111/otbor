@@ -132,42 +132,8 @@ interface AnswerState {
 
 const letter = ref("")
 const answers = reactive<Record<string, AnswerState>>({})
-const initializedFor = ref<string | null>(null)
 
 const hintFor = (questionId: string) => hints.value.find((hint) => hint.questionId === questionId)
-
-watch(
-  [form, detail],
-  () => {
-    const current = form.value
-    if (current === null) return
-    const kit = detail.value?.kit ?? null
-    const key = `${current.formHash}:${detail.value?.application.id ?? ""}:${kit?.id ?? ""}`
-    if (initializedFor.value === key) return
-    initializedFor.value = key
-    // The employer may edit questions: keep what was typed for questions that
-    // are still there, drop the rest, and only fill the empty ones.
-    const present = new Set(current.questions.map((question) => question.id))
-    for (const name of Object.keys(answers)) if (!present.has(name)) delete answers[name]
-    const saved = new Map(
-      (kit?.answers ?? [])
-        .filter((item): item is Extract<KitAnswer, { questionId: string }> => "questionId" in item)
-        .map((item) => [item.questionId, item])
-    )
-    for (const question of current.questions) {
-      const own = answers[question.id]
-      if (own !== undefined && (own.optionIds.length > 0 || own.text !== "")) continue
-      const kitAnswer = saved.get(question.id)
-      const hint = hints.value.find((item) => item.questionId === question.id)
-      answers[question.id] = {
-        optionIds: [...(kitAnswer?.optionIds ?? hint?.optionIds ?? [])],
-        text: kitAnswer?.text ?? hint?.text ?? ""
-      }
-    }
-    if (kit?.letter && letter.value === "") letter.value = kit.letter
-  },
-  { immediate: true }
-)
 
 /** A saved kit written for a form that has since changed. */
 const kitIsOld = computed(() => {
@@ -249,8 +215,16 @@ const signatureNow = () => JSON.stringify([letter.value, answers])
 
 const applyGenerated = (
   draft: GeneratedDraft,
-  meta: { model: string | null; durationMs: number | null }
+  meta: { model: string | null; durationMs: number | null; accountId: string; resumeId: string }
 ) => {
+  // The model may answer after the operator switched to another resume: the
+  // text belongs to the resume it was written for, not to the one on screen.
+  const target = `${meta.accountId}|${meta.resumeId}`
+  if (target !== workspaceKey.value) {
+    storeGeneratedElsewhere(target, draft)
+    notice.value = "Письмо готово для другого резюме: переключитесь на него, чтобы увидеть."
+    return
+  }
   errorText.value = null
   notice.value = null
   const previous: Snapshot = {
@@ -321,6 +295,155 @@ const needsOwnAnswer = computed(() =>
 const busy = ref<"refresh" | "save" | "send" | null>(null)
 const confirming = ref(false)
 
+/* ---- one workspace per account + resume ---------------------------------- */
+
+interface Workspace {
+  letter: string
+  answers: Record<string, AnswerState>
+  model: Record<string, AnswerState>
+  info: typeof generatedInfo.value
+}
+
+const workspaceKey = computed(() => `${accountId.value}|${resumeId.value}`)
+/** What was typed or generated for the resumes the operator switched away from. */
+const stash = new Map<string, Workspace>()
+let hydratedKey: string | null = null
+
+const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T
+
+const capture = (): Workspace => ({
+  letter: letter.value,
+  answers: clone(answers),
+  model: Object.fromEntries(modelAnswers),
+  info: generatedInfo.value
+})
+
+const clearFields = () => {
+  letter.value = ""
+  for (const name of Object.keys(answers)) delete answers[name]
+  modelAnswers.clear()
+  snapshot.value = null
+  generatedInfo.value = null
+  notice.value = null
+  errorText.value = null
+  confirming.value = false
+}
+
+const restore = (kept: Workspace) => {
+  letter.value = kept.letter
+  Object.assign(answers, clone(kept.answers))
+  for (const [id, value] of Object.entries(kept.model)) modelAnswers.set(id, value)
+  generatedInfo.value = kept.info
+}
+
+watch(
+  workspaceKey,
+  (next, previous) => {
+    if (previous !== undefined) stash.set(previous, capture())
+    clearFields()
+    const kept = stash.get(next)
+    if (kept !== undefined) {
+      restore(kept)
+      hydratedKey = next
+    } else {
+      hydratedKey = null
+    }
+  },
+  { immediate: true }
+)
+
+const savedKit = computed(() => detail.value?.kit ?? null)
+
+const savedAnswers = (): Map<string, Extract<KitAnswer, { questionId: string }>> =>
+  new Map(
+    (savedKit.value?.answers ?? [])
+      .filter((item): item is Extract<KitAnswer, { questionId: string }> => "questionId" in item)
+      .map((item) => [item.questionId, item])
+  )
+
+/** Letter and answers of the saved draft for this resume, then hints for what is still empty. */
+watch(
+  [detail, form, existing, workspaceKey],
+  () => {
+    const ready = existing.value === null || detail.value?.application.id === existing.value.id
+    if (!ready) return
+    if (hydratedKey !== workspaceKey.value) {
+      hydratedKey = workspaceKey.value
+      letter.value = savedKit.value?.letter ?? ""
+      for (const name of Object.keys(answers)) delete answers[name]
+    }
+    const current = form.value
+    if (current === null) return
+    const saved = savedAnswers()
+    for (const question of current.questions) {
+      const own = answers[question.id]
+      if (own !== undefined && (own.optionIds.length > 0 || own.text !== "")) continue
+      const kitAnswer = saved.get(question.id)
+      const hint = hints.value.find((item) => item.questionId === question.id)
+      answers[question.id] = {
+        optionIds: [...(kitAnswer?.optionIds ?? hint?.optionIds ?? [])],
+        text: kitAnswer?.text ?? hint?.text ?? ""
+      }
+    }
+  },
+  { immediate: true }
+)
+
+/** A draft generated for a resume that is not on screen waits for it. */
+const storeGeneratedElsewhere = (target: string, draft: GeneratedDraft) => {
+  const base = stash.get(target) ?? { letter: "", answers: {}, model: {}, info: null }
+  const next: Workspace = { ...clone(base), info: base.info }
+  if (draft.letter !== null) next.letter = draft.letter.slice(0, maxLetter)
+  for (const item of draft.answers) {
+    const question = questions.value.find((candidate) => candidate.id === item.questionId)
+    if (question === undefined) continue
+    const choice = question.kind === "single" || question.kind === "multiple"
+    const value: AnswerState = choice
+      ? { optionIds: [...(item.optionIds ?? [])], text: "" }
+      : { optionIds: [], text: item.text ?? "" }
+    next.answers[question.id] = value
+    next.model[question.id] = clone(value)
+  }
+  stash.set(target, next)
+}
+
+const normalize = (text: string, list: ReadonlyArray<KitAnswer>): string =>
+  JSON.stringify([
+    text.trim(),
+    list
+      .filter((item): item is Extract<KitAnswer, { questionId: string }> => "questionId" in item)
+      .map((item) => [item.questionId, [...(item.optionIds ?? [])].sort(), (item.text ?? "").trim()])
+      .sort()
+  ])
+
+/** The screen differs from the draft saved for this resume. */
+const dirty = computed(
+  () =>
+    normalize(letter.value, buildAnswers()) !==
+    normalize(savedKit.value?.letter ?? "", savedKit.value?.answers ?? [])
+)
+
+const revertToSaved = () => {
+  letter.value = savedKit.value?.letter ?? ""
+  for (const name of Object.keys(answers)) delete answers[name]
+  modelAnswers.clear()
+  snapshot.value = null
+  hydratedKey = null
+  // the hydration watcher fills answers from the saved kit again
+  notice.value = "Возвращён сохранённый черновик."
+  void nextTick(() => {
+    hydratedKey = workspaceKey.value
+    const saved = savedAnswers()
+    for (const question of questions.value) {
+      const kitAnswer = saved.get(question.id)
+      answers[question.id] = {
+        optionIds: [...(kitAnswer?.optionIds ?? [])],
+        text: kitAnswer?.text ?? ""
+      }
+    }
+  })
+}
+
 const explain = (error: unknown): string => {
   const problems = (error as { problems?: ReadonlyArray<unknown> } | null)?.problems
   if (Array.isArray(problems) && problems.length > 0) {
@@ -380,11 +503,11 @@ const ensureApplication = async (): Promise<string> => {
 }
 
 const saveKit = async (applicationId: string) => {
-  const current = form.value
-  if (current === null) return
+  // A letter-only draft is kept even before any form was read; the form is
+  // read again and the kit is saved against its real hash before sending.
   await applicationApi.setKit({
     applicationId,
-    formHash: current.formHash,
+    formHash: form.value?.formHash ?? NO_FORM,
     letter: letter.value.trim() === "" ? null : letter.value.trim(),
     answers: buildAnswers()
   })
@@ -439,6 +562,7 @@ const send = async () => {
 }
 
 const maxLetter = 10_000
+const NO_FORM = "no-form"
 </script>
 
 <template>
@@ -568,6 +692,19 @@ const maxLetter = 10_000
           placeholder="Здравствуйте! Меня заинтересовала вакансия…"
         />
         <div class="text-right text-xs text-muted-foreground">{{ letter.length }} / {{ maxLetter }}</div>
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <span v-if="savedKit">
+            Черновик для этого резюме сохранён {{ formatDate(savedKit.createdAt) }}.
+          </span>
+          <span v-else>Для этого резюме черновика нет.</span>
+          <span v-if="dirty" class="text-amber-300">Есть несохранённые изменения.</span>
+          <Button v-if="dirty && savedKit" variant="ghost" size="sm" :disabled="busy !== null" @click="revertToSaved">
+            Вернуть сохранённое
+          </Button>
+        </div>
+        <p class="text-xs text-muted-foreground">
+          Черновик хранит письмо и ответы теста для пары «аккаунт + резюме». На hh ничего не отправляется.
+        </p>
       </div>
 
       <!-- test -->

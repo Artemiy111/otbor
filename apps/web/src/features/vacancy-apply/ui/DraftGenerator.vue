@@ -28,7 +28,10 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  generated: [draft: GeneratedDraft, meta: { model: string | null; durationMs: number | null }]
+  generated: [
+    draft: GeneratedDraft,
+    meta: { model: string | null; durationMs: number | null; accountId: string; resumeId: string }
+  ]
   failed: [reason: string]
 }>()
 
@@ -226,6 +229,7 @@ const run = async () => {
   cancelled = false
   elapsed.value = 0
   const startedAt = Date.now()
+  const startedFor = { accountId: props.accountId, resumeId: props.resumeId }
   timer = setInterval(() => (elapsed.value = Math.round((Date.now() - startedAt) / 1000)), 500)
   try {
     const { job: queued } = await applicationApi.draftGenerate({
@@ -258,7 +262,10 @@ const run = async () => {
     }
     emit("generated", draft, {
       model: typeof result.model === "string" ? result.model : null,
-      durationMs: typeof result.durationMs === "number" ? result.durationMs : Date.now() - startedAt
+      durationMs: typeof result.durationMs === "number" ? result.durationMs : Date.now() - startedAt,
+      // the resume it was started for, even if the operator switched meanwhile
+      accountId: startedFor.accountId,
+      resumeId: startedFor.resumeId
     })
   } catch (error) {
     if (!cancelled) emit("failed", describeError(error))
