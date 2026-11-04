@@ -34,7 +34,7 @@ const sectionLabel = computed(() => navLabel(props.active))
         </code>
       </header>
 
-      <div class="mx-auto w-full min-w-0 max-w-7xl px-3 py-5 sm:px-5 lg:px-8 lg:py-8">
+      <div class="w-full min-w-0 px-3 py-5 sm:px-5 lg:px-8 lg:py-8">
         <slot />
       </div>
     </SidebarInset>
