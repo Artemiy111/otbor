@@ -1,3 +1,4 @@
+export * from "./schema/analysis.ts"
 export * from "./schema/apply.ts"
 export * from "./schema/candidate.ts"
 export * from "./schema/corpus.ts"

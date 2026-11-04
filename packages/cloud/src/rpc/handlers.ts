@@ -33,6 +33,7 @@ import { SystemService } from "../services/SystemService.ts"
 import { TelegramGatewayProvider } from "../services/TelegramGatewayProvider.ts"
 import { TelegramService } from "../services/TelegramService.ts"
 import { TelegramSync } from "../services/TelegramSync.ts"
+import { VacancyAnalysisService } from "../services/VacancyAnalysisService.ts"
 import { WritingService } from "../services/WritingService.ts"
 
 /**
@@ -44,6 +45,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
   Effect.gen(function*() {
     const system = yield* SystemService
     const corpus = yield* CorpusService
+    const vacancyAnalysis = yield* VacancyAnalysisService
     const hydrationStats = yield* HydrationService
     const proxy = yield* ProxyService
     const employerHydrator = yield* EmployerHydrator
@@ -94,6 +96,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
 
       VacanciesList: (payload) => corpus.list(payload),
       VacanciesGet: ({ id }) => corpus.get(id),
+      VacancyAnalysisGet: ({ vacancyId }) => vacancyAnalysis.get(vacancyId),
       EmployersList: (payload) => corpus.employers(payload),
       EmployersGet: ({ id }) => corpus.employer(id),
       BlacklistList: (payload) => blacklist.list(payload),
@@ -288,6 +291,7 @@ export const OtborServices = Layer.mergeAll(
   WritingService.layer,
   DecisionService.layer,
   FitJudgeService.layer,
+  VacancyAnalysisService.layer,
   GateService.layer,
   ApplicationService.layer,
   PresetService.layer,

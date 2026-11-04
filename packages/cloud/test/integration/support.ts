@@ -80,6 +80,7 @@ import { ResumeService } from "../../src/services/ResumeService.ts"
 import { prepareJob, submitJob } from "../../src/services/jobs.ts"
 import { NegotiationsSync } from "../../src/services/NegotiationsSync.ts"
 import { ResumeSync } from "../../src/services/ResumeSync.ts"
+import { VacancyAnalysisService } from "../../src/services/VacancyAnalysisService.ts"
 import { QueueService } from "../../src/services/QueueService.ts"
 import { recoverExpiredLeases } from "../../src/services/recovery.ts"
 import { ScheduleDispatcher } from "../../src/services/ScheduleDispatcher.ts"
@@ -256,6 +257,7 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
     // These services already depend only on Database + CurrentUser.
     BlacklistService.layer.pipe(Layer.provide(shared)),
     ResumeService.layer.pipe(Layer.provide(shared)),
+    VacancyAnalysisService.layer.pipe(Layer.provide(shared)),
     DecisionService.layer.pipe(Layer.provide(shared)),
     FitJudgeService.layer.pipe(Layer.provide(shared)),
     QueueService.layer.pipe(Layer.provide(shared)),
@@ -296,6 +298,7 @@ type Requirements =
   | FitJudgeRunner
   | FitJudgeService
   | ResumeService
+  | VacancyAnalysisService
 
 export const runAs = <A, E>(
   userId: string,
