@@ -87,7 +87,7 @@ export const runDueSchedules = (
                 Effect.logError(`schedule ${schedule.id}: could not finish run`, cause)
               ))
 
-      const outcome = yield* dispatcher.run(schedule).pipe(
+      const outcome = yield* dispatcher.run(schedule, { runId: runId ?? undefined }).pipe(
         Effect.matchEffect({
           onFailure: (error: ApiError) =>
             finishRun("error", null, errorMessage(error)).pipe(

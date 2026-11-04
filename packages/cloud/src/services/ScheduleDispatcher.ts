@@ -1,6 +1,8 @@
-import type { ApiError, PresetId, ResumeId } from "@otbor/contract"
+import type { ApiError, PresetId, ResumeId, ProxyMode } from "@otbor/contract"
 import { InvalidInput } from "@otbor/contract"
 import { Cause, Context, Effect, Layer } from "effect"
+import { Database } from "../db/Database.ts"
+import * as ScheduleRunRepository from "../repositories/ScheduleRunRepository.ts"
 import type { StoredSchedule } from "../repositories/ScheduleRepository.ts"
 import { CrawlRunner, type CrawlRunnerResult } from "./CrawlRunner.ts"
 import { DEFAULT_BATCH, MAX_BATCH } from "./decisionEvaluation.ts"
@@ -17,9 +19,17 @@ export interface ScheduleDispatchResult {
   readonly detail?: Record<string, unknown>
 }
 
+export interface ScheduleRunContext {
+  /** `schedule_run` row to update with live progress, if available. */
+  readonly runId?: string | undefined
+}
+
 export interface ScheduleDispatcherShape {
   /** Runs exactly one bounded pass for a claimed schedule row. */
-  readonly run: (schedule: StoredSchedule) => Effect.Effect<ScheduleDispatchResult, ApiError>
+  readonly run: (
+    schedule: StoredSchedule,
+    context?: ScheduleRunContext
+  ) => Effect.Effect<ScheduleDispatchResult, ApiError>
 }
 
 /** Hard cap on pages per scheduled crawl tick. */
@@ -40,6 +50,12 @@ const intOption = (
   const value = options[key]
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback
   return Math.min(Math.max(Math.trunc(value), min), max)
+}
+
+const proxyModeOption = (options: Record<string, unknown>): ProxyMode | null => {
+  const value = options.proxyMode
+  if (value === undefined) return "auto"
+  return value === "auto" || value === "direct" || value === "proxy" ? value : null
 }
 
 const searchResult = (
@@ -95,6 +111,7 @@ export class ScheduleDispatcher extends Context.Service<
       const runner = yield* CrawlRunner
       const hydration = yield* HydrationRunner
       const employers = yield* EmployerHydrator
+      const database = yield* Database
       const mail = yield* MailSync
       const telegram = yield* TelegramSync
       const evaluation = yield* EvaluationRunner
@@ -138,7 +155,17 @@ export class ScheduleDispatcher extends Context.Service<
           )
       }
 
-      const run: ScheduleDispatcherShape["run"] = (schedule) =>
+      const persistProgress = (runId: string | undefined, detail: Record<string, unknown>) =>
+        runId === undefined
+          ? Effect.void
+          : database
+              .asOwner((tx) => ScheduleRunRepository.updateDetail(tx, runId, detail))
+              .pipe(
+                Effect.catchCause((cause) =>
+                  Effect.logWarning(`schedule run ${runId}: could not persist progress`, cause))
+              )
+
+      const run: ScheduleDispatcherShape["run"] = (schedule, context) =>
         Effect.gen(function*() {
           const options = schedule.options ?? {}
 
@@ -173,9 +200,18 @@ export class ScheduleDispatcher extends Context.Service<
             }
 
             case "vacancy_hydration": {
+              const proxyMode = proxyModeOption(options)
+              if (proxyMode === null) {
+                return yield* new InvalidInput({
+                  message: `schedule ${schedule.id}: proxyMode must be auto, direct or proxy`
+                })
+              }
+              const runId = context?.runId
               const result = yield* hydration.run(schedule.userId, {
                 limit: intOption(options, "limit", 25, 1, 200),
-                delayMs: intOption(options, "delayMs", 1000, 0, 60_000)
+                delayMs: intOption(options, "delayMs", 1000, 0, 60_000),
+                proxyMode,
+                onProgress: (progress) => persistProgress(runId, { ...progress })
               })
               const error =
                 result.errors.length === 0 ? null : result.errors.join("; ")
@@ -189,11 +225,16 @@ export class ScheduleDispatcher extends Context.Service<
                 error,
                 detail: {
                   processed: result.processed,
+                  target: result.target, // full list size, not only completed items
                   hydrated: result.hydrated,
                   failed: result.failed,
                   inserted: result.inserted,
                   updated: result.updated,
                   skipped: result.skipped,
+                  proxyMode: result.proxyMode,
+                  proxy: result.proxy,
+                  proxySource: result.proxySource,
+                  errors: result.errors,
                   ...chained
                 }
               }
@@ -247,9 +288,18 @@ export class ScheduleDispatcher extends Context.Service<
             }
 
             case "employer_hydration": {
+              const proxyMode = proxyModeOption(options)
+              if (proxyMode === null) {
+                return yield* new InvalidInput({
+                  message: `schedule ${schedule.id}: proxyMode must be auto, direct or proxy`
+                })
+              }
+              const runId = context?.runId
               const result = yield* employers.run(schedule.userId, {
                 limit: intOption(options, "limit", 25, 1, 200),
-                delayMs: intOption(options, "delayMs", 750, 0, 60_000)
+                delayMs: intOption(options, "delayMs", 750, 0, 60_000),
+                proxyMode,
+                onProgress: (progress) => persistProgress(runId, { ...progress })
               })
               const error =
                 result.errors.length === 0 ? null : result.errors.join("; ")
@@ -258,8 +308,13 @@ export class ScheduleDispatcher extends Context.Service<
                 error,
                 detail: {
                   processed: result.processed,
+                  target: result.target,
                   updated: result.updated,
-                  failed: result.failed
+                  failed: result.failed,
+                  proxyMode: result.proxyMode,
+                  proxy: result.proxy,
+                  proxySource: result.proxySource,
+                  errors: result.errors
                 }
               }
             }

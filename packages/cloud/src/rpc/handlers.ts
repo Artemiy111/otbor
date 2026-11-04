@@ -1,5 +1,6 @@
-import { OtborRpcs, type VacancyId } from "@otbor/contract"
+import { OtborRpcs, type ProxyMode, type VacancyId } from "@otbor/contract"
 import { Effect, Layer } from "effect"
+import { ProxyService } from "../services/ProxyService.ts"
 import { ApplicationService } from "../services/ApplicationService.ts"
 import { BlacklistService } from "../services/BlacklistService.ts"
 import { ContactService } from "../services/ContactService.ts"
@@ -43,6 +44,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const system = yield* SystemService
     const corpus = yield* CorpusService
     const hydrationStats = yield* HydrationService
+    const proxy = yield* ProxyService
     const employerHydrator = yield* EmployerHydrator
     const hydrationRunner = yield* HydrationRunner
     const evaluation = yield* EvaluationRunner
@@ -70,10 +72,10 @@ export const OtborHandlers = OtborRpcs.toLayer(
      * detached fiber so the RPC does not wait for the cascade. A failure there
      * is only logged: the sweep schedule picks the vacancy up later.
      */
-    const hydrateAndEvaluate = (id: string) =>
+    const hydrateAndEvaluate = (id: string, proxyMode?: ProxyMode) =>
       Effect.gen(function* () {
         const user = yield* CurrentUser
-        const hydrated = yield* hydrationRunner.hydrateOne(user.userId, id)
+        const hydrated = yield* hydrationRunner.hydrateOne(user.userId, id, proxyMode)
         if (hydrated) {
           yield* evaluation.evaluateBatch(user.userId, { vacancyIds: [id as VacancyId], limit: 1 }).pipe(
             Effect.catchCause((cause) =>
@@ -110,20 +112,21 @@ export const OtborHandlers = OtborRpcs.toLayer(
       ResumeEnrichmentSave: ({ resumeId, data }) => resumes.enrichmentSave(resumeId, data),
       VacanciesUpsert: ({ drafts }) => corpus.ingest(drafts),
       VacanciesHydrationTargets: (payload) => corpus.hydrationTargets(payload),
-      VacanciesHydrateOne: ({ id }) => hydrateAndEvaluate(id),
+      VacanciesHydrateOne: ({ id, proxyMode }) => hydrateAndEvaluate(id, proxyMode),
       VacancyFetch: ({ reference }) =>
         Effect.gen(function*() {
           const user = yield* CurrentUser
           const fetched = yield* hydrationRunner.fetchByReference(user.userId, reference)
           return { ...fetched, vacancyId: fetched.vacancyId as VacancyId }
         }),
-      VacancyHydrate: ({ id }) => hydrateAndEvaluate(id),
+      VacancyHydrate: ({ id, proxyMode }) => hydrateAndEvaluate(id, proxyMode),
+      ProxyStatus: () => proxy.status(),
       HydrationStats: () => hydrationStats.stats(),
       EmployersHydrationTargets: (payload) => hydrationStats.employerTargets(payload),
-      EmployersHydrateOne: ({ id }) =>
+      EmployersHydrateOne: ({ id, proxyMode }) =>
         Effect.gen(function*() {
           const user = yield* CurrentUser
-          return yield* employerHydrator.hydrateOne(user.userId, id).pipe(
+          return yield* employerHydrator.hydrateOne(user.userId, id, proxyMode).pipe(
             Effect.map((hydrated) => ({ hydrated }))
           )
         }),
@@ -243,6 +246,7 @@ const sourceStack = Layer.mergeAll(
   crawlStack,
   hydration,
   HydrationService.layer,
+  ProxyService.layer,
   employers,
   evaluation,
   fitRunner,

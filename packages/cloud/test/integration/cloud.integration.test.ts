@@ -2137,19 +2137,28 @@ if (!integrationEnabled || serverUrl === null) {
         options: { limit: 50, maxPages: 2 }
       })
 
-      const hydrationCalls: Array<{ limit?: number; delayMs?: number }> = []
+      const hydrationCalls: Array<{
+        limit?: number
+        delayMs?: number
+        proxyMode?: string
+        onProgress?: (progress: Record<string, unknown>) => unknown
+      }> = []
       const hydrationLayer = Layer.succeed(HydrationRunner, {
-        run: (_userId: string, options: { limit?: number; delayMs?: number } = {}) =>
+        run: (_userId: string, options: { limit?: number; delayMs?: number; proxyMode?: string } = {}) =>
           Effect.sync(() => {
             hydrationCalls.push(options)
             return {
               processed: 1,
+              target: 1,
               hydrated: 1,
               failed: 0,
               inserted: 1,
               updated: 0,
               skipped: 0,
-              errors: []
+              errors: [],
+              proxyMode: "auto",
+              proxy: "напрямую",
+              proxySource: null
             } satisfies HydrationRunResult
           }),
         hydrateOne: (_userId: string, _id: string) => Effect.succeed(true),
@@ -2199,7 +2208,9 @@ if (!integrationEnabled || serverUrl === null) {
 
       const hydration = outcomes.find((row) => row.scheduleId === hydrationSchedule.id)!
       expect(hydration).toMatchObject({ ok: true, error: null })
-      expect(hydrationCalls).toEqual([{ limit: 5, delayMs: 0 }])
+      expect(hydrationCalls).toEqual([
+        { limit: 5, delayMs: 0, proxyMode: "auto", onProgress: expect.any(Function) }
+      ])
 
       const telegram = outcomes.find((row) => row.scheduleId === telegramSchedule.id)!
       expect(telegram).toMatchObject({ ok: true, error: null, kind: "telegram_sync" })

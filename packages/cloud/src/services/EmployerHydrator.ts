@@ -1,10 +1,11 @@
-import type { ApiError, EmployerHydrationTarget } from "@otbor/contract"
+import type { ApiError, EmployerHydrationTarget, ProxyMode } from "@otbor/contract"
 import { InvalidInput, NotFound } from "@otbor/contract"
 import {
   ensureEngine,
   fetchHtml,
   loadProxyConfig,
   proxyForUrl,
+  proxyLabel,
   type ProxyConfig
 } from "@otbor/crawler"
 import { extractEmployer } from "@otbor/hh"
@@ -12,9 +13,26 @@ import { Cause, Context, Effect, Layer } from "effect"
 import { Database } from "../db/Database.ts"
 import * as EmployerRepository from "../repositories/EmployerRepository.ts"
 
+/** Safe, JSON-shaped progress snapshot written to `schedule_run.detail`. */
+export interface EmployerHydrationProgress {
+  readonly processed: number
+  readonly target: number
+  readonly updated: number
+  readonly failed: number
+  readonly currentName: string | null
+  readonly errors: ReadonlyArray<string>
+  readonly proxyMode: ProxyMode
+  readonly proxy: string
+  readonly proxySource: ProxyConfig["source"] | null
+}
+
 export interface EmployerHydrationOptions {
   readonly limit?: number
   readonly delayMs?: number
+  /** How hh requests choose between the configured proxy and going direct. */
+  readonly proxyMode?: ProxyMode
+  /** Written after every item; failures are logged and progress continues. */
+  readonly onProgress?: (progress: EmployerHydrationProgress) => Effect.Effect<void>
 }
 
 export interface EmployerHydrationResult {
@@ -22,6 +40,10 @@ export interface EmployerHydrationResult {
   readonly updated: number
   readonly failed: number
   readonly errors: ReadonlyArray<string>
+  readonly proxyMode: ProxyMode
+  readonly proxy: string
+  readonly proxySource: ProxyConfig["source"] | null
+  readonly target: number
 }
 
 export interface EmployerHydratorShape {
@@ -31,7 +53,8 @@ export interface EmployerHydratorShape {
   ) => Effect.Effect<EmployerHydrationResult, ApiError>
   readonly hydrateOne: (
     userId: string,
-    id: string
+    id: string,
+    proxyMode?: ProxyMode
   ) => Effect.Effect<boolean, ApiError>
 }
 
@@ -49,7 +72,9 @@ export class EmployerHydrator extends Context.Service<
     Effect.gen(function*() {
       const database = yield* Database
 
-      const prepareProxy = Effect.fn("EmployerHydrator.prepareProxy")(function*() {
+      const prepareProxy = (mode: ProxyMode = "auto") => Effect.gen(function*() {
+        if (mode === "direct") return null
+
         const config = yield* Effect.try({
           try: () => loadProxyConfig(),
           catch: (error) =>
@@ -57,6 +82,12 @@ export class EmployerHydrator extends Context.Service<
               message: `proxy config: ${error instanceof Error ? error.message : String(error)}`
             })
         })
+
+        if (mode === "proxy" && config === null) {
+          return yield* new InvalidInput({
+            message: "Прокси для гидратации не настроен. Выполните `otbor proxy set` или выберите «Напрямую»."
+          })
+        }
         if (config !== null && config.source === "subscription") {
           yield* Effect.tryPromise({
             try: () => ensureEngine(config),
@@ -67,6 +98,12 @@ export class EmployerHydrator extends Context.Service<
           })
         }
         return config
+      })
+
+      const proxyState = (mode: ProxyMode, config: ProxyConfig | null) => ({
+        proxyMode: mode,
+        proxy: proxyLabel(config),
+        proxySource: config?.source ?? null
       })
 
       const hydrateTarget = (
@@ -156,9 +193,11 @@ export class EmployerHydrator extends Context.Service<
         _userId: string,
         options: EmployerHydrationOptions = {}
       ) {
+        const proxyMode = options.proxyMode ?? "auto"
         const limit = Math.min(Math.max(options.limit ?? 25, 1), 200)
         const delayMs = Math.max(0, options.delayMs ?? 750)
-        const config = yield* prepareProxy()
+        const config = yield* prepareProxy(proxyMode)
+        const proxy = proxyState(proxyMode, config)
 
         // The corpus is shared, and only the owner may update it.
         const targets = yield* database
@@ -179,10 +218,27 @@ export class EmployerHydrator extends Context.Service<
         let failed = 0
         const errors: string[] = []
 
+        const reportProgress = (currentName: string | null) =>
+          options.onProgress === undefined
+            ? Effect.void
+            : options.onProgress({
+                processed,
+                target: targets.length,
+                updated,
+                failed,
+                currentName,
+                errors: [...errors],
+                ...proxy
+              }).pipe(
+                Effect.catchCause((cause) =>
+                  Effect.logWarning("employer hydration progress could not be persisted", cause))
+              )
+
         for (const [index, target] of targets.entries()) {
           processed += 1
           if (yield* hydrateTarget(target, config, errors)) updated += 1
           else failed += 1
+          yield* reportProgress(target.name)
 
           if (delayMs > 0 && index < targets.length - 1) {
             yield* Effect.sleep(`${delayMs} millis`)
@@ -195,14 +251,15 @@ export class EmployerHydrator extends Context.Service<
           )
         }
 
-        return { processed, updated, failed, errors }
+        return { processed, target: targets.length, updated, failed, errors, ...proxy }
       })
 
       const hydrateOne = Effect.fn("EmployerHydrator.hydrateOne")(function*(
         _userId: string,
-        id: string
+        id: string,
+        proxyMode: ProxyMode = "auto"
       ) {
-        const config = yield* prepareProxy()
+        const config = yield* prepareProxy(proxyMode)
         const target = yield* database
           .asOwner((tx) => EmployerRepository.findTargetById(tx, id))
           .pipe(

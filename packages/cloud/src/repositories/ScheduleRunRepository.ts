@@ -48,6 +48,18 @@ export const createRun = (
     .returning({ id: scheduleRun.id })
     .pipe(Effect.map((rows) => rows[0]!.id))
 
+/** Patches the live detail of a running history row; used for hydration progress. */
+export const updateDetail = (
+  tx: Executor,
+  id: string,
+  detail: Record<string, unknown>
+): RepoEffect<void> =>
+  tx
+    .update(scheduleRun)
+    .set({ detail })
+    .where(eq(scheduleRun.id, id))
+    .pipe(Effect.asVoid)
+
 export interface FinishRunInput {
   readonly status: "done" | "error"
   readonly detail?: Record<string, unknown> | null

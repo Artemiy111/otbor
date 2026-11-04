@@ -238,7 +238,9 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
     mailSync,
     telegramSync
   )
-  const dispatcher = ScheduleDispatcher.layer.pipe(Layer.provide(sourceStack))
+  const dispatcher = ScheduleDispatcher.layer.pipe(
+    Layer.provide(Layer.merge(shared, sourceStack))
+  )
 
   return Layer.mergeAll(
     shared,

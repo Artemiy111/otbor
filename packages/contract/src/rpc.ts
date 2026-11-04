@@ -9,6 +9,7 @@ import {
   CrawlFinishStatus,
   JobKind,
   KeywordMatchLocation,
+  ProxyMode,
   SourceSyncKind,
   WritingLanguage
 } from "./enums.ts"
@@ -59,6 +60,7 @@ import {
   EmployerSummary,
   EmployerHydrationTarget,
   HydrationStats,
+  ProxyStatus,
   HarnessExit,
   HarnessJob,
   HarnessRegistration,
@@ -241,7 +243,11 @@ export const VacanciesHydrationTargets = Rpc.make("VacanciesHydrationTargets", {
 })
 
 export const VacanciesHydrateOne = Rpc.make("VacanciesHydrateOne", {
-  payload: Schema.Struct({ id: VacancyId }),
+  payload: Schema.Struct({
+    id: VacancyId,
+    /** Defaults to the configured proxy when one is set, direct otherwise. */
+    proxyMode: Schema.optional(ProxyMode)
+  }),
   success: Schema.Struct({ hydrated: Schema.Boolean }),
   error: ApiError
 })
@@ -265,8 +271,17 @@ export const VacancyFetch = Rpc.make("VacancyFetch", {
 })
 
 export const VacancyHydrate = Rpc.make("VacancyHydrate", {
-  payload: Schema.Struct({ id: VacancyId }),
+  payload: Schema.Struct({
+    id: VacancyId,
+    proxyMode: Schema.optional(ProxyMode)
+  }),
   success: Schema.Struct({ hydrated: Schema.Boolean }),
+  error: ApiError
+})
+
+/** Read-only, safe proxy state: no subscription URL or credentials. */
+export const ProxyStatusRpc = Rpc.make("ProxyStatus", {
+  success: ProxyStatus,
   error: ApiError
 })
 
@@ -286,7 +301,10 @@ export const EmployersHydrationTargets = Rpc.make("EmployersHydrationTargets", {
 })
 
 export const EmployersHydrateOne = Rpc.make("EmployersHydrateOne", {
-  payload: Schema.Struct({ id: EmployerId }),
+  payload: Schema.Struct({
+    id: EmployerId,
+    proxyMode: Schema.optional(ProxyMode)
+  }),
   success: Schema.Struct({ hydrated: Schema.Boolean }),
   error: ApiError
 })
@@ -1167,6 +1185,7 @@ export const OtborRpcs = RpcGroup.make(
   HydrationStatsRpc,
   EmployersHydrationTargets,
   EmployersHydrateOne,
+  ProxyStatusRpc,
   VacanciesEvaluate,
   CrawlStart,
   CrawlSavePage,

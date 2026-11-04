@@ -23,6 +23,9 @@ import {
   MessageDirection,
   MessageKind,
   PresetKind,
+  ProxyConfigOrigin,
+  ProxyRotate,
+  ProxySource,
   ScheduleKind,
   SourceSyncKind,
   Seniority,
@@ -260,7 +263,6 @@ export const EmployerHydrationTarget = Schema.Struct({
 })
 export type EmployerHydrationTarget = typeof EmployerHydrationTarget.Type
 
-/** Counts shown on the hydration page; employers are always the hh corpus. */
 export const HydrationStats = Schema.Struct({
   vacancyTotal: Schema.Int,
   vacancyFull: Schema.Int,
@@ -274,6 +276,20 @@ export const HydrationStats = Schema.Struct({
   employersStale30Days: Schema.Int
 })
 export type HydrationStats = typeof HydrationStats.Type
+
+/**
+ * Local proxy state for hh requests. Contains only safe display fields: never
+ * the subscription URL or credentials.
+ */
+export const ProxyStatus = Schema.Struct({
+  configured: Schema.Boolean,
+  source: Schema.NullOr(ProxySource),
+  label: Schema.String,
+  origin: Schema.NullOr(ProxyConfigOrigin),
+  rotate: Schema.NullOr(ProxyRotate),
+  maxRotations: Schema.NullOr(Schema.Int)
+})
+export type ProxyStatus = typeof ProxyStatus.Type
 
 /* -------------------------------------------------------------------------- */
 /* Search runs                                                                */

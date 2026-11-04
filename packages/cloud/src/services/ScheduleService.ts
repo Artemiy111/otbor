@@ -154,7 +154,7 @@ export class ScheduleService extends Context.Service<ScheduleService, ScheduleSe
                     Effect.logError(`schedule ${schedule.id}: could not finish run`, cause)
                   ))
 
-          yield* dispatcher.run(stored).pipe(
+          yield* dispatcher.run(stored, { runId: runId ?? undefined }).pipe(
             Effect.matchEffect({
               onFailure: (error) =>
                 finishRun("error", null, errorMessage(error)).pipe(

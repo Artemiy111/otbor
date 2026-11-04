@@ -185,6 +185,16 @@ export const HarnessExitTag = Schema.Literals([
 
 export type HarnessExitTag = typeof HarnessExitTag.Type
 
+/** How hh requests choose between configured proxy and going direct. */
+export const ProxyMode = Schema.Literals(["auto", "direct", "proxy"])
+export type ProxyMode = typeof ProxyMode.Type
+export const ProxySource = Schema.Literals(["endpoint", "subscription"])
+export type ProxySource = typeof ProxySource.Type
+export const ProxyRotate = Schema.Literals(["off", "captcha"])
+export type ProxyRotate = typeof ProxyRotate.Type
+export const ProxyConfigOrigin = Schema.Literals(["env", "file"])
+export type ProxyConfigOrigin = typeof ProxyConfigOrigin.Type
+
 /**
  * Lifecycle of one persisted search run. `running` exists only while the crawl
  * is in flight; a crash leaves it there and the next run starts fresh rather

@@ -1,11 +1,13 @@
-import type { ApiError } from "@otbor/contract"
+import type { ApiError, ProxyMode } from "@otbor/contract"
 import { InvalidInput } from "@otbor/contract"
 import {
   classifyCrawlBlock,
   ensureEngine,
   fetchHtml,
   loadProxyConfig,
-  proxyForUrl
+  proxyForUrl,
+  proxyLabel,
+  type ProxyConfig
 } from "@otbor/crawler"
 import { extractVacancy } from "@otbor/hh"
 import { Cause, Context, Effect, Layer } from "effect"
@@ -34,11 +36,33 @@ export interface FetchedVacancy {
   readonly alreadyKnown: boolean
 }
 
+export type HydrationProxyMode = ProxyMode
+
+/** Safe, JSON-shaped progress snapshot written to `schedule_run.detail`. */
+export interface HydrationProgress {
+  readonly processed: number
+  readonly target: number
+  readonly hydrated: number
+  readonly failed: number
+  readonly inserted: number
+  readonly updated: number
+  readonly skipped: number
+  readonly currentTitle: string | null
+  readonly errors: ReadonlyArray<string>
+  readonly proxyMode: ProxyMode
+  readonly proxy: string
+  readonly proxySource: ProxyConfig["source"] | null
+}
+
 export interface HydrationRunOptions {
   /** How many stored stubs to fetch in this pass. */
   readonly limit?: number
   /** Pause between vacancy requests; hh is not a fan of bursts. */
   readonly delayMs?: number
+  /** How hh requests choose between the configured proxy and going direct. */
+  readonly proxyMode?: ProxyMode
+  /** Written after every item; failures are logged and progress continues. */
+  readonly onProgress?: (progress: HydrationProgress) => Effect.Effect<void>
 }
 
 export interface HydrationRunResult {
@@ -51,6 +75,10 @@ export interface HydrationRunResult {
   readonly errors: ReadonlyArray<string>
   /** Vacancies the pass re-saved, for the evaluation that follows. */
   readonly vacancyIds?: ReadonlyArray<string>
+  readonly proxyMode: ProxyMode
+  readonly proxy: string
+  readonly proxySource: ProxyConfig["source"] | null
+  readonly target: number
 }
 
 export interface HydrationRunnerShape {
@@ -60,7 +88,8 @@ export interface HydrationRunnerShape {
   ) => Effect.Effect<HydrationRunResult, ApiError>
   readonly hydrateOne: (
     userId: string,
-    id: string
+    id: string,
+    proxyMode?: ProxyMode
   ) => Effect.Effect<boolean, ApiError>
   /**
    * Manual mode: make sure one vacancy (hh URL or external id) is in the
@@ -86,7 +115,9 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
       const database = yield* Database
       const corpus = yield* CorpusService
 
-      const prepareProxy = Effect.fn("HydrationRunner.prepareProxy")(function*() {
+      const prepareProxy = (mode: ProxyMode = "auto") => Effect.gen(function*() {
+        if (mode === "direct") return null
+
         const config = yield* Effect.try({
           try: () => loadProxyConfig(),
           catch: (error) =>
@@ -94,6 +125,12 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
               message: `proxy config: ${error instanceof Error ? error.message : String(error)}`
             })
         })
+
+        if (mode === "proxy" && config === null) {
+          return yield* new InvalidInput({
+            message: "Прокси для гидратации не настроен. Выполните `otbor proxy set` или выберите «Напрямую»."
+          })
+        }
 
         if (config !== null && config.source === "subscription") {
           yield* Effect.tryPromise({
@@ -107,13 +144,21 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
         return config
       })
 
+      const proxyState = (mode: ProxyMode, config: ProxyConfig | null) => ({
+        proxyMode: mode,
+        proxy: proxyLabel(config),
+        proxySource: config?.source ?? null
+      })
+
       const run = Effect.fn("HydrationRunner.run")(function*(
         userId: string,
         options: HydrationRunOptions = {}
       ) {
+        const proxyMode = options.proxyMode ?? "auto"
         const limit = Math.min(Math.max(options.limit ?? 25, 1), 200)
         const delayMs = Math.max(0, options.delayMs ?? 1000)
-        const config = yield* prepareProxy()
+        const config = yield* prepareProxy(proxyMode)
+        const proxy = proxyState(proxyMode, config)
 
         const targets = yield* database
           .asUser(userId, (tx) =>
@@ -136,6 +181,25 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
         let skipped = 0
         const errors: string[] = []
         const vacancyIds = new Set<string>()
+
+        const reportProgress = (currentTitle: string | null) =>
+          options.onProgress === undefined
+            ? Effect.void
+            : options.onProgress({
+                processed,
+                target: targets.length,
+                hydrated,
+                failed,
+                inserted,
+                updated,
+                skipped,
+                currentTitle,
+                errors: [...errors],
+                ...proxy
+              }).pipe(
+                Effect.catchCause((cause) =>
+                  Effect.logWarning("vacancy hydration progress could not be persisted", cause))
+              )
 
         for (const [index, target] of targets.entries()) {
           processed += 1
@@ -217,6 +281,8 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
             }
           }
 
+          yield* reportProgress(target.title)
+
           if (delayMs > 0 && index < targets.length - 1) {
             yield* Effect.sleep(`${delayMs} millis`)
           }
@@ -230,21 +296,24 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
 
         return {
           processed,
+          target: targets.length,
           hydrated,
           failed,
           inserted,
           updated,
           skipped,
           errors,
-          vacancyIds: [...vacancyIds]
+          vacancyIds: [...vacancyIds],
+          ...proxy
         }
       })
 
       const hydrateOne = Effect.fn("HydrationRunner.hydrateOne")(function*(
         userId: string,
-        id: string
+        id: string,
+        proxyMode: ProxyMode = "auto"
       ) {
-        const config = yield* prepareProxy()
+        const config = yield* prepareProxy(proxyMode)
 
         const row = yield* database
           .asUser(userId, (tx) => VacancyRepository.findById(tx, id))
