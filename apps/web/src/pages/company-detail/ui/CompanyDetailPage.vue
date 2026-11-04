@@ -2,7 +2,8 @@
 import { computed } from "vue"
 import { useQuery } from "@pinia/colada"
 import { CircleAlert, ExternalLink } from "@lucide/vue"
-import { applicationApi, applicationKeys } from "@/entities/application"
+import { applicationApi } from "@/entities/application"
+import { AccountChip, useDefaultAccount } from "@/entities/hh-account"
 import { companyApi, companyKeys } from "@/entities/company"
 import { RefreshButton } from "@/features/refresh-button"
 import {
@@ -49,13 +50,24 @@ const data = computed(() => query.data.value)
 const employer = computed(() => data.value?.employer)
 const vacancies = computed(() => data.value?.vacancies ?? [])
 
+const { accounts } = useDefaultAccount()
+
+/** Applications that count as "this account responded to the vacancy". */
+const RESPONDED_STATES = new Set(["submitted", "submitting", "queued"])
 const applicationsQuery = useQuery({
-  key: () => applicationKeys.list("all"),
-  query: () => applicationApi.list({ limit: 500 })
+  key: () => ["applications", "by-vacancy"],
+  query: () => applicationApi.list({ limit: 2000 })
 })
-const applicationVacancyIds = computed(
-  () => new Set((applicationsQuery.data.value ?? []).map((application) => application.vacancyId))
-)
+const respondedAccounts = computed(() => {
+  const byVacancy = new Map<string, string[]>()
+  for (const application of applicationsQuery.data.value ?? []) {
+    if (!RESPONDED_STATES.has(application.state)) continue
+    const list = byVacancy.get(application.vacancyId) ?? []
+    if (!list.includes(application.hhAccountId)) list.push(application.hhAccountId)
+    byVacancy.set(application.vacancyId, list)
+  }
+  return byVacancy
+})
 
 const subtitle = computed(() => {
   const company = employer.value
@@ -168,7 +180,7 @@ const errorText = computed(() =>
                 <TableHead>Город</TableHead>
                 <TableHead>Уровень</TableHead>
                 <TableHead>Опубликована</TableHead>
-                <TableHead>Отклик</TableHead>
+                <TableHead>Аккаунты</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -191,7 +203,14 @@ const errorText = computed(() =>
                   {{ formatDate(vacancy.publishedAt ?? vacancy.lastSeenAt) }}
                 </TableCell>
                 <TableCell>
-                  <Badge v-if="applicationVacancyIds.has(vacancy.id)" variant="success">Отправлен</Badge>
+                  <div v-if="respondedAccounts.has(vacancy.id)" class="flex flex-wrap gap-1">
+                    <AccountChip
+                      v-for="accountId in respondedAccounts.get(vacancy.id)"
+                      :key="accountId"
+                      :account-id="accountId"
+                      :accounts="accounts"
+                    />
+                  </div>
                   <span v-else class="text-muted-foreground">—</span>
                 </TableCell>
               </TableRow>
