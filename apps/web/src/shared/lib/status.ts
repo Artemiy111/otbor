@@ -250,6 +250,7 @@ const SCHEDULE_KIND_LABELS: Record<string, string> = {
   mail_sync: "Синхронизация почты",
   telegram_sync: "Синхронизация Telegram",
   hh_chat_sync: "Чаты hh",
+  resume_sync: "Резюме hh",
   evaluate: "Оценка вакансий"
 }
 

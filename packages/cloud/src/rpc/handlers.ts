@@ -23,6 +23,7 @@ import { MailGatewayProvider } from "../services/MailGatewayProvider.ts"
 import { MailService } from "../services/MailService.ts"
 import { MailSync } from "../services/MailSync.ts"
 import { NegotiationsSync } from "../services/NegotiationsSync.ts"
+import { ResumeSync } from "../services/ResumeSync.ts"
 import { PresetService } from "../services/PresetService.ts"
 import { QueueService } from "../services/QueueService.ts"
 import { ResumeService } from "../services/ResumeService.ts"
@@ -66,6 +67,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const hhAccounts = yield* HhAccountService
     const resumes = yield* ResumeService
     const negotiations = yield* NegotiationsSync
+    const resumeSync = yield* ResumeSync
 
     /**
      * Hydration answers the caller first; the fresh content is decided in a
@@ -153,6 +155,8 @@ export const OtborHandlers = OtborRpcs.toLayer(
 
       NegotiationsSyncRun: ({ hhAccountId }) => negotiations.run(hhAccountId),
       NegotiationsSyncStatus: ({ hhAccountId }) => negotiations.status(hhAccountId),
+      ResumeSyncRun: ({ hhAccountId }) => resumeSync.run(hhAccountId),
+      ResumeSyncStatus: ({ hhAccountId }) => resumeSync.status(hhAccountId),
 
       ContactsList: (payload) => contacts.list(payload),
       ContactRemove: ({ id }) => contacts.remove(id),
@@ -241,6 +245,7 @@ const hydration = HydrationRunner.layer.pipe(Layer.provide(crawlStack))
 const employers = EmployerHydrator.layer
 const evaluation = EvaluationRunner.layer
 const fitRunner = FitJudgeRunner.layer
+const resumeSyncService = ResumeSync.layer
 
 const sourceStack = Layer.mergeAll(
   crawlStack,
@@ -250,6 +255,7 @@ const sourceStack = Layer.mergeAll(
   employers,
   evaluation,
   fitRunner,
+  resumeSyncService,
   mailSync,
   telegramSync
 )

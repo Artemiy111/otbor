@@ -1,4 +1,4 @@
-import type { ResumeId, ResumeRecord, ResumeEnrichment } from "@otbor/contract"
+import type { ResumeId, ResumeRecord, ResumeEnrichment, ResumeSyncStatus } from "@otbor/contract"
 import { call } from "@/shared/api"
 
 export interface ResumeUpsertInput {
@@ -20,6 +20,10 @@ export interface ResumeUpsertInput {
 }
 
 export const resumeApi = {
+  syncRun: (hhAccountId: string): Promise<ResumeSyncStatus> =>
+    call((client) => client.ResumeSyncRun({ hhAccountId: hhAccountId as any })),
+  syncStatus: (hhAccountId: string): Promise<ResumeSyncStatus> =>
+    call((client) => client.ResumeSyncStatus({ hhAccountId: hhAccountId as any })),
   list: (hhAccountId?: string): Promise<ReadonlyArray<ResumeRecord>> =>
     call((client) => client.ResumesList({ hhAccountId: hhAccountId as any })),
   get: (id: string): Promise<ResumeRecord> =>

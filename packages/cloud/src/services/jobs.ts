@@ -235,3 +235,34 @@ export const negotiationsSyncJob = (
     },
     idempotencyKey: `account:${input.hhAccountId}:negotiations_sync:${input.sequence}`
   })
+
+/**
+ * Reads the account's resumes. Not tied to an application: the account is the
+ * target. Callers pass a fresh `sequence` for an explicit rerun.
+ */
+export const resumeSyncJob = (
+  tx: Executor,
+  input: {
+    readonly userId: string
+    readonly hhAccountId: string
+    readonly sessionProfile: string | null
+    readonly sequence: number
+    readonly maxResumes?: number
+  }
+) =>
+  QueueRepository.enqueue(tx, {
+    userId: input.userId,
+    hhAccountId: input.hhAccountId,
+    applicationId: null,
+    stage: "resume_sync",
+    kind: "browser",
+    // Background bookkeeping: behind every prepare, submit and reconcile.
+    priority: 10,
+    maxAttempts: 3,
+    payload: {
+      hhAccountId: input.hhAccountId,
+      sessionProfile: input.sessionProfile,
+      ...(input.maxResumes === undefined ? {} : { maxResumes: input.maxResumes })
+    },
+    idempotencyKey: `account:${input.hhAccountId}:resume_sync:${input.sequence}`
+  })

@@ -92,7 +92,8 @@ export const JobStage = Schema.Literals([
   "reconcile",
   "session",
   "inference",
-  "negotiations_sync"
+  "negotiations_sync",
+  "resume_sync"
 ])
 
 export type JobStage = typeof JobStage.Type
@@ -223,7 +224,8 @@ export const ScheduleKind = Schema.Literals([
   "telegram_sync",
   "hh_chat_sync",
   "evaluate",
-  "fit"
+  "fit",
+  "resume_sync"
 ])
 
 export type ScheduleKind = typeof ScheduleKind.Type
@@ -238,7 +240,8 @@ export const SourceSyncKind = Schema.Literals([
   "telegram_sync",
   "hh_chat_sync",
   "evaluate",
-  "fit"
+  "fit",
+  "resume_sync"
 ])
 
 export type SourceSyncKind = typeof SourceSyncKind.Type
@@ -280,6 +283,15 @@ export type MessageKind = typeof MessageKind.Type
 export const BlacklistScope = Schema.Literals(["app", "hh_account", "hh_native"])
 
 export type BlacklistScope = typeof BlacklistScope.Type
+
+/**
+ * Companies page view of the blacklist: `hide` drops blocked employers, `all`
+ * keeps them, `only` shows blocked ones, `app` only app-level blocks and
+ * `account` only blocks made for one hh account (`blockedByAccountId`).
+ */
+export const EmployerBlacklistView = Schema.Literals(["hide", "all", "only", "app", "account"])
+
+export type EmployerBlacklistView = typeof EmployerBlacklistView.Type
 
 export const BlacklistTarget = Schema.Literals(["vacancy", "employer"])
 

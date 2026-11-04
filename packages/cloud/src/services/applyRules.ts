@@ -6,6 +6,7 @@ import {
   NegotiationsSyncEvidence,
   PrepareArtifacts,
   ReconcileEvidence,
+  ResumeSyncEvidence,
   type ResponseForm,
   type StoredHint,
   SubmitEvidence
@@ -17,6 +18,9 @@ import {
   type NegotiationTopic,
   pageExcerpt,
   parseNegotiations,
+  type ParsedResume,
+  parseResumePage,
+  parseResumeRefs,
   readResponseStatus,
   type ResponsePageKind,
   type VacancyResponseState
@@ -600,4 +604,62 @@ export const judgeNegotiationsSync = (exit: HarnessExit): NegotiationsSyncVerdic
     return { _tag: "retry", reason: "no negotiations page was readable" }
   }
   return { _tag: "read", topics: [...topics.values()], pages: readPages, complete }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Resume sync                                                                */
+/* -------------------------------------------------------------------------- */
+
+export type ResumeSyncVerdict =
+  | {
+      readonly _tag: "read"
+      /** Resume cards on the profile page. */
+      readonly found: number
+      readonly resumes: ReadonlyArray<ParsedResume>
+      /** Cards whose page was missing or unreadable. */
+      readonly unreadable: number
+    }
+  | { readonly _tag: "human"; readonly reason: string }
+  | { readonly _tag: "retry"; readonly reason: string }
+
+/**
+ * Reads a `resume_sync` exit. The harness only delivers pages; the cloud finds
+ * the cards on the profile page and reads each resume page. A card whose page
+ * cannot be read is counted, never stored as an empty resume. A profile with
+ * no cards is a retry: an unrendered page and an account without resumes look
+ * the same, and storing nothing is the safe reading.
+ */
+export const judgeResumeSync = (exit: HarnessExit): ResumeSyncVerdict => {
+  if (exit.tag === "session_expired") {
+    return { _tag: "human", reason: "hh session expired; log in again" }
+  }
+  if (exit.tag === "captcha") return { _tag: "human", reason: "hh asked for a captcha" }
+  if (exit.tag !== "reconciled") {
+    return { _tag: "retry", reason: `resume sync came without page evidence (${exit.tag})` }
+  }
+
+  const decoded = Schema.decodeUnknownOption(ResumeSyncEvidence)(exit.artifacts)
+  if (Option.isNone(decoded)) {
+    return { _tag: "retry", reason: "resume sync evidence is not readable" }
+  }
+  const { profile, resumes: pages } = decoded.value
+  for (const page of [profile, ...pages]) {
+    const kind = classifyResponsePage(page.html, page.url)
+    if (kind === "login") return { _tag: "human", reason: "hh session expired; log in again" }
+    if (kind === "captcha") return { _tag: "human", reason: "hh asked for a captcha" }
+  }
+
+  const refs = parseResumeRefs(profile.html)
+  if (refs.length === 0) return { _tag: "retry", reason: "the profile page lists no resumes" }
+
+  const byHash = new Map<string, ParsedResume>()
+  for (const page of pages) {
+    const parsed = parseResumePage(page.html)
+    if (parsed !== null) byHash.set(parsed.hash, parsed)
+  }
+  const resumes = refs.flatMap((ref) => {
+    const parsed = byHash.get(ref.hash)
+    return parsed === undefined ? [] : [parsed]
+  })
+  return { _tag: "read", found: refs.length, resumes, unreadable: refs.length - resumes.length }
 }

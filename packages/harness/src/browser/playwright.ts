@@ -3,10 +3,11 @@ import type {
   NegotiationsSyncJobPayload,
   PrepareJobPayload,
   ReconcileJobPayload,
+  ResumeSyncJobPayload,
   ReconcilePage,
   SubmitEvidence
 } from "@otbor/contract"
-import { classifyResponsePage } from "@otbor/hh"
+import { classifyResponsePage, parseResumeRefs } from "@otbor/hh"
 import { Effect, Layer, Schema } from "effect"
 import { existsSync } from "node:fs"
 import { chromium, type Page } from "playwright"
@@ -15,11 +16,15 @@ import {
   LETTER_SELECTOR,
   MAX_NEGOTIATION_PAGES,
   MAX_SYNC_PAGES,
+  MAX_SYNC_RESUMES,
   RELOCATION_SELECTOR,
   SUBMIT_SELECTOR,
   negotiationsSyncExit,
   negotiationsUrl,
   postClickExit,
+  profileUrl,
+  resumeSyncExit,
+  resumeUrl,
   prepareExit,
   reconcileExit,
   responseUrl,
@@ -410,7 +415,53 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
       )
     )
 
-  return BrowserExecutor.of({ prepare, submit, reconcile, negotiationsSync })
+  /**
+   * Opens the profile page, then each resume it lists, with a pause between
+   * pages, and returns what it saw. Navigation only.
+   */
+  const resumeSync = (payload: ResumeSyncJobPayload): Effect.Effect<HarnessExit> =>
+    withPage(payload.sessionProfile, (page) =>
+      Effect.gen(function*() {
+        const read = (url: string, ready: (html: string) => boolean) =>
+          Effect.gen(function*() {
+            yield* attempt(() =>
+              page.goto(url, { waitUntil: "domcontentloaded", timeout: config.navigationTimeoutMs })
+            )
+            const deadline = Date.now() + config.settleMs
+            let html = ""
+            while (true) {
+              const got = yield* content(page)
+              if (got !== null) {
+                html = got
+                const kind = classifyResponsePage(html, page.url())
+                if (kind === "login" || kind === "captcha" || ready(html)) break
+              }
+              if (Date.now() >= deadline) break
+              yield* sleep(250)
+            }
+            return { url: page.url(), html } satisfies ReconcilePage
+          })
+
+        const profile = yield* read(profileUrl(baseUrl), (html) => parseResumeRefs(html).length > 0)
+        const refs = parseResumeRefs(profile.html)
+        const limit = Math.min(payload.maxResumes ?? MAX_SYNC_RESUMES, MAX_SYNC_RESUMES)
+        const resumes: Array<ReconcilePage> = []
+        for (const ref of refs.slice(0, limit)) {
+          yield* sleep(config.syncDelayMs ?? 1_500)
+          resumes.push(yield* read(resumeUrl(baseUrl, ref.hash), (html) => html.includes("HH-Lux-InitialState")))
+        }
+        return resumeSyncExit(profile, resumes)
+      })
+    ).pipe(
+      Effect.catch((error) =>
+        Effect.succeed<HarnessExit>({ tag: "transport", message: error.message })
+      ),
+      Effect.catchDefect((defect) =>
+        Effect.succeed<HarnessExit>({ tag: "transport", message: String(defect) })
+      )
+    )
+
+  return BrowserExecutor.of({ prepare, submit, reconcile, negotiationsSync, resumeSync })
 }
 
 export const PlaywrightBrowserExecutor = {

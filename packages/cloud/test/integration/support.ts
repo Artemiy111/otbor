@@ -79,6 +79,7 @@ import { PresetService } from "../../src/services/PresetService.ts"
 import { ResumeService } from "../../src/services/ResumeService.ts"
 import { prepareJob, submitJob } from "../../src/services/jobs.ts"
 import { NegotiationsSync } from "../../src/services/NegotiationsSync.ts"
+import { ResumeSync } from "../../src/services/ResumeSync.ts"
 import { QueueService } from "../../src/services/QueueService.ts"
 import { recoverExpiredLeases } from "../../src/services/recovery.ts"
 import { ScheduleDispatcher } from "../../src/services/ScheduleDispatcher.ts"
@@ -229,12 +230,14 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
   const employers = EmployerHydrator.layer.pipe(Layer.provide(shared))
   const evaluation = EvaluationRunner.layer.pipe(Layer.provide(shared))
   const fitRunner = FitJudgeRunner.layer.pipe(Layer.provide(shared))
+  const resumeSyncService = ResumeSync.layer.pipe(Layer.provide(shared))
   const sourceStack = Layer.mergeAll(
     crawlStack,
     hydration,
     employers,
     evaluation,
     fitRunner,
+    resumeSyncService,
     mailSync,
     telegramSync
   )
@@ -270,6 +273,7 @@ type Requirements =
   | ApplicationService
   | QueueService
   | NegotiationsSync
+  | ResumeSync
   | InferenceService
   | CrawlService
   | GateService
@@ -1986,6 +1990,24 @@ export const jobsOf = async (applicationId: string) =>
         )
         .pipe(Effect.map((result) => result.rows as ReadonlyArray<Record<string, any>>))
     )
+  )
+
+export const resumeSyncRun = async (userId: string, accountId: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const sync = yield* ResumeSync
+      return yield* sync.run(accountId)
+    })
+  )
+
+export const resumeSyncStatus = async (userId: string, accountId: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const sync = yield* ResumeSync
+      return yield* sync.status(accountId)
+    })
   )
 
 export const negotiationsRun = async (userId: string, accountId: string) =>

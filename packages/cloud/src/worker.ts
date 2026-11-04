@@ -13,6 +13,7 @@ import { FitJudgeRunner } from "./services/FitJudgeRunner.ts"
 import { HydrationRunner } from "./services/HydrationRunner.ts"
 import { MailGatewayProvider } from "./services/MailGatewayProvider.ts"
 import { MailSync } from "./services/MailSync.ts"
+import { ResumeSync } from "./services/ResumeSync.ts"
 import { ScheduleDispatcher } from "./services/ScheduleDispatcher.ts"
 import { recoverExpiredLeases, recoverInterruptedRuns } from "./services/recovery.ts"
 import { runDueSchedules } from "./services/ScheduleWorker.ts"
@@ -72,6 +73,7 @@ const hydration = HydrationRunner.layer.pipe(Layer.provide(Layer.merge(base, cra
 const employers = EmployerHydrator.layer.pipe(Layer.provide(base))
 const evaluation = EvaluationRunner.layer.pipe(Layer.provide(base))
 const fitRunner = FitJudgeRunner.layer.pipe(Layer.provide(base))
+const resumeSyncService = ResumeSync.layer.pipe(Layer.provide(base))
 
 const sourceStack = Layer.mergeAll(
   crawlStack,
@@ -79,6 +81,7 @@ const sourceStack = Layer.mergeAll(
   employers,
   evaluation,
   fitRunner,
+  resumeSyncService,
   mailSync,
   telegramSync
 )

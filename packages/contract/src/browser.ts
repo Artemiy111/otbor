@@ -121,3 +121,29 @@ export const NegotiationsSyncEvidence = Schema.Struct({
 })
 
 export type NegotiationsSyncEvidence = typeof NegotiationsSyncEvidence.Type
+
+/**
+ * `resume_sync` reads the account's own resumes: the profile page lists the
+ * cards, then each `/resume/<hash>` is opened. No application: the account is
+ * the target. Read-only; nothing on a page is clicked.
+ */
+export const ResumeSyncJobPayload = Schema.Struct({
+  hhAccountId: Schema.String,
+  /** Local profile name of the account's hh session. */
+  sessionProfile: Schema.optional(Schema.NullOr(Schema.String)),
+  /** Resumes to read at most; the harness also applies its own cap. */
+  maxResumes: Schema.optional(Schema.Int)
+})
+
+export type ResumeSyncJobPayload = typeof ResumeSyncJobPayload.Type
+
+/**
+ * `resume_sync` artifacts: the profile page (the resume cards) and the resume
+ * pages that were opened. The harness does not parse or judge them.
+ */
+export const ResumeSyncEvidence = Schema.Struct({
+  profile: ReconcilePage,
+  resumes: Schema.Array(ReconcilePage)
+})
+
+export type ResumeSyncEvidence = typeof ResumeSyncEvidence.Type

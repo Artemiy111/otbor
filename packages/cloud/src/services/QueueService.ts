@@ -27,12 +27,14 @@ import {
   judgePrepare,
   judgeReconcile,
   judgeNegotiationsSync,
+  judgeResumeSync,
   judgeSubmit,
   reconcileArtifacts
 } from "./applyRules.ts"
 import { completeFitInference } from "./fitJudge.ts"
 import { hintsFor } from "./formHints.ts"
 import { importTopics } from "./NegotiationsSync.ts"
+import { importResumes } from "./ResumeSync.ts"
 import { nextSequence, reconcileJob, submitJob, targetFor } from "./jobs.ts"
 import { toStorageError } from "./support.ts"
 
@@ -607,6 +609,35 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                       status = "pending"
                       runAt = retryLater(exit, 120)
                       message = `negotiations sync retry ${job.attempts + 1}/${job.maxAttempts}: ${verdict.reason}`
+                    }
+                    break
+                  }
+
+                  case "resume_sync": {
+                    // The harness only delivers pages. The cloud reads them and
+                    // stores the resumes; the operator's enrichment is untouched.
+                    const verdict = judgeResumeSync(exit)
+                    if (verdict._tag === "read" && ctx.hhAccountId !== null) {
+                      const counts = yield* importResumes(tx, {
+                        userId: ctx.userId,
+                        hhAccountId: ctx.hhAccountId,
+                        found: verdict.found,
+                        resumes: verdict.resumes,
+                        unreadable: verdict.unreadable
+                      })
+                      status = "done"
+                      jobResult = { counts }
+                      message = `resumes synced: ${counts.imported} imported, ${counts.updated} updated, ${counts.unchanged} unchanged, ${counts.unreadable} unreadable`
+                    } else if (verdict._tag === "human") {
+                      status = "needs_human"
+                      message = `resume sync needs a human: ${verdict.reason}`
+                    } else if (verdict._tag === "read" || job.attempts >= job.maxAttempts) {
+                      status = "dead"
+                      message = `resume sync gave up: ${verdict._tag === "read" ? "job has no account" : verdict.reason}`
+                    } else {
+                      status = "pending"
+                      runAt = retryLater(exit, 120)
+                      message = `resume sync retry ${job.attempts + 1}/${job.maxAttempts}: ${verdict.reason}`
                     }
                     break
                   }

@@ -2,6 +2,7 @@ import { Schema } from "effect"
 import { Rpc, type RpcClient, type RpcClientError, RpcGroup } from "effect/rpc"
 import {
   BlacklistScope,
+  EmployerBlacklistView,
   BlacklistTarget,
   ContactKind,
   ContactSource,
@@ -53,6 +54,7 @@ import {
   CrawlRun,
   CrawlSchedule,
   NegotiationsSyncStatus,
+  ResumeSyncStatus,
   DecisionRecord,
   EvaluateBatchResult,
   ScheduleRun,
@@ -143,6 +145,10 @@ export const EmployersList = Rpc.make("EmployersList", {
     offset: Schema.optional(Schema.Int),
     /** The companies page toggle: `true` shows blacklisted employers. */
     includeBlacklisted: Schema.optional(Schema.Boolean),
+    /** Overrides `includeBlacklisted` when set. */
+    blacklistView: Schema.optional(EmployerBlacklistView),
+    /** With `blacklistView = "account"`: only employers this hh account blocked. */
+    blockedByAccountId: Schema.optional(HhAccountId),
     hhAccountId: Schema.optional(HhAccountId),
     /** Only employers this hh account has responded to. */
     respondedAccountId: Schema.optional(HhAccountId)
@@ -472,6 +478,23 @@ export const NegotiationsSyncRun = Rpc.make("NegotiationsSyncRun", {
 export const NegotiationsSyncStatusGet = Rpc.make("NegotiationsSyncStatus", {
   payload: Schema.Struct({ hhAccountId: HhAccountId }),
   success: NegotiationsSyncStatus,
+  error: ApiError
+})
+
+/**
+ * Reads the account's resumes from hh.ru into the corpus. `ResumeSyncRun` only
+ * enqueues the browser job (it never waits for hh.ru); `ResumeSyncStatusGet`
+ * reads the last job's outcome.
+ */
+export const ResumeSyncRun = Rpc.make("ResumeSyncRun", {
+  payload: Schema.Struct({ hhAccountId: HhAccountId }),
+  success: ResumeSyncStatus,
+  error: ApiError
+})
+
+export const ResumeSyncStatusGet = Rpc.make("ResumeSyncStatus", {
+  payload: Schema.Struct({ hhAccountId: HhAccountId }),
+  success: ResumeSyncStatus,
   error: ApiError
 })
 
@@ -1205,6 +1228,8 @@ export const OtborRpcs = RpcGroup.make(
   ScheduleRunNow,
   NegotiationsSyncRun,
   NegotiationsSyncStatusGet,
+  ResumeSyncRun,
+  ResumeSyncStatusGet,
   ScheduleRunsList,
   ContactsList,
   ContactRemove,

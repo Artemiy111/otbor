@@ -5,6 +5,7 @@ import {
   type LeaseId,
   PrepareJobPayload,
   NegotiationsSyncJobPayload,
+  ResumeSyncJobPayload,
   ReconcileJobPayload,
   SubmitJobPayload
 } from "@otbor/contract"
@@ -154,6 +155,18 @@ const runBrowserExit = (
               message: `invalid negotiations_sync payload: ${error.message}`
             }),
           onSuccess: (payload) => executor.negotiationsSync(payload)
+        })
+      )
+    case "resume_sync":
+      return Schema.decodeUnknownEffect(ResumeSyncJobPayload)(job.payload).pipe(
+        Effect.matchEffect({
+          // Read-only, so a bad payload touched nothing.
+          onFailure: (error) =>
+            Effect.succeed<HarnessExit>({
+              tag: "permanent",
+              message: `invalid resume_sync payload: ${error.message}`
+            }),
+          onSuccess: (payload) => executor.resumeSync(payload)
         })
       )
     default:

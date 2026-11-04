@@ -2,6 +2,7 @@ import type {
   FormAnswer,
   HarnessExit,
   NegotiationsSyncEvidence,
+  ResumeSyncEvidence,
   PrepareArtifacts,
   ReconcileEvidence,
   ReconcilePage,
@@ -17,6 +18,8 @@ import {
   pageExcerpt,
   parseNegotiations,
   parseResponseForm,
+  resumeCardsFragment,
+  resumeStateFragment,
   type ResponsePageKind
 } from "@otbor/hh"
 
@@ -396,6 +399,44 @@ export const negotiationsSyncExit = (pages: ReadonlyArray<ReconcilePage>): Harne
     pages: pages.map((page) => ({
       url: page.url,
       html: negotiationsStateFragment(page.html) ?? page.html.slice(0, 20_000)
+    }))
+  }
+  return { tag: "reconciled", artifacts: { ...evidence } }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Resume sync                                                                */
+/* -------------------------------------------------------------------------- */
+
+export const profileUrl = (baseUrl: string): string =>
+  `${baseUrl.replace(/\/+$/, "")}/applicant/profile/me`
+
+export const resumeUrl = (baseUrl: string, hash: string): string =>
+  `${baseUrl.replace(/\/+$/, "")}/resume/${encodeURIComponent(hash)}`
+
+/** Resumes a sync opens at most; an account holds a handful. */
+export const MAX_SYNC_RESUMES = 10
+
+/**
+ * The resume sync exit: the profile page and the resume pages, as evidence.
+ * Login and captcha are reported as such; otherwise the harness says only
+ * `reconciled` ("I looked").
+ */
+export const resumeSyncExit = (
+  profile: ReconcilePage,
+  resumes: ReadonlyArray<ReconcilePage>
+): HarnessExit => {
+  for (const page of [profile, ...resumes]) {
+    const kind = classifyResponsePage(page.html, page.url)
+    if (kind === "login") return { tag: "session_expired", message: "hh redirected to the login page" }
+    if (kind === "captcha") return { tag: "captcha", message: "hh asked for a captcha" }
+  }
+  const evidence: ResumeSyncEvidence = {
+    // The cards are server-rendered; the rest of the page is not evidence.
+    profile: { url: profile.url, html: resumeCardsFragment(profile.html) || profile.html.slice(0, 20_000) },
+    resumes: resumes.map((page) => ({
+      url: page.url,
+      html: resumeStateFragment(page.html) ?? page.html.slice(0, 20_000)
     }))
   }
   return { tag: "reconciled", artifacts: { ...evidence } }

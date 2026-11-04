@@ -186,7 +186,9 @@ export const EmployerSummary = Schema.Struct({
   /** hh accounts that responded to at least one vacancy of this employer. */
   respondedAccountIds: Schema.optional(Schema.Array(HhAccountId)),
   blacklisted: Schema.Boolean,
-  blacklistLayers: Schema.Array(BlacklistScope)
+  blacklistLayers: Schema.Array(BlacklistScope),
+  /** hh accounts that blocked this employer on their own (account or native layer). */
+  blockedAccountIds: Schema.optional(Schema.Array(HhAccountId))
 })
 
 export type EmployerSummary = typeof EmployerSummary.Type
@@ -830,6 +832,36 @@ export const NegotiationsSyncStatus = Schema.Struct({
 })
 
 export type NegotiationsSyncStatus = typeof NegotiationsSyncStatus.Type
+
+/** What the last resume sync of an account did. Counts only; no page bodies. */
+export const ResumeSyncCounts = Schema.Struct({
+  /** Resume cards on the profile page. */
+  found: Schema.Int,
+  /** New resumes stored. */
+  imported: Schema.Int,
+  /** Stored resumes whose content changed. */
+  updated: Schema.Int,
+  unchanged: Schema.Int,
+  /** Cards whose page could not be read. */
+  unreadable: Schema.Int,
+  /** Stored resumes that are no longer on the profile, now inactive. */
+  deactivated: Schema.Int
+})
+
+export type ResumeSyncCounts = typeof ResumeSyncCounts.Type
+
+export const ResumeSyncStatus = Schema.Struct({
+  hhAccountId: HhAccountId,
+  jobId: Schema.optional(Schema.NullOr(Schema.String)),
+  /** `none` when the account was never synced. */
+  status: Schema.Literals(["none", "pending", "running", "done", "failed", "needs_human"]),
+  message: Schema.optional(Schema.NullOr(Schema.String)),
+  requestedAt: Schema.optional(Schema.NullOr(Schema.String)),
+  finishedAt: Schema.optional(Schema.NullOr(Schema.String)),
+  counts: Schema.optional(Schema.NullOr(ResumeSyncCounts))
+})
+
+export type ResumeSyncStatus = typeof ResumeSyncStatus.Type
 
 /** A kit holds structured answers; kits saved before the form parser hold `Answer`. */
 export const KitAnswer = Schema.Union([FormAnswer, Answer])

@@ -11,6 +11,7 @@ import { EvaluationRunner } from "./EvaluationRunner.ts"
 import { FitJudgeRunner } from "./FitJudgeRunner.ts"
 import { HydrationRunner } from "./HydrationRunner.ts"
 import { MailSync } from "./MailSync.ts"
+import { ResumeSync } from "./ResumeSync.ts"
 import { TelegramSync } from "./TelegramSync.ts"
 
 export interface ScheduleDispatchResult {
@@ -116,6 +117,7 @@ export class ScheduleDispatcher extends Context.Service<
       const telegram = yield* TelegramSync
       const evaluation = yield* EvaluationRunner
       const fit = yield* FitJudgeRunner
+      const resumeSync = yield* ResumeSync
 
       /**
        * Decides the vacancies a crawl or hydration pass just saved. It is a
@@ -352,6 +354,18 @@ export class ScheduleDispatcher extends Context.Service<
                 messages: intOption(options, "messages", 50, 1, 200)
               })
               return syncResult(result)
+            }
+
+            case "resume_sync": {
+              // Only enqueues browser jobs: the harness reads hh and the
+              // completion path stores the resumes. The target is an hh account
+              // id, or `global` for every account of the user.
+              const result = yield* resumeSync.enqueue(schedule.userId, schedule.targetId)
+              return {
+                ok: true,
+                error: null,
+                detail: { queued: result.queued, alreadyActive: result.alreadyActive }
+              }
             }
 
             case "hh_chat_sync":

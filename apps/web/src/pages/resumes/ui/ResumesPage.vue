@@ -128,6 +128,29 @@ const experienceItems = computed(() =>
   })
 )
 
+const syncMessage = ref("")
+const syncMutation = useMutation({
+  mutation: async () => {
+    const accountId = selectedAccountId.value
+    let status = await resumeApi.syncRun(accountId)
+    syncMessage.value = "Задача поставлена в очередь, жду гарнесс…"
+    const deadline = Date.now() + 180_000
+    while (!["done", "failed", "needs_human"].includes(status.status) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 2_000))
+      status = await resumeApi.syncStatus(accountId)
+    }
+    const c = status.counts
+    syncMessage.value =
+      status.status === "done" && c
+        ? `Найдено ${c.found}: новых ${c.imported}, обновлено ${c.updated}, без изменений ${c.unchanged}, не прочитано ${c.unreadable}`
+        : `Статус: ${status.status}${status.message ? ` — ${status.message}` : ""}`
+    return status
+  },
+  onSettled() {
+    void resumesQuery.refetch()
+  }
+})
+
 const refresh = () => {
   void resumesQuery.refetch()
   void enrichmentQuery.refetch()
@@ -138,9 +161,14 @@ const refresh = () => {
   <section>
     <PageHeader title="Резюме" description="Резюме hh.ru и локальные дополнения для сопроводительных писем.">
       <template #actions>
+        <Button variant="outline" :disabled="syncMutation.isLoading.value || !selectedAccountId" @click="syncMutation.mutate()">
+          {{ syncMutation.isLoading.value ? "Загружаю…" : "Загрузить с hh" }}
+        </Button>
         <RefreshButton :loading="resumesQuery.isLoading.value" @refresh="refresh" />
       </template>
     </PageHeader>
+
+    <p v-if="syncMessage" class="mb-4 text-sm text-muted-foreground">{{ syncMessage }}</p>
 
     <Alert v-if="resumesQuery.error.value" variant="destructive" class="mb-4">
       <CircleAlert />
