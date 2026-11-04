@@ -63,3 +63,4 @@ export {
   workFormatText
 } from "./vacancy-labels"
 export { makeResumeMatcher } from "./resume-match"
+export { buildPassport, LADDER_STEPS, type PassportIcon, type PassportItem, type PassportView } from "./passport"

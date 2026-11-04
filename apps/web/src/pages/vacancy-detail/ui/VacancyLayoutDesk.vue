@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import type { VacancyPage } from "../model"
-import VacancyAnalysisSection from "./VacancyAnalysisSection.vue"
 import VacancyApply from "./VacancyApply.vue"
 import VacancyDecision from "./VacancyDecision.vue"
 import VacancyDescription from "./VacancyDescription.vue"
-import VacancyInsights from "./VacancyInsights.vue"
+import VacancyPassport from "./VacancyPassport.vue"
 import VacancyKeywords from "./VacancyKeywords.vue"
 import VacancySkills from "./VacancySkills.vue"
 
@@ -15,6 +14,12 @@ const h2 = "mb-2 text-sm font-semibold"
 <template>
   <div v-if="page.data.value" class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_28rem]">
     <div class="min-w-0 space-y-6">
+      <VacancyPassport
+        :data="page.data.value"
+        :contacts="page.contacts.value"
+        :hydrating="page.hydrating.value"
+        @hydrate="page.hydrate"
+      />
       <section>
         <h2 :class="h2">Навыки</h2>
         <VacancySkills :data="page.data.value" :resume="page.selectedResume.value" />
@@ -30,20 +35,6 @@ const h2 = "mb-2 text-sm font-semibold"
     </div>
     <div class="min-w-0 space-y-4 xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:self-start xl:overflow-y-auto">
       <VacancyApply :page="page" />
-      <details open class="rounded-lg border border-border p-4">
-        <summary class="cursor-pointer text-sm font-semibold">Разобрано из вакансии</summary>
-        <div class="mt-3">
-          <VacancyInsights
-            :data="page.data.value"
-            :contacts="page.contacts.value"
-            :hydrating="page.hydrating.value"
-            @hydrate="page.hydrate"
-          />
-        </div>
-      </details>
-      <div class="rounded-lg border border-border p-4">
-        <VacancyAnalysisSection :vacancy-id="page.data.value.vacancy.id" />
-      </div>
       <div class="rounded-lg border border-border p-4">
         <VacancyDecision
           :decisions="page.decisions.value"

@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import type { VacancyPage } from "../model"
-import VacancyAnalysisSection from "./VacancyAnalysisSection.vue"
 import VacancyApply from "./VacancyApply.vue"
 import VacancyDecision from "./VacancyDecision.vue"
 import VacancyDescription from "./VacancyDescription.vue"
-import VacancyInsights from "./VacancyInsights.vue"
+import VacancyPassport from "./VacancyPassport.vue"
 import VacancyKeywords from "./VacancyKeywords.vue"
 import VacancySkills from "./VacancySkills.vue"
 
@@ -27,17 +26,12 @@ const h2 = "mb-2 text-sm font-semibold"
       </div>
     </div>
     <aside class="min-w-0 space-y-5 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:self-start lg:overflow-y-auto lg:pr-1">
-      <div class="rounded-lg border border-border p-4">
-        <VacancyInsights
-          :data="page.data.value"
-          :contacts="page.contacts.value"
-          :hydrating="page.hydrating.value"
-          @hydrate="page.hydrate"
-        />
-      </div>
-      <div class="rounded-lg border border-border p-4">
-        <VacancyAnalysisSection :vacancy-id="page.data.value.vacancy.id" />
-      </div>
+      <VacancyPassport
+        :data="page.data.value"
+        :contacts="page.contacts.value"
+        :hydrating="page.hydrating.value"
+        @hydrate="page.hydrate"
+      />
       <section>
         <h2 :class="h2">Навыки</h2>
         <VacancySkills :data="page.data.value" :resume="page.selectedResume.value" />
