@@ -168,6 +168,7 @@ export const listCandidates = (
     .where(
       and(
         eq(vacancy.hydrationStatus, "full"),
+        eq(vacancy.archived, false),
         or(
           isNull(vacancyAnalysis.vacancyId),
           gt(vacancy.updatedAt, vacancyAnalysis.updatedAt),
@@ -175,7 +176,7 @@ export const listCandidates = (
         )
       )
     )
-    .orderBy(sql`${vacancyAnalysis.updatedAt} asc nulls first`, vacancy.id)
+    .orderBy(sql`${vacancyAnalysis.updatedAt} asc nulls first`, sql`${vacancy.publishedAt} desc nulls last`, vacancy.id)
     .limit(options.limit)
     .offset(options.offset ?? 0)
     .pipe(
