@@ -3,7 +3,7 @@ import { computed } from "vue"
 import { useStorage } from "@vueuse/core"
 import { CircleAlert, ExternalLink, RefreshCw } from "@lucide/vue"
 import { RefreshButton } from "@/features/refresh-button"
-import { Alert, AlertDescription, AlertTitle, Button, Skeleton } from "@/shared/ui"
+import { Alert, AlertDescription, AlertTitle, Button, Hint, Skeleton } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
 import { useVacancyPage } from "../model"
 import { LAYOUTS, type LayoutId } from "./layouts"
@@ -29,17 +29,17 @@ const data = page.data
   <section>
     <PageHeader :title="data?.vacancy.title ?? 'Вакансия'" back-to="/vacancies" back-label="Вакансии">
       <template #actions>
+        <Hint v-if="data" text="Заново скачать страницу вакансии с hh">
         <Button
-          v-if="data"
           variant="outline"
           size="sm"
           :disabled="page.hydrating.value"
-          title="Заново скачать страницу вакансии с hh"
           @click="page.hydrate"
         >
           <RefreshCw class="size-4" :class="page.hydrating.value ? 'animate-spin' : ''" />
           Догрузить
         </Button>
+        </Hint>
         <Button v-if="data" as-child variant="outline" size="sm">
           <a :href="data.vacancy.canonicalUrl" target="_blank" rel="noreferrer">
             Открыть на hh

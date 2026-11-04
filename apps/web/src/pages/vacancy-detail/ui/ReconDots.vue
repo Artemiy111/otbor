@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import { RECON_SOURCES, stanceOf, type ReconRow } from "@/shared/lib"
+import { Hint } from "@/shared/ui"
 
 const props = defineProps<{ row: ReconRow }>()
 
@@ -28,12 +29,11 @@ const tone = (stance: string) =>
 
 <template>
   <span class="inline-flex shrink-0 items-center gap-0.5 align-middle" aria-hidden="true">
-    <span
-      v-for="dot in dots"
-      :key="dot.id"
-      :title="dot.title"
-      class="rounded px-1 text-[9px] font-semibold leading-[13px]"
-      :class="tone(dot.stance)"
-    >{{ dot.short === "текст" ? "т" : dot.short }}</span>
+    <Hint v-for="dot in dots" :key="dot.id" :text="dot.title">
+      <span
+        class="rounded px-1 text-[9px] font-semibold leading-[13px]"
+        :class="tone(dot.stance)"
+      >{{ dot.short === "текст" ? "т" : dot.short }}</span>
+    </Hint>
   </span>
 </template>

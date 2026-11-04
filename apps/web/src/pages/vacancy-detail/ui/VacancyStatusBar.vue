@@ -3,7 +3,7 @@ import { computed } from "vue"
 import type { ApplicationRecord, HhAccountRecord, ResumeRecord } from "@otbor/contract"
 import { AccountChip } from "@/entities/hh-account"
 import { applicationPath, applicationStatus, formatDate } from "@/shared/lib"
-import { Badge } from "@/shared/ui"
+import { Badge, Hint } from "@/shared/ui"
 
 const props = defineProps<{
   applications: ReadonlyArray<ApplicationRecord>
@@ -66,12 +66,14 @@ const resumeTitle = (application: ApplicationRecord) =>
     <!-- every other resume that already responded -->
     <div v-if="others.length > 0" class="flex min-w-0 flex-wrap items-center gap-1.5 rounded-lg border border-border px-3 py-1.5">
       <span class="text-xs text-muted-foreground">Другие резюме:</span>
-      <a
+      <Hint
         v-for="application in others"
         :key="application.id"
+        :text="`${resumeTitle(application)}\n${view(application).when}`"
+      >
+      <a
         :href="applicationPath(application.id)"
         class="inline-flex items-center gap-1.5 rounded-md bg-muted/40 py-0.5 pl-1 pr-1.5 text-xs transition-colors hover:bg-muted"
-        :title="`${resumeTitle(application)} · ${view(application).when}`"
       >
         <AccountChip
           :account-id="application.hhAccountId"
@@ -81,6 +83,7 @@ const resumeTitle = (application: ApplicationRecord) =>
         />
         <Badge :variant="view(application).variant" class="px-1.5 py-0 text-[11px]">{{ view(application).label }}</Badge>
       </a>
+      </Hint>
     </div>
     <div v-else class="flex items-center rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground">
       Другие резюме: откликов нет

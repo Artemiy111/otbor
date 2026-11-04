@@ -12,7 +12,7 @@ import {
   type ReconGroup,
   type ReconRow
 } from "@/shared/lib"
-import { Button } from "@/shared/ui"
+import { Button, Hint } from "@/shared/ui"
 import type { VacancyPage } from "../model"
 import ReconDots from "./ReconDots.vue"
 
@@ -111,16 +111,15 @@ const cap = "text-[10px] font-semibold uppercase tracking-wide text-muted-foregr
     <div v-else class="space-y-1.5">
       <div v-for="entry in groups" :key="entry.group" class="flex flex-wrap items-center gap-1.5">
         <span :class="cap" class="w-full sm:w-auto sm:min-w-[5.5rem]">{{ entry.title }}</span>
-        <span
-          v-for="row in entry.rows"
-          :key="row.key"
-          :title="tip(row)"
-          class="inline-flex items-center gap-1.5 rounded-md border py-0.5 pl-2 pr-1 text-xs"
-          :class="chipClass(row)"
-        >
-          {{ chipLabel(row) }}
-          <ReconDots :row="row" />
-        </span>
+        <Hint v-for="row in entry.rows" :key="row.key" :text="tip(row)">
+          <span
+            class="inline-flex items-center gap-1.5 rounded-md border py-0.5 pl-2 pr-1 text-xs"
+            :class="chipClass(row)"
+          >
+            {{ chipLabel(row) }}
+            <ReconDots :row="row" />
+          </span>
+        </Hint>
       </div>
     </div>
 
@@ -129,22 +128,22 @@ const cap = "text-[10px] font-semibold uppercase tracking-wide text-muted-foregr
       v-if="numbers.length > 0 || data.responsesTotal != null || contacts.length > 0"
       class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs"
     >
-      <span v-for="fact in numbers" :key="fact.key" :title="fact.evidence">
-        <span class="text-muted-foreground">{{ fact.label }}:</span> <b>{{ fact.value }}</b>
-      </span>
+      <Hint v-for="fact in numbers" :key="fact.key" :text="fact.evidence ? `«${fact.evidence}»` : null">
+        <span><span class="text-muted-foreground">{{ fact.label }}:</span> <b>{{ fact.value }}</b></span>
+      </Hint>
       <span v-if="data.responsesTotal != null">
         <span class="text-muted-foreground">откликов:</span> <b>{{ formatNumber(data.responsesTotal) }}</b>
       </span>
       <span v-for="contact in contacts" :key="contact.id" class="min-w-0">
         <span class="text-muted-foreground">{{ contactKindLabel(contact.kind) }}:</span>
-        <a
-          v-if="contactHref(contact)"
-          :href="contactHref(contact) ?? undefined"
-          :target="isHttp(contactHref(contact)) ? '_blank' : undefined"
-          rel="noreferrer"
-          class="break-all text-sky-300 underline-offset-4 hover:underline"
-          :title="contact.evidence ?? undefined"
-        >{{ contact.value }}</a>
+        <Hint v-if="contactHref(contact)" :text="contact.evidence ? `«${contact.evidence}»` : null">
+          <a
+            :href="contactHref(contact) ?? undefined"
+            :target="isHttp(contactHref(contact)) ? '_blank' : undefined"
+            rel="noreferrer"
+            class="break-all text-sky-300 underline-offset-4 hover:underline"
+          >{{ contact.value }}</a>
+        </Hint>
         <span v-else class="break-all">{{ contact.value }}</span>
       </span>
     </div>

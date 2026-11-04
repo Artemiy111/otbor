@@ -2,6 +2,7 @@
 import { computed } from "vue"
 import type { ResumeRecord, VacancyDetail } from "@otbor/contract"
 import { makeResumeMatcher } from "@/shared/lib"
+import { Hint } from "@/shared/ui"
 
 const props = defineProps<{ data: VacancyDetail; resume: ResumeRecord | null }>()
 
@@ -37,20 +38,18 @@ const missingNames = computed(() =>
 const tooltip = (group: (typeof groups.value)[number]) =>
   [
     group.inResume === null ? null : group.inResume ? "Есть в выбранном резюме" : "В выбранном резюме не найдено",
-    `в вакансии: ${group.total}${group.title > 0 ? " (есть в заголовке)" : ""}`,
-    group.forms.length > 0 ? `формы: ${group.forms.join(", ")}` : null
+    `В вакансии: ${group.total}${group.title > 0 ? " (есть в заголовке)" : ""}`,
+    group.forms.length > 0 ? `Формы: ${group.forms.join(", ")}` : null
   ]
     .filter(Boolean)
-    .join(" · ")
+    .join("\n")
 </script>
 
 <template>
   <div v-if="groups.length > 0" class="space-y-2">
     <div class="flex flex-wrap gap-1.5">
+      <Hint v-for="group in groups" :key="group.term" :text="tooltip(group)">
       <span
-        v-for="group in groups"
-        :key="group.term"
-        :title="tooltip(group)"
         class="inline-flex items-center gap-1 rounded-full border py-0.5 pl-2.5 pr-1.5 text-xs"
         :class="
           group.inResume === null
@@ -63,6 +62,7 @@ const tooltip = (group: (typeof groups.value)[number]) =>
         {{ group.term }}
         <span class="rounded-full bg-background/60 px-1.5 text-[10px] tabular-nums opacity-70">{{ group.total }}</span>
       </span>
+      </Hint>
     </div>
     <p v-if="resume" class="text-xs text-muted-foreground">
       <span class="text-emerald-300">Зелёные</span> есть в резюме «{{ resume.title }}»: {{ found }} из
