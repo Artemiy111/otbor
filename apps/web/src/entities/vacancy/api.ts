@@ -1,11 +1,15 @@
 import type { GateVerdict, VacancyAnalysis, VacancyDetail, VacancySummary } from "@otbor/contract"
-import type { VacancyId } from "@otbor/contract"
+import type { VacancyId, VacancySort } from "@otbor/contract"
 import { call } from "@/shared/api"
 
 export interface VacancyListInput {
   readonly limit?: number
   readonly offset?: number
   readonly gate?: string
+  readonly analysed?: boolean
+  readonly respondedAccountId?: string
+  readonly search?: string
+  readonly sort?: VacancySort
   readonly includeArchived?: boolean
   readonly includeBlacklisted?: boolean
   readonly hhAccountId?: string
@@ -23,6 +27,10 @@ export const vacancyApi = {
         limit: input.limit,
         offset: input.offset,
         gate: input.gate,
+        analysed: input.analysed,
+        respondedAccountId: input.respondedAccountId as any,
+        search: input.search,
+        sort: input.sort,
         includeArchived: input.includeArchived,
         includeBlacklisted: input.includeBlacklisted,
         hhAccountId: input.hhAccountId as any

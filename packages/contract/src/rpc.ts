@@ -119,11 +119,29 @@ export const IngestResult = Schema.Struct({
 
 export type IngestResult = typeof IngestResult.Type
 
+/** Columns the vacancy list can be sorted by on the server. */
+export const VacancySortKey = Schema.Literals(["title", "employer", "salary", "area", "date", "analysed"])
+export type VacancySortKey = typeof VacancySortKey.Type
+
+export const VacancySort = Schema.Struct({
+  key: VacancySortKey,
+  direction: Schema.Literals(["asc", "desc"])
+})
+export type VacancySort = typeof VacancySort.Type
+
 export const VacanciesList = Rpc.make("VacanciesList", {
   payload: Schema.Struct({
     limit: Schema.optional(Schema.Int),
     offset: Schema.optional(Schema.Int),
     gate: Schema.optional(Schema.String),
+    /** `true`: only analysed vacancies; `false`: only not analysed; omitted: all. */
+    analysed: Schema.optional(Schema.Boolean),
+    /** Only vacancies with an active response (submitted, submitting or queued) from this account. */
+    respondedAccountId: Schema.optional(HhAccountId),
+    /** Case-insensitive substring of the title, employer name or city. */
+    search: Schema.optional(Schema.String),
+    /** Sort over the whole filtered set, before the page is cut. Default: newest published first. */
+    sort: Schema.optional(VacancySort),
     includeArchived: Schema.optional(Schema.Boolean),
     /** Default `false`: blacklist layers hide rows from the default view. */
     includeBlacklisted: Schema.optional(Schema.Boolean),

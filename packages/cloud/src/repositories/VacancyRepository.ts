@@ -1,4 +1,5 @@
 import { HhVacancySignals as HhVacancySignalsSchema } from "@otbor/contract"
+import { ANALYSIS_PROMPT_VERSION } from "@otbor/domain"
 import type {
   BlacklistScope,
   HhVacancySignals,
@@ -6,9 +7,10 @@ import type {
   HydrationTarget,
   SalaryDraft,
   VacancyDraft,
+  VacancySortKey,
   VacancySummary
 } from "@otbor/contract"
-import { eq, sql } from "drizzle-orm"
+import { eq, sql, type SQL } from "drizzle-orm"
 import { Effect, Schema } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
 import { employer, vacancy, vacancyResponseSample, vacancySkill, vacancySnapshot } from "../db/tables.ts"
@@ -44,11 +46,13 @@ export interface VacancyRow {
   readonly responsesTotal?: number | null
   readonly responsesVacancy?: number | null
   readonly blacklistLayers?: ReadonlyArray<BlacklistScope> | null
+  readonly analysed?: boolean | null
 }
 
 export const toSummary = (row: VacancyRow): VacancySummary => {
   const blacklistLayers = [...(row.blacklistLayers ?? [])]
   return {
+    analysed: row.analysed === true,
     id: row.id as VacancySummary["id"],
     source: row.source,
     externalId: row.externalId,
@@ -363,6 +367,10 @@ export const rowSelection = {
   descriptionHtml: vacancy.descriptionHtml,
   workFormats: vacancy.workFormats,
   blacklistLayers: sql<ReadonlyArray<string>>`'[]'::json`,
+  analysed: sql<boolean>`exists (
+    select 1 from vacancy_analysis a
+    where a.vacancy_id = ${vacancy.id} and a.prompt_version = ${ANALYSIS_PROMPT_VERSION}
+  )`,
   skills: sql<ReadonlyArray<string>>`coalesce((
     select json_agg(s.term order by s.position nulls last)
     from vacancy_skill s where s.vacancy_id = ${vacancy.id}
@@ -496,6 +504,13 @@ export interface VacancyFilter {
   readonly offset?: number
   readonly includeArchived?: boolean
   readonly gate?: string
+  /** `true`: only vacancies with an analysis for the current prompt version; `false`: only without. */
+  readonly analysed?: boolean
+  /** Only vacancies with an active response from this hh account. */
+  readonly respondedAccountId?: string
+  /** Case-insensitive substring of title, employer name or city. */
+  readonly search?: string
+  readonly sort?: { readonly key: VacancySortKey; readonly direction: "asc" | "desc" }
   /**
    * Default `false`: hide rows matched by an applicable blacklist layer.
    * `true` keeps them and labels the summary instead.
@@ -505,6 +520,9 @@ export interface VacancyFilter {
   /** Set by the service; RLS already scopes `hidden_target` to this user. */
   readonly userId?: string
 }
+
+/** `%term%` with LIKE wildcards in the term escaped, for `ilike ... escape '\\'`. */
+const likePattern = (term: string): string => `%${term.replace(/[\\%_]/g, (char) => `\\${char}`)}%`
 
 export const list = (tx: Executor, filter: VacancyFilter = {}) => {
   const limit = Math.min(Math.max(filter.limit ?? 50, 1), 200)
@@ -519,6 +537,46 @@ export const list = (tx: Executor, filter: VacancyFilter = {}) => {
           where tv.normalized_title = regexp_replace(lower(btrim(vacancy.title)), '\\s+', ' ', 'g')
             and tv.verdict = ${filter.gate}
         )`
+
+  const analysedExists = sql`exists (
+    select 1 from vacancy_analysis a
+    where a.vacancy_id = vacancy.id and a.prompt_version = ${ANALYSIS_PROMPT_VERSION}
+  )`
+  const analysedClause =
+    filter.analysed === undefined ? sql`true` : filter.analysed ? analysedExists : sql`not ${analysedExists}`
+
+  const respondedClause =
+    filter.respondedAccountId === undefined
+      ? sql`true`
+      : sql`exists (
+          select 1 from application ap
+          where ap.vacancy_id = vacancy.id
+            and ap.hh_account_id = ${filter.respondedAccountId}
+            and ap.state in ('submitted', 'submitting', 'queued')
+        )`
+
+  const searchTerm = filter.search?.trim() ?? ""
+  const searchClause =
+    searchTerm === ""
+      ? sql`true`
+      : sql`(
+          vacancy.title ilike ${likePattern(searchTerm)} escape '\\'
+          or employer.name ilike ${likePattern(searchTerm)} escape '\\'
+          or vacancy.area_name ilike ${likePattern(searchTerm)} escape '\\'
+        )`
+
+  const sortExpressions: Record<VacancySortKey, SQL> = {
+    title: sql`lower(vacancy.title)`,
+    employer: sql`lower(employer.name)`,
+    salary: sql`coalesce(vacancy.salary_from, vacancy.salary_to)`,
+    area: sql`lower(vacancy.area_name)`,
+    date: sql`coalesce(vacancy.published_at, vacancy.last_seen_at)`,
+    analysed: analysedExists
+  }
+  const orderBy = filter.sort === undefined
+    ? sql`vacancy.published_at desc nulls last, vacancy.created_at desc, vacancy.id`
+    : sql`${sortExpressions[filter.sort.key]} ${sql.raw(filter.sort.direction === "asc" ? "asc" : "desc")} nulls last,
+          vacancy.published_at desc nulls last, vacancy.created_at desc, vacancy.id`
 
   const blacklistInput = {
     userId: filter.userId,
@@ -544,8 +602,8 @@ export const list = (tx: Executor, filter: VacancyFilter = {}) => {
       )}
       from vacancy
       left join employer on employer.id = vacancy.employer_id
-      where ${archivedClause} and ${gateClause} and ${blacklistClause}
-      order by vacancy.published_at desc nulls last, vacancy.created_at desc
+      where ${archivedClause} and ${gateClause} and ${analysedClause} and ${respondedClause} and ${searchClause} and ${blacklistClause}
+      order by ${orderBy}
       limit ${limit} offset ${offset}
     `)
 
@@ -553,7 +611,7 @@ export const list = (tx: Executor, filter: VacancyFilter = {}) => {
       select count(*)::int as count
       from vacancy
       left join employer on employer.id = vacancy.employer_id
-      where ${archivedClause} and ${gateClause} and ${blacklistClause}
+      where ${archivedClause} and ${gateClause} and ${analysedClause} and ${respondedClause} and ${searchClause} and ${blacklistClause}
     `)
 
     return {

@@ -50,6 +50,13 @@ const props = withDefaults(
     initialSorting?: SortingState
     /** Prefix every row with a visible ordinal. Paginated tables continue across pages. */
     rowNumbers?: boolean
+    /**
+     * The owner sorts, filters and pages the data (it passes only the current
+     * page and `rowCount`). Changes are reported through the `update:*` events.
+     */
+    serverSide?: boolean
+    /** Total matching rows across all pages; used only in `serverSide` mode. */
+    rowCount?: number
   }>(),
   {
     isLoading: false,
@@ -62,12 +69,17 @@ const props = withDefaults(
     pageSize: undefined,
     pageSizeOptions: () => [10, 20, 25, 50, 100],
     initialSorting: () => [],
-    rowNumbers: true
+    rowNumbers: true,
+    serverSide: false,
+    rowCount: undefined
   }
 )
 
 const emit = defineEmits<{
   "update:visibleRows": [rows: TData[]]
+  "update:sorting": [sorting: SortingState]
+  "update:globalFilter": [value: string]
+  "update:pagination": [pagination: PaginationState]
 }>()
 
 const slots = defineSlots<{
@@ -105,14 +117,31 @@ const table = useVueTable<TData>({
       return pagination.value
     }
   },
+  get rowCount() {
+    return props.rowCount
+  },
+  manualSorting: props.serverSide,
+  manualFiltering: props.serverSide,
+  manualPagination: props.serverSide,
   onSortingChange: (updater) => {
     sorting.value = valueUpdater(updater, sorting.value)
+    if (props.serverSide) {
+      pagination.value = { ...pagination.value, pageIndex: 0 }
+      emit("update:sorting", sorting.value)
+      emit("update:pagination", pagination.value)
+    }
   },
   onGlobalFilterChange: (updater) => {
     globalFilter.value = valueUpdater(updater, globalFilter.value)
+    if (props.serverSide) {
+      pagination.value = { ...pagination.value, pageIndex: 0 }
+      emit("update:globalFilter", globalFilter.value)
+      emit("update:pagination", pagination.value)
+    }
   },
   onPaginationChange: (updater) => {
     pagination.value = valueUpdater(updater, pagination.value)
+    if (props.serverSide) emit("update:pagination", pagination.value)
   },
   getCoreRowModel: getCoreRowModel(),
   getSortedRowModel: getSortedRowModel(),

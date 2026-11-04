@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import { computed, h, ref } from "vue"
+import { useDebounceFn } from "@vueuse/core"
 import { useQuery } from "@pinia/colada"
 import { applicationApi, respondedByVacancy } from "@/entities/application"
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { AccountChip, ALL_ACCOUNTS, useAccountFilter } from "@/entities/hh-account"
 import { accountFilterOptions } from "@/features/account-filter"
-import type { GateVerdict, VacancySummary } from "@otbor/contract"
-import type { ColumnDef } from "@tanstack/vue-table"
+import type { GateVerdict, VacancySort, VacancySortKey, VacancySummary } from "@otbor/contract"
+import type { ColumnDef, PaginationState, SortingState } from "@tanstack/vue-table"
 import { CircleAlert } from "@lucide/vue"
 import { vacancyApi, vacancyKeys } from "@/entities/vacancy"
 import { blacklistVisibilityOptions } from "@/features/blacklist-filter"
-import { vacancyArchiveOptions, vacancyGateOptions } from "@/features/vacancy-filter"
+import { vacancyAnalysedOptions, vacancyArchiveOptions, vacancyGateOptions } from "@/features/vacancy-filter"
 import { RefreshButton } from "@/features/refresh-button"
 import {
   companyPath,
@@ -34,11 +35,26 @@ import {
 import { PageHeader } from "@/widgets/page-header"
 
 const PAGE_SIZE = 25
-const LOAD_LIMIT = 200
+const SORT_KEYS: ReadonlyArray<VacancySortKey> = ["title", "employer", "salary", "area", "date", "analysed"]
 
 const gate = ref("all")
+const analysed = ref("all")
 const archived = ref("active")
 const includeBlacklisted = ref(false)
+/** Search, sort and page are sent to the server: they apply to every vacancy, not to a loaded slice. */
+const search = ref("")
+const sorting = ref<SortingState>([])
+const pagination = ref<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
+
+const applySearch = useDebounceFn((value: string) => {
+  search.value = value
+}, 300)
+
+const serverSort = computed<VacancySort | undefined>(() => {
+  const first = sorting.value[0]
+  if (first === undefined || !SORT_KEYS.includes(first.id as VacancySortKey)) return undefined
+  return { key: first.id as VacancySortKey, direction: first.desc ? "desc" : "asc" }
+})
 
 const gateCache = new Map<string, GateVerdict>()
 
@@ -56,28 +72,43 @@ const listQuery = useQuery({
   key: () =>
     vacancyKeys.list({
       gate: gate.value,
+      analysed: analysed.value,
+      respondedAccountId: scopeKey.value,
+      search: search.value,
+      sort: serverSort.value === undefined ? "" : `${serverSort.value.key}:${serverSort.value.direction}`,
+      page: String(pagination.value.pageIndex),
+      pageSize: pagination.value.pageSize,
       includeArchived: archived.value === "all",
       includeBlacklisted: includeBlacklisted.value,
       hhAccountId: scopeKey.value
     }),
   query: () =>
     vacancyApi.list({
-      limit: LOAD_LIMIT,
-      offset: 0,
+      limit: pagination.value.pageSize,
+      offset: pagination.value.pageIndex * pagination.value.pageSize,
       gate: gate.value === "all" ? undefined : gate.value,
+      analysed: analysed.value === "all" ? undefined : analysed.value === "yes",
+      respondedAccountId: hhAccountId.value,
+      search: search.value === "" ? undefined : search.value,
+      sort: serverSort.value,
       includeArchived: archived.value === "all",
       includeBlacklisted: includeBlacklisted.value,
       hhAccountId: hhAccountId.value
     })
 })
 
-const vacancies = computed<ReadonlyArray<VacancySummary>>(() => {
-  const items = listQuery.data.value?.items ?? []
-  const account = hhAccountId.value
-  if (account === undefined) return items
-  return items.filter((vacancy) => respondedAccounts.value.get(vacancy.id)?.some((item) => item.accountId === account))
-})
-const total = computed(() => listQuery.data.value?.total ?? vacancies.value.length)
+const vacancies = computed<ReadonlyArray<VacancySummary>>(() => listQuery.data.value?.items ?? [])
+const total = computed(() => listQuery.data.value?.total ?? 0)
+
+const onSortingChange = (value: SortingState) => {
+  sorting.value = value
+}
+const onGlobalFilterChange = (value: string) => {
+  void applySearch(value)
+}
+const onPaginationChange = (value: PaginationState) => {
+  pagination.value = value
+}
 
 const visibleRows = ref<ReadonlyArray<VacancySummary>>([])
 const pageTitles = computed(() => [...new Set(visibleRows.value.map((vacancy) => vacancy.title))])
@@ -198,8 +229,23 @@ const columns: ColumnDef<VacancySummary>[] = [
     }
   },
   {
+    id: "analysed",
+    accessorFn: (row) => row.analysed === true,
+    enableGlobalFilter: false,
+    header: filterableHeader<VacancySummary>("ИИ-анализ", {
+      value: () => analysed.value,
+      options: () => vacancyAnalysedOptions,
+      onChange: (value) => (analysed.value = value)
+    }),
+    cell: ({ row }) =>
+      row.original.analysed
+        ? h(Badge, { variant: "info", class: "text-[10px]" }, () => "проанализирована")
+        : h("span", { class: "text-xs text-muted-foreground" }, "нет")
+  },
+  {
     id: "blacklisted",
     accessorFn: (row) => row.blacklisted,
+    enableSorting: false,
     enableGlobalFilter: false,
     header: filterableHeader<VacancySummary>("Чёрный список", {
       value: () => (includeBlacklisted.value ? "show" : "hide"),
@@ -285,6 +331,11 @@ const refresh = () => {
       :is-loading="listQuery.isPending.value"
       :loading-row-count="8"
       :page-size="PAGE_SIZE"
+      server-side
+      :row-count="total"
+      @update:sorting="onSortingChange"
+      @update:global-filter="onGlobalFilterChange"
+      @update:pagination="onPaginationChange"
       filter
       filter-label="Поиск"
       filter-placeholder="Название, компания или город"
@@ -296,12 +347,11 @@ const refresh = () => {
         <p class="mb-3 text-xs text-muted-foreground">
           Проверка заголовка — правило, не ИИ: «подходит» значит, что заголовок похож на
           DevOps/SRE-роль, «неясно» уходит в тихий список, «отклонено» — жёсткий минус.
+          Колонка «ИИ-анализ» показывает, есть ли у вакансии разбор локальной моделью для текущей версии промпта.
         </p>
         <p class="mb-3 text-xs text-muted-foreground">
-          Найдено {{ table.getFilteredRowModel().rows.length }} из {{ total }} · страница
-          {{ table.getState().pagination.pageIndex + 1 }} из
+          Найдено {{ total }} · страница {{ table.getState().pagination.pageIndex + 1 }} из
           {{ Math.max(1, table.getPageCount()) }}
-          <span v-if="total > LOAD_LIMIT"> · показаны первые {{ LOAD_LIMIT }} записей</span>
         </p>
       </template>
     </DataTable>

@@ -166,7 +166,9 @@ export const VacancySummary = Schema.Struct({
   /** A label, not a ban: the row is still in the corpus and can be shown. */
   blacklisted: Schema.Boolean,
   /** Which layers matched: app, the selected hh account, or hh native hiding. */
-  blacklistLayers: Schema.Array(BlacklistScope)
+  blacklistLayers: Schema.Array(BlacklistScope),
+  /** A vacancy analysis exists for the current analysis prompt version. */
+  analysed: Schema.optional(Schema.Boolean)
 })
 
 export type VacancySummary = typeof VacancySummary.Type

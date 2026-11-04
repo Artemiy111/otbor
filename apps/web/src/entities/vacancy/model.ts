@@ -1,5 +1,11 @@
 export interface VacancyListKey {
   readonly gate: string
+  readonly analysed: string
+  readonly respondedAccountId: string
+  readonly search: string
+  readonly sort: string
+  readonly page: string
+  readonly pageSize: number
   readonly includeArchived: boolean
   readonly includeBlacklisted: boolean
   readonly hhAccountId: string
