@@ -23,6 +23,7 @@ interface Entry {
   readonly vacancyCount: number
   skillVacancyCount: number
   resumeAccountIds: Array<string>
+  resumeSkillAccountIds: Array<string>
   aliases: Array<{ id: string; alias: string; normalizedAlias: string; typo: boolean }>
   aliasStats: Array<AliasStat>
 }
@@ -353,6 +354,7 @@ export const loadEntries = (tx: Executor): RepoEffect<ReadonlyArray<LexiconEntry
           vacancyCount: 0,
           skillVacancyCount: 0,
           resumeAccountIds: [],
+          resumeSkillAccountIds: [],
           aliases: [],
           aliasStats: [],
         }
@@ -378,6 +380,7 @@ const toRecord = (entry: {
   vacancyCount: number
   skillVacancyCount?: number
   resumeAccountIds?: ReadonlyArray<string>
+  resumeSkillAccountIds?: ReadonlyArray<string>
   aliases: ReadonlyArray<{ id: string; alias: string; normalizedAlias: string; typo: boolean }>
   aliasStats?: ReadonlyArray<AliasStat>
 }): LexiconKeyword => ({
@@ -387,6 +390,7 @@ const toRecord = (entry: {
   vacancyCount: entry.vacancyCount,
   skillVacancyCount: entry.skillVacancyCount ?? 0,
   resumeAccountIds: (entry.resumeAccountIds ?? []) as LexiconKeyword["resumeAccountIds"],
+  resumeSkillAccountIds: (entry.resumeSkillAccountIds ?? []) as LexiconKeyword["resumeSkillAccountIds"],
   aliases: entry.aliases.map((alias) => ({
     id: alias.id as LexiconKeyword["aliases"][number]["id"],
     alias: alias.alias,
@@ -496,6 +500,7 @@ export const list = (
           vacancyCount: Number(raw.vacancy_count ?? 0),
           skillVacancyCount: Number(raw.skill_count ?? 0),
           resumeAccountIds: [],
+          resumeSkillAccountIds: [],
           aliases: [],
           aliasStats: []
         }
@@ -596,8 +601,15 @@ export const list = (
         })
         for (const match of matches) {
           const entry = entries.get(match.keywordId)
-          if (entry !== undefined && !entry.resumeAccountIds.includes(raw.hh_account_id)) {
+          if (entry === undefined) continue
+          if (
+            (match.inTitle || match.inBody) &&
+            !entry.resumeAccountIds.includes(raw.hh_account_id)
+          ) {
             entry.resumeAccountIds.push(raw.hh_account_id)
+          }
+          if (match.inSkills && !entry.resumeSkillAccountIds.includes(raw.hh_account_id)) {
+            entry.resumeSkillAccountIds.push(raw.hh_account_id)
           }
         }
       }

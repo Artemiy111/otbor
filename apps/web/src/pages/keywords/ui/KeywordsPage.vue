@@ -163,6 +163,28 @@ const saveErrorText = computed(() => {
   return error === null ? null : describeError(error)
 })
 
+const accountsColumn = (
+  id: string,
+  title: string,
+  pick: (keyword: LexiconKeyword) => ReadonlyArray<string>
+): ColumnDef<LexiconKeyword> => ({
+  id,
+  accessorFn: (row) => pick(row).length,
+  enableGlobalFilter: false,
+  header: sortableHeader<LexiconKeyword>(title),
+  cell: ({ row }) => {
+    const ids = pick(row.original)
+    if (ids.length === 0) return h("span", { class: "text-sm text-muted-foreground" }, "—")
+    return h(
+      "div",
+      { class: "flex flex-wrap gap-1" },
+      ids.map((accountId) =>
+        h(AccountChip, { key: accountId, accountId, accounts: accounts.value })
+      )
+    )
+  }
+})
+
 const columns: ColumnDef<LexiconKeyword>[] = [
   {
     accessorKey: "term",
@@ -278,21 +300,8 @@ const columns: ColumnDef<LexiconKeyword>[] = [
         )
       ])
   },
-  {
-    id: "resumes",
-    accessorFn: (row) => row.resumeAccountIds.length,
-    enableGlobalFilter: false,
-    header: sortableHeader<LexiconKeyword>("В резюме"),
-    cell: ({ row }) => {
-      const ids = row.original.resumeAccountIds
-      if (ids.length === 0) return h("span", { class: "text-sm text-muted-foreground" }, "—")
-      return h(
-        "div",
-        { class: "flex flex-wrap gap-1" },
-        ids.map((id) => h(AccountChip, { key: id, accountId: id, accounts: accounts.value }))
-      )
-    }
-  }
+  accountsColumn("resumes", "В резюме", (keyword) => keyword.resumeAccountIds),
+  accountsColumn("resumeSkills", "В навыках резюме", (keyword) => keyword.resumeSkillAccountIds)
 ]
 </script>
 
@@ -300,7 +309,7 @@ const columns: ColumnDef<LexiconKeyword>[] = [
   <section>
     <PageHeader
       title="Ключевые слова"
-      description="Словарь терминов и алиасов. В колонке «В резюме» — аккаунты, в резюме которых есть слово."
+      description="Словарь терминов и алиасов. «В резюме» — аккаунты, у которых слово есть в тексте резюме; «В навыках резюме» — в списке навыков."
     >
       <template #actions>
         <Button type="button" @click="openEditor()">

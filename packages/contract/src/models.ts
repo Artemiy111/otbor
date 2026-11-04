@@ -723,8 +723,10 @@ export const LexiconKeyword = Schema.Struct({
   vacancyCount: Schema.Int,
   /** Vacancies that list this keyword among their hh skills, after the caller's preset filter. */
   skillVacancyCount: Schema.Int,
-  /** hh accounts whose resume text, about or skills contain this keyword. */
+  /** hh accounts whose resume title, text or about contain this keyword. */
   resumeAccountIds: Schema.Array(HhAccountId),
+  /** hh accounts whose resume skills list contains this keyword. */
+  resumeSkillAccountIds: Schema.Array(HhAccountId),
   aliases: Schema.Array(KeywordAliasRecord),
   aliasStats: Schema.Array(KeywordAliasStat)
 })
