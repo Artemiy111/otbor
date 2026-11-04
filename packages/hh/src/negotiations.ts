@@ -85,6 +85,8 @@ export interface NegotiationTopic {
   readonly employerName: string | null
   /** The vacancy title, when the list entry carries it. */
   readonly vacancyName: string | null
+  /** The hh resume the response was sent with (hh's numeric resume id), when the entry carries it. */
+  readonly resumeId: string | null
 }
 
 export interface NegotiationsPage {
@@ -160,6 +162,16 @@ const idOf = (value: unknown): string | null => {
   return text(value)
 }
 
+const resumeOf = (topic: Record<string, unknown>): string | null => {
+  const nested = topic.resume
+  return (
+    idOf(topic.resumeId) ??
+    (typeof nested === "object" && nested !== null
+      ? idOf((nested as Record<string, unknown>).id ?? (nested as Record<string, unknown>).resumeId)
+      : null)
+  )
+}
+
 export const parseNegotiations = (html: string): NegotiationsPage => {
   const state = readInitialState(html)
   const negotiations = state?.applicantNegotiations
@@ -194,7 +206,8 @@ export const parseNegotiations = (html: string): NegotiationsPage => {
         topic.creationTime
       ),
       employerName: employerOf(topic),
-      vacancyName: text(topic.vacancyName) ?? text(topic.vacancyTitle)
+      vacancyName: text(topic.vacancyName) ?? text(topic.vacancyTitle),
+      resumeId: resumeOf(topic)
     })
   }
   return { readable: true, topics, pageCount: pageCountOf(record) }

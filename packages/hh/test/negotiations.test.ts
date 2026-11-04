@@ -159,3 +159,15 @@ describe("readResponseStatus", () => {
     ).toBe("not_responded")
   })
 })
+
+import { parseNegotiations as parseWithResume } from "../src/negotiations.ts"
+
+describe("negotiation resume", () => {
+  const page = (topic: object) =>
+    `<template id="HH-Lux-InitialState">${JSON.stringify({ applicantNegotiations: { topicList: [topic] } })}</template>`
+  test("reads the resume the response was sent with", () => {
+    expect(parseWithResume(page({ vacancyId: 1, resumeId: 289972366 })).topics[0]?.resumeId).toBe("289972366")
+    expect(parseWithResume(page({ vacancyId: 1, resume: { id: "5" } })).topics[0]?.resumeId).toBe("5")
+    expect(parseWithResume(page({ vacancyId: 1 })).topics[0]?.resumeId).toBeNull()
+  })
+})

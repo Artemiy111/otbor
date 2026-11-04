@@ -57,6 +57,20 @@ const resolveVacancy = (tx: Executor, topic: NegotiationTopic): RepoEffect<strin
     Effect.map((existing) => existing?.id ?? null)
   )
 
+/** Our resume row for the hh resume id of a topic, or null when unknown. */
+const resolveResume = (
+  tx: Executor,
+  hhAccountId: string,
+  topic: NegotiationTopic
+): RepoEffect<string | null> =>
+  topic.resumeId === null
+    ? Effect.succeed(null)
+    : tx
+        .execute(
+          sql`select id from resume where source = ${SOURCE} and hh_account_id = ${hhAccountId} and external_id = ${topic.resumeId} limit 1`
+        )
+        .pipe(Effect.map((result) => (result.rows[0]?.id as string | undefined) ?? null))
+
 /**
  * Upserts one imported application per topic. Idempotent, and it never touches
  * a row of origin `otbor`: the conflict update is guarded by
@@ -86,9 +100,27 @@ export const importTopics = (
         continue
       }
       const respondedAt = parseDate(topic.changedAt)
+      const resumeId = yield* resolveResume(tx, input.hhAccountId, topic)
+      if (resumeId !== null) {
+        // Rows imported before the resume was known: attach it, unless that
+        // resume already has its own row for the vacancy.
+        yield* tx.execute(sql`
+          update application a
+          set resume_id = ${resumeId}, updated_at = now()
+          where a.hh_account_id = ${input.hhAccountId}
+            and a.vacancy_id = ${vacancyId}
+            and a.origin = 'imported'
+            and a.resume_id is null
+            and not exists (
+              select 1 from application o
+              where o.hh_account_id = a.hh_account_id and o.vacancy_id = a.vacancy_id
+                and o.resume_id = ${resumeId}
+            )
+        `)
+      }
       const result = yield* tx.execute(sql`
-        insert into application (user_id, hh_account_id, vacancy_id, state, origin, hh_status, hh_responded_at)
-        select ${input.userId}, ${input.hhAccountId}, ${vacancyId}, 'submitted', 'imported',
+        insert into application (user_id, hh_account_id, vacancy_id, resume_id, state, origin, hh_status, hh_responded_at)
+        select ${input.userId}, ${input.hhAccountId}, ${vacancyId}, ${resumeId}, 'submitted', 'imported',
                ${topic.state}, ${respondedAt}
         -- An application otbor made itself already covers this vacancy.
         where not exists (
@@ -96,6 +128,7 @@ export const importTopics = (
           where own.hh_account_id = ${input.hhAccountId}
             and own.vacancy_id = ${vacancyId}
             and own.origin <> 'imported'
+            and (own.resume_id is null or ${resumeId}::uuid is null or own.resume_id = ${resumeId}::uuid)
         )
         on conflict (hh_account_id, vacancy_id, resume_id) do update
         set hh_status = excluded.hh_status,
