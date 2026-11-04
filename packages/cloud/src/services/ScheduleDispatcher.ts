@@ -234,6 +234,8 @@ export class ScheduleDispatcher extends Context.Service<
                   proxyMode: result.proxyMode,
                   proxy: result.proxy,
                   proxySource: result.proxySource,
+                  stoppedBy: result.stoppedBy,
+                  rotations: result.rotations,
                   errors: result.errors,
                   ...chained
                 }
@@ -314,6 +316,8 @@ export class ScheduleDispatcher extends Context.Service<
                   proxyMode: result.proxyMode,
                   proxy: result.proxy,
                   proxySource: result.proxySource,
+                  stoppedBy: result.stoppedBy,
+                  rotations: result.rotations,
                   errors: result.errors
                 }
               }

@@ -1,9 +1,9 @@
-import type { ApiError, ProxyMode } from "@otbor/contract"
+import type { ApiError, ProxyMode, VacancyDraft } from "@otbor/contract"
 import { InvalidInput } from "@otbor/contract"
 import {
+  canRotate,
   classifyCrawlBlock,
   ensureEngine,
-  fetchHtml,
   loadProxyConfig,
   proxyForUrl,
   proxyLabel,
@@ -12,22 +12,29 @@ import {
 import { extractVacancy } from "@otbor/hh"
 import { Cause, Context, Effect, Layer } from "effect"
 import { Database } from "../db/Database.ts"
+import * as HydrationAttemptRepository from "../repositories/HydrationAttemptRepository.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
 import { CorpusService } from "./CorpusService.ts"
+import { PageFetch, type PageResponse } from "./pageFetch.ts"
+import { ProxyRotator } from "./proxyRotator.ts"
 import { externalIdFromReference, vacancyPageUrl } from "./vacancyReference.ts"
 
-export interface VacancyPage {
-  readonly status: number
-  readonly url: string
-  readonly html: string
-}
+/** Kept for callers and tests that used the vacancy-specific name. */
+export type VacancyPage = PageResponse
+export const VacancyPageFetch = PageFetch
 
-/** How a vacancy page is downloaded; replaced by a fixture in tests. */
-export const VacancyPageFetch = Context.Reference<
-  (url: string, proxy: string | null) => Promise<VacancyPage>
->("otbor/cloud/VacancyPageFetch", {
-  defaultValue: () => (url, proxy) => fetchHtml(url, { proxy })
-})
+/**
+ * Why hh refused a page. `rate_limit` is not part of `CrawlBlock` because the
+ * search crawler gets status codes straight from `CrawlError`; hydration sees
+ * a plain response and classifies it here.
+ */
+export type HydrationBlock = "captcha" | "auth" | "forbidden" | "geo" | "rate_limit"
+
+/**
+ * A page that parsed but still does not satisfy the stub rule (hh sometimes
+ * serves a short description). Look again in six hours instead of every pass.
+ */
+export const HYDRATION_STUB_RECHECK_SECONDS = 6 * 60 * 60
 
 export interface FetchedVacancy {
   readonly vacancyId: string
@@ -52,6 +59,9 @@ export interface HydrationProgress {
   readonly proxyMode: ProxyMode
   readonly proxy: string
   readonly proxySource: ProxyConfig["source"] | null
+  /** Set when the pass stopped because hh refused to serve pages. */
+  readonly stoppedBy: HydrationBlock | null
+  readonly rotations: number
 }
 
 export interface HydrationRunOptions {
@@ -79,6 +89,9 @@ export interface HydrationRunResult {
   readonly proxy: string
   readonly proxySource: ProxyConfig["source"] | null
   readonly target: number
+  /** Non-null when the pass ended early on a captcha, 403, 429 or geo block. */
+  readonly stoppedBy: HydrationBlock | null
+  readonly rotations: number
 }
 
 export interface HydrationRunnerShape {
@@ -100,6 +113,42 @@ export interface HydrationRunnerShape {
     reference: string
   ) => Effect.Effect<FetchedVacancy, ApiError>
 }
+
+interface VacancyTargetLike {
+  readonly id: string
+  readonly externalId: string
+  readonly canonicalUrl: string
+  readonly title: string
+}
+
+type TargetAttempt =
+  | { readonly kind: "ok"; readonly draft: VacancyDraft; readonly stillStub: boolean }
+  | { readonly kind: "failed"; readonly message: string }
+  | { readonly kind: "blocked"; readonly block: HydrationBlock; readonly message: string }
+
+const classifyResponse = (status: number, html: string): HydrationBlock | null => {
+  if (status === 429) return "rate_limit"
+  return classifyCrawlBlock(status, html)
+}
+
+const blockLabel = (block: HydrationBlock): string =>
+  block === "captcha"
+    ? "капчей"
+    : block === "auth"
+      ? "требованием входа"
+      : block === "geo"
+        ? "HTTP 451 (геоблок)"
+        : block === "rate_limit"
+          ? "HTTP 429 (слишком много запросов)"
+          : "HTTP 403"
+
+const blockMessage = (url: string, block: HydrationBlock): string =>
+  `fetch ${url}: hh.ru ответил ${blockLabel(block)}; проход остановлен`
+
+const attemptFailure = (url: string, error: unknown): TargetAttempt => ({
+  kind: "failed",
+  message: `fetch ${url}: ${error instanceof Error ? error.message : String(error)}`
+})
 
 /**
  * `vacancy_hydration` schedule: a bounded pass over stored search-card stubs.
@@ -150,6 +199,155 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
         proxySource: config?.source ?? null
       })
 
+      const rememberFailure = (target: VacancyTargetLike, message: string) =>
+        database
+          .asOwner((tx) =>
+            HydrationAttemptRepository.recordFailure(tx, {
+              kind: "vacancy",
+              id: target.id,
+              externalId: target.externalId
+            }, message)
+          )
+          .pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning(`vacancy hydration attempt was not recorded for ${target.externalId}`, cause)
+            ),
+            Effect.asVoid
+          )
+
+      const rememberSuccess = (target: VacancyTargetLike) =>
+        database
+          .asOwner((tx) =>
+            HydrationAttemptRepository.recordSuccess(tx, {
+              kind: "vacancy",
+              id: target.id,
+              externalId: target.externalId
+            })
+          )
+          .pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning(`vacancy hydration attempt was not cleared for ${target.externalId}`, cause)
+            ),
+            Effect.asVoid
+          )
+
+      const rememberShortPage = (target: VacancyTargetLike) =>
+        database
+          .asOwner((tx) =>
+            HydrationAttemptRepository.recordDeferred(tx, {
+              kind: "vacancy",
+              id: target.id,
+              externalId: target.externalId
+            }, HYDRATION_STUB_RECHECK_SECONDS, "страница без полного описания")
+          )
+          .pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning(`vacancy hydration deferral was not recorded for ${target.externalId}`, cause)
+            ),
+            Effect.asVoid
+          )
+
+      const attemptVacancy = (
+        target: VacancyTargetLike,
+        config: ProxyConfig | null
+      ): Effect.Effect<TargetAttempt> =>
+        Effect.gen(function*() {
+          const proxy = yield* Effect.try({
+            try: () => proxyForUrl(config, target.canonicalUrl),
+            catch: (error) =>
+              new InvalidInput({
+                message: error instanceof Error ? error.message : String(error)
+              })
+          })
+
+          const fetchPage = yield* PageFetch
+          const response = yield* Effect.tryPromise({
+            try: () => fetchPage(target.canonicalUrl, proxy),
+            catch: (error) => error
+          })
+
+          const block = classifyResponse(response.status, response.html)
+          if (block !== null) {
+            return {
+              kind: "blocked" as const,
+              block,
+              message: blockMessage(target.canonicalUrl, block)
+            }
+          }
+          if (response.status !== 200) {
+            return {
+              kind: "failed" as const,
+              message: `fetch ${target.canonicalUrl}: HTTP ${response.status}`
+            }
+          }
+
+          const draft = yield* extractVacancy(response.html, {
+            url: response.url || target.canonicalUrl
+          }).pipe(
+            Effect.mapError(
+              (error) =>
+                new InvalidInput({
+                  message: `parse ${target.canonicalUrl}: ${error.message}`
+                })
+            )
+          )
+
+          // A redirect or a stale card must never overwrite another vacancy.
+          if (draft.externalId !== target.externalId) {
+            return {
+              kind: "failed" as const,
+              message:
+                `fetch ${target.canonicalUrl}: страница вакансии ${draft.externalId}, ` +
+                `ожидалась ${target.externalId}`
+            }
+          }
+
+          return {
+            kind: "ok" as const,
+            draft,
+            stillStub: VacancyRepository.needsHydration(draft)
+          }
+        }).pipe(
+          Effect.catchCause((cause) => {
+            const error = Cause.squash(cause)
+            return Effect.succeed(attemptFailure(target.canonicalUrl, error))
+          })
+        )
+
+      const rotateOnce = (config: ProxyConfig | null): Effect.Effect<boolean> => {
+        if (!canRotate(config)) return Effect.succeed(false)
+        return Effect.flatMap(ProxyRotator, (rotate) =>
+          Effect.tryPromise({
+            try: () => rotate(config),
+            catch: (error) => error
+          })
+        ).pipe(
+          Effect.map((result) => result !== null),
+          Effect.catchCause((cause) =>
+            Effect.logWarning("proxy rotation failed; stopping the pass", cause).pipe(
+              Effect.as(false)
+            )
+          )
+        )
+      }
+
+      /**
+       * One download, plus one retry after a proxy rotation when the operator
+       * enabled it. Without rotation the caller stops the pass: the next target
+       * would hit the same wall and burn the queue.
+       */
+      const downloadVacancy = (
+        target: VacancyTargetLike,
+        config: ProxyConfig | null
+      ): Effect.Effect<{ readonly outcome: TargetAttempt; readonly rotations: number }> =>
+        Effect.gen(function*() {
+          let outcome = yield* attemptVacancy(target, config)
+          if (outcome.kind !== "blocked") return { outcome, rotations: 0 }
+          if (!(yield* rotateOnce(config))) return { outcome, rotations: 0 }
+          outcome = yield* attemptVacancy(target, config)
+          return { outcome, rotations: 1 }
+        })
+
       const run = Effect.fn("HydrationRunner.run")(function*(
         userId: string,
         options: HydrationRunOptions = {}
@@ -162,7 +360,7 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
 
         const targets = yield* database
           .asUser(userId, (tx) =>
-            VacancyRepository.listNeedingHydration(tx, { limit })
+            VacancyRepository.listNeedingHydration(tx, { limit, onlyDue: true })
           )
           .pipe(
             Effect.mapError(
@@ -179,8 +377,14 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
         let inserted = 0
         let updated = 0
         let skipped = 0
+        let rotations = 0
+        let stoppedBy: HydrationBlock | null = null
         const errors: string[] = []
         const vacancyIds = new Set<string>()
+
+        const pushError = (message: string) => {
+          if (errors.length < 5) errors.push(message)
+        }
 
         const reportProgress = (currentTitle: string | null) =>
           options.onProgress === undefined
@@ -195,6 +399,8 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
                 skipped,
                 currentTitle,
                 errors: [...errors],
+                stoppedBy,
+                rotations,
                 ...proxy
               }).pipe(
                 Effect.catchCause((cause) =>
@@ -204,80 +410,45 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
         for (const [index, target] of targets.entries()) {
           processed += 1
 
-          const draft = yield* Effect.gen(function*() {
-            const proxy = yield* Effect.try({
-              try: () => proxyForUrl(config, target.canonicalUrl),
-              catch: (error) =>
-                new InvalidInput({
-                  message: error instanceof Error ? error.message : String(error)
-                })
-            })
+          const download = yield* downloadVacancy(target, config)
+          rotations += download.rotations
+          const outcome = download.outcome
 
-            const response = yield* Effect.tryPromise({
-              try: () =>
-                fetchHtml(target.canonicalUrl, {
-                  proxy
-                }),
-              catch: (error) =>
-                new InvalidInput({
-                  message: `fetch ${target.canonicalUrl}: ${
-                    error instanceof Error ? error.message : String(error)
-                  }`
-                })
-            })
-
-            if (response.status !== 200) {
-              return yield* new InvalidInput({
-                message: `fetch ${target.canonicalUrl}: HTTP ${response.status}`
-              })
-            }
-
-            return yield* extractVacancy(response.html, {
-              url: response.url || target.canonicalUrl
-            }).pipe(
-              Effect.mapError(
-                (error) =>
-                  new InvalidInput({
-                    message: `parse ${target.canonicalUrl}: ${error.message}`
-                  })
-              )
-            )
-          }).pipe(
-            Effect.catchCause((cause) => {
-              const error = Cause.squash(cause)
-              if (errors.length < 5) {
-                errors.push(
-                  error instanceof Error ? error.message : String(error)
-                )
-              }
-              return Effect.succeed(null)
-            })
-          )
-
-          if (draft === null) {
+          if (outcome.kind === "blocked") {
             failed += 1
+            pushError(outcome.message)
+            stoppedBy = outcome.block
+            yield* rememberFailure(target, outcome.message)
+            yield* reportProgress(target.title)
+            break
+          }
+
+          if (outcome.kind === "failed") {
+            failed += 1
+            pushError(outcome.message)
+            yield* rememberFailure(target, outcome.message)
           } else {
-            const saved = yield* corpus.ingest([draft], { userId }).pipe(
+            const saved = yield* corpus.ingest([outcome.draft], { userId }).pipe(
               Effect.catchCause((cause) => {
                 const error = Cause.squash(cause)
-                if (errors.length < 5) {
-                  errors.push(
-                    `ingest ${target.externalId}: ${
-                      error instanceof Error ? error.message : String(error)
-                    }`
-                  )
-                }
+                const message = `ingest ${target.externalId}: ${
+                  error instanceof Error ? error.message : String(error)
+                }`
+                pushError(message)
                 return Effect.succeed(null)
               })
             )
             if (saved === null) {
               failed += 1
+              yield* rememberFailure(target, `ingest failed for ${target.externalId}`)
             } else {
               hydrated += 1
               for (const item of saved.items) vacancyIds.add(item.id)
               inserted += saved.inserted
               updated += saved.updated
               skipped += saved.skipped
+              if (outcome.stillStub) yield* rememberShortPage(target)
+              else yield* rememberSuccess(target)
             }
           }
 
@@ -290,7 +461,8 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
 
         if (processed > 0) {
           yield* Effect.logInfo(
-            `vacancy hydration: ${hydrated}/${processed} hydrated, ${failed} failed`
+            `vacancy hydration: ${hydrated}/${processed} hydrated, ${failed} failed` +
+              (stoppedBy === null ? "" : `, stopped by ${stoppedBy}`)
           )
         }
 
@@ -304,6 +476,8 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
           skipped,
           errors,
           vacancyIds: [...vacancyIds],
+          stoppedBy,
+          rotations,
           ...proxy
         }
       })
@@ -343,56 +517,21 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
           return false
         }
 
-        const success = yield* Effect.gen(function*() {
-          const proxy = yield* Effect.try({
-            try: () => proxyForUrl(config, row.canonicalUrl),
-            catch: (error) =>
-              new InvalidInput({
-                message: error instanceof Error ? error.message : String(error)
-              })
-          })
+        const target: VacancyTargetLike = {
+          id: row.id,
+          externalId: row.externalId,
+          canonicalUrl: row.canonicalUrl,
+          title: row.title
+        }
+        const { outcome } = yield* downloadVacancy(target, config)
 
-          const response = yield* Effect.tryPromise({
-            try: () =>
-              fetchHtml(row.canonicalUrl, {
-                proxy
-              }),
-            catch: (error) =>
-              new InvalidInput({
-                message: `fetch ${row.canonicalUrl}: ${
-                  error instanceof Error ? error.message : String(error)
-                }`
-              })
-          })
+        if (outcome.kind !== "ok") {
+          yield* rememberFailure(target, outcome.message)
+          yield* Effect.logWarning(`vacancy hydrate failed: ${outcome.message}`)
+          return false
+        }
 
-          if (response.status !== 200) {
-            return yield* new InvalidInput({
-              message: `fetch ${row.canonicalUrl}: HTTP ${response.status}`
-            })
-          }
-
-          const draft = yield* extractVacancy(response.html, {
-            url: response.url || row.canonicalUrl
-          }).pipe(
-            Effect.mapError(
-              (error) =>
-                new InvalidInput({
-                  message: `parse ${row.canonicalUrl}: ${error.message}`
-                })
-            )
-          )
-
-          yield* corpus.ingest([draft], { userId }).pipe(
-            Effect.mapError(
-              (error) =>
-                new InvalidInput({
-                  message: `ingest ${row.externalId}: ${error.message}`
-                })
-            )
-          )
-
-          return true
-        }).pipe(
+        const saved = yield* corpus.ingest([outcome.draft], { userId }).pipe(
           Effect.catchCause((cause) => {
             const error = Cause.squash(cause)
             return Effect.logWarning(
@@ -403,11 +542,15 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
           })
         )
 
-        if (success) {
-          yield* Effect.logInfo(`vacancy hydrated: ${row.externalId}`)
+        if (!saved) {
+          yield* rememberFailure(target, `ingest failed for ${target.externalId}`)
+          return false
         }
 
-        return success
+        if (outcome.stillStub) yield* rememberShortPage(target)
+        else yield* rememberSuccess(target)
+        yield* Effect.logInfo(`vacancy hydrated: ${row.externalId}`)
+        return true
       })
 
       const fetchByReference = Effect.fn("HydrationRunner.fetchByReference")(function*(
@@ -442,7 +585,7 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
         }
 
         // Looked up per call, so a test can swap the downloader for one request.
-        const fetchPage = yield* VacancyPageFetch
+        const fetchPage = yield* PageFetch
         const config = yield* prepareProxy()
         const url = vacancyPageUrl(externalId)
         const proxy = yield* Effect.try({
@@ -457,12 +600,12 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
               message: `fetch ${url}: ${error instanceof Error ? error.message : String(error)}`
             })
         })
+        const block = classifyResponse(response.status, response.html)
+        if (block !== null) {
+          return yield* new InvalidInput({ message: blockMessage(url, block) })
+        }
         if (response.status !== 200) {
           return yield* new InvalidInput({ message: `fetch ${url}: HTTP ${response.status}` })
-        }
-        const block = classifyCrawlBlock(response.status, response.html)
-        if (block !== null) {
-          return yield* new InvalidInput({ message: `fetch ${url}: hh.ru answered with ${String(block)}` })
         }
         const draft = yield* extractVacancy(response.html, { url: response.url || url }).pipe(
           Effect.mapError((error) => new InvalidInput({ message: `parse ${url}: ${error.message}` }))

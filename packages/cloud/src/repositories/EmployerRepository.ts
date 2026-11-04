@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
 import * as BlacklistRepository from "./BlacklistRepository.ts"
+import * as HydrationAttemptRepository from "./HydrationAttemptRepository.ts"
 import * as VacancyRepository from "./VacancyRepository.ts"
 
 export interface EmployerRow {
@@ -179,7 +180,7 @@ const targetValues = (result: { readonly rows: unknown }) =>
  */
 export const listForRefresh = (
   tx: Executor,
-  options: { readonly limit?: number } = {}
+  options: { readonly limit?: number; readonly onlyDue?: boolean } = {}
 ): RepoEffect<ReadonlyArray<EmployerHydrationTarget>> => {
   const limit = Math.min(Math.max(options.limit ?? 25, 1), 200)
   return tx
@@ -189,9 +190,13 @@ export const listForRefresh = (
              e.updated_at,
              count(v.id) filter (where not v.archived)::int as vacancy_count
       from employer e
+      left join vacancy v on v.employer_id = e.id
       where e.source = 'hh'
-        and exists (select 1 from vacancy v where v.employer_id = e.id)
+        ${options.onlyDue === true
+          ? sql`and ${HydrationAttemptRepository.notDeferredSql("employer", sql`e.id`)}`
+          : sql``}
       group by e.id
+      having count(v.id) > 0
       order by e.updated_at asc, e.id
       limit ${limit}
     `)
@@ -210,6 +215,7 @@ export const findTargetById = (
              e.updated_at,
              count(v.id) filter (where not v.archived)::int as vacancy_count
       from employer e
+      left join vacancy v on v.employer_id = e.id
       where e.source = 'hh' and e.id = ${id}
       group by e.id
     `)
@@ -280,18 +286,38 @@ export const applyProfile = (
 ): RepoEffect<void> =>
   tx
     .execute(sql`
-      update employer set
-        name = coalesce(${patch.name ?? null}, name),
-        rating = coalesce(${patch.rating ?? null}, rating),
-        reviews_count = coalesce(${patch.reviewsCount ?? null}, reviews_count),
-        recommendations_percent = coalesce(${patch.recommendationsPercent ?? null}, recommendations_percent),
-        site_url = coalesce(${patch.siteUrl ?? null}, site_url),
-        logo_url = coalesce(${patch.logoUrl ?? null}, logo_url),
+      update employer as e set
+        name = coalesce(${patch.name ?? null}, e.name),
+        rating = coalesce(${patch.rating ?? null}, e.rating),
+        reviews_count = coalesce(${patch.reviewsCount ?? null}, e.reviews_count),
+        recommendations_percent = coalesce(${patch.recommendationsPercent ?? null}, e.recommendations_percent),
+        site_url = coalesce(${patch.siteUrl ?? null}, e.site_url),
+        logo_url = coalesce(${patch.logoUrl ?? null}, e.logo_url),
         industries = case
-          when ${JSON.stringify(patch.industries ?? [])}::jsonb = '[]'::jsonb then industries
+          when ${JSON.stringify(patch.industries ?? [])}::jsonb = '[]'::jsonb then e.industries
           else ${JSON.stringify(patch.industries ?? [])}::jsonb
         end,
-        updated_at = now()
-      where id = ${id}
+        -- A page that only repeats what we already store must not push the
+        -- company to the back of the oldest-first queue for another month.
+        updated_at = case
+          when row(
+            e.name, e.rating, e.reviews_count, e.recommendations_percent,
+            e.site_url, e.logo_url, e.industries
+          ) is distinct from row(
+            coalesce(${patch.name ?? null}, e.name),
+            coalesce(${patch.rating ?? null}, e.rating),
+            coalesce(${patch.reviewsCount ?? null}, e.reviews_count),
+            coalesce(${patch.recommendationsPercent ?? null}, e.recommendations_percent),
+            coalesce(${patch.siteUrl ?? null}, e.site_url),
+            coalesce(${patch.logoUrl ?? null}, e.logo_url),
+            case
+              when ${JSON.stringify(patch.industries ?? [])}::jsonb = '[]'::jsonb then e.industries
+              else ${JSON.stringify(patch.industries ?? [])}::jsonb
+            end
+          )
+          then now()
+          else e.updated_at
+        end
+      where e.id = ${id}
     `)
     .pipe(Effect.asVoid)

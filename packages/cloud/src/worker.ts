@@ -14,7 +14,7 @@ import { HydrationRunner } from "./services/HydrationRunner.ts"
 import { MailGatewayProvider } from "./services/MailGatewayProvider.ts"
 import { MailSync } from "./services/MailSync.ts"
 import { ScheduleDispatcher } from "./services/ScheduleDispatcher.ts"
-import { recoverExpiredLeases } from "./services/recovery.ts"
+import { recoverExpiredLeases, recoverInterruptedRuns } from "./services/recovery.ts"
 import { runDueSchedules } from "./services/ScheduleWorker.ts"
 import { TelegramGatewayProvider } from "./services/TelegramGatewayProvider.ts"
 import { TelegramSync } from "./services/TelegramSync.ts"
@@ -32,6 +32,14 @@ const sweep = Effect.gen(function*() {
   const recovered = yield* database.asOwner((tx) => recoverExpiredLeases(tx))
   if (recovered.length > 0) {
     yield* Effect.logWarning(`Recovered ${recovered.length} expired lease(s)`)
+  }
+
+  const interrupted = yield* database.asOwner((tx) => recoverInterruptedRuns(tx))
+  if (interrupted.scheduleRuns + interrupted.searchRuns > 0) {
+    yield* Effect.logWarning(
+      `Marked ${interrupted.scheduleRuns} interrupted schedule run(s) and ` +
+        `${interrupted.searchRuns} interrupted search run(s) as failed`
+    )
   }
 
   const stats = yield* database.asOwner((tx) => QueueRepository.stats(tx))

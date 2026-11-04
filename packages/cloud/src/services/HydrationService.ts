@@ -2,6 +2,7 @@ import type { ApiError, EmployerHydrationTarget, HydrationStats } from "@otbor/c
 import { Context, Effect, Layer } from "effect"
 import { Database } from "../db/Database.ts"
 import * as EmployerRepository from "../repositories/EmployerRepository.ts"
+import * as HydrationAttemptRepository from "../repositories/HydrationAttemptRepository.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
 import { CurrentUser } from "./CurrentUser.ts"
 import { toStorageError } from "./support.ts"
@@ -33,6 +34,9 @@ export class HydrationService extends Context.Service<HydrationService, Hydratio
           const employer = yield* database
             .asUser(currentUser.userId, (tx) => EmployerRepository.countHhProfile(tx))
             .pipe(Effect.mapError(toStorageError("hydration.employerStats")))
+          const retries = yield* database
+            .asOwner((tx) => HydrationAttemptRepository.summary(tx))
+            .pipe(Effect.mapError(toStorageError("hydration.attemptStats")))
           return {
             vacancyTotal: vacancy.total,
             vacancyFull: vacancy.full,
@@ -43,7 +47,11 @@ export class HydrationService extends Context.Service<HydrationService, Hydratio
             employersWithoutSite: employer.withoutSite,
             employersWithoutLogo: employer.withoutLogo,
             employersWithoutIndustries: employer.withoutIndustries,
-            employersStale30Days: employer.stale30Days
+            employersStale30Days: employer.stale30Days,
+            deferredVacancies: retries.deferredVacancies,
+            deferredEmployers: retries.deferredEmployers,
+            poisonedTargets: retries.poisoned,
+            nextRetryAt: retries.nextRetryAt
           }
         })
 

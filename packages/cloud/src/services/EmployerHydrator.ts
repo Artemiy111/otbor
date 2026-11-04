@@ -1,17 +1,26 @@
 import type { ApiError, EmployerHydrationTarget, ProxyMode } from "@otbor/contract"
 import { InvalidInput, NotFound } from "@otbor/contract"
 import {
+  canRotate,
+  classifyCrawlBlock,
   ensureEngine,
-  fetchHtml,
   loadProxyConfig,
   proxyForUrl,
   proxyLabel,
   type ProxyConfig
 } from "@otbor/crawler"
-import { extractEmployer } from "@otbor/hh"
+import { extractEmployer, type EmployerProfileDraft } from "@otbor/hh"
 import { Cause, Context, Effect, Layer } from "effect"
 import { Database } from "../db/Database.ts"
 import * as EmployerRepository from "../repositories/EmployerRepository.ts"
+import * as HydrationAttemptRepository from "../repositories/HydrationAttemptRepository.ts"
+import { PageFetch } from "./pageFetch.ts"
+import { ProxyRotator } from "./proxyRotator.ts"
+
+export type EmployerHydrationBlock = "captcha" | "auth" | "forbidden" | "geo" | "rate_limit"
+
+/** Same six-hour recheck as vacancies: parsed, but still missing fields. */
+export const EMPLOYER_RECHECK_SECONDS = 6 * 60 * 60
 
 /** Safe, JSON-shaped progress snapshot written to `schedule_run.detail`. */
 export interface EmployerHydrationProgress {
@@ -24,6 +33,8 @@ export interface EmployerHydrationProgress {
   readonly proxyMode: ProxyMode
   readonly proxy: string
   readonly proxySource: ProxyConfig["source"] | null
+  readonly stoppedBy: EmployerHydrationBlock | null
+  readonly rotations: number
 }
 
 export interface EmployerHydrationOptions {
@@ -44,6 +55,9 @@ export interface EmployerHydrationResult {
   readonly proxy: string
   readonly proxySource: ProxyConfig["source"] | null
   readonly target: number
+  /** Non-null when the pass ended early on a captcha, 403, 429 or geo block. */
+  readonly stoppedBy: EmployerHydrationBlock | null
+  readonly rotations: number
 }
 
 export interface EmployerHydratorShape {
@@ -57,6 +71,52 @@ export interface EmployerHydratorShape {
     proxyMode?: ProxyMode
   ) => Effect.Effect<boolean, ApiError>
 }
+
+/**
+ * Fields the stored profile lacked that the freshly parsed page still does
+ * not provide. `missing` alone only describes the old row: a page that filled
+ * everything must clear the retry debt immediately.
+ */
+const stillMissingAfter = (
+  target: EmployerHydrationTarget,
+  patch: EmployerProfileDraft
+): boolean =>
+  target.missing.some((field) =>
+    field === "rating"
+      ? patch.rating === null
+      : field === "siteUrl"
+        ? patch.siteUrl === null
+        : field === "logoUrl"
+          ? patch.logoUrl === null
+          : patch.industries.length === 0
+  )
+
+const EMPLOYER_PATH_RE = /\/employer\/(\d+)/
+
+/** The id hh redirected us to, if the URL names an employer at all. */
+export const employerIdFromUrl = (url: string): string | null =>
+  EMPLOYER_PATH_RE.exec(url)?.[1] ?? null
+
+const classifyResponse = (status: number, html: string): EmployerHydrationBlock | null => {
+  if (status === 429) return "rate_limit"
+  return classifyCrawlBlock(status, html)
+}
+
+const blockLabel = (block: EmployerHydrationBlock): string =>
+  block === "captcha"
+    ? "капчей"
+    : block === "auth"
+      ? "требованием входа"
+      : block === "geo"
+        ? "HTTP 451 (геоблок)"
+        : block === "rate_limit"
+          ? "HTTP 429 (слишком много запросов)"
+          : "HTTP 403"
+
+type TargetAttempt =
+  | { readonly kind: "ok"; readonly patch: EmployerProfileDraft }
+  | { readonly kind: "failed"; readonly message: string }
+  | { readonly kind: "blocked"; readonly block: EmployerHydrationBlock; readonly message: string }
 
 /**
  * `employer_hydration` schedule: refresh a bounded slice of employer profiles.
@@ -106,88 +166,185 @@ export class EmployerHydrator extends Context.Service<
         proxySource: config?.source ?? null
       })
 
-      const hydrateTarget = (
+      const rememberFailure = (target: EmployerHydrationTarget, message: string) =>
+        database
+          .asOwner((tx) =>
+            HydrationAttemptRepository.recordFailure(tx, {
+              kind: "employer",
+              id: target.id,
+              externalId: target.externalId
+            }, message)
+          )
+          .pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning(`employer hydration attempt was not recorded for ${target.externalId}`, cause)
+            ),
+            Effect.asVoid
+          )
+
+      const rememberSuccess = (target: EmployerHydrationTarget) =>
+        database
+          .asOwner((tx) =>
+            HydrationAttemptRepository.recordSuccess(tx, {
+              kind: "employer",
+              id: target.id,
+              externalId: target.externalId
+            })
+          )
+          .pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning(`employer hydration attempt was not cleared for ${target.externalId}`, cause)
+            ),
+            Effect.asVoid
+          )
+
+      const rememberMissing = (target: EmployerHydrationTarget) =>
+        database
+          .asOwner((tx) =>
+            HydrationAttemptRepository.recordDeferred(tx, {
+              kind: "employer",
+              id: target.id,
+              externalId: target.externalId
+            }, EMPLOYER_RECHECK_SECONDS, "страница без новых полей профиля")
+          )
+          .pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning(`employer hydration deferral was not recorded for ${target.externalId}`, cause)
+            ),
+            Effect.asVoid
+          )
+
+      const attemptEmployer = (
         target: EmployerHydrationTarget,
-        config: ProxyConfig | null,
-        errors?: string[]
-      ) =>
+        config: ProxyConfig | null
+      ): Effect.Effect<TargetAttempt> =>
         Effect.gen(function*() {
           const pageUrl = `https://hh.ru/employer/${target.externalId}`
 
-          const patch = yield* Effect.gen(function*() {
-            const proxy = yield* Effect.try({
-              try: () => proxyForUrl(config, pageUrl),
-              catch: (error) =>
-                new InvalidInput({
-                  message: error instanceof Error ? error.message : String(error)
-                })
-            })
-            const response = yield* Effect.tryPromise({
-              try: () => fetchHtml(pageUrl, { proxy }),
-              catch: (error) =>
-                new InvalidInput({
-                  message: `fetch ${pageUrl}: ${
-                    error instanceof Error ? error.message : String(error)
-                  }`
-                })
-            })
-            if (response.status !== 200) {
-              return yield* new InvalidInput({
-                message: `fetch ${pageUrl}: HTTP ${response.status}`
+          const proxy = yield* Effect.try({
+            try: () => proxyForUrl(config, pageUrl),
+            catch: (error) =>
+              new InvalidInput({
+                message: error instanceof Error ? error.message : String(error)
               })
+          })
+          const fetchPage = yield* PageFetch
+          const response = yield* Effect.tryPromise({
+            try: () => fetchPage(pageUrl, proxy),
+            catch: (error) => error
+          })
+
+          const block = classifyResponse(response.status, response.html)
+          if (block !== null) {
+            return {
+              kind: "blocked" as const,
+              block,
+              message: `fetch ${pageUrl}: hh.ru ответил ${blockLabel(block)}; проход остановлен`
             }
-            return yield* extractEmployer(response.html, {
-              externalId: target.externalId,
-              url: pageUrl
-            }).pipe(
-              Effect.mapError(
-                (error) =>
-                  new InvalidInput({
-                    message: `parse ${pageUrl}: ${error.message}`
-                  })
-              )
-            )
+          }
+          if (response.status !== 200) {
+            return { kind: "failed" as const, message: `fetch ${pageUrl}: HTTP ${response.status}` }
+          }
+
+          // A redirect to another company means the id is wrong or the page is
+          // a search/error shell. Writing it would corrupt the profile.
+          const redirected = employerIdFromUrl(response.url)
+          if (redirected !== null && redirected !== target.externalId) {
+            return {
+              kind: "failed" as const,
+              message:
+                `fetch ${pageUrl}: hh.ru перенаправил на компанию ${redirected}, ` +
+                `ожидалась ${target.externalId}`
+            }
+          }
+
+          const patch = yield* extractEmployer(response.html, {
+            externalId: target.externalId,
+            url: pageUrl
           }).pipe(
-            Effect.catchCause((cause) => {
-              const error = Cause.squash(cause)
-              if (errors !== undefined && errors.length < 5) {
-                errors.push(error instanceof Error ? error.message : String(error))
-              }
-              return Effect.succeed(null)
-            })
+            Effect.mapError(
+              (error) =>
+                new InvalidInput({
+                  message: `parse ${pageUrl}: ${error.message}`
+                })
+            )
           )
 
-          if (patch === null) return false
+          return { kind: "ok" as const, patch }
+        }).pipe(
+          Effect.catchCause((cause) => {
+            const error = Cause.squash(cause)
+            return Effect.succeed({
+              kind: "failed" as const,
+              message: `fetch ${pageUrlFor(target)}: ${
+                error instanceof Error ? error.message : String(error)
+              }`
+            })
+          })
+        )
 
-          const saved = yield* database
-            .asOwner((tx) =>
-              EmployerRepository.applyProfile(tx, target.id, {
-                name: patch.name,
-                rating: patch.rating,
-                reviewsCount: patch.reviewsCount,
-                recommendationsPercent: patch.recommendationsPercent,
-                siteUrl: patch.siteUrl,
-                logoUrl: patch.logoUrl,
-                industries: patch.industries
-              })
+      const rotateOnce = (config: ProxyConfig | null): Effect.Effect<boolean> => {
+        if (!canRotate(config)) return Effect.succeed(false)
+        return Effect.flatMap(ProxyRotator, (rotate) =>
+          Effect.tryPromise({
+            try: () => rotate(config),
+            catch: (error) => error
+          })
+        ).pipe(
+          Effect.map((result) => result !== null),
+          Effect.catchCause((cause) =>
+            Effect.logWarning("proxy rotation failed; stopping the pass", cause).pipe(
+              Effect.as(false)
             )
-            .pipe(
-              Effect.match({
-                onFailure: (error: unknown) => {
-                  if (errors !== undefined && errors.length < 5) {
-                    errors.push(
-                      `update ${target.externalId}: ${
-                        error instanceof Error ? error.message : String(error)
-                      }`
-                    )
-                  }
-                  return false
-                },
-                onSuccess: () => true
-              })
-            )
-          return saved
+          )
+        )
+      }
+
+      const downloadEmployer = (
+        target: EmployerHydrationTarget,
+        config: ProxyConfig | null
+      ): Effect.Effect<{ readonly outcome: TargetAttempt; readonly rotations: number }> =>
+        Effect.gen(function*() {
+          let outcome = yield* attemptEmployer(target, config)
+          if (outcome.kind !== "blocked") return { outcome, rotations: 0 }
+          if (!(yield* rotateOnce(config))) return { outcome, rotations: 0 }
+          outcome = yield* attemptEmployer(target, config)
+          return { outcome, rotations: 1 }
         })
+
+      /** Saves one parsed profile; false when the write itself failed. */
+      const saveProfile = (
+        target: EmployerHydrationTarget,
+        patch: EmployerProfileDraft,
+        errors: string[]
+      ) =>
+        database
+          .asOwner((tx) =>
+            EmployerRepository.applyProfile(tx, target.id, {
+              name: patch.name,
+              rating: patch.rating,
+              reviewsCount: patch.reviewsCount,
+              recommendationsPercent: patch.recommendationsPercent,
+              siteUrl: patch.siteUrl,
+              logoUrl: patch.logoUrl,
+              industries: patch.industries
+            })
+          )
+          .pipe(
+            Effect.match({
+              onFailure: (error: unknown) => {
+                if (errors.length < 5) {
+                  errors.push(
+                    `update ${target.externalId}: ${
+                      error instanceof Error ? error.message : String(error)
+                    }`
+                  )
+                }
+                return false
+              },
+              onSuccess: () => true
+            })
+          )
 
       const run = Effect.fn("EmployerHydrator.run")(function*(
         _userId: string,
@@ -201,7 +358,7 @@ export class EmployerHydrator extends Context.Service<
 
         // The corpus is shared, and only the owner may update it.
         const targets = yield* database
-          .asOwner((tx) => EmployerRepository.listForRefresh(tx, { limit }))
+          .asOwner((tx) => EmployerRepository.listForRefresh(tx, { limit, onlyDue: true }))
           .pipe(
             Effect.mapError(
               (cause) =>
@@ -216,7 +373,13 @@ export class EmployerHydrator extends Context.Service<
         let processed = 0
         let updated = 0
         let failed = 0
+        let rotations = 0
+        let stoppedBy: EmployerHydrationBlock | null = null
         const errors: string[] = []
+
+        const pushError = (message: string) => {
+          if (errors.length < 5) errors.push(message)
+        }
 
         const reportProgress = (currentName: string | null) =>
           options.onProgress === undefined
@@ -228,6 +391,8 @@ export class EmployerHydrator extends Context.Service<
                 failed,
                 currentName,
                 errors: [...errors],
+                stoppedBy,
+                rotations,
                 ...proxy
               }).pipe(
                 Effect.catchCause((cause) =>
@@ -236,8 +401,33 @@ export class EmployerHydrator extends Context.Service<
 
         for (const [index, target] of targets.entries()) {
           processed += 1
-          if (yield* hydrateTarget(target, config, errors)) updated += 1
-          else failed += 1
+
+          const download = yield* downloadEmployer(target, config)
+          rotations += download.rotations
+          const outcome = download.outcome
+
+          if (outcome.kind === "blocked") {
+            failed += 1
+            pushError(outcome.message)
+            stoppedBy = outcome.block
+            yield* rememberFailure(target, outcome.message)
+            yield* reportProgress(target.name)
+            break
+          }
+
+          if (outcome.kind === "failed") {
+            failed += 1
+            pushError(outcome.message)
+            yield* rememberFailure(target, outcome.message)
+          } else if (yield* saveProfile(target, outcome.patch, errors)) {
+            updated += 1
+            if (stillMissingAfter(target, outcome.patch)) yield* rememberMissing(target)
+            else yield* rememberSuccess(target)
+          } else {
+            failed += 1
+            yield* rememberFailure(target, `update failed for ${target.externalId}`)
+          }
+
           yield* reportProgress(target.name)
 
           if (delayMs > 0 && index < targets.length - 1) {
@@ -247,11 +437,12 @@ export class EmployerHydrator extends Context.Service<
 
         if (processed > 0) {
           yield* Effect.logInfo(
-            `employer hydration: ${updated}/${processed} updated, ${failed} failed`
+            `employer hydration: ${updated}/${processed} updated, ${failed} failed` +
+              (stoppedBy === null ? "" : `, stopped by ${stoppedBy}`)
           )
         }
 
-        return { processed, target: targets.length, updated, failed, errors, ...proxy }
+        return { processed, target: targets.length, updated, failed, errors, stoppedBy, rotations, ...proxy }
       })
 
       const hydrateOne = Effect.fn("EmployerHydrator.hydrateOne")(function*(
@@ -277,12 +468,29 @@ export class EmployerHydrator extends Context.Service<
           return yield* new NotFound({ entity: "Employer", id })
         }
 
-        const ok = yield* hydrateTarget(target, config)
-        if (ok) yield* Effect.logInfo(`employer hydrated: ${target.externalId}`)
-        return ok
+        const { outcome } = yield* downloadEmployer(target, config)
+        if (outcome.kind !== "ok") {
+          yield* rememberFailure(target, outcome.message)
+          yield* Effect.logWarning(`employer hydrate failed: ${outcome.message}`)
+          return false
+        }
+
+        const errors: string[] = []
+        if (!(yield* saveProfile(target, outcome.patch, errors))) {
+          yield* rememberFailure(target, errors[0] ?? `update failed for ${target.externalId}`)
+          return false
+        }
+
+        if (stillMissingAfter(target, outcome.patch)) yield* rememberMissing(target)
+        else yield* rememberSuccess(target)
+        yield* Effect.logInfo(`employer hydrated: ${target.externalId}`)
+        return true
       })
 
       return EmployerHydrator.of({ run, hydrateOne })
     })
   )
 }
+
+const pageUrlFor = (target: EmployerHydrationTarget): string =>
+  `https://hh.ru/employer/${target.externalId}`

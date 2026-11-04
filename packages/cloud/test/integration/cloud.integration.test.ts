@@ -2158,7 +2158,9 @@ if (!integrationEnabled || serverUrl === null) {
               errors: [],
               proxyMode: "auto",
               proxy: "напрямую",
-              proxySource: null
+              proxySource: null,
+              stoppedBy: null,
+              rotations: 0
             } satisfies HydrationRunResult
           }),
         hydrateOne: (_userId: string, _id: string) => Effect.succeed(true),

@@ -273,7 +273,14 @@ export const HydrationStats = Schema.Struct({
   employersWithoutSite: Schema.Int,
   employersWithoutLogo: Schema.Int,
   employersWithoutIndustries: Schema.Int,
-  employersStale30Days: Schema.Int
+  employersStale30Days: Schema.Int,
+  /** Targets waiting out a failure backoff; not picked by the next pass. */
+  deferredVacancies: Schema.Int,
+  deferredEmployers: Schema.Int,
+  /** Targets that failed at least five times and now retry once a day. */
+  poisonedTargets: Schema.Int,
+  /** Earliest moment a deferred target becomes selectable again. */
+  nextRetryAt: Schema.NullOr(Schema.String)
 })
 export type HydrationStats = typeof HydrationStats.Type
 

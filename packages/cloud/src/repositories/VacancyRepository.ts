@@ -11,6 +11,7 @@ import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
 import { employer, vacancy, vacancyResponseSample, vacancySkill, vacancySnapshot } from "../db/tables.ts"
 import * as BlacklistRepository from "./BlacklistRepository.ts"
+import * as HydrationAttemptRepository from "./HydrationAttemptRepository.ts"
 
 export interface VacancyRow {
   readonly id: string
@@ -378,6 +379,11 @@ export const countHhProfile = (tx: Executor): RepoEffect<{
 export interface HydrationFilter {
   readonly limit?: number
   readonly minDescriptionLength?: number
+  /**
+   * Skip targets that failed recently. The operator UI lists the whole queue,
+   * but a hydration pass must only take targets whose retry time has come.
+   */
+  readonly onlyDue?: boolean
 }
 
 /**
@@ -411,6 +417,9 @@ export const listNeedingHydration = (tx: Executor, filter: HydrationFilter = {})
         or ${vacancy.descriptionHtml} is null
         or coalesce(length(btrim(${vacancy.descriptionText})), 0) < ${min}
       )
+      ${filter.onlyDue === true
+        ? sql`and ${HydrationAttemptRepository.notDeferredSql("vacancy", sql`${vacancy.id}`)}`
+        : sql``}
     `)
     .orderBy(sql`${vacancy.lastSeenAt} desc`, vacancy.id)
     .limit(limit)

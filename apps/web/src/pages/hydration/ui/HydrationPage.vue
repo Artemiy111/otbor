@@ -127,8 +127,9 @@ const runDetailRecord = (run: ScheduleRun): Record<string, unknown> => {
   const detail = run.detail as Record<string, unknown> | null | undefined
   return detail ?? {}
 }
+// Matches the worker sweeper: a long crawl or hydration pass is still healthy.
 const isStaleRun = (run: ScheduleRun) =>
-  run.status === "running" && Date.now() - new Date(run.startedAt).getTime() > 15 * 60_000
+  run.status === "running" && Date.now() - new Date(run.startedAt).getTime() > 45 * 60_000
 const activeRuns = computed(() => hydrationRuns.value.filter((run) => run.status === "running"))
 const hasFreshActiveRun = computed(() => activeRuns.value.some((run) => !isStaleRun(run)))
 const elapsedLabel = (startedAt: string): string => {
@@ -398,6 +399,13 @@ const runErrorLines = (run: ScheduleRun): ReadonlyArray<string> => {
     .filter((item): item is string => typeof item === "string" && item.trim() !== "")
     .slice(0, 2)
 }
+const blockLabels: Record<string, string> = {
+  captcha: "капча hh.ru",
+  auth: "требование входа",
+  forbidden: "HTTP 403",
+  geo: "геоблок HTTP 451",
+  rate_limit: "лимит запросов HTTP 429"
+}
 const runDetailLines = (run: ScheduleRun): ReadonlyArray<string> => {
   const detail = runDetailRecord(run)
   if (Object.keys(detail).length === 0) return ["—"]
@@ -411,6 +419,10 @@ const runDetailLines = (run: ScheduleRun): ReadonlyArray<string> => {
   ]
   const current = runCurrentItem(run)
   if (current !== null) lines.push(`Сейчас: ${current}`)
+  const stoppedBy = typeof detail.stoppedBy === "string" ? detail.stoppedBy : null
+  if (stoppedBy !== null) lines.push(`Остановлено: ${blockLabels[stoppedBy] ?? stoppedBy}`)
+  const rotations = Number(detail.rotations ?? 0)
+  if (rotations > 0) lines.push(`Ротаций прокси: ${rotations}`)
   const errors = runErrorLines(run)
   if (errors.length > 0) lines.push(`Ошибки: ${errors.join(" · ")}`)
   return lines
@@ -603,14 +615,33 @@ onUnmounted(stopRunsPolling)
       <AlertDescription>{{ notice }}</AlertDescription>
     </Alert>
 
-    <div class="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+    <div class="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
       <StatCard label="Вакансий" :value="stats ? formatNumber(stats.vacancyTotal) : '—'" :hint="`${stats?.vacancyFull ?? 0} с полным описанием`" />
       <StatCard label="Нужна гидратация" :value="stats ? formatNumber(stats.vacancyStub) : '—'" :hint="`${hydrationPercent}% корпуса готово`" />
       <StatCard label="Компаний" :value="stats ? formatNumber(stats.employerTotal) : '—'" :hint="`${stats?.employersLinked ?? 0} привязано к вакансиям`" />
       <StatCard label="Без рейтинга" :value="stats ? formatNumber(stats.employersWithoutRating) : '—'" hint="нет данных hh" />
       <StatCard label="Без сайта" :value="stats ? formatNumber(stats.employersWithoutSite) : '—'" hint="нечего открыть для проверки" />
       <StatCard label="Старше 30 дней" :value="stats ? formatNumber(stats.employersStale30Days) : '—'" hint="профили давно не обновлялись" />
+      <StatCard
+        label="Ждут повтора"
+        :value="stats ? formatNumber(stats.deferredVacancies + stats.deferredEmployers) : '—'"
+        :hint="stats ? `вакансии ${stats.deferredVacancies} · компании ${stats.deferredEmployers}` : 'после ошибок'"
+      />
+      <StatCard
+        label="Проблемные"
+        :value="stats ? formatNumber(stats.poisonedTargets) : '—'"
+        :hint="stats?.nextRetryAt ? `ближайший повтор ${formatDate(stats.nextRetryAt)}` : 'нет отложенных'"
+      />
     </div>
+
+    <Alert v-if="(stats?.poisonedTargets ?? 0) > 0" variant="warning" class="mb-4">
+      <CircleAlert />
+      <AlertTitle>{{ stats?.poisonedTargets }} целей падают больше пяти раз подряд</AlertTitle>
+      <AlertDescription>
+        Они не блокируют очередь: повтор раз в сутки. Проверьте ошибки в истории запусков — обычно это чужая страница,
+        удалённая вакансия или блокировка hh.ru.
+      </AlertDescription>
+    </Alert>
 
     <Card class="mb-4">
       <CardHeader>
