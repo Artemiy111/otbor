@@ -222,7 +222,10 @@ const applyGenerated = (
   const target = `${meta.accountId}|${meta.resumeId}`
   if (target !== workspaceKey.value) {
     storeGeneratedElsewhere(target, draft)
-    notice.value = "Письмо готово для другого резюме: переключитесь на него, чтобы увидеть."
+    notice.value = "Письмо готово для другого резюме и сохранено в его черновик: переключитесь на него, чтобы увидеть."
+    void persistElsewhere(meta.accountId, meta.resumeId, draft).catch((error) => {
+      errorText.value = `Не удалось сохранить черновик для другого резюме: ${explain(error)}`
+    })
     return
   }
   errorText.value = null
@@ -251,7 +254,10 @@ const applyGenerated = (
   void nextTick(() => {
     if (changed) snapshot.value = { ...previous, signature: signatureNow() }
   })
-  notice.value = "Письмо и ответы подставлены. Проверьте их и отредактируйте перед сохранением."
+  notice.value = "Письмо и ответы подставлены и сохраняются как черновик. Проверьте их и отредактируйте."
+  // A generation is something the operator asked for: keep its result instead of
+  // leaving it on the screen only, so a reload or a switch cannot lose it.
+  void nextTick(() => saveDraft().then(() => (notice.value = "Письмо и ответы подставлены и сохранены как черновик. Проверьте их и отредактируйте.")))
 }
 
 const undoGenerated = () => {
@@ -405,6 +411,35 @@ const storeGeneratedElsewhere = (target: string, draft: GeneratedDraft) => {
     next.model[question.id] = clone(value)
   }
   stash.set(target, next)
+}
+
+/** Saves a generation that finished for a resume other than the one on screen. */
+const persistElsewhere = async (targetAccountId: string, targetResumeId: string, draft: GeneratedDraft) => {
+  const { application } = await applicationApi.createManual({
+    vacancyId: props.vacancyId,
+    hhAccountId: targetAccountId,
+    resumeId: targetResumeId || undefined
+  })
+  const answersToSave: Array<KitAnswer> = []
+  for (const item of draft.answers) {
+    const question = questions.value.find((candidate) => candidate.id === item.questionId)
+    if (question === undefined) continue
+    const choice = question.kind === "single" || question.kind === "multiple"
+    answersToSave.push({
+      questionId: question.id,
+      ...(choice ? { optionIds: [...(item.optionIds ?? [])] } : { text: (item.text ?? "").trim() }),
+      source: "model",
+      hard: false,
+      needsHuman: false
+    })
+  }
+  await applicationApi.setKit({
+    applicationId: application.id,
+    formHash: form.value?.formHash ?? NO_FORM,
+    letter: draft.letter === null ? null : draft.letter.slice(0, maxLetter).trim(),
+    answers: answersToSave
+  })
+  emit("changed")
 }
 
 const normalize = (text: string, list: ReadonlyArray<KitAnswer>): string =>
