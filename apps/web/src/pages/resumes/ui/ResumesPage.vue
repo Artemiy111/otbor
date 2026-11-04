@@ -94,6 +94,40 @@ const saveMutation = useMutation({
 
 const save = () => saveMutation.mutate()
 
+const aiSalary = computed(() => {
+  const r = selectedResume.value
+  const cur = currency.value || r?.salaryCurrency || ""
+  const parts: string[] = []
+  if (salaryExpectation.value) parts.push(`ожидает ${salaryExpectation.value} ${cur}`)
+  else if (r?.salaryAmount) parts.push(`в резюме ${r.salaryAmount} ${r.salaryCurrency ?? ""}`)
+  if (salaryMin.value) parts.push(`минимум ${salaryMin.value} ${cur}`)
+  return parts.length ? parts.join(", ") : "не указана"
+})
+
+const str = (value: unknown): string => (typeof value === "string" ? value : "")
+const experienceItems = computed(() =>
+  (selectedResume.value?.experience ?? []).map((raw) => {
+    const e = (raw ?? {}) as Record<string, unknown>
+    const company = str(e.companyName) || str(e.company)
+    const position = str(e.position)
+    const start = str(e.startDate)
+    const end = str(e.endDate)
+    const key = [company, position].filter(Boolean).join(" ").toLowerCase()
+    const extra = (enrichmentQuery.data.value?.experience ?? []).find(
+      (x: { key: string }) => x.key !== "" && key.includes(x.key.toLowerCase())
+    )
+    const comment = [extra?.employmentType, extra?.comment, extra?.leaveReason ? `причина ухода: ${extra.leaveReason}` : ""]
+      .filter(Boolean)
+      .join(" · ")
+    return {
+      title: [position, company].filter(Boolean).join(" — ") || "Место работы",
+      period: start || end ? `${start || "?"} — ${end || "по настоящее время"}` : "",
+      description: str(e.description),
+      comment
+    }
+  })
+)
+
 const refresh = () => {
   void resumesQuery.refetch()
   void enrichmentQuery.refetch()
@@ -149,9 +183,44 @@ const refresh = () => {
       <Card v-if="selectedResume">
         <CardHeader>
           <CardTitle>{{ selectedResume.title }}</CardTitle>
-          <CardDescription>{{ selectedResume.text }}</CardDescription>
+          <CardDescription>
+            {{ [selectedResume.status, selectedResume.isActive ? "активно" : "неактивно", `обновлено ${formatDate(selectedResume.updatedAt)}`].filter(Boolean).join(" · ") }}
+          </CardDescription>
         </CardHeader>
         <CardContent class="space-y-4">
+          <div class="space-y-4 rounded-md border p-4">
+            <h3 class="text-sm font-semibold">Что видит ИИ</h3>
+            <dl class="grid gap-3 text-sm sm:grid-cols-[160px_1fr]">
+              <dt class="text-muted-foreground">Желаемая зарплата</dt>
+              <dd>{{ aiSalary }}</dd>
+              <dt class="text-muted-foreground">Формат работы</dt>
+              <dd>{{ selectedResume.workFormats.length ? selectedResume.workFormats.join(", ") : "не указан" }}</dd>
+              <dt class="text-muted-foreground">Навыки</dt>
+              <dd class="flex flex-wrap gap-1">
+                <Badge v-for="skill in selectedResume.skills" :key="skill" variant="secondary">{{ skill }}</Badge>
+                <span v-if="!selectedResume.skills.length">не указаны</span>
+              </dd>
+              <dt class="text-muted-foreground">О себе</dt>
+              <dd class="whitespace-pre-wrap">{{ selectedResume.about || "нет" }}</dd>
+              <dt class="text-muted-foreground">Заметки оператора</dt>
+              <dd class="whitespace-pre-wrap">{{ comment || "нет" }}</dd>
+            </dl>
+          </div>
+          <div class="space-y-2">
+            <h3 class="text-sm font-semibold">Полный текст резюме</h3>
+            <pre class="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-4 text-sm">{{ selectedResume.text }}</pre>
+          </div>
+          <div v-if="experienceItems.length" class="space-y-2">
+            <h3 class="text-sm font-semibold">Опыт работы</h3>
+            <ul class="space-y-3">
+              <li v-for="(item, index) in experienceItems" :key="index" class="rounded-md border p-3 text-sm">
+                <div class="font-medium">{{ item.title }}</div>
+                <div v-if="item.period" class="text-muted-foreground">{{ item.period }}</div>
+                <p v-if="item.description" class="mt-1 whitespace-pre-wrap">{{ item.description }}</p>
+                <p v-if="item.comment" class="mt-1 text-muted-foreground">Заметка: {{ item.comment }}</p>
+              </li>
+            </ul>
+          </div>
           <div class="grid gap-3 sm:grid-cols-2">
             <div class="space-y-1.5">
               <Label>Минимальная зарплата</Label>
