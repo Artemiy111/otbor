@@ -224,35 +224,17 @@ const columns: ColumnDef<LexiconKeyword>[] = [
     header: sortableHeader<LexiconKeyword>("Алиасы"),
     cell: ({ row }) => {
       const stats = row.original.aliasStats ?? []
-      if (stats.length === 0) {
-        const aliases = row.original.aliases
-        if (aliases.length === 0) return h("span", { class: "text-sm text-muted-foreground" }, "—")
-        return h(
-          "div",
-          { class: "flex flex-wrap gap-1" },
-          aliases.map((alias) =>
-            h(
-              Badge,
-              {
-                key: alias.id,
-                variant: "secondary",
-                class: "font-normal",
-                title: `${alias.matchType}${alias.typo ? " · опечатка" : ""}`
-              },
-              () => [
-                alias.alias,
-                alias.typo
-                  ? h("span", { class: "ml-1 text-[10px] opacity-60" }, "опечатка")
-                  : null
-              ]
-            )
-          )
-        )
+      // Stats only cover forms already found in vacancies, so aliases with no
+      // match yet (for example just created) are appended without a share.
+      const seen = new Set(stats.map((stat) => stat.normalizedAlias))
+      const unmatched = row.original.aliases.filter(
+        (alias) => !seen.has(alias.normalizedAlias)
+      )
+      if (stats.length === 0 && unmatched.length === 0) {
+        return h("span", { class: "text-sm text-muted-foreground" }, "—")
       }
-      return h(
-        "div",
-        { class: "flex flex-wrap gap-1" },
-        stats.map((stat) =>
+      return h("div", { class: "flex flex-wrap gap-1" }, [
+        ...stats.map((stat) =>
           h(
             Badge,
             {
@@ -267,8 +249,23 @@ const columns: ColumnDef<LexiconKeyword>[] = [
               h("span", { class: "ml-1 text-muted-foreground" }, `${stat.share}%`)
             ]
           )
+        ),
+        ...unmatched.map((alias) =>
+          h(
+            Badge,
+            {
+              key: alias.id,
+              variant: "outline",
+              class: "font-normal",
+              title: "Пока не встречался в вакансиях"
+            },
+            () => [
+              alias.alias,
+              alias.typo ? h("span", { class: "ml-1 text-[10px] opacity-60" }, "опечатка") : null
+            ]
+          )
         )
-      )
+      ])
     }
   },
   {
