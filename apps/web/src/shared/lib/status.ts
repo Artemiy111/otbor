@@ -258,3 +258,26 @@ const SCHEDULE_KIND_LABELS: Record<string, string> = {
 
 export const scheduleKindLabel = (value: string): string =>
   SCHEDULE_KIND_LABELS[value] ?? value
+
+/** hh's own negotiation states, as stored for imported applications. */
+const HH_STATUS: Record<string, { label: string; tone: StatusTone }> = {
+  RESPONSE: { label: "Отклик отправлен, ждёт ответа", tone: "info" },
+  NOT_VIEWED: { label: "Не просмотрен", tone: "neutral" },
+  VIEWED: { label: "Просмотрен", tone: "info" },
+  INTERVIEW: { label: "Приглашение", tone: "success" },
+  OFFER: { label: "Оффер", tone: "success" },
+  DISCARD: { label: "Отказ", tone: "danger" },
+  DISCARD_AFTER_INTERVIEW: { label: "Отказ после собеседования", tone: "danger" },
+  HIDDEN: { label: "Скрыт", tone: "neutral" }
+}
+
+/** What the operator should read about an application: hh's state when known, else ours. */
+export const applicationStatus = (application: {
+  readonly state: string
+  readonly hhStatus?: string | null
+}): { readonly label: string; readonly tone: StatusTone; readonly fromHh: boolean } => {
+  const hh = application.hhStatus ? HH_STATUS[application.hhStatus] : undefined
+  if (hh !== undefined) return { ...hh, fromHh: true }
+  if (application.hhStatus) return { label: application.hhStatus, tone: "neutral", fromHh: true }
+  return { label: statusLabel(application.state), tone: statusTone(application.state), fromHh: false }
+}

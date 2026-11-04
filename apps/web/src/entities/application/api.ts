@@ -14,6 +14,7 @@ import { call } from "@/shared/api"
 export interface ApplicationListInput {
   readonly state?: string
   readonly hhAccountId?: string
+  readonly vacancyId?: string
   readonly limit?: number
 }
 
@@ -60,7 +61,11 @@ export const applicationApi = {
   syncStatus: (hhAccountId: string): Promise<NegotiationsSyncStatus> =>
     call((client) => client.NegotiationsSyncStatus({ hhAccountId: hhAccountId as HhAccountId })),
   list: (input: ApplicationListInput): Promise<ReadonlyArray<ApplicationRecord>> =>
-    call((client) => client.ApplicationsList({ ...input, hhAccountId: input.hhAccountId as HhAccountId | undefined })),
+    call((client) => client.ApplicationsList({
+        ...input,
+        hhAccountId: input.hhAccountId as HhAccountId | undefined,
+        vacancyId: input.vacancyId as VacancyId | undefined
+      })),
   get: (id: string): Promise<ApplicationDetail> =>
     call((client) => client.ApplicationsGet({ id: id as ApplicationId })),
   createFromDecision: (input: ApplicationCreateFromDecisionInput): Promise<ApplicationRecord> =>

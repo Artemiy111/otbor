@@ -7,7 +7,7 @@ import { decisionApi, decisionKeys } from "@/entities/decision"
 import { useDefaultAccount } from "@/entities/hh-account"
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { vacancyApi, vacancyKeys } from "@/entities/vacancy"
-import { describeError } from "@/shared/lib"
+import { buildRecon, describeError, reconByKey } from "@/shared/lib"
 
 /** Everything a vacancy page needs, shared by every layout variant. */
 export const useVacancyPage = (id: () => string) => {
@@ -20,14 +20,18 @@ export const useVacancyPage = (id: () => string) => {
     query: () => decisionApi.list({ limit: 200 })
   })
   const applicationsQuery = useQuery({
-    key: applicationKeys.list("all"),
-    query: () => applicationApi.list({ limit: 200 })
+    key: () => applicationKeys.vacancy(id()),
+    query: () => applicationApi.list({ vacancyId: id(), limit: 200 })
   })
   const contactsQuery = useQuery({
     key: () => contactKeys.vacancy(id()),
     query: () => contactApi.list({ vacancyId: id(), limit: 50 })
   })
   const resumesQuery = useQuery({ key: () => resumeKeys.list(), query: () => resumeApi.list() })
+  const analysisQuery = useQuery({
+    key: () => vacancyKeys.analysis(id()),
+    query: () => vacancyApi.analysis(id())
+  })
   const { accounts, defaultAccountId } = useDefaultAccount()
 
   const data = computed(() => vacancyQuery.data.value)
@@ -70,6 +74,12 @@ export const useVacancyPage = (id: () => string) => {
   const applications = computed(() =>
     (applicationsQuery.data.value ?? []).filter((application) => application.vacancyId === id())
   )
+  const analysis = computed(() => analysisQuery.data.value ?? null)
+  /** hh fields, text detectors and the model, lined up per parameter. */
+  const recon = computed(() => (data.value ? buildRecon(data.value, analysis.value?.facts ?? null) : []))
+  const reconMap = computed(() => reconByKey(recon.value))
+  // Which presentation of the facts block is shown (a prototype switch).
+  const passportView = useStorage<"chips" | "matrix" | "digest">("otbor.vacancy-passport", "chips")
   const isLoading = computed(() => vacancyQuery.isLoading.value)
   const errorText = computed(() =>
     vacancyQuery.error.value === null ? null : describeError(vacancyQuery.error.value)
@@ -118,6 +128,11 @@ export const useVacancyPage = (id: () => string) => {
     accountId,
     resumeId,
     selectedResume,
+    analysis,
+    analysisPending: computed(() => analysisQuery.isPending.value),
+    recon,
+    reconMap,
+    passportView,
     decisions,
     applications,
     isLoading,

@@ -4,39 +4,56 @@ import type { VacancyDetail } from "@otbor/contract"
 import {
   companyPath,
   employmentFormLabel,
-  experienceLabel,
   formatDate,
   formatRating,
   formatSalary,
-  seniorityLabel,
   titleVerdictLabel,
-  workFormatText
+  type ReconRow
 } from "@/shared/lib"
 import { Badge, StatusBadge } from "@/shared/ui"
+import ReconDots from "./ReconDots.vue"
 
-const props = defineProps<{ data: VacancyDetail }>()
+const props = defineProps<{ data: VacancyDetail; recon: ReadonlyMap<string, ReconRow> }>()
 
 const vacancy = computed(() => props.data.vacancy)
 const validUntil = computed(() => props.data.facts?.hh?.validUntil ?? null)
 const salary = computed(() =>
   formatSalary(vacancy.value.salaryFrom, vacancy.value.salaryTo, vacancy.value.salaryCurrency)
 )
-const seniority = computed(() =>
-  vacancy.value.seniority === "unknown" ? null : seniorityLabel(vacancy.value.seniority)
-)
-const parts = computed(() =>
-  [
-    vacancy.value.areaName,
-    seniority.value,
-    experienceLabel(vacancy.value.experienceCode),
-    employmentFormLabel(vacancy.value.employmentForm),
-    vacancy.value.workFormats.length > 0
-      ? vacancy.value.workFormats.map(workFormatText).join(", ")
-      : null,
-    vacancy.value.publishedAt ? `опубликована ${formatDate(vacancy.value.publishedAt)}` : null,
-    validUntil.value ? `актуальна до ${formatDate(validUntil.value)}` : null
-  ].filter((part): part is string => typeof part === "string" && part !== "")
-)
+
+interface Part {
+  readonly key: string
+  readonly text: string
+  readonly row?: ReconRow
+}
+
+/** A value shared by several sources reads once; a disagreement reads "hh ≠ ИИ". */
+const reconText = (row: ReconRow): string => {
+  const seen = new Map<string, string>()
+  for (const cell of Object.values(row.cells)) {
+    if (cell.norm !== null && cell.norm !== "нет" && !seen.has(cell.norm)) seen.set(cell.norm, cell.text ?? cell.norm)
+  }
+  return [...seen.values()].join(" ≠ ")
+}
+
+const parts = computed<ReadonlyArray<Part>>(() => {
+  const out: Array<Part> = []
+  const push = (key: string, text: string | null | undefined, row?: ReconRow) => {
+    if (text !== null && text !== undefined && text !== "") out.push({ key, text, ...(row ? { row } : {}) })
+  }
+  const row = (key: string) => props.recon.get(key)
+  push("area", vacancy.value.areaName)
+  const level = row("level")
+  if (level) push("level", reconText(level), level)
+  const experience = row("experience")
+  if (experience) push("experience", `опыт ${reconText(experience)}`, experience)
+  push("employment", employmentFormLabel(vacancy.value.employmentForm))
+  const format = row("format")
+  if (format) push("format", reconText(format), format)
+  push("published", vacancy.value.publishedAt ? `опубликована ${formatDate(vacancy.value.publishedAt)}` : null)
+  push("valid", validUntil.value ? `актуальна до ${formatDate(validUntil.value)}` : null)
+  return out
+})
 </script>
 
 <template>
@@ -54,9 +71,12 @@ const parts = computed(() =>
         </span>
       </template>
       <span v-else>{{ vacancy.employerName ?? "Компания не указана" }}</span>
-      <template v-for="part in parts" :key="part">
+      <template v-for="part in parts" :key="part.key">
         <span aria-hidden="true">·</span>
-        <span>{{ part }}</span>
+        <span class="inline-flex items-center gap-1" :class="part.row?.conflict ? 'text-amber-300' : ''">
+          {{ part.text }}
+          <ReconDots v-if="part.row" :row="part.row" />
+        </span>
       </template>
       <Badge v-if="vacancy.archived" variant="neutral">в архиве</Badge>
       <Badge v-if="vacancy.blacklisted" variant="destructive">в чёрном списке</Badge>

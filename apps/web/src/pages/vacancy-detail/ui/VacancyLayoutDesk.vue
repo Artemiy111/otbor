@@ -14,12 +14,7 @@ const h2 = "mb-2 text-sm font-semibold"
 <template>
   <div v-if="page.data.value" class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_28rem]">
     <div class="min-w-0 space-y-6">
-      <VacancyPassport
-        :data="page.data.value"
-        :contacts="page.contacts.value"
-        :hydrating="page.hydrating.value"
-        @hydrate="page.hydrate"
-      />
+      <VacancyPassport :page="page" :data="page.data.value" :contacts="page.contacts.value" />
       <section>
         <h2 :class="h2">Навыки</h2>
         <VacancySkills :data="page.data.value" :resume="page.selectedResume.value" />

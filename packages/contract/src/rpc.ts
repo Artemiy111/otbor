@@ -926,6 +926,8 @@ export const ApplicationsList = Rpc.make("ApplicationsList", {
     state: Schema.optional(Schema.String),
     /** Only applications of this hh account. */
     hhAccountId: Schema.optional(HhAccountId),
+    /** Only applications to this vacancy (every account and resume). */
+    vacancyId: Schema.optional(VacancyId),
     limit: Schema.optional(Schema.Int)
   }),
   success: Schema.Array(ApplicationRecord),

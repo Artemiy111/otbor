@@ -11,6 +11,8 @@ import VacancyLayoutDesk from "./VacancyLayoutDesk.vue"
 import VacancyLayoutFocus from "./VacancyLayoutFocus.vue"
 import VacancyLayoutSwitch from "./VacancyLayoutSwitch.vue"
 import VacancyMetaLine from "./VacancyMetaLine.vue"
+import VacancyPassportSwitch from "./VacancyPassportSwitch.vue"
+import VacancyStatusBar from "./VacancyStatusBar.vue"
 
 const props = defineProps<{ id: string }>()
 const page = useVacancyPage(() => props.id)
@@ -61,9 +63,21 @@ const data = page.data
     </div>
 
     <template v-else-if="data">
-      <div class="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <VacancyMetaLine :data="data" class="min-w-0 flex-1" />
-        <VacancyLayoutSwitch v-model="layout" />
+      <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <VacancyMetaLine :data="data" :recon="page.reconMap.value" class="min-w-0 flex-1" />
+        <div class="flex flex-wrap items-center gap-3">
+          <VacancyPassportSwitch v-model="page.passportView.value" />
+          <VacancyLayoutSwitch v-model="layout" />
+        </div>
+      </div>
+      <div class="mb-6">
+        <VacancyStatusBar
+          :applications="page.applications.value"
+          :accounts="page.accounts.value"
+          :resumes="page.resumes.value"
+          :account-id="page.accountId.value"
+          :resume-id="page.resumeId.value"
+        />
       </div>
       <VacancyLayoutDesk v-if="layout === 'desk'" :page="page" />
       <VacancyLayoutFocus v-else :page="page" />

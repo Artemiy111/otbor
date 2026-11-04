@@ -26,12 +26,7 @@ const h2 = "mb-2 text-sm font-semibold"
       </div>
     </div>
     <aside class="min-w-0 space-y-5 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:self-start lg:overflow-y-auto lg:pr-1">
-      <VacancyPassport
-        :data="page.data.value"
-        :contacts="page.contacts.value"
-        :hydrating="page.hydrating.value"
-        @hydrate="page.hydrate"
-      />
+      <VacancyPassport :page="page" :data="page.data.value" :contacts="page.contacts.value" />
       <section>
         <h2 :class="h2">Навыки</h2>
         <VacancySkills :data="page.data.value" :resume="page.selectedResume.value" />

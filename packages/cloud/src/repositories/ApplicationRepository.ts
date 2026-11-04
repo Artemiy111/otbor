@@ -150,7 +150,12 @@ export const find = (
 export const list = (
   tx: Executor,
   userId: string,
-  options: { readonly state?: string; readonly hhAccountId?: string; readonly limit?: number } = {}
+  options: {
+    readonly state?: string
+    readonly hhAccountId?: string
+    readonly vacancyId?: string
+    readonly limit?: number
+  } = {}
 ): RepoEffect<ReadonlyArray<ApplicationRecord>> =>
   tx
     .execute(sql`
@@ -160,6 +165,7 @@ export const list = (
           ? sql``
           : sql`and a.state = ${options.state}`}
         ${options.hhAccountId === undefined ? sql`` : sql`and a.hh_account_id = ${options.hhAccountId}`}
+        ${options.vacancyId === undefined ? sql`` : sql`and a.vacancy_id = ${options.vacancyId}`}
       order by a.updated_at desc
       limit ${Math.min(Math.max(options.limit ?? 50, 1), 200)}
     `)
