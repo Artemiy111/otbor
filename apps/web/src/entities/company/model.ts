@@ -1,7 +1,7 @@
 export interface CompanyListKey {
   readonly query: string
   readonly offset: number
-  readonly includeBlacklisted: boolean
+  readonly blacklistView: string
   readonly respondedAccountId: string
 }
 

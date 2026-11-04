@@ -1,8 +1,7 @@
-import type { BlacklistScope, EmployerHydrationMissing, EmployerHydrationTarget, EmployerSummary } from "@otbor/contract"
+import type { BlacklistScope, EmployerBlacklistView, EmployerHydrationMissing, EmployerHydrationTarget, EmployerSummary } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
-import * as BlacklistRepository from "./BlacklistRepository.ts"
 import * as HydrationAttemptRepository from "./HydrationAttemptRepository.ts"
 import * as VacancyRepository from "./VacancyRepository.ts"
 
@@ -20,6 +19,7 @@ export interface EmployerRow {
   readonly vacancy_count: number
   readonly responded_account_ids?: ReadonlyArray<string> | null
   readonly blacklist_layers?: ReadonlyArray<BlacklistScope> | null
+  readonly blocked_account_ids?: ReadonlyArray<string> | null
 }
 
 export const toSummary = (row: EmployerRow): EmployerSummary => {
@@ -38,12 +38,47 @@ export const toSummary = (row: EmployerRow): EmployerSummary => {
     vacancyCount: Number(row.vacancy_count),
     respondedAccountIds: [...(row.responded_account_ids ?? [])] as EmployerSummary["respondedAccountIds"] & string[],
     blacklisted: blacklistLayers.length > 0,
-    blacklistLayers
+    blacklistLayers,
+    blockedAccountIds: [...(row.blocked_account_ids ?? [])] as EmployerSummary["blockedAccountIds"] & string[]
   }
 }
 
 /** Application states that count as "the account responded". */
 const RESPONDED_STATES = "'submitted', 'submitting', 'queued'"
+
+/**
+ * Employer blocks are shown across every layer and every hh account, so the
+ * companies page can say who blocked a company. `extra` narrows the rows.
+ */
+const employerBlockExists = (userId: string | undefined, extra: ReturnType<typeof sql>) =>
+  userId === undefined
+    ? sql`false`
+    : sql`exists (
+        select 1 from hidden_target ht
+        where ht.user_id = ${userId}
+          and ht.type = 'employer'
+          and ht.external_id = e.external_id
+          and ${extra}
+      )`
+
+const blockLayersSql = (userId: string | undefined) =>
+  userId === undefined
+    ? sql`'[]'::json`
+    : sql`coalesce((
+        select json_agg(distinct ht.scope order by ht.scope)
+        from hidden_target ht
+        where ht.user_id = ${userId} and ht.type = 'employer' and ht.external_id = e.external_id
+      ), '[]'::json)`
+
+const blockedAccountsSql = (userId: string | undefined) =>
+  userId === undefined
+    ? sql`'{}'::text[]`
+    : sql`coalesce((
+        select array_agg(distinct ht.hh_account_id::text)
+        from hidden_target ht
+        where ht.user_id = ${userId} and ht.type = 'employer' and ht.external_id = e.external_id
+          and ht.scope in ('hh_account', 'hh_native') and ht.hh_account_id is not null
+      ), '{}')`
 
 const selection = (options: {
   readonly userId?: string
@@ -57,12 +92,8 @@ const selection = (options: {
            from application a join vacancy av on av.id = a.vacancy_id
            where av.employer_id = e.id and a.state in (${sql.raw(RESPONDED_STATES)})
          ), '{}') as responded_account_ids,
-         ${BlacklistRepository.layersSql({
-           userId: options.userId,
-           hhAccountId: options.hhAccountId ?? null,
-           employerExternalId: sql`e.external_id`,
-           vacancyExternalId: sql`null::text`
-         })} as blacklist_layers
+         ${blockLayersSql(options.userId)} as blacklist_layers,
+         ${blockedAccountsSql(options.userId)} as blocked_account_ids
   from employer e
   left join vacancy v on v.employer_id = e.id
 `
@@ -72,6 +103,8 @@ export interface EmployerFilter {
   readonly limit?: number
   readonly offset?: number
   readonly includeBlacklisted?: boolean
+  readonly blacklistView?: EmployerBlacklistView
+  readonly blockedByAccountId?: string
   readonly hhAccountId?: string
   /** Only employers this account responded to. */
   readonly respondedAccountId?: string
@@ -84,14 +117,27 @@ export const list = (tx: Executor, filter: EmployerFilter = {}) => {
   const query = filter.query?.trim() ?? ""
   const pattern = query === "" ? null : `%${query.replace(/[%_]/g, "\\$&")}%`
   const nameClause = pattern === null ? sql`true` : sql`e.name ilike ${pattern}`
-  const blacklistClause = filter.includeBlacklisted === true
-    ? sql`true`
-    : sql`not ${BlacklistRepository.matchExistsSql({
-        userId: filter.userId,
-        hhAccountId: filter.hhAccountId ?? null,
-        employerExternalId: sql`e.external_id`,
-        vacancyExternalId: sql`null::text`
-      })}`
+  const view: EmployerBlacklistView = filter.blacklistView ??
+    (filter.includeBlacklisted === true ? "all" : "hide")
+  const blacklistClause = (() => {
+    switch (view) {
+      case "all":
+        return sql`true`
+      case "hide":
+        return sql`not ${employerBlockExists(filter.userId, sql`true`)}`
+      case "only":
+        return employerBlockExists(filter.userId, sql`true`)
+      case "app":
+        return employerBlockExists(filter.userId, sql`ht.scope = 'app'`)
+      case "account":
+        return employerBlockExists(
+          filter.userId,
+          filter.blockedByAccountId === undefined
+            ? sql`ht.scope in ('hh_account', 'hh_native')`
+            : sql`ht.scope in ('hh_account', 'hh_native') and ht.hh_account_id = ${filter.blockedByAccountId}::uuid`
+        )
+    }
+  })()
 
   const respondedClause = filter.respondedAccountId === undefined
     ? sql`true`

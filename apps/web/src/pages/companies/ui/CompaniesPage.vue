@@ -7,7 +7,7 @@ import { ChevronLeft, ChevronRight, CircleAlert, Search } from "@lucide/vue"
 import { companyApi, companyKeys } from "@/entities/company"
 import { AccountChip, ALL_ACCOUNTS, useAccountFilter } from "@/entities/hh-account"
 import { accountFilterOptions } from "@/features/account-filter"
-import { blacklistVisibilityOptions } from "@/features/blacklist-filter"
+import { companyBlacklistOptions, parseCompanyBlacklistFilter } from "@/features/blacklist-filter"
 import { RefreshButton } from "@/features/refresh-button"
 import { companyPath, describeError, formatNumber, formatRating } from "@/shared/lib"
 import {
@@ -29,7 +29,7 @@ const PAGE_SIZE = 50
 const appliedQuery = ref("")
 const draft = ref("")
 const offset = ref(0)
-const includeBlacklisted = ref(false)
+const blacklistFilter = ref("hide")
 const { accounts, accountId, hhAccountId, scopeKey, defaultAccountId } = useAccountFilter(ALL_ACCOUNTS)
 
 const query = useQuery({
@@ -37,7 +37,7 @@ const query = useQuery({
     companyKeys.list({
       query: appliedQuery.value,
       offset: offset.value,
-      includeBlacklisted: includeBlacklisted.value,
+      blacklistView: blacklistFilter.value,
       respondedAccountId: scopeKey.value
     }),
   query: () =>
@@ -45,7 +45,7 @@ const query = useQuery({
       query: appliedQuery.value === "" ? undefined : appliedQuery.value,
       limit: PAGE_SIZE,
       offset: offset.value,
-      includeBlacklisted: includeBlacklisted.value,
+      ...parseCompanyBlacklistFilter(blacklistFilter.value),
       respondedAccountId: hhAccountId.value
     })
 })
@@ -58,7 +58,7 @@ const totalPages = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)
 const page = computed(() => Math.floor(offset.value / PAGE_SIZE) + 1)
 
 // A filter change starts from the first page.
-watch([hhAccountId, includeBlacklisted], () => {
+watch([hhAccountId, blacklistFilter], () => {
   offset.value = 0
 })
 
@@ -167,19 +167,26 @@ const columns: ColumnDef<EmployerSummary>[] = [
     id: "blacklisted",
     accessorFn: (row) => row.blacklisted,
     header: filterableHeader<EmployerSummary>("Чёрный список", {
-      value: () => (includeBlacklisted.value ? "show" : "hide"),
-      options: () => blacklistVisibilityOptions,
-      onChange: (value) => (includeBlacklisted.value = value === "show")
+      value: () => blacklistFilter.value,
+      options: () => companyBlacklistOptions(accounts.value),
+      onChange: (value) => (blacklistFilter.value = value)
     }),
     cell: ({ row }) => {
-      const layers = row.original.blacklistLayers ?? []
       if (!row.original.blacklisted) {
         return h("span", { class: "text-xs text-muted-foreground" }, "—")
       }
-      return h("div", { class: "flex flex-wrap gap-1" }, [
-        h(Badge, { variant: "destructive", class: "text-[10px]" }, () => "Заблокирована"),
-        ...layers.map((layer) =>
-          h(Badge, { key: layer, variant: "outline", class: "text-[10px]" }, () => layer)
+      const layers = row.original.blacklistLayers ?? []
+      const blockedBy = row.original.blockedAccountIds ?? []
+      return h("div", { class: "flex flex-wrap items-center gap-1" }, [
+        layers.includes("app")
+          ? h(
+              Badge,
+              { variant: "destructive", class: "text-[10px]", title: "Заблокирована на уровне приложения" },
+              () => "Приложение"
+            )
+          : null,
+        ...blockedBy.map((id) =>
+          h(AccountChip, { key: id, accountId: id, accounts: accounts.value })
         )
       ])
     }

@@ -1,11 +1,12 @@
-import type { EmployerDetail, EmployerId, EmployerSummary } from "@otbor/contract"
+import type { EmployerBlacklistView, EmployerDetail, EmployerId, EmployerSummary } from "@otbor/contract"
 import { call } from "@/shared/api"
 
 export interface CompanyListInput {
   readonly query?: string
   readonly limit?: number
   readonly offset?: number
-  readonly includeBlacklisted?: boolean
+  readonly blacklistView?: EmployerBlacklistView
+  readonly blockedByAccountId?: string
   readonly hhAccountId?: string
   readonly respondedAccountId?: string
 }
@@ -22,7 +23,8 @@ export const companyApi = {
         query: input.query,
         limit: input.limit,
         offset: input.offset,
-        includeBlacklisted: input.includeBlacklisted,
+        blacklistView: input.blacklistView,
+        blockedByAccountId: input.blockedByAccountId as any,
         hhAccountId: input.hhAccountId as any,
         respondedAccountId: input.respondedAccountId as any
       })
