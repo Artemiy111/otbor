@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, h, ref } from "vue"
 import { useQuery } from "@pinia/colada"
+import { useAccountScope } from "@/entities/hh-account"
 import type { GateVerdict, VacancySummary } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert } from "@lucide/vue"
@@ -42,12 +43,15 @@ const includeBlacklisted = ref(false)
 
 const gateCache = new Map<string, GateVerdict>()
 
+const { hhAccountId } = useAccountScope()
+
 const listQuery = useQuery({
   key: () =>
     vacancyKeys.list({
       gate: gate.value,
       includeArchived: archived.value === "all",
-      includeBlacklisted: includeBlacklisted.value
+      includeBlacklisted: includeBlacklisted.value,
+      hhAccountId: hhAccountId.value ?? ""
     }),
   query: () =>
     vacancyApi.list({
@@ -55,7 +59,8 @@ const listQuery = useQuery({
       offset: 0,
       gate: gate.value === "all" ? undefined : gate.value,
       includeArchived: archived.value === "all",
-      includeBlacklisted: includeBlacklisted.value
+      includeBlacklisted: includeBlacklisted.value,
+      hhAccountId: hhAccountId.value
     })
 })
 

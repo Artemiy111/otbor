@@ -5,8 +5,7 @@ import type { ApplicationRecord, HhAccountRecord } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert } from "@lucide/vue"
 import { applicationApi, applicationKeys } from "@/entities/application"
-import { hhAccountApi, hhAccountKeys, hhAccountNameById } from "@/entities/hh-account"
-import { AccountFilter } from "@/features/account-filter"
+import { AccountChip, hhAccountNameById, useAccountScope } from "@/entities/hh-account"
 import { ApplicationStateFilter } from "@/features/application-filter"
 import { RefreshButton } from "@/features/refresh-button"
 import {
@@ -28,21 +27,15 @@ import {
 import { PageHeader } from "@/widgets/page-header"
 
 const state = ref("all")
-const account = ref("all")
-
-const accountsQuery = useQuery({
-  key: () => hhAccountKeys.list(),
-  query: () => hhAccountApi.list()
-})
-const accounts = computed<ReadonlyArray<HhAccountRecord>>(() => accountsQuery.data.value ?? [])
+const { accounts, accountId, hhAccountId } = useAccountScope()
 
 const query = useQuery({
-  key: () => applicationKeys.list(state.value, account.value),
+  key: () => applicationKeys.list(state.value, accountId.value),
   query: () =>
     applicationApi.list({
       limit: 200,
       state: state.value === "all" ? undefined : state.value,
-      hhAccountId: account.value === "all" ? undefined : account.value
+      hhAccountId: hhAccountId.value
     })
 })
 
@@ -92,11 +85,13 @@ const columns: ColumnDef<ApplicationRecord>[] = [
     title: "Компания",
     accessorFn: (row) => row.employerName ?? ""
   }),
-  textColumn<ApplicationRecord>({
+  {
     id: "hhAccountId",
-    title: "Аккаунт",
-    accessorFn: (row) => hhAccountNameById(accounts.value, row.hhAccountId)
-  }),
+    accessorFn: (row) => hhAccountNameById(accounts.value, row.hhAccountId),
+    header: sortableHeader<ApplicationRecord>("Аккаунт"),
+    cell: ({ row }) =>
+      h(AccountChip, { accountId: row.original.hhAccountId, accounts: accounts.value })
+  },
   {
     accessorKey: "updatedAt",
     header: sortableHeader<ApplicationRecord>("Обновлён"),
@@ -140,7 +135,6 @@ const columns: ColumnDef<ApplicationRecord>[] = [
     >
       <template #toolbar>
         <ApplicationStateFilter v-model="state" />
-        <AccountFilter v-model="account" :accounts="accounts" />
         <span class="pb-2 text-xs text-muted-foreground">Показано: {{ applications.length }}</span>
       </template>
     </DataTable>

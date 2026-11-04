@@ -3,6 +3,7 @@ import { computed } from "vue"
 import { apiEndpoint } from "@/shared/api"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/shared/ui/sidebar"
 import { navLabel } from "../model/nav"
+import AccountSwitcher from "./AccountSwitcher.vue"
 import AppSidebar from "./AppSidebar.vue"
 
 const props = defineProps<{ active: string }>()
@@ -27,6 +28,7 @@ const sectionLabel = computed(() => navLabel(props.active))
           </span>
         </div>
         <div class="flex-1" />
+        <AccountSwitcher />
         <code class="hidden truncate font-mono text-[11px] text-muted-foreground md:block">
           {{ apiEndpoint }}
         </code>

@@ -3,7 +3,7 @@ import { computed, ref, watch } from "vue"
 import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
 import type { HhAccountRecord, ResumeEnrichment, ResumeRecord } from "@otbor/contract"
 import { CircleAlert } from "@lucide/vue"
-import { hhAccountApi, hhAccountKeys } from "@/entities/hh-account"
+import { hhAccountApi, hhAccountKeys, useAccountScope } from "@/entities/hh-account"
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { RefreshButton } from "@/features/refresh-button"
 import { describeError, formatDate } from "@/shared/lib"
@@ -34,7 +34,11 @@ const accountsQuery = useQuery({
   query: () => hhAccountApi.list()
 })
 const accounts = computed<ReadonlyArray<HhAccountRecord>>(() => accountsQuery.data.value ?? [])
+const { hhAccountId: scopedAccountId } = useAccountScope()
 const selectedAccountId = ref<string>("")
+watch(scopedAccountId, (id) => {
+  if (id !== undefined) selectedAccountId.value = id
+}, { immediate: true })
 watch(accounts, (list) => {
   if (selectedAccountId.value === "" && list.length > 0) {
     const def = list.find((a) => a.isDefault) ?? list[0]

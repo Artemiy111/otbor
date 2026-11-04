@@ -24,3 +24,17 @@ export const hhAccountNameById = (
   const account = accounts.find((candidate) => candidate.id === id)
   return account === undefined ? id.slice(0, 8) : hhAccountName(account)
 }
+
+/** Stable hue (0-359) per account id, so the same account is always the same colour. */
+export const hhAccountHue = (id: string): number => {
+  let hash = 0
+  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
+  return hash % 360
+}
+
+/** Up to two initials from the display name. */
+export const hhAccountInitials = (name: string): string => {
+  const parts = name.trim().split(/\s+/).filter((part) => part !== "")
+  const letters = parts.slice(0, 2).map((part) => part[0]!.toUpperCase())
+  return letters.length === 0 ? "?" : letters.join("")
+}

@@ -2,6 +2,7 @@ export interface VacancyListKey {
   readonly gate: string
   readonly includeArchived: boolean
   readonly includeBlacklisted: boolean
+  readonly hhAccountId: string
 }
 
 export const vacancyKeys = {

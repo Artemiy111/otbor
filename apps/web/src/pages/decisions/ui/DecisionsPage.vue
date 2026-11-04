@@ -7,8 +7,7 @@ import { CircleAlert, FilePlus2 } from "@lucide/vue"
 import { applicationApi } from "@/entities/application"
 import { decisionApi, decisionKeys } from "@/entities/decision"
 import { applicationKeys } from "@/entities/application/model"
-import { hhAccountApi, hhAccountKeys, hhAccountNameById } from "@/entities/hh-account"
-import { AccountFilter } from "@/features/account-filter"
+import { AccountChip, hhAccountNameById, useAccountScope } from "@/entities/hh-account"
 import { DecisionVerdictFilter } from "@/features/decision-filter"
 import { RefreshButton } from "@/features/refresh-button"
 import {
@@ -34,21 +33,15 @@ import {
 import { PageHeader } from "@/widgets/page-header"
 
 const verdict = ref("all")
-const account = ref("all")
-
-const accountsQuery = useQuery({
-  key: () => hhAccountKeys.list(),
-  query: () => hhAccountApi.list()
-})
-const accounts = computed<ReadonlyArray<HhAccountRecord>>(() => accountsQuery.data.value ?? [])
+const { accounts, accountId, hhAccountId } = useAccountScope()
 
 const query = useQuery({
-  key: () => decisionKeys.list(verdict.value, account.value),
+  key: () => decisionKeys.list(verdict.value, accountId.value),
   query: () =>
     decisionApi.list({
       limit: 200,
       verdict: verdict.value === "all" ? undefined : verdict.value,
-      hhAccountId: account.value === "all" ? undefined : account.value
+      hhAccountId: hhAccountId.value
     })
 })
 
@@ -149,11 +142,7 @@ const columns: ColumnDef<DecisionRecord>[] = [
     accessorFn: (row) => hhAccountNameById(accounts.value, row.hhAccountId),
     header: sortableHeader<DecisionRecord>("Аккаунт"),
     cell: ({ row }) =>
-      h(
-        "span",
-        { class: row.original.hhAccountId ? "" : "text-muted-foreground" },
-        row.original.hhAccountId ? hhAccountNameById(accounts.value, row.original.hhAccountId) : "—"
-      )
+      h(AccountChip, { accountId: row.original.hhAccountId, accounts: accounts.value })
   },
   {
     id: "role",
@@ -233,7 +222,6 @@ const columns: ColumnDef<DecisionRecord>[] = [
     >
       <template #toolbar>
         <DecisionVerdictFilter v-model="verdict" />
-        <AccountFilter v-model="account" :accounts="accounts" />
         <span class="pb-2 text-xs text-muted-foreground">Показано: {{ decisions.length }}</span>
       </template>
     </DataTable>
