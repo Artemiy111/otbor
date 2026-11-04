@@ -21,15 +21,17 @@ const props = defineProps<{ page: VacancyPage; data: VacancyDetail; contacts: Re
 
 const variant = computed(() => props.page.passportView.value)
 const rows = computed(() => props.page.recon.value)
-const order: ReadonlyArray<ReconGroup> = ["profile", "apply", "risk", "perk"]
+// The profile lives in the header chips; this block is about the response and the risks.
+const order: ReadonlyArray<ReconGroup> = ["apply", "risk", "perk"]
 const groups = computed(() =>
   order
     .map((group) => ({ group, title: RECON_GROUPS[group], rows: rows.value.filter((row) => row.group === group) }))
     .filter((entry) => entry.rows.length > 0)
 )
-const conflicts = computed(() => rows.value.filter((row) => row.conflict))
-const agreed = computed(() => rows.value.filter((row) => !row.conflict && row.answered > 1))
-const single = computed(() => rows.value.filter((row) => !row.conflict && row.answered === 1))
+const all = computed(() => rows.value.filter((row) => row.group !== "profile"))
+const conflicts = computed(() => all.value.filter((row) => row.conflict))
+const agreed = computed(() => all.value.filter((row) => !row.conflict && row.answered > 1))
+const single = computed(() => all.value.filter((row) => !row.conflict && row.answered === 1))
 
 const isValueRow = (row: ReconRow) =>
   row.group === "profile" && Object.values(row.cells).some((cell) => cell.norm !== null && cell.norm !== "да")
@@ -110,7 +112,7 @@ const cap = "text-[10px] font-semibold uppercase tracking-wide text-muted-foregr
         <ReconDots :row="{ key: 'legend', group: 'profile', label: '', cells: { hh: { norm: 'x', text: null }, text: { norm: 'x', text: null }, ai: { norm: 'x', text: null } }, conflict: false, answered: 3, summary: '' }" />
         hh · текст · ИИ
       </span>
-      <span v-if="rows.length > 0">
+      <span v-if="all.length > 0">
         совпало <b class="text-emerald-300">{{ agreed.length }}</b>
         <template v-if="conflicts.length > 0">, расходятся <b class="text-amber-300">{{ conflicts.length }}</b></template>
         <template v-if="single.length > 0">, один источник {{ single.length }}</template>
@@ -118,7 +120,7 @@ const cap = "text-[10px] font-semibold uppercase tracking-wide text-muted-foregr
       <span v-if="!page.analysis.value && !page.analysisPending.value" class="text-amber-300">модель вакансию не разбирала</span>
     </div>
 
-    <p v-if="rows.length === 0" class="text-xs text-muted-foreground">Ничего особенного в вакансии не найдено.</p>
+    <p v-if="all.length === 0" class="text-xs text-muted-foreground">Особых требований к отклику, рисков и плюсов не найдено.</p>
 
     <!-- A: chips with a three-letter source mark -->
     <div v-else-if="variant === 'chips'" class="space-y-1.5">
@@ -185,7 +187,7 @@ const cap = "text-[10px] font-semibold uppercase tracking-wide text-muted-foregr
           </li>
         </ul>
       </div>
-      <div v-for="entry in groups.filter((e) => e.group !== 'profile')" :key="entry.group" class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+      <div v-for="entry in groups" :key="entry.group" class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
         <span :class="cap">{{ entry.title }}</span>
         <span
           v-for="row in entry.rows.filter((r) => !r.conflict)"
@@ -195,17 +197,6 @@ const cap = "text-[10px] font-semibold uppercase tracking-wide text-muted-foregr
           :class="entry.group === 'risk' ? 'bg-red-500/10 text-red-200' : entry.group === 'perk' ? 'bg-emerald-500/10 text-emerald-200' : 'bg-muted/50'"
         >{{ chipLabel(row) }}</span>
       </div>
-      <details v-if="groups.some((e) => e.group === 'profile')" class="text-xs">
-        <summary class="cursor-pointer text-muted-foreground">О вакансии: {{ groups.find((e) => e.group === "profile")?.rows.length }} параметров</summary>
-        <ul class="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-          <template v-for="row in groups.find((e) => e.group === 'profile')?.rows" :key="row.key">
-            <li class="contents">
-              <span class="text-muted-foreground">{{ row.label }}</span>
-              <span>{{ distinctTexts(row).map((i) => i.text).join(" ≠ ") }} <ReconDots :row="row" /></span>
-            </li>
-          </template>
-        </ul>
-      </details>
     </div>
 
     <!-- numbers, responses, contacts -->

@@ -168,11 +168,18 @@ export const buildRecon = (
         ? NONE
         : value(String(Math.round(aiYears)), aiYears <= 0 ? "без опыта" : `от ${Math.round(aiYears)} лет`)
   })
+  // hh lists every format the employer allows ("гибрид, удалённо"); the model picks the one
+  // the text really describes. A pick inside hh's list is a refinement, not a conflict.
   const hhModes = [...new Set(detail.vacancy.workFormats.map(hhMode).filter((m): m is string => m !== null))].sort()
   const aiMode = fv(a?.workMode)
+  const aiModeKnown = aiMode !== null && aiMode !== "unspecified" ? aiMode : null
+  const hhModeText = hhModes.map((m) => MODE_TEXT[m] ?? m).join(", ")
   add("format", "profile", "Формат", {
-    hh: hhModes.length === 0 ? NONE : value(hhModes.join("+"), hhModes.map((m) => MODE_TEXT[m] ?? m).join(", ")),
-    ai: aiMode === null || aiMode === "unspecified" ? NONE : value(aiMode, MODE_TEXT[aiMode] ?? aiMode)
+    hh:
+      hhModes.length === 0
+        ? NONE
+        : value(aiModeKnown !== null && hhModes.includes(aiModeKnown) ? aiModeKnown : hhModes.join("+"), hhModeText),
+    ai: aiModeKnown === null ? NONE : value(aiModeKnown, MODE_TEXT[aiModeKnown] ?? aiModeKnown)
   })
   const aiEmployment = fv(a?.employment)
   add("employment", "profile", "Оформление", {

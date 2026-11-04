@@ -11,6 +11,7 @@ import VacancyLayoutDesk from "./VacancyLayoutDesk.vue"
 import VacancyLayoutFocus from "./VacancyLayoutFocus.vue"
 import VacancyLayoutSwitch from "./VacancyLayoutSwitch.vue"
 import VacancyMetaLine from "./VacancyMetaLine.vue"
+import VacancyProfileChips from "./VacancyProfileChips.vue"
 import VacancyPassportSwitch from "./VacancyPassportSwitch.vue"
 import VacancyStatusBar from "./VacancyStatusBar.vue"
 
@@ -64,7 +65,10 @@ const data = page.data
 
     <template v-else-if="data">
       <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
-        <VacancyMetaLine :data="data" :recon="page.reconMap.value" class="min-w-0 flex-1" />
+        <div class="min-w-0 flex-1 space-y-2.5">
+          <VacancyMetaLine :data="data" />
+          <VacancyProfileChips :data="data" :recon="page.recon.value" />
+        </div>
         <div class="flex flex-wrap items-center gap-3">
           <VacancyPassportSwitch v-model="page.passportView.value" />
           <VacancyLayoutSwitch v-model="layout" />

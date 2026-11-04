@@ -27,13 +27,13 @@ const tone = (stance: string) =>
 </script>
 
 <template>
-  <span class="inline-flex shrink-0 items-center gap-px align-middle" aria-hidden="true">
+  <span class="inline-flex shrink-0 items-center gap-0.5 align-middle" aria-hidden="true">
     <span
       v-for="dot in dots"
       :key="dot.id"
       :title="dot.title"
-      class="rounded-[3px] px-[3px] text-[8px] font-bold uppercase leading-[11px]"
+      class="rounded px-1 text-[9px] font-semibold leading-[13px]"
       :class="tone(dot.stance)"
-    >{{ dot.short === "текст" ? "т" : dot.short === "ИИ" ? "и" : "h" }}</span>
+    >{{ dot.short === "текст" ? "т" : dot.short }}</span>
   </span>
 </template>
