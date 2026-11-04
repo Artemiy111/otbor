@@ -5,6 +5,7 @@ import type { HhAccountRecord, ResumeEnrichment, ResumeRecord } from "@otbor/con
 import { CircleAlert } from "@lucide/vue"
 import { hhAccountApi, hhAccountKeys, useDefaultAccount } from "@/entities/hh-account"
 import { resumeApi, resumeKeys } from "@/entities/resume"
+import { AccountResumePicker } from "@/features/vacancy-apply"
 import { RefreshButton } from "@/features/refresh-button"
 import { describeError, formatDate } from "@/shared/lib"
 import {
@@ -20,11 +21,6 @@ import {
   CardTitle,
   Input,
   Label,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   Textarea
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
@@ -47,10 +43,11 @@ watch(accounts, (list) => {
 }, { immediate: true })
 
 const resumesQuery = useQuery({
-  key: () => resumeKeys.list(selectedAccountId.value),
-  query: () => resumeApi.list(selectedAccountId.value || undefined)
+  key: () => resumeKeys.list(),
+  query: () => resumeApi.list()
 })
-const resumes = computed<ReadonlyArray<ResumeRecord>>(() => resumesQuery.data.value ?? [])
+const allResumes = computed<ReadonlyArray<ResumeRecord>>(() => resumesQuery.data.value ?? [])
+const resumes = computed(() => allResumes.value.filter((r) => r.hhAccountId === selectedAccountId.value))
 const selectedResumeId = ref<string>("")
 watch(resumes, (list) => {
   if (selectedResumeId.value === "" && list.length > 0) selectedResumeId.value = list[0]!.id
@@ -176,38 +173,15 @@ const refresh = () => {
       <AlertDescription>{{ describeError(resumesQuery.error.value) }}</AlertDescription>
     </Alert>
 
-    <div class="grid gap-4 lg:grid-cols-[280px_1fr]">
-      <Card>
-        <CardHeader>
-          <CardTitle>Аккаунт</CardTitle>
-        </CardHeader>
-        <CardContent class="space-y-3">
-          <Select v-model="selectedAccountId">
-            <SelectTrigger>
-              <SelectValue placeholder="Выберите аккаунт" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem v-for="account in accounts" :key="account.id" :value="account.id">
-                {{ account.label }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-          <div class="space-y-1">
-            <Label>Резюме</Label>
-            <Select v-model="selectedResumeId">
-              <SelectTrigger>
-                <SelectValue placeholder="Выберите резюме" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem v-for="resume in resumes" :key="resume.id" :value="resume.id">
-                  {{ resume.title }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+    <AccountResumePicker
+      v-model:account-id="selectedAccountId"
+      v-model:resume-id="selectedResumeId"
+      class="mb-4 max-w-xl"
+      :accounts="accounts"
+      :resumes="allResumes"
+    />
 
+    <div>
       <Card v-if="selectedResume">
         <CardHeader>
           <CardTitle>{{ selectedResume.title }}</CardTitle>
