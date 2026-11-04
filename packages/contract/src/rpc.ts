@@ -1201,6 +1201,21 @@ export const DraftGenerate = Rpc.make("DraftGenerate", {
   error: ApiError
 })
 
+/** The exact prompt `DraftGenerate` would send for these inputs. Read-only; calls no model. */
+export const DraftPromptPreview = Rpc.make("DraftPromptPreview", {
+  payload: Schema.Struct({
+    vacancyId: VacancyId,
+    hhAccountId: HhAccountId,
+    resumeId: Schema.optional(Schema.String)
+  }),
+  success: Schema.Struct({
+    system: Schema.String,
+    user: Schema.String,
+    promptVersion: Schema.String
+  }),
+  error: ApiError
+})
+
 export const InferenceGet = Rpc.make("InferenceGet", {
   payload: Schema.Struct({ id: HarnessJobId }),
   success: HarnessJob,
@@ -1423,6 +1438,7 @@ export const OtborRpcs = RpcGroup.make(
   HarnessReportCatalog,
   AgentCatalogGet,
   DraftGenerate,
+  DraftPromptPreview,
   InferenceGet,
   WritingCoverLetter,
   WritingAnswers,

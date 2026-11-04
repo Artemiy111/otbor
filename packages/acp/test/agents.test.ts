@@ -29,7 +29,12 @@ describe("resolveAgents", () => {
     const claude = resolveAgents({}).agents.find((agent) => agent.id === "claude")!
     expect(claude.command).toBe("node")
     expect(claude.args).toEqual([bin!])
-    expect(claude.sessionMeta).toEqual({ disableBuiltInTools: true })
+    expect(claude.sessionMeta).toMatchObject({
+      disableBuiltInTools: true,
+      // The operator's own CLAUDE.md and memory must not reach an applicant's letter.
+      claudeCode: { options: { settingSources: [] } }
+    })
+    expect(typeof (claude.sessionMeta as { systemPrompt?: unknown }).systemPrompt).toBe("string")
   })
 
   test("OTBOR_ACP_AGENTS replaces a known agent and adds a new one", () => {

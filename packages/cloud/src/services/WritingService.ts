@@ -65,6 +65,15 @@ export interface WritingServiceShape {
   readonly resume: (input: ResumeInput) => Effect.Effect<{ readonly job: HarnessJob }, ApiError>
   /** Cover letter and employer-test answers of a vacancy in one model call. No application needed. */
   readonly draft: (input: DraftInput) => Effect.Effect<{ readonly job: HarnessJob }, ApiError>
+  /** The exact prompt `draft` would send. Calls no model. */
+  readonly draftPrompt: (input: {
+    readonly vacancyId: string
+    readonly hhAccountId: string
+    readonly resumeId?: string
+  }) => Effect.Effect<
+    { readonly system: string; readonly user: string; readonly promptVersion: string },
+    ApiError
+  >
 }
 
 /* -------------------------------------------------------------------------- */
@@ -311,6 +320,59 @@ export class WritingService extends Context.Service<WritingService, WritingServi
           return { job: outcome.job }
         })
 
+      /** Loads what a draft prompt needs and builds it. Shared by generate and preview. */
+      const loadDraftPrompt = (
+        tx: Executor,
+        input: { readonly vacancyId: string; readonly hhAccountId: string; readonly resumeId?: string }
+      ) =>
+        Effect.gen(function*() {
+          const account = yield* tx.execute(
+            sql`select first_name, last_name, label from hh_account where id = ${input.hhAccountId} limit 1`
+          )
+          const accountRow = account.rows[0] as
+            | { first_name?: string | null; last_name?: string | null; label?: string | null }
+            | undefined
+          if (accountRow === undefined) return missing("HhAccount", input.hhAccountId)
+
+          const vacancy = yield* VacancyRepository.findById(tx, input.vacancyId)
+          if (vacancy === null) return missing("Vacancy", input.vacancyId)
+
+          const resumeId = input.resumeId ?? null
+          const resumeText =
+            resumeId === null ? null : yield* resumeTextFor(tx, currentUser.userId, resumeId)
+          if (resumeId !== null && resumeText === null) return missing("Resume", resumeId)
+
+          // The form is the vacancy's, the same for every applicant. Without one
+          // (no test, never read) there are no questions to answer.
+          const state = yield* VacancyFormRepository.getState(tx, vacancy.id)
+          const form = state.form
+          const signal = yield* tx.execute(
+            sql`select signals->'hh'->>'letterRequired' as required from vacancy where id = ${vacancy.id} limit 1`
+          )
+          const letterRequired =
+            (signal.rows[0] as { required?: string | null } | undefined)?.required === "true"
+
+          // An account without a first and last name falls back to its label.
+          const hasName = (accountRow.first_name ?? "").trim() !== "" || (accountRow.last_name ?? "").trim() !== ""
+          const prompt = buildDraftPrompt({
+            vacancy: vacancyContext(vacancy),
+            resumeText,
+            applicant: hasName
+              ? { firstName: accountRow.first_name ?? null, lastName: accountRow.last_name ?? null }
+              : { firstName: accountRow.label ?? null },
+            coverLetter: form?.coverLetter ?? (letterRequired ? "required" : "optional"),
+            questions: (form?.questions ?? []).map((question) => ({
+              id: question.id,
+              kind: question.kind,
+              text: question.text,
+              required: question.required,
+              maxLength: question.maxLength ?? null,
+              options: question.options
+            }))
+          })
+          return { _tag: "ok" as const, prompt }
+        })
+
       const draft: WritingServiceShape["draft"] = (input) =>
         Effect.gen(function*() {
           if (input.harness.trim() === "") {
@@ -319,45 +381,12 @@ export class WritingService extends Context.Service<WritingService, WritingServi
           const outcome = yield* database
             .asUser(currentUser.userId, (tx) =>
               Effect.gen(function*() {
-                const account = yield* tx.execute(
-                  sql`select id from hh_account where id = ${input.hhAccountId} limit 1`
-                )
-                if (account.rows.length === 0) return missing("HhAccount", input.hhAccountId)
-
-                const vacancy = yield* VacancyRepository.findById(tx, input.vacancyId)
-                if (vacancy === null) return missing("Vacancy", input.vacancyId)
-
-                const resumeId = input.resumeId ?? null
-                const resumeText =
-                  resumeId === null ? null : yield* resumeTextFor(tx, currentUser.userId, resumeId)
-                if (resumeId !== null && resumeText === null) return missing("Resume", resumeId)
-
-                // The form is the vacancy's, the same for every applicant. Without
-                // one (no test, never read) there are no questions to answer.
-                const state = yield* VacancyFormRepository.getState(tx, vacancy.id)
-                const form = state.form
-                const signal = yield* tx.execute(
-                  sql`select signals->'hh'->>'letterRequired' as required from vacancy where id = ${vacancy.id} limit 1`
-                )
-                const letterRequired = (signal.rows[0] as { required?: string | null } | undefined)?.required === "true"
-                const prompt = buildDraftPrompt({
-                  vacancy: vacancyContext(vacancy),
-                  resumeText,
-                  coverLetter: form?.coverLetter ?? (letterRequired ? "required" : "optional"),
-                  questions: (form?.questions ?? []).map((question) => ({
-                    id: question.id,
-                    kind: question.kind,
-                    text: question.text,
-                    required: question.required,
-                    maxLength: question.maxLength ?? null,
-                    options: question.options
-                  })),
-                  ...(input.language === undefined ? {} : { language: input.language })
-                })
+                const loaded = yield* loadDraftPrompt(tx, input)
+                if (loaded._tag === "missing") return loaded
                 const job = yield* enqueue(tx, {
                   userId: currentUser.userId,
                   hhAccountId: input.hhAccountId,
-                  prompt,
+                  prompt: loaded.prompt,
                   model: modelOf(input.model),
                   harness: input.harness.trim(),
                   effort: modelOf(input.effort)
@@ -373,7 +402,22 @@ export class WritingService extends Context.Service<WritingService, WritingServi
           return { job: outcome.job }
         })
 
-      return WritingService.of({ coverLetter, answers, resume, draft })
+      const draftPrompt: WritingServiceShape["draftPrompt"] = (input) =>
+        Effect.gen(function*() {
+          const outcome = yield* database
+            .asUser(currentUser.userId, (tx) => loadDraftPrompt(tx, input))
+            .pipe(Effect.mapError(toStorageError("writing.draftPrompt")))
+          if (outcome._tag === "missing") {
+            return yield* new NotFound({ entity: outcome.entity, id: outcome.id })
+          }
+          return {
+            system: outcome.prompt.system,
+            user: outcome.prompt.user,
+            promptVersion: outcome.prompt.promptVersion
+          }
+        })
+
+      return WritingService.of({ coverLetter, answers, resume, draft, draftPrompt })
     })
   )
 }

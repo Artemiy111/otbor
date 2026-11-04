@@ -65,6 +65,19 @@ export const applicationApi = {
         force: input.force
       })
     ),
+  /** The exact prompt a generation would send. Read-only. */
+  draftPrompt: (input: {
+    readonly vacancyId: string
+    readonly hhAccountId: string
+    readonly resumeId?: string
+  }): Promise<{ readonly system: string; readonly user: string; readonly promptVersion: string }> =>
+    call((client) =>
+      client.DraftPromptPreview({
+        vacancyId: input.vacancyId as VacancyId,
+        hhAccountId: input.hhAccountId as HhAccountId,
+        resumeId: input.resumeId
+      })
+    ),
   agentCatalog: (): Promise<AgentCatalog> => call((client) => client.AgentCatalogGet({})),
   draftGenerate: (input: {
     readonly vacancyId: string

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue"
 import { useQuery } from "@pinia/colada"
-import { LoaderCircle, Sparkles } from "@lucide/vue"
+import { FileText, LoaderCircle, Sparkles } from "@lucide/vue"
 import type { FormQuestion, HarnessJob } from "@otbor/contract"
 import { parseGeneratedDraft, type GeneratedDraft } from "@otbor/domain"
 import { applicationApi, applicationKeys } from "@/entities/application"
@@ -9,6 +9,11 @@ import { describeError } from "@/shared/lib"
 import {
   Button,
   HarnessModelPicker,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
   resolveHarnessEffort,
   type HarnessEntry,
   type HarnessModel
@@ -155,6 +160,30 @@ watch([provider, model, effort], () => {
   if (model.value !== "") writeSaved()
 })
 
+/* ---- the prompt that would be sent (read-only) --------------------------- */
+
+const promptOpen = ref(false)
+const promptText = ref<{ system: string; user: string; promptVersion: string } | null>(null)
+const promptError = ref<string | null>(null)
+const promptLoading = ref(false)
+const showPrompt = async () => {
+  promptOpen.value = true
+  promptLoading.value = true
+  promptError.value = null
+  promptText.value = null
+  try {
+    promptText.value = await applicationApi.draftPrompt({
+      vacancyId: props.vacancyId,
+      hhAccountId: props.accountId,
+      resumeId: props.resumeId || undefined
+    })
+  } catch (error) {
+    promptError.value = describeError(error)
+  } finally {
+    promptLoading.value = false
+  }
+}
+
 /* ---- running ------------------------------------------------------------- */
 
 const running = ref(false)
@@ -260,8 +289,40 @@ const run = async () => {
         <Sparkles v-else class="size-4" />
         Сгенерировать письмо и ответы
       </Button>
+      <Button variant="ghost" size="sm" :disabled="accountId === ''" @click="showPrompt">
+        <FileText class="size-4" />
+        Промпт
+      </Button>
       <span v-if="running" class="text-xs text-muted-foreground">Модель думает, {{ elapsed }} с…</span>
     </div>
+
+    <Sheet v-model:open="promptOpen">
+      <SheetContent side="right" class="w-full overflow-y-auto p-4 sm:max-w-2xl">
+        <SheetHeader>
+          <SheetTitle>Промпт для модели</SheetTitle>
+          <SheetDescription>
+            Только просмотр: это ровно то, что уйдёт в модель при генерации
+            <template v-if="promptText">(версия {{ promptText.promptVersion }})</template>.
+          </SheetDescription>
+        </SheetHeader>
+        <p v-if="promptLoading" class="flex items-center gap-2 text-sm text-muted-foreground">
+          <LoaderCircle class="size-4 animate-spin" /> Собираю промпт…
+        </p>
+        <p v-else-if="promptError" class="text-sm text-amber-300">{{ promptError }}</p>
+        <template v-else-if="promptText">
+          <section class="space-y-1.5">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Системный промпт</h3>
+            <pre class="whitespace-pre-wrap rounded-md border border-border bg-muted/30 p-3 text-xs leading-relaxed">{{ promptText.system }}</pre>
+          </section>
+          <section class="space-y-1.5">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Данные запроса (вакансия, резюме, вопросы)
+            </h3>
+            <pre class="whitespace-pre-wrap rounded-md border border-border bg-muted/30 p-3 text-xs leading-relaxed">{{ promptText.user }}</pre>
+          </section>
+        </template>
+      </SheetContent>
+    </Sheet>
     <p v-if="catalogQuery.isLoading.value" class="text-xs text-muted-foreground">Загружаю список моделей…</p>
     <p v-else-if="catalogError" class="text-xs text-amber-300">{{ catalogError }}</p>
     <p v-else-if="catalog !== null && (catalog.harnesses.length === 0 || catalogEmpty)" class="text-xs text-amber-300">

@@ -254,6 +254,7 @@ describe("buildDraftPrompt", () => {
       resumeText: "5 лет в DevOps",
       coverLetter: "required",
       language: "ru",
+      applicant: { firstName: "Герман", lastName: "Воробцов" },
       questions: [
         {
           id: "387049547",
@@ -264,6 +265,8 @@ describe("buildDraftPrompt", () => {
         }
       ]
     })
+    expect(prompt.user).toContain("APPLICANT\nName: Герман Воробцов")
+    expect(prompt.system).toContain("Только это имя")
     expect(prompt.user).toContain("COVER LETTER: required")
     expect(prompt.user).toContain("id=387049547 kind=single required=true")
     expect(prompt.user).toContain("optionId=387049548: Удалённо")

@@ -245,6 +245,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
       HarnessReportCatalog: (payload) => agentCatalog.report(payload),
       AgentCatalogGet: () => agentCatalog.get(),
       DraftGenerate: (payload) => writing.draft(payload),
+      DraftPromptPreview: (payload) => writing.draftPrompt(payload),
 
       WritingCoverLetter: (payload) => writing.coverLetter(payload),
       WritingAnswers: (payload) => writing.answers(payload),

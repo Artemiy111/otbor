@@ -56,7 +56,14 @@ export const CLAUDE_UNSET_ENV: ReadonlyArray<string> = ["ANTHROPIC_API_KEY", "AN
  * The client additionally rejects any permission request that still arrives.
  */
 export const CLAUDE_SESSION_META: Readonly<Record<string, unknown>> = {
-  disableBuiltInTools: true
+  disableBuiltInTools: true,
+  // The coding-agent persona is replaced: this session only writes text.
+  systemPrompt:
+    "You are a writing assistant. Follow the instructions in the user message exactly. " +
+    "Use only the facts given in the message; never use anything you may know about the person running this program.",
+  // Do not load the operator's own CLAUDE.md, memory or project settings: they describe
+  // the operator, not the applicant, and leaked their name into a letter for someone else.
+  claudeCode: { options: { settingSources: [] } }
 }
 
 /** Absolute path of the adapter's bin script inside node_modules, or null. */

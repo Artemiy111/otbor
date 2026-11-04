@@ -532,6 +532,8 @@ export interface DraftPromptInput {
   readonly coverLetter: "required" | "optional" | "absent"
   readonly questions: ReadonlyArray<DraftQuestion>
   readonly notes?: string | null
+  /** Who is applying. The only name the model may use for the applicant. */
+  readonly applicant?: { readonly firstName?: string | null; readonly lastName?: string | null } | null
   readonly language?: WritingLanguageOption
 }
 
@@ -540,9 +542,12 @@ const DRAFT_SYSTEM: Record<WritingLanguage, string> = {
     "Ты помогаешь соискателю откликнуться на вакансию на hh.ru: пишешь сопроводительное",
     "письмо и заполняешь тест работодателя. Всё пишется от первого лица соискателя.",
     "",
-    "Источники, которым можно верить: VACANCY, RESUME и APPLICANT NOTES.",
+    "Источники, которым можно верить: APPLICANT, VACANCY, RESUME и APPLICANT NOTES.",
     "",
     "Общие правила:",
+    "- Имя соискателя указано в APPLICANT. Только это имя можно использовать. Не называй",
+    "  никаких других имён и не бери имена из памяти или контекста. Если имя не нужно,",
+    "  не представляйся.",
     "- Не выдумывай компании, проекты, технологии, метрики, образование, зарплату и",
     "  другие факты, которых нет в RESUME или APPLICANT NOTES.",
     "- Никогда не пиши, что чего-то «нет в резюме» или «не указано». Если факта нет,",
@@ -577,9 +582,11 @@ const DRAFT_SYSTEM: Record<WritingLanguage, string> = {
     "You help an applicant respond to an hh.ru vacancy: you write the cover letter and",
     "fill in the employer's test. Everything is written in the applicant's first person.",
     "",
-    "Trusted sources: VACANCY, RESUME and APPLICANT NOTES.",
+    "Trusted sources: APPLICANT, VACANCY, RESUME and APPLICANT NOTES.",
     "",
     "General rules:",
+    "- The applicant's name is given in APPLICANT. Use only that name. Never use any other",
+    "  name or one from memory or context. If a name is not needed, do not introduce yourself.",
     "- Do not invent companies, projects, technologies, metrics, education, salary or",
     "  any fact that is not in RESUME or APPLICANT NOTES.",
     "- Never write that something is missing from the resume. If a fact is unknown,",
@@ -605,6 +612,11 @@ const DRAFT_SYSTEM: Record<WritingLanguage, string> = {
   ].join("\n")
 }
 
+const applicantBlock = (applicant: DraftPromptInput["applicant"]): string => {
+  const name = [text(applicant?.firstName), text(applicant?.lastName)].filter((part) => part !== "").join(" ")
+  return ["APPLICANT", `Name: ${name === "" ? "(not provided: do not introduce yourself by name)" : name}`].join("\n")
+}
+
 const draftQuestionBlock = (questions: ReadonlyArray<DraftQuestion>): string =>
   questions.length === 0
     ? "- none"
@@ -623,6 +635,8 @@ export const buildDraftPrompt = (input: DraftPromptInput): WritingPrompt => {
   const language = resolveLanguage(input.language, vacancyHaystack(input.vacancy))
   const user = [
     `LANGUAGE: ${language}${language === "ru" ? " (пиши по-русски)" : " (write in English)"}`,
+    "",
+    applicantBlock(input.applicant),
     "",
     vacancyBlock(language, input.vacancy),
     "",
