@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, ref, watch } from "vue"
 import { useQuery } from "@pinia/colada"
 import { CircleAlert, ExternalLink } from "@lucide/vue"
 import { applicationApi } from "@/entities/application"
 import { AccountChip, useDefaultAccount } from "@/entities/hh-account"
 import { companyApi, companyKeys } from "@/entities/company"
+import { hydrationApi } from "@/entities/hydration"
 import { RefreshButton } from "@/features/refresh-button"
 import {
   describeError,
@@ -45,6 +46,28 @@ const query = useQuery({
   key: () => companyKeys.detail(props.id),
   query: () => companyApi.get(props.id)
 })
+
+/**
+ * Opening a company re-hydrates it from hh.ru in the background: the cached
+ * row renders at once and is replaced only if the fresh profile differs.
+ * A failed or blocked refresh is not an error here, the stored data stays.
+ */
+const refreshing = ref(false)
+watch(
+  () => props.id,
+  async (id) => {
+    refreshing.value = true
+    try {
+      const { hydrated } = await hydrationApi.hydrateEmployer(id)
+      if (hydrated && id === props.id) await query.refetch()
+    } catch {
+      // keep showing the stored profile
+    } finally {
+      if (id === props.id) refreshing.value = false
+    }
+  },
+  { immediate: true }
+)
 
 const data = computed(() => query.data.value)
 const employer = computed(() => data.value?.employer)
@@ -97,7 +120,7 @@ const errorText = computed(() =>
             <ExternalLink class="h-4 w-4" />
           </a>
         </Button>
-        <RefreshButton :loading="query.isLoading.value" @refresh="query.refetch()" />
+        <RefreshButton :loading="query.isLoading.value || refreshing" @refresh="query.refetch()" />
       </template>
     </PageHeader>
 
