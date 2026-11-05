@@ -400,7 +400,54 @@ if (!enabled || serverUrl === null) {
       const [row] = await applicationsOf(ctx.tenant.accountId)
       expect(row!.state).toBe("needs_human")
       expect(row!.last_error).toContain("writing job")
+      // The harness message is not lost: the person sees WHY.
+      expect(row!.last_error).toContain("inference exhausted retries: inference_failed: agent exited 1")
+      const [stored] = await owner((tx) =>
+        tx
+          .execute(sql`select last_error from harness_jobs where stage = 'inference' and hh_account_id = ${ctx.tenant.accountId}`)
+          .pipe(Effect.map((result) => result.rows as unknown as ReadonlyArray<{ last_error: string }>))
+      )
+      expect(stored!.last_error).toBe("inference exhausted retries: inference_failed: agent exited 1")
     }, 60_000)
+
+    test("the writing job carries the operator's agent, model and effort; unset means an empty payload tail", async () => {
+      const ctx = await setup("aa-drafts-writer")
+      await support.applyFilterSet(ctx.tenant.userId, {
+        hhAccountId: ctx.tenant.accountId,
+        filter: {},
+        autoMode: "drafts",
+        writingHarness: "claude",
+        writingModel: "haiku",
+        writingEffort: "low"
+      })
+      await decided(ctx, "aa-drafts-writer-1", 90)
+      await tick(ctx.tenant.userId)
+      await readForms(ctx, responseHtml)
+      await tick(ctx.tenant.userId)
+      const [job] = await owner((tx) =>
+        tx
+          .execute(sql`select payload from harness_jobs where stage = 'inference' and hh_account_id = ${ctx.tenant.accountId}`)
+          .pipe(Effect.map((result) => result.rows as unknown as ReadonlyArray<{ payload: Record<string, unknown> }>))
+      )
+      expect(job!.payload).toMatchObject({ harness: "claude", model: "haiku", effort: "low" })
+      expect(typeof job!.payload.prompt).toBe("string")
+
+      // Cleared settings: the harness default (no keys at all).
+      const other = await setup("aa-drafts-writer-none")
+      await configure(other, { autoMode: "drafts" })
+      await decided(other, "aa-drafts-writer-2", 90)
+      await tick(other.tenant.userId)
+      await readForms(other, responseHtml)
+      await tick(other.tenant.userId)
+      const [plain] = await owner((tx) =>
+        tx
+          .execute(sql`select payload from harness_jobs where stage = 'inference' and hh_account_id = ${other.tenant.accountId}`)
+          .pipe(Effect.map((result) => result.rows as unknown as ReadonlyArray<{ payload: Record<string, unknown> }>))
+      )
+      expect(plain!.payload.harness).toBeUndefined()
+      expect(plain!.payload.model).toBeUndefined()
+      expect(plain!.payload.effort).toBeUndefined()
+    }, 120_000)
   })
 
   /* ------------------------------------------------------------------------ */

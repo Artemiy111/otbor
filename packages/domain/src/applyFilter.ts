@@ -123,7 +123,10 @@ export const DEFAULT_APPLY_SETTINGS: ApplyFilterSettings = {
   sort: "priority",
   sortDirection: "desc",
   minPriority: 0,
-  boosts: DEFAULT_BOOSTS
+  boosts: DEFAULT_BOOSTS,
+  writingHarness: null,
+  writingModel: null,
+  writingEffort: null
 }
 
 /** A filter plus the scoring settings stored next to it. */

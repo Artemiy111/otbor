@@ -80,7 +80,7 @@ const SOURCE_TEXT: Record<ApplyFilterView["source"], string> = {
 
 type FilterLike =
   & Pick<ApplyFilterView, "filter" | "minFit" | "tests" | "freshHalfLifeHours" | "templatePresetId">
-  & Partial<Pick<ApplyFilterView, "autoMode" | "dailyLimit" | "batchSize" | "sort" | "sortDirection" | "minPriority" | "boosts">>
+  & Partial<Pick<ApplyFilterView, "autoMode" | "dailyLimit" | "batchSize" | "sort" | "sortDirection" | "minPriority" | "boosts" | "writingHarness" | "writingModel" | "writingEffort">>
 
 const AUTO_TEXT = {
   off: "off (nothing is created or sent; the default)",
@@ -98,6 +98,10 @@ const printAuto = (view: FilterLike, usage?: ApplyUsage) =>
     yield* Console.log(`  sort:            ${view.sort}`)
     yield* Console.log(`  order:           ${view.sortDirection === "asc" ? "asc (worst first, inverted)" : "desc (best first)"}`)
     yield* Console.log(`  min priority:    ${view.minPriority}`)
+    const writer = (value: string | null | undefined) => value ?? "(harness default)"
+    yield* Console.log(`  writing agent:   ${writer(view.writingHarness)}`)
+    yield* Console.log(`  writing model:   ${writer(view.writingModel)}`)
+    yield* Console.log(`  writing effort:  ${writer(view.writingEffort)}`)
     const boosts = view.boosts ?? []
     yield* Console.log(`  boosts:          ${boosts.length === 0 ? "none" : ""}`.trimEnd())
     for (const boost of boosts) {
@@ -211,6 +215,18 @@ const set = Command.make(
       Flag.optional
     ),
     minPriority: Flag.Finite("min-priority").pipe(Flag.withDescription("Skip decisions below this priority (>= 0)"), Flag.optional),
+    writingHarness: Flag.String("writing-harness").pipe(
+      Flag.withDescription("ACP agent that writes the auto-apply letters, e.g. claude (empty string clears: harness default)"),
+      Flag.optional
+    ),
+    writingModel: Flag.String("writing-model").pipe(
+      Flag.withDescription("Model that writes the auto-apply letters, e.g. haiku (empty string clears)"),
+      Flag.optional
+    ),
+    writingEffort: Flag.String("writing-effort").pipe(
+      Flag.withDescription("Effort level of the writing model, e.g. low (empty string clears)"),
+      Flag.optional
+    ),
     yes: Flag.Boolean("yes").pipe(
       Flag.withDescription("Confirm --auto auto: real applications will be sent on hh.ru"),
       Flag.withDefault(false)
@@ -218,14 +234,15 @@ const set = Command.make(
     account: accountFlag,
     resume: resumeFlag
   },
-  Effect.fn(function*({ minFit, tests, halfLife, auto, dailyLimit, batch, sort, order, minPriority, yes, account, resume }) {
+  Effect.fn(function*({ minFit, tests, halfLife, auto, dailyLimit, batch, sort, order, minPriority, writingHarness, writingModel, writingEffort, yes, account, resume }) {
     if (
       Option.isNone(minFit) && Option.isNone(tests) && Option.isNone(halfLife) && Option.isNone(auto) &&
-      Option.isNone(dailyLimit) && Option.isNone(batch) && Option.isNone(sort) && Option.isNone(order) && Option.isNone(minPriority)
+      Option.isNone(dailyLimit) && Option.isNone(batch) && Option.isNone(sort) && Option.isNone(order) && Option.isNone(minPriority) &&
+      Option.isNone(writingHarness) && Option.isNone(writingModel) && Option.isNone(writingEffort)
     ) {
       return yield* Effect.fail(
         new Error(
-          "Pass at least one of --min-fit, --tests, --half-life-hours, --auto, --daily-limit, --batch, --sort, --order, --min-priority"
+          "Pass at least one of --min-fit, --tests, --half-life-hours, --auto, --daily-limit, --batch, --sort, --order, --min-priority, --writing-harness, --writing-model, --writing-effort"
         )
       )
     }
@@ -269,7 +286,11 @@ const set = Command.make(
       batchSize: Option.getOrUndefined(batch),
       sort: Option.getOrUndefined(sort),
       sortDirection: Option.getOrUndefined(order),
-      minPriority: Option.getOrUndefined(minPriority)
+      minPriority: Option.getOrUndefined(minPriority),
+      // An empty string clears the setting (the cloud treats blank as null).
+      writingHarness: Option.getOrUndefined(writingHarness),
+      writingModel: Option.getOrUndefined(writingModel),
+      writingEffort: Option.getOrUndefined(writingEffort)
     })
     yield* Console.log(`saved the filter of ${hhAccountId}${resumeId === undefined ? "" : ` / ${resumeId}`}`)
     if (Option.isSome(auto) && auto.value === "auto") {

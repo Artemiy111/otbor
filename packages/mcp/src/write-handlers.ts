@@ -113,10 +113,11 @@ export const OtborWriteHandlers = OtborWriteToolkit.toLayer(Effect.gen(function*
       if (
         params.minFit === undefined && params.tests === undefined && params.freshHalfLifeHours === undefined &&
         params.autoMode === undefined && params.dailyLimit === undefined && params.batchSize === undefined &&
-        params.sort === undefined && params.sortDirection === undefined && params.minPriority === undefined
+        params.sort === undefined && params.sortDirection === undefined && params.minPriority === undefined &&
+        params.writingHarness === undefined && params.writingModel === undefined && params.writingEffort === undefined
       ) {
         return yield* fail(
-          "pass at least one of minFit, tests, freshHalfLifeHours, autoMode, dailyLimit, batchSize, sort, sortDirection, minPriority"
+          "pass at least one of minFit, tests, freshHalfLifeHours, autoMode, dailyLimit, batchSize, sort, sortDirection, minPriority, writingHarness, writingModel, writingEffort"
         )
       }
       if (params.autoMode === "auto") {
@@ -165,7 +166,10 @@ export const OtborWriteHandlers = OtborWriteToolkit.toLayer(Effect.gen(function*
         ...(params.batchSize === undefined ? {} : { batchSize: params.batchSize }),
         ...(params.sort === undefined ? {} : { sort: params.sort }),
         ...(params.sortDirection === undefined ? {} : { sortDirection: params.sortDirection }),
-        ...(params.minPriority === undefined ? {} : { minPriority: params.minPriority })
+        ...(params.minPriority === undefined ? {} : { minPriority: params.minPriority }),
+        ...(params.writingHarness === undefined ? {} : { writingHarness: params.writingHarness }),
+        ...(params.writingModel === undefined ? {} : { writingModel: params.writingModel }),
+        ...(params.writingEffort === undefined ? {} : { writingEffort: params.writingEffort })
       }))
       return applyFilterBrief({ ...saved, source: resumeId === undefined ? "account" : "exact" }, accountDirectory(accounts))
     }),

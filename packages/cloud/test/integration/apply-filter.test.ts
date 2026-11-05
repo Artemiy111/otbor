@@ -537,6 +537,39 @@ if (!enabled || serverUrl === null) {
         expect(after.id).toBe(before.id)
       })
 
+      test("writing agent/model/effort: default null, trimmed, kept when omitted, cleared by null or blank, never stale", async () => {
+        const tenant = await support.seedTenant("af-writing")
+        const v = await rich("af-writing-v")
+        const base = await support.applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter: {} })
+        expect(base).toMatchObject({ writingHarness: null, writingModel: null, writingEffort: null })
+        expect((await sweep(tenant.userId, [v])).evaluated).toBe(1)
+
+        const set = await support.applyFilterSet(tenant.userId, {
+          hhAccountId: tenant.accountId,
+          filter: {},
+          writingHarness: " claude ",
+          writingModel: "haiku",
+          writingEffort: "low"
+        })
+        expect(set).toMatchObject({ writingHarness: "claude", writingModel: "haiku", writingEffort: "low" })
+        // Writing settings steer the writer only: the decision stays current.
+        expect((await sweep(tenant.userId, [v])).evaluated).toBe(0)
+
+        const kept = await support.applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter: {}, minFit: 44 })
+        expect(kept).toMatchObject({ writingHarness: "claude", writingModel: "haiku", writingEffort: "low" })
+        const view = await support.applyFilterGet(tenant.userId, { hhAccountId: tenant.accountId })
+        expect(view).toMatchObject({ writingHarness: "claude", writingModel: "haiku", writingEffort: "low" })
+
+        const cleared = await support.applyFilterSet(tenant.userId, {
+          hhAccountId: tenant.accountId,
+          filter: {},
+          writingHarness: null,
+          writingModel: "  ",
+          writingEffort: ""
+        })
+        expect(cleared).toMatchObject({ writingHarness: null, writingModel: null, writingEffort: null })
+      })
+
       test("out-of-range parameters are InvalidInput", async () => {
         const tenant = await support.seedTenant("af-params-invalid")
         const bad = (extra: Record<string, unknown>) =>

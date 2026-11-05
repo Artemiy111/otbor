@@ -289,14 +289,25 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                       stored === null || kit !== null
                         ? null
                         : yield* QueueRepository.findByKey(tx, writingKey(app.id, stored.form.formHash))
+                    // Why a writing job failed (the harness message) goes into the human reason.
+                    const jobError =
+                      job === null || job.status === "done"
+                        ? null
+                        : yield* tx
+                            .execute(sql`select last_error from harness_jobs where id = ${job.id}`)
+                            .pipe(
+                              Effect.map((result) =>
+                                (result.rows[0] as { last_error?: string | null } | undefined)?.last_error ?? null
+                              )
+                            )
                     const submit = yield* QueueRepository.latestFor(tx, app.id, ["submit"])
-                    return { current, form, stored, kit, job, submit }
+                    return { current, form, stored, kit, job, jobError, submit }
                   })
                 )
                 .pipe(Effect.mapError(toStorageError("autoApply.snapshot")))
 
               if (snapshot === null) return idle
-              const { current, form, stored, kit, job, submit } = snapshot
+              const { current, form, stored, kit, job, jobError, submit } = snapshot
 
               // Only the two states the runner owns; a person changed anything else.
               const mine =
@@ -362,6 +373,13 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                 if (resumeId === null) {
                   return human("there is no resume to write the cover letter from")
                 }
+                // The operator's writer (agent, model, effort) from the filter row
+                // that governs this application; none set: the harness default.
+                const writer = yield* database
+                  .asUser(userId, (tx) =>
+                    ApplyFilterRepository.resolve(tx, userId, current.hhAccountId, current.resumeId ?? null)
+                  )
+                  .pipe(Effect.mapError(toStorageError("autoApply.writer")))
                 const prompt = yield* writing.draftPrompt({
                   vacancyId: current.vacancyId,
                   hhAccountId: current.hhAccountId,
@@ -372,7 +390,13 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                     inferenceJob(tx, {
                       userId,
                       hhAccountId: current.hhAccountId,
-                      payload: { prompt: prompt.user, system: prompt.system },
+                      payload: {
+                        prompt: prompt.user,
+                        system: prompt.system,
+                        ...(writer.writingHarness === null ? {} : { harness: writer.writingHarness }),
+                        ...(writer.writingModel === null ? {} : { model: writer.writingModel }),
+                        ...(writer.writingEffort === null ? {} : { effort: writer.writingEffort })
+                      },
                       idempotencyKey: writingKey(app.id, stored.form.formHash)
                     })
                   )
@@ -384,7 +408,11 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                 return waiting
               }
               if (job.status !== "done") {
-                return human(`the writing job ${job.status}; no letter was produced`)
+                return human(
+                  `the writing job ${job.status}; no letter was produced${
+                    jobError === null || jobError === "" ? "" : `: ${jobError}`
+                  }`
+                )
               }
 
               const decoded = Schema.decodeUnknownOption(InferenceResultSchema)(job.result)

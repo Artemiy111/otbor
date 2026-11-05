@@ -1386,7 +1386,15 @@ export const ApplyFilterSettings = Schema.Struct({
   /** The runner skips decisions below this priority. Never changes a verdict. */
   minPriority: Schema.Number,
   /** Scoring rules added to the deterministic fit. */
-  boosts: Schema.Array(ApplyBoost)
+  boosts: Schema.Array(ApplyBoost),
+  /**
+   * The ACP agent, model and effort that write the auto-apply letters and
+   * answers. Null: the harness default. Steer the writer only; they never
+   * change a verdict, so they do not make decisions stale.
+   */
+  writingHarness: Schema.NullOr(Schema.String),
+  writingModel: Schema.NullOr(Schema.String),
+  writingEffort: Schema.NullOr(Schema.String)
 })
 
 export type ApplyFilterSettings = typeof ApplyFilterSettings.Type
@@ -1406,6 +1414,9 @@ export const ApplyFilterRecord = Schema.Struct({
   sortDirection: SortDirection,
   minPriority: Schema.Number,
   boosts: Schema.Array(ApplyBoost),
+  writingHarness: Schema.NullOr(Schema.String),
+  writingModel: Schema.NullOr(Schema.String),
+  writingEffort: Schema.NullOr(Schema.String),
   /** The preset this filter was last copied from; informational, the copy is independent. */
   templatePresetId: Schema.NullOr(PresetId),
   updatedAt: Schema.String
@@ -1440,6 +1451,9 @@ export const ApplyFilterView = Schema.Struct({
   sortDirection: SortDirection,
   minPriority: Schema.Number,
   boosts: Schema.Array(ApplyBoost),
+  writingHarness: Schema.NullOr(Schema.String),
+  writingModel: Schema.NullOr(Schema.String),
+  writingEffort: Schema.NullOr(Schema.String),
   templatePresetId: Schema.NullOr(PresetId),
   updatedAt: Schema.NullOr(Schema.String)
 })

@@ -237,6 +237,9 @@ const makeFake = (options: {
         sort: "priority",
         sortDirection: "desc",
         minPriority: 0,
+        writingHarness: "claude",
+        writingModel: "haiku",
+        writingEffort: "low",
         boosts: [{ rule: { field: "salary", op: "gte", value: 250000, currency: "RUB" }, weight: 8 }],
         templatePresetId: null,
         updatedAt: null
@@ -259,6 +262,9 @@ const makeFake = (options: {
         sort: payload.sort ?? "priority",
         sortDirection: payload.sortDirection ?? "desc",
         minPriority: payload.minPriority ?? 0,
+        writingHarness: payload.writingHarness ?? null,
+        writingModel: payload.writingModel ?? null,
+        writingEffort: payload.writingEffort ?? null,
         boosts: [],
         templatePresetId: null,
         updatedAt: "2026-11-05T00:00:00Z"
@@ -280,6 +286,9 @@ const makeFake = (options: {
         sort: "priority",
         sortDirection: "desc",
         minPriority: 0,
+        writingHarness: null,
+        writingModel: null,
+        writingEffort: null,
         boosts: [],
         templatePresetId: payload.presetId,
         updatedAt: "2026-11-05T00:00:00Z"
@@ -789,6 +798,7 @@ describe("apply filter", () => {
     expect(out.rules).toEqual(["salary >= 250000 (or missing)"])
     expect(out.groups[0]).toContain("title contains devops | title contains sre")
     expect(out.minFit).toBe(45)
+    expect(out).toMatchObject({ writingHarness: "claude", writingModel: "haiku", writingEffort: "low" })
     expect(out.tests).toBe("human")
     const auto = result.structuredContent as {
       autoMode: string
@@ -886,6 +896,11 @@ describe("apply filter", () => {
     }])
     expect((ok.structuredContent as { autoMode: string }).autoMode).toBe("drafts")
     expect((ok.structuredContent as { sortDirection: string }).sortDirection).toBe("asc")
+
+    // The writer settings alone are a valid change; an empty string is passed through to clear.
+    const writer = await call(layer, "apply_filter_set_settings", { writingHarness: "claude", writingModel: "" })
+    expect(writer.isError).toBeFalsy()
+    expect(calls.filterSet[1]).toMatchObject({ writingHarness: "claude", writingModel: "" })
   })
 
   test("server instructions mention the apply filter and blocked_filter", () => {

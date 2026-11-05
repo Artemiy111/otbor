@@ -10,6 +10,7 @@ import {
   sortDirectionOptions,
   autoModeOptions
 } from "@/entities/apply-filter"
+import { applicationApi, applicationKeys } from "@/entities/application"
 import { scheduleKeys } from "@/entities/schedule"
 import { RUN_COUNT_LABELS, useAutoApplyRun } from "@/features/auto-apply-run"
 import { FieldPicker, RuleRow, buildRule, isComplete, newRule, toEditableRule } from "@/features/rule-builder"
@@ -59,6 +60,9 @@ const batchSize = ref(20)
 const sort = ref<ApplySort>("priority")
 const sortDirection = ref<SortDirection>("desc")
 const minPriority = ref(0)
+const writingHarness = ref("")
+const writingModel = ref("")
+const writingEffort = ref("")
 const boosts = ref<Array<BoostRow>>([])
 const confirmed = ref(false)
 const formError = ref<string | null>(null)
@@ -71,6 +75,9 @@ const load = (value: ApplyFilterView) => {
   sort.value = value.sort
   sortDirection.value = value.sortDirection
   minPriority.value = value.minPriority
+  writingHarness.value = value.writingHarness ?? ""
+  writingModel.value = value.writingModel ?? ""
+  writingEffort.value = value.writingEffort ?? ""
   boosts.value = value.boosts.map((boost) => ({
     id: boostSequence++,
     rule: reactive(toEditableRule(boost.rule)),
@@ -93,6 +100,27 @@ const removeBoost = (id: number) => {
   boosts.value = boosts.value.filter((boost) => boost.id !== id)
 }
 const incompleteBoosts = computed(() => boosts.value.some((boost) => !isComplete(boost.rule)))
+
+/* Writer suggestions: the agent catalog is only a hint, any text can be typed ---- */
+
+const catalogQuery = useQuery({
+  key: () => applicationKeys.agentCatalog,
+  query: () => applicationApi.agentCatalog(),
+  staleTime: 30_000
+})
+const catalogHarnesses = computed(() => catalogQuery.data.value?.harnesses ?? [])
+const pickedHarness = computed(() => catalogHarnesses.value.find((harness) => harness.id === writingHarness.value.trim()))
+const modelSuggestions = computed(() => {
+  const harnesses = pickedHarness.value === undefined ? catalogHarnesses.value : [pickedHarness.value]
+  return [...new Set(harnesses.flatMap((harness) => harness.models.map((model) => model.id)))]
+})
+const effortSuggestions = computed(() => {
+  const models = pickedHarness.value === undefined
+    ? catalogHarnesses.value.flatMap((harness) => harness.models)
+    : pickedHarness.value.models
+  const picked = models.filter((model) => model.id === writingModel.value.trim())
+  return [...new Set((picked.length > 0 ? picked : models).flatMap((model) => model.efforts))]
+})
 
 /* Usage ------------------------------------------------------------------- */
 
@@ -123,6 +151,9 @@ const saveMutation = useMutation({
       sort: sort.value,
       sortDirection: sortDirection.value,
       minPriority: minPriority.value,
+      writingHarness: writingHarness.value.trim(),
+      writingModel: writingModel.value.trim(),
+      writingEffort: writingEffort.value.trim(),
       boosts: boosts.value.map((boost) => ({ rule: buildRule(boost.rule)!, weight: boost.weight }))
     })
     if (mode.value !== "off") await ensureSchedule(true)
@@ -298,6 +329,48 @@ const modeBadge = (value: AutoMode) => (value === "off" ? "secondary" : value ==
         <div class="space-y-1">
           <FieldLabel :hint="applyFilterHelp.minPriority">Минимальный приоритет</FieldLabel>
           <Input v-model.number="minPriority" type="number" min="0" class="h-8" :disabled="busy" />
+        </div>
+      </div>
+
+      <div class="grid gap-3 border-t border-border pt-3 sm:grid-cols-3">
+        <div class="space-y-1">
+          <FieldLabel :hint="applyFilterHelp.writer">Агент (harness)</FieldLabel>
+          <Input
+            v-model="writingHarness"
+            list="writing-harness-options"
+            placeholder="по умолчанию харнеса"
+            class="h-8"
+            :disabled="busy"
+          />
+          <datalist id="writing-harness-options">
+            <option v-for="harness in catalogHarnesses" :key="harness.id" :value="harness.id">{{ harness.name }}</option>
+          </datalist>
+        </div>
+        <div class="space-y-1">
+          <FieldLabel :hint="applyFilterHelp.writer">Модель</FieldLabel>
+          <Input
+            v-model="writingModel"
+            list="writing-model-options"
+            placeholder="по умолчанию харнеса"
+            class="h-8"
+            :disabled="busy"
+          />
+          <datalist id="writing-model-options">
+            <option v-for="model in modelSuggestions" :key="model" :value="model" />
+          </datalist>
+        </div>
+        <div class="space-y-1">
+          <FieldLabel :hint="applyFilterHelp.writer">Уровень усилий (effort)</FieldLabel>
+          <Input
+            v-model="writingEffort"
+            list="writing-effort-options"
+            placeholder="по умолчанию харнеса"
+            class="h-8"
+            :disabled="busy"
+          />
+          <datalist id="writing-effort-options">
+            <option v-for="effort in effortSuggestions" :key="effort" :value="effort" />
+          </datalist>
         </div>
       </div>
 

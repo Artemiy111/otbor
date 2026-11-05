@@ -1199,6 +1199,10 @@ export const ApplyFilterSet = Rpc.make("ApplyFilterSet", {
     sortDirection: Schema.optional(SortDirection),
     minPriority: Schema.optional(Schema.Number),
     boosts: Schema.optional(Schema.Array(ApplyBoost)),
+    /** Left out keeps the stored value; `null` or a blank string clears it (harness default). */
+    writingHarness: Schema.optional(Schema.NullOr(Schema.String)),
+    writingModel: Schema.optional(Schema.NullOr(Schema.String)),
+    writingEffort: Schema.optional(Schema.NullOr(Schema.String)),
     templatePresetId: Schema.optional(Schema.NullOr(PresetId))
   }),
   success: ApplyFilterRecord,

@@ -22,6 +22,9 @@ export const toRecord = (row: typeof applyFilter.$inferSelect): ApplyFilterRecor
   sortDirection: row.sortDirection === "asc" ? "asc" : "desc",
   minPriority: Number(row.minPriority),
   boosts: parseBoosts(row.boosts),
+  writingHarness: row.writingHarness,
+  writingModel: row.writingModel,
+  writingEffort: row.writingEffort,
   templatePresetId: row.templatePresetId as ApplyFilterRecord["templatePresetId"],
   updatedAt: row.updatedAt.toISOString()
 })
@@ -85,6 +88,9 @@ export const resolve = (
       sortDirection: DEFAULT_APPLY_FILTER.sortDirection,
       minPriority: DEFAULT_APPLY_FILTER.minPriority,
       boosts: DEFAULT_APPLY_FILTER.boosts,
+      writingHarness: DEFAULT_APPLY_FILTER.writingHarness,
+      writingModel: DEFAULT_APPLY_FILTER.writingModel,
+      writingEffort: DEFAULT_APPLY_FILTER.writingEffort,
       templatePresetId: null,
       updatedAt: null
     }
@@ -118,9 +124,19 @@ const fromRecord = (record: ApplyFilterRecord, source: ApplyFilterSource): Resol
   sortDirection: record.sortDirection,
   minPriority: record.minPriority,
   boosts: record.boosts,
+  writingHarness: record.writingHarness,
+  writingModel: record.writingModel,
+  writingEffort: record.writingEffort,
   templatePresetId: record.templatePresetId,
   updatedAt: record.updatedAt
 })
+
+/** `undefined` keeps the stored value; `null` or a blank string clears it; else the trimmed text. */
+export const writingValue = (input: string | null | undefined, stored: string | null): string | null => {
+  if (input === undefined) return stored
+  const trimmed = input?.trim() ?? ""
+  return trimmed === "" ? null : trimmed
+}
 
 export interface UpsertApplyFilterInput {
   readonly userId: string
@@ -138,6 +154,10 @@ export interface UpsertApplyFilterInput {
   readonly sortDirection?: ApplyFilterSettings["sortDirection"]
   readonly minPriority?: number
   readonly boosts?: ApplyFilterSettings["boosts"]
+  /** `undefined` keeps the stored value; `null` or a blank string clears it. */
+  readonly writingHarness?: string | null
+  readonly writingModel?: string | null
+  readonly writingEffort?: string | null
   /** `undefined` keeps the stored value; `null` clears it. */
   readonly templatePresetId?: string | null
 }
@@ -162,11 +182,14 @@ export const upsert = (
         sort: input.sort ?? existing.sort,
         sortDirection: input.sortDirection ?? existing.sortDirection,
         minPriority: input.minPriority ?? existing.minPriority,
-        boosts: input.boosts ?? existing.boosts
+        boosts: input.boosts ?? existing.boosts,
+        writingHarness: writingValue(input.writingHarness, existing.writingHarness),
+        writingModel: writingValue(input.writingModel, existing.writingModel),
+        writingEffort: writingValue(input.writingEffort, existing.writingEffort)
       }
       // Only a real change of what decide() reads makes decisions stale; a
       // repeated save would otherwise leave them stale for ever (their input
-      // hash is the same). auto_mode, daily_limit, batch_size, sort, sort_direction and
+      // hash is the same). auto_mode, daily_limit, batch_size, sort, sort_direction, writing_* and
       // min_priority steer the runner and the cap, not the verdict or fit.
       const scoring = (value: {
         readonly filter: PresetFilter
@@ -215,6 +238,9 @@ export const upsert = (
         sortDirection: input.sortDirection ?? DEFAULT_APPLY_FILTER.sortDirection,
         minPriority: input.minPriority ?? DEFAULT_APPLY_FILTER.minPriority,
         boosts: [...(input.boosts ?? DEFAULT_APPLY_FILTER.boosts)],
+        writingHarness: writingValue(input.writingHarness, null),
+        writingModel: writingValue(input.writingModel, null),
+        writingEffort: writingValue(input.writingEffort, null),
         templatePresetId: input.templatePresetId ?? null
       })
       .returning()

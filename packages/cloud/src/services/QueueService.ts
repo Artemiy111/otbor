@@ -71,6 +71,13 @@ const unwrap = <A>(outcome: Outcome<A>): Effect.Effect<A, ApiError> =>
 /** One message for unknown, unregistered and revoked harnesses alike. */
 const invalidToken = "invalid harness token; register again to receive a new one"
 
+/** `tag` or `tag: message` (the harness reason, trimmed to 500 chars) so a person can see WHY. */
+export const exitDetail = (exit: HarnessExit): string => {
+  const text = (exit.message ?? "").replace(/\s+/g, " ").trim()
+  if (text === "") return exit.tag
+  return `${exit.tag}: ${text.length > 500 ? `${text.slice(0, 497)}...` : text}`
+}
+
 /** Retry the same row; the lease and epoch make a duplicate harmless. */
 const retryLater = (exit: HarnessExit, fallbackSeconds: number) =>
   new Date(Date.now() + Math.max(exit.retryAfterSeconds ?? fallbackSeconds, 1) * 1_000)
@@ -789,22 +796,22 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                       message = "inference completed"
                     } else if (terminalFailure.includes(exit.tag)) {
                       status = "failed"
-                      message = `inference failed: ${exit.tag}`
+                      message = `inference failed: ${exitDetail(exit)}`
                     } else if (needsHuman.includes(exit.tag)) {
                       status = "needs_human"
-                      message = `inference needs a human: ${exit.tag}`
+                      message = `inference needs a human: ${exitDetail(exit)}`
                     } else if (retryable.includes(exit.tag)) {
                       if (job.attempts < job.maxAttempts) {
                         status = "pending"
                         runAt = retryLater(exit, 15)
-                        message = `inference retry ${job.attempts + 1}/${job.maxAttempts}: ${exit.tag}`
+                        message = `inference retry ${job.attempts + 1}/${job.maxAttempts}: ${exitDetail(exit)}`
                       } else {
                         status = "dead"
-                        message = `inference exhausted retries: ${exit.tag}`
+                        message = `inference exhausted retries: ${exitDetail(exit)}`
                       }
                     } else {
                       status = "needs_human"
-                      message = `inference finished with unexpected exit: ${exit.tag}`
+                      message = `inference finished with unexpected exit: ${exitDetail(exit)}`
                     }
                     break
                   }

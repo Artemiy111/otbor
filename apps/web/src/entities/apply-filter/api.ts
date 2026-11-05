@@ -37,6 +37,10 @@ export interface ApplyAutoSetInput extends ApplyFilterTarget {
   readonly sortDirection: SortDirection
   readonly minPriority: number
   readonly boosts: ReadonlyArray<ApplyBoost>
+  /** Empty string clears a setting (harness default). */
+  readonly writingHarness: string
+  readonly writingModel: string
+  readonly writingEffort: string
 }
 
 export interface ApplyFilterFromPresetInput extends ApplyFilterTarget {
@@ -72,7 +76,10 @@ export const applyFilterApi = {
         sort: input.sort,
         sortDirection: input.sortDirection,
         minPriority: input.minPriority,
-        boosts: input.boosts
+        boosts: input.boosts,
+        writingHarness: input.writingHarness,
+        writingModel: input.writingModel,
+        writingEffort: input.writingEffort
       })
     ),
   usage: (hhAccountId: string): Promise<ApplyUsage> =>

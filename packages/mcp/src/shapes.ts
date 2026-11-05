@@ -238,6 +238,10 @@ export const ApplyFilterBrief = Schema.Struct({
   /** desc = best first (default); asc = the runner takes the reverse order (worst first). */
   sortDirection: Schema.String,
   minPriority: Schema.Number,
+  /** Agent, model and effort that write the auto-apply letters; null = harness default. */
+  writingHarness: NullableString,
+  writingModel: NullableString,
+  writingEffort: NullableString,
   /** Readable scoring boosts, e.g. "salary >= 250000 (+8)". */
   boosts: Schema.Array(Schema.String),
   /** Responses in the last 24 hours (apply_filter_get only). */
@@ -283,6 +287,9 @@ export const applyFilterBrief = (
     sort: view.sort,
     sortDirection: view.sortDirection,
     minPriority: view.minPriority,
+    writingHarness: view.writingHarness,
+    writingModel: view.writingModel,
+    writingEffort: view.writingEffort,
     boosts: view.boosts.map((boost) => `${describeRule(boost.rule)} (${boost.weight > 0 ? "+" : ""}${boost.weight})`),
     ...(usage === undefined
       ? {}

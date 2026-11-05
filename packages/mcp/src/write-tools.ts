@@ -242,7 +242,8 @@ export const ApplyFilterSetSettings = writeTool("apply_filter_set_settings", {
     "applications by itself is enabled by a human in the web UI or the CLI, this tool rejects it), dailyLimit " +
     "(>= 0, hh allows 200 per account per day), batchSize (1-500), sort (priority, fit, newest, salary), " +
     "sortDirection (desc = best first, default; asc = worst first, handy to test on vacancies that are not a pity to lose; " +
-    "the filter and limits still apply) and minPriority (>= 0). Settings left out keep their value; the rules are kept as they are. If only the " +
+    "the filter and limits still apply) minPriority (>= 0) and the writer of the auto-apply letters: writingHarness (ACP agent, e.g. claude), " +
+    "writingModel (e.g. haiku), writingEffort (e.g. low); an empty string clears one (harness default). Settings left out keep their value; the rules are kept as they are. If only the " +
     "built-in default applied so far, it is stored as an explicit row. Sends nothing to hh.ru.",
   parameters: Schema.Struct({
     minFit: Schema.optional(Schema.Int).annotate({ description: "0-100: skip vacancies that score below this fit" }),
@@ -258,6 +259,15 @@ export const ApplyFilterSetSettings = writeTool("apply_filter_set_settings", {
       description: "Order of the auto-apply runner: desc = best first (default), asc = the reverse (worst first)"
     }),
     minPriority: Schema.optional(Schema.Number).annotate({ description: "Skip decisions below this priority, >= 0" }),
+    writingHarness: Schema.optional(Schema.String).annotate({
+      description: "ACP agent that writes auto-apply letters, e.g. 'claude'. Empty string = harness default"
+    }),
+    writingModel: Schema.optional(Schema.String).annotate({
+      description: "Model that writes auto-apply letters, e.g. 'haiku'. Empty string = harness default"
+    }),
+    writingEffort: Schema.optional(Schema.String).annotate({
+      description: "Effort of the writing model, e.g. 'low'. Empty string = harness default"
+    }),
     ...filterTarget
   }),
   success: ApplyFilterBrief,

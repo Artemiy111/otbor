@@ -100,6 +100,10 @@ export const applyFilter = pgTable(
     sortDirection: text("sort_direction").notNull().default("desc"),
     minPriority: numeric("min_priority", { mode: "number" }).notNull().default(0),
     boosts: jsonb("boosts").$type<ReadonlyArray<unknown>>().notNull().default([]),
+    // Who writes the auto-apply letters (migration 0041); null: the harness default.
+    writingHarness: text("writing_harness"),
+    writingModel: text("writing_model"),
+    writingEffort: text("writing_effort"),
     templatePresetId: uuid("template_preset_id").references(() => preset.id, {
       onDelete: "set null"
     }),

@@ -17,6 +17,7 @@
 | `batch_size` | сколько вакансий брать за один запуск | 20 |
 | `sort` | `priority` / `fit` / `newest` / `salary` | `priority` |
 | `sort_direction` | `desc` (лучшие первыми) / `asc` (весь порядок инвертирован, худшие первыми; `nulls last` остаётся в конце). Влияет только на выбор исполнителя, решения не устаревают | `desc` |
+| `writing_harness` / `writing_model` / `writing_effort` | агент, модель и effort, которые пишут письма автоотбора (попадают в payload inference-задачи). `null` = умолчание харнеса; `null`/пустая строка при сохранении очищает, пропуск оставляет. Решения не устаревают | `null` |
 | `min_priority` | порог приоритета | 0 |
 | `boosts` | список `{ rule: PresetRule, weight: int -50..50 }` | см. ниже |
 

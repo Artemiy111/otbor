@@ -31,6 +31,9 @@ export interface ApplyFilterSetInput extends ApplyFilterTarget {
   readonly sortDirection?: ApplyFilterRecord["sortDirection"]
   readonly minPriority?: number
   readonly boosts?: ApplyFilterRecord["boosts"]
+  readonly writingHarness?: string | null
+  readonly writingModel?: string | null
+  readonly writingEffort?: string | null
   readonly templatePresetId?: string | null
 }
 
@@ -73,6 +76,9 @@ export class ApplyFilterService extends Context.Service<ApplyFilterService, Appl
         readonly sortDirection?: ApplyFilterRecord["sortDirection"]
         readonly minPriority?: number
         readonly boosts?: ApplyFilterRecord["boosts"]
+        readonly writingHarness?: string | null
+        readonly writingModel?: string | null
+        readonly writingEffort?: string | null
       }) =>
         Effect.gen(function*() {
           if (input.minFit !== undefined && (input.minFit < 0 || input.minFit > 100)) {
@@ -95,6 +101,17 @@ export class ApplyFilterService extends Context.Service<ApplyFilterService, Appl
           }
           if (input.minPriority !== undefined && !(Number.isFinite(input.minPriority) && input.minPriority >= 0)) {
             return yield* new InvalidInput({ message: "minPriority must be 0 or more" })
+          }
+          // Free text on purpose: the agent catalog is only what a harness last
+          // reported, and an offline harness must not block saving the setting.
+          for (const [name, value] of [
+            ["writingHarness", input.writingHarness],
+            ["writingModel", input.writingModel],
+            ["writingEffort", input.writingEffort]
+          ] as const) {
+            if (value != null && value.trim().length > 200) {
+              return yield* new InvalidInput({ message: `${name} must be at most 200 characters` })
+            }
           }
           for (const boost of input.boosts ?? []) {
             if (boost.weight < APPLY_BOOST_WEIGHT_MIN || boost.weight > APPLY_BOOST_WEIGHT_MAX) {
@@ -149,6 +166,9 @@ export class ApplyFilterService extends Context.Service<ApplyFilterService, Appl
                   sortDirection: input.sortDirection,
                   minPriority: input.minPriority,
                   boosts: input.boosts === undefined ? undefined : parseBoosts(input.boosts),
+                  writingHarness: input.writingHarness,
+                  writingModel: input.writingModel,
+                  writingEffort: input.writingEffort,
                   templatePresetId: input.templatePresetId
                 })
               })
