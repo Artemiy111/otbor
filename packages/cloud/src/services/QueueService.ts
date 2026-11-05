@@ -616,7 +616,17 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                       break
                     }
 
-                    const verdict = judgeReconcile(exit, vacancy.externalId)
+                    const resumeRow =
+                      application.resumeId === null || application.resumeId === undefined
+                        ? null
+                        : yield* tx.execute(
+                            sql`select external_id from resume where id = ${application.resumeId} limit 1`
+                          )
+                    const verdict = judgeReconcile(
+                      exit,
+                      vacancy.externalId,
+                      (resumeRow?.rows[0]?.external_id as string | undefined) ?? null
+                    )
                     reconcileKept = reconcileArtifacts(exit, verdict)
                     if (verdict._tag === "submitted") {
                       status = "done"

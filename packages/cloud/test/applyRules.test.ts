@@ -3,7 +3,7 @@ import { parseResponseForm } from "@otbor/hh"
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { checkKit, judgeLetterAttach, judgeNegotiationsSync, judgePrepare, judgeSubmit, toFormAnswers } from "../src/services/applyRules.ts"
+import { checkKit, judgeLetterAttach, judgeNegotiationsSync, judgeReconcile, judgePrepare, judgeSubmit, toFormAnswers } from "../src/services/applyRules.ts"
 
 const fixture = (name: string) =>
   readFileSync(join(import.meta.dir, "../../hh/test/fixtures", name), "utf8")
@@ -334,5 +334,39 @@ describe("judgeNegotiationsSync", () => {
       ["290733333", "5770068788"],
       ["289972366", "5732439170"]
     ])
+  })
+})
+
+describe("judgeReconcile with two resumes", () => {
+  const page = (topics: ReadonlyArray<object>) => ({
+    url: "https://hh.ru/applicant/negotiations?page=0",
+    html: `<template id="HH-Lux-InitialState">${JSON.stringify({
+      applicantNegotiations: { topicList: topics, pageCount: "2" }
+    })}</template>`
+  })
+  const topic = (resumeId: number) => ({
+    chatId: 1000 + resumeId,
+    vacancyId: 138177094,
+    resumeId,
+    lastState: "RESPONSE"
+  })
+  const exitFor = (topics: ReadonlyArray<object>): HarnessExit => ({
+    tag: "reconciled",
+    artifacts: { externalId: "138177094", negotiations: [page(topics), page([])] }
+  })
+
+  test("a response made with another resume does not settle this one", () => {
+    const verdict = judgeReconcile(exitFor([topic(290733333)]), "138177094", "289972366")
+    expect(verdict._tag).not.toBe("submitted")
+  })
+
+  test("the topic of the application's own resume does", () => {
+    const verdict = judgeReconcile(exitFor([topic(290733333), topic(289972366)]), "138177094", "289972366")
+    expect(verdict._tag).toBe("submitted")
+  })
+
+  test("without a known resume any topic of the vacancy still counts", () => {
+    const verdict = judgeReconcile(exitFor([topic(290733333)]), "138177094")
+    expect(verdict._tag).toBe("submitted")
   })
 })

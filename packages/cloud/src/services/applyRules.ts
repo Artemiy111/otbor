@@ -418,7 +418,16 @@ export type ReconcileVerdict =
  * "no response". Every doubt keeps the application in reconcile; no outcome
  * of this function ever queues a second submit.
  */
-export const judgeReconcile = (exit: HarnessExit, externalId: string): ReconcileVerdict => {
+export const judgeReconcile = (
+  exit: HarnessExit,
+  externalId: string,
+  /**
+   * hh's id of the resume the application was made with. hh keeps one response
+   * per resume, so with it only the topic of that resume counts, and the vacancy
+   * page (which shows a response made with any resume) proves nothing alone.
+   */
+  resumeExternalId: string | null = null
+): ReconcileVerdict => {
   if (exit.tag === "session_expired") {
     return { _tag: "human", reason: "hh session expired; log in again" }
   }
@@ -459,7 +468,11 @@ export const judgeReconcile = (exit: HarnessExit, externalId: string): Reconcile
   const topic =
     parsed
       .flatMap((page) => page.topics)
-      .find((candidate) => candidate.vacancyId === externalId) ?? null
+      .find(
+        (candidate) =>
+          candidate.vacancyId === externalId &&
+          (resumeExternalId === null || candidate.resumeId === resumeExternalId)
+      ) ?? null
   const readable = parsed.length > 0 && parsed.every((page) => page.readable)
   const last = parsed[parsed.length - 1]
   const exhausted = readable && last !== undefined && last.topics.length === 0
@@ -476,7 +489,8 @@ export const judgeReconcile = (exit: HarnessExit, externalId: string): Reconcile
     }
   }
 
-  const vacancyResponded = vacancy.state === "responded"
+  // The vacancy page cannot say which resume the response was made with.
+  const vacancyResponded = vacancy.state === "responded" && resumeExternalId === null
   const vacancyNo = vacancy.state === "not_responded"
   const found = topic !== null
   // The list says "absent" only when it was read to the end.
@@ -511,6 +525,9 @@ export const judgeReconcile = (exit: HarnessExit, externalId: string): Reconcile
 
   const doubts = [
     vacancy.state === "unreadable" ? "vacancy page unreadable" : null,
+    resumeExternalId !== null && vacancy.state === "responded" && !found
+      ? "the vacancy page shows a response, but the list holds none made with this resume"
+      : null,
     !readable ? "negotiations list unreadable" : null,
     readable && !exhausted ? "negotiations list not read to the end" : null
   ].filter((doubt) => doubt !== null)
