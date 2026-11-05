@@ -126,6 +126,14 @@ export const CHAT_LETTER_BUTTON_SELECTOR = '[data-qa="chatik-chat-message-applic
 export const CHAT_LETTER_PREVIEW_SELECTOR = '[data-qa="chat-input-preview"]'
 export const CHAT_INPUT_SELECTOR = '[data-qa="text-input"]'
 
+/**
+ * The "Резюме для отклика" select on the response form. The selected title is
+ * the first `resume-title` on the page; the options are `label[role=option]`
+ * (seen on a live form), each holding its own `resume-title`.
+ */
+export const RESUME_SELECTED_SELECTOR = '[data-qa="resume-title"]'
+export const RESUME_OPTION_SELECTOR = 'label[role="option"]'
+
 export const chatUrl = (baseUrl: string, chatId: string): string =>
   `${baseUrl.replace(/\/+$/, "")}/chat/${encodeURIComponent(chatId)}`
 

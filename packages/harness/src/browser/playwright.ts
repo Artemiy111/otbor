@@ -14,6 +14,8 @@ import { existsSync } from "node:fs"
 import { chromium, type Page } from "playwright"
 import {
   CHAT_INPUT_SELECTOR,
+  RESUME_OPTION_SELECTOR,
+  RESUME_SELECTED_SELECTOR,
   CHAT_LETTER_BUTTON_SELECTOR,
   CHAT_LETTER_PREVIEW_SELECTOR,
   chatUrl,
@@ -366,6 +368,44 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
             yield* attempt(() => locator.check({ timeout: 5_000 }))
           } else {
             yield* attempt(() => locator.fill(step.text, { timeout: 5_000 }))
+          }
+        }
+
+        // hh sends the response with the resume its form has selected, so the
+        // one the operator chose is selected here and checked before the click.
+        const wanted = (payload.resumeTitle ?? "").trim()
+        if (wanted !== "") {
+          const selectedTitle = () =>
+            attempt(() => page.locator(RESUME_SELECTED_SELECTOR).first().innerText()).pipe(
+              Effect.map((title) => title.trim()),
+              Effect.orElseSucceed(() => "")
+            )
+          if ((yield* selectedTitle()) !== wanted) {
+            yield* attempt(() => page.locator(RESUME_SELECTED_SELECTOR).first().click({ timeout: 5_000 }))
+            const option = page.locator(RESUME_OPTION_SELECTOR).filter({
+              has: page.locator(RESUME_SELECTED_SELECTOR).getByText(wanted, { exact: true })
+            })
+            const matches = yield* attempt(() => option.count())
+            if (matches !== 1) {
+              return {
+                tag: "blocked",
+                message:
+                  matches === 0
+                    ? `hh offers no resume titled "${wanted}" for this response`
+                    : `several resumes are titled "${wanted}"; cannot tell which one to use`,
+                ...unclicked(lastUrl)
+              } satisfies HarnessExit
+            }
+            yield* attempt(() => option.first().click({ timeout: 5_000 }))
+            yield* sleep(300)
+          }
+          const chosen = yield* selectedTitle()
+          if (chosen !== wanted) {
+            return {
+              tag: "blocked",
+              message: `the response form uses the resume "${chosen}", not "${wanted}"`,
+              ...unclicked(lastUrl)
+            } satisfies HarnessExit
           }
         }
 

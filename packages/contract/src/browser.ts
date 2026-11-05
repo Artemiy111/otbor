@@ -79,6 +79,12 @@ export type SubmitKit = typeof SubmitKit.Type
 export const SubmitJobPayload = Schema.Struct({
   ...Target,
   kitId: Schema.String,
+  /**
+   * Title of the resume the response is made with. hh sends the response with
+   * whichever resume its form has selected, so the harness selects this one
+   * and refuses to click when it cannot.
+   */
+  resumeTitle: Schema.optional(Schema.NullOr(Schema.String)),
   /** The form hash the kit was written for. A live form that differs aborts. */
   expectedFormHash: Schema.String,
   kit: SubmitKit

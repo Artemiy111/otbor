@@ -26,6 +26,8 @@ export interface JobTarget {
   readonly vacancyId: string
   readonly canonicalUrl: string
   readonly resumeId?: string | null
+  /** Title of that resume, for the harness to select it in hh's form. */
+  readonly resumeTitle?: string | null
   /** hh external vacancy id: the `vacancyId` of the response page. */
   readonly externalId: string
   /** Local browser profile of the account's hh session, if one is linked. */
@@ -46,6 +48,10 @@ export const targetFor = (
     const profile = yield* tx.execute(
       sql`select session_profile from hh_account where id = ${application.hhAccountId} limit 1`
     )
+    const resume =
+      application.resumeId === null || application.resumeId === undefined
+        ? null
+        : yield* tx.execute(sql`select title from resume where id = ${application.resumeId} limit 1`)
     return {
       userId: application.userId,
       hhAccountId: application.hhAccountId,
@@ -53,6 +59,7 @@ export const targetFor = (
       vacancyId: vacancy.id,
       canonicalUrl: vacancy.canonicalUrl,
       resumeId: application.resumeId ?? null,
+      resumeTitle: (resume?.rows[0]?.title as string | null | undefined) ?? null,
       externalId: vacancy.externalId,
       sessionProfile: (profile.rows[0]?.session_profile as string | null | undefined) ?? null
     }
@@ -121,6 +128,7 @@ export const submitJob = (
     externalId: input.externalId,
     sessionProfile: input.sessionProfile ?? null,
     resumeId: input.resumeId,
+    resumeTitle: input.resumeTitle ?? null,
     kitId: input.kit.id,
     expectedFormHash: input.kit.formHash,
     kit: {
