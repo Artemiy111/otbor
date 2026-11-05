@@ -52,6 +52,7 @@ export const resumeApi = {
     call((client) => client.ResumeEnrichmentGet({ resumeId: resumeId as ResumeId })),
   enrichmentSave: (resumeId: string, data: {
     comment?: string
+    currentlyEmployed?: boolean | null
     salaries?: Array<{ currency: SalaryCurrency; min: number | null; expectation: number | null }>
     faq?: Array<{ key: string; question?: string | null; answer: string }>
     experience?: Array<{ key: string; employmentType?: string | null; comment?: string | null; leaveReason?: string | null }>

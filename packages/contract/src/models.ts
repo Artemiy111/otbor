@@ -1412,6 +1412,11 @@ export const ResumeEnrichment = Schema.Struct({
   currency: Schema.optional(Schema.NullOr(Schema.String)),
   faq: Schema.Array(ResumeFaqEntry),
   experience: Schema.Array(ResumeExperienceEnrichment),
+  /**
+   * The operator's word on whether they work right now. `null` or missing means
+   * "work it out from the resume": the last job has no end date.
+   */
+  currentlyEmployed: Schema.optional(Schema.NullOr(Schema.Boolean)),
   updatedAt: Schema.optional(Schema.NullOr(Schema.String))
 })
 

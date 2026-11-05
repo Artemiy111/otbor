@@ -48,6 +48,7 @@ export interface ResumeServiceShape {
     resumeId: ResumeId,
     data: {
       readonly comment?: string
+      readonly currentlyEmployed?: boolean | null
       readonly salaries?: ReadonlyArray<ResumeSalary>
       readonly faq?: ReadonlyArray<ResumeFaqEntry>
       readonly experience?: ReadonlyArray<{
@@ -146,6 +147,7 @@ export class ResumeService extends Context.Service<ResumeService, ResumeServiceS
           return {
             resumeId,
             comment: "",
+            currentlyEmployed: null,
             salaries: [],
             faq: [],
             experience: [],

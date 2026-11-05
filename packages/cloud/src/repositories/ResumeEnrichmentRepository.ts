@@ -52,6 +52,7 @@ const toEnrichment = (row: StoredResumeEnrichment): ResumeEnrichment => {
   return {
     resumeId: row.resume_id as ResumeEnrichment["resumeId"],
     comment: typeof data.comment === "string" ? data.comment : "",
+    currentlyEmployed: typeof data.currentlyEmployed === "boolean" ? data.currentlyEmployed : null,
     salaries,
     salaryMin: primary?.min ?? null,
     salaryExpectation: primary?.expectation ?? null,
@@ -101,6 +102,8 @@ export interface SaveEnrichmentInput {
   readonly resumeId: string
   readonly data: {
     readonly comment?: string
+    /** `null`: not stated, derive it from the resume. */
+    readonly currentlyEmployed?: boolean | null
     readonly salaries?: ReadonlyArray<ResumeSalary>
     readonly faq?: ReadonlyArray<ResumeFaqEntry>
     readonly experience?: ReadonlyArray<{
@@ -121,6 +124,7 @@ export const save = (
     const now = input.now ?? new Date()
     const payload = {
       comment: input.data.comment ?? "",
+      currentlyEmployed: input.data.currentlyEmployed ?? null,
       salaries: readSalaries({ salaries: input.data.salaries ?? [] }),
       faq: (input.data.faq ?? [])
         .map((e) => ({

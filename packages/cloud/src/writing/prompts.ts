@@ -179,7 +179,8 @@ const COVER_LETTER_SYSTEM: Record<WritingLanguage, string> = {
     "- Не используй кавычки и не оборачивай названия компаний, должностей,",
     "  технологий и проектов в кавычки. Названия компаний не склоняй:",
     "  не «в Золотом яблоке», а «в компании Золотое яблоко».",
-    "- Не повторяй название вакансии и компании больше одного раза.",
+    "- Не пиши, что откликаешься на вакансию или что она тебя заинтересовала:",
+    "  рекрутер и так знает, на что отклик. Не повторяй название вакансии и компании.",
     "- Не используй Markdown, списки, заголовки, эмодзи и длинные тире.",
     "- Начни с приветствия. Не добавляй подпись, «С уважением», имя,",
     "  контакты и формальное завершение: это сопроводительное, а не письмо.",
@@ -217,7 +218,8 @@ const COVER_LETTER_SYSTEM: Record<WritingLanguage, string> = {
     "- Write like a human, without corporate buzzwords, flattery or clichés.",
     '- Do not use quotation marks around companies, roles, tools or projects.',
     '  Do not decline company names: write "at company Acme", not a declined form.',
-    "- Do not repeat the role or company name more than once.",
+    "- Do not write that you are applying for the vacancy or that it interested you:",
+    "  the recruiter knows. Do not repeat the role or company name.",
     "- No Markdown, lists, headings, emoji or en/em dashes.",
     "- Start with a greeting. Do not add a signature, closing phrase, name,",
     "  contacts or formal sign-off: this is a cover note, not a letter.",
@@ -514,7 +516,29 @@ export const buildResumePrompt = (input: ResumePromptInput): WritingPrompt => {
 /* Draft: cover letter and employer-test answers in one call                  */
 /* -------------------------------------------------------------------------- */
 
-export const DRAFT_PROMPT_VERSION = "draft-v1"
+export const DRAFT_PROMPT_VERSION = "draft-v2"
+
+/** Whether the applicant works right now; decides «на текущем» or «на прошлом» месте. */
+export type Employment = "current" | "past" | "unknown"
+
+/**
+ * The operator's override wins. Otherwise the applicant works now when any job
+ * in the resume has a start date and no end date ("по настоящее время").
+ */
+export const resolveEmployment = (
+  override: boolean | null | undefined,
+  experience: ReadonlyArray<unknown>
+): Employment => {
+  if (typeof override === "boolean") return override ? "current" : "past"
+  const jobs = experience.map((raw) => (raw ?? {}) as Record<string, unknown>)
+  if (jobs.length === 0) return "unknown"
+  const open = jobs.some((job) => {
+    const start = typeof job.startDate === "string" ? job.startDate.trim() : ""
+    const end = typeof job.endDate === "string" ? job.endDate.trim() : ""
+    return start !== "" && end === ""
+  })
+  return open ? "current" : "past"
+}
 
 export interface DraftQuestion {
   readonly id: string
@@ -534,7 +558,37 @@ export interface DraftPromptInput {
   readonly notes?: string | null
   /** Who is applying. The only name the model may use for the applicant. */
   readonly applicant?: { readonly firstName?: string | null; readonly lastName?: string | null } | null
+  /** Short by default: recruiters skim. */
+  readonly length?: CoverLetterLength
+  readonly employment?: Employment
   readonly language?: WritingLanguageOption
+}
+
+/** Ceilings, not targets. The greeting may stand alone: paragraphs keep a short letter readable. */
+const DRAFT_LENGTH_RULES: Record<WritingLanguage, Record<CoverLetterLength, string>> = {
+  ru: {
+    short: "не больше 500 знаков, 2-3 коротких абзаца (приветствие можно отдельной строкой)",
+    medium: "не больше 900 знаков, 3 абзаца",
+    long: "не больше 1500 знаков, 3-4 абзаца"
+  },
+  en: {
+    short: "at most 500 characters, 2-3 short paragraphs (the greeting may stand on its own line)",
+    medium: "at most 900 characters, 3 paragraphs",
+    long: "at most 1500 characters, 3-4 paragraphs"
+  }
+}
+
+const EMPLOYMENT_RULES: Record<WritingLanguage, Record<Employment, string>> = {
+  ru: {
+    current: "соискатель работает сейчас: говори «на текущем месте работы», не «на прошлом»",
+    past: "соискатель сейчас не работает: говори «на прошлом месте работы», не «на текущем»",
+    unknown: "неизвестно, работает ли соискатель сейчас: не упоминай «текущее» или «прошлое» место, называй компанию"
+  },
+  en: {
+    current: 'the applicant works now: say "at my current job", never "at my previous job"',
+    past: 'the applicant does not work now: say "at my previous job", never "at my current job"',
+    unknown: "unknown whether the applicant works now: do not say current or previous job, name the company"
+  }
 }
 
 const DRAFT_SYSTEM: Record<WritingLanguage, string> = {
@@ -559,8 +613,18 @@ const DRAFT_SYSTEM: Record<WritingLanguage, string> = {
     "Письмо:",
     "- Читает рекрутер, у которого уже есть резюме и вакансия. Начни с приветствия,",
     "  без подписи и формального завершения.",
-    "- Выбери 2-3 релевантных факта, не пересказывай резюме целиком. Пиши живо, без",
-    "  канцелярита и общих слов вроде «стрессоустойчивость».",
+    "- Не представляйся и не пиши, на какую вакансию или в какую компанию откликаешься:",
+    "  рекрутер и так это знает. Запрещены зачины вроде «Меня заинтересовала вакансия X»,",
+    "  «Откликаюсь на позицию X», «Задачи, которые вы описали, мне близки». Сразу к делу:",
+    "  что именно из опыта подходит под задачи.",
+    "- Длина и абзацы заданы в LENGTH. Это потолок, не цель. Делай абзацы по смыслу,",
+    "  чтобы письмо не было кашей.",
+    "- Если вакансия просит что-то в письме (ответить на вопрос, указать срок выхода,",
+    "  ссылку, зарплату, слово-пароль), выполни это. Если требование расплывчатое,",
+    "  догадайся, что работодатель хочет услышать, и ответь по существу.",
+    "- Говоря о месте работы, следуй EMPLOYMENT.",
+    "- Выбери 2-3 релевантных факта (для короткого письма 1-2), не пересказывай резюме",
+    "  целиком. Пиши живо, без канцелярита и общих слов вроде «стрессоустойчивость».",
     "- Если письмо не принимается (COVER LETTER: absent), верни в letter пустую строку.",
     "",
     "Тест:",
@@ -595,8 +659,19 @@ const DRAFT_SYSTEM: Record<WritingLanguage, string> = {
     "- Do not wrap company names, job titles or technologies in quotes.",
     "",
     "Letter: the reader is a recruiter who already has the resume and the vacancy.",
-    "Start with a greeting, no signature. Pick 2-3 relevant facts, do not retell the",
-    "resume. If the letter is not accepted (COVER LETTER: absent), return an empty letter.",
+    "Start with a greeting, no signature.",
+    "- Do not introduce yourself and do not say which vacancy or company you apply to:",
+    "  the recruiter knows. Banned openers: \"I was interested in the X vacancy\",",
+    "  \"I am applying for X\", \"the tasks you describe are close to me\". Go straight to",
+    "  which part of your experience fits the tasks.",
+    "- Length and paragraphs are set in LENGTH. It is a ceiling, not a target. Split",
+    "  paragraphs by meaning so the letter is not a wall of text.",
+    "- If the vacancy asks for something in the letter (answer a question, a start date,",
+    "  a link, salary, a code word), do it. If the request is vague, guess what the",
+    "  employer wants to hear and answer to the point.",
+    "- When mentioning a workplace, follow EMPLOYMENT.",
+    "- Pick 2-3 relevant facts (1-2 for a short letter), do not retell the resume.",
+    "- If the letter is not accepted (COVER LETTER: absent), return an empty letter.",
     "",
     "Test: answer EVERY question in QUESTIONS that is not of kind code.",
     "- For single/multiple return optionIds, only ids from that question's options;",
@@ -645,6 +720,8 @@ export const buildDraftPrompt = (input: DraftPromptInput): WritingPrompt => {
     applicantNotesBlock(language, input.notes),
     "",
     `COVER LETTER: ${input.coverLetter}`,
+    `LENGTH: ${DRAFT_LENGTH_RULES[language][input.length ?? "short"]}`,
+    `EMPLOYMENT: ${EMPLOYMENT_RULES[language][input.employment ?? "unknown"]}`,
     "",
     "QUESTIONS:",
     draftQuestionBlock(input.questions),

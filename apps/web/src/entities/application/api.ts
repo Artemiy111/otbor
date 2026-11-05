@@ -7,6 +7,7 @@ import type {
   ApplicationId,
   ApplicationRecord,
   DecisionId,
+  DraftLetterLength,
   HhAccountId,
   KitAnswer,
   KitRecord,
@@ -70,12 +71,14 @@ export const applicationApi = {
     readonly vacancyId: string
     readonly hhAccountId: string
     readonly resumeId?: string
+    readonly length?: DraftLetterLength
   }): Promise<{ readonly system: string; readonly user: string; readonly promptVersion: string }> =>
     call((client) =>
       client.DraftPromptPreview({
         vacancyId: input.vacancyId as VacancyId,
         hhAccountId: input.hhAccountId as HhAccountId,
-        resumeId: input.resumeId
+        resumeId: input.resumeId,
+        length: input.length
       })
     ),
   agentCatalog: (): Promise<AgentCatalog> => call((client) => client.AgentCatalogGet({})),
@@ -83,6 +86,7 @@ export const applicationApi = {
     readonly vacancyId: string
     readonly hhAccountId: string
     readonly resumeId?: string
+    readonly length?: DraftLetterLength
     readonly harness: string
     readonly model?: string
     readonly effort?: string
@@ -92,6 +96,7 @@ export const applicationApi = {
         vacancyId: input.vacancyId as VacancyId,
         hhAccountId: input.hhAccountId as HhAccountId,
         resumeId: input.resumeId,
+        length: input.length,
         harness: input.harness,
         model: input.model,
         effort: input.effort

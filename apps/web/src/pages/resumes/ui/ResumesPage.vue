@@ -64,6 +64,8 @@ const enrichmentQuery = useQuery({
 })
 
 const comment = ref("")
+/** "auto": work it out from the resume (the last job has no end date). */
+const employment = ref<"auto" | "employed" | "unemployed">("auto")
 
 interface SalaryDraft { min: string; expectation: string }
 const emptySalaries = (): Record<SalaryCurrency, SalaryDraft> =>
@@ -85,6 +87,7 @@ const amountText = (value: number | null | undefined): string => (value === null
 watch(enrichmentQuery.data, (data) => {
   if (!data) return
   comment.value = data.comment ?? ""
+  employment.value = data.currentlyEmployed === true ? "employed" : data.currentlyEmployed === false ? "unemployed" : "auto"
   const next = emptySalaries()
   for (const slot of data.salaries ?? []) {
     next[slot.currency] = { min: amountText(slot.min), expectation: amountText(slot.expectation) }
@@ -157,6 +160,7 @@ const saveMutation = useMutation({
     ]
     return resumeApi.enrichmentSave(selectedResumeId.value, {
       comment: comment.value,
+      currentlyEmployed: employment.value === "auto" ? null : employment.value === "employed",
       salaries: SALARY_CURRENCIES.flatMap((currency) => {
         const draft = salaries.value[currency]
         const min = toAmount(draft.min)
@@ -358,6 +362,21 @@ const refresh = () => {
               <Button variant="ghost" size="sm" @click="removeCustomFaq(entry.id)">Удалить</Button>
             </div>
             <Button variant="outline" size="sm" @click="addCustomFaq">Добавить свой вопрос</Button>
+          </div>
+          <div class="space-y-1.5">
+            <Label for="employment">Работаю ли я сейчас</Label>
+            <select
+              id="employment"
+              v-model="employment"
+              class="h-9 w-full max-w-sm rounded-md border border-input bg-transparent px-3 text-sm"
+            >
+              <option value="auto">Определить по резюме</option>
+              <option value="employed">Работаю: «на текущем месте»</option>
+              <option value="unemployed">Не работаю: «на прошлом месте»</option>
+            </select>
+            <p class="text-xs text-muted-foreground">
+              По умолчанию: если у последнего места нет даты окончания, работаю. Это попадает в письмо.
+            </p>
           </div>
           <div class="space-y-1.5">
             <Label>Общие заметки о резюме</Label>

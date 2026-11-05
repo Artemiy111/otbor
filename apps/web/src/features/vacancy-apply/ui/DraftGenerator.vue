@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue"
 import { useQuery } from "@pinia/colada"
 import { FileText, LoaderCircle, Sparkles } from "@lucide/vue"
-import type { FormQuestion, HarnessJob } from "@otbor/contract"
+import type { DraftLetterLength, FormQuestion, HarnessJob } from "@otbor/contract"
 import { parseGeneratedDraft, type GeneratedDraft } from "@otbor/domain"
 import { applicationApi, applicationKeys } from "@/entities/application"
 import { describeError } from "@/shared/lib"
@@ -106,6 +106,31 @@ const writeSaved = () => {
   }
 }
 
+/* ---- letter length -------------------------------------------------------- */
+
+const LENGTH_KEY = "otbor.draft-generator.length"
+const LENGTHS: ReadonlyArray<{ id: DraftLetterLength; label: string; hint: string }> = [
+  { id: "short", label: "Короткое", hint: "до 500 знаков, 2-3 абзаца" },
+  { id: "medium", label: "Среднее", hint: "до 900 знаков, 3 абзаца" },
+  { id: "long", label: "Длинное", hint: "до 1500 знаков, 3-4 абзаца" }
+]
+const readLength = (): DraftLetterLength => {
+  try {
+    const raw = localStorage.getItem(LENGTH_KEY)
+    return raw === "medium" || raw === "long" ? raw : "short"
+  } catch {
+    return "short"
+  }
+}
+const length = ref<DraftLetterLength>(readLength())
+watch(length, (value) => {
+  try {
+    localStorage.setItem(LENGTH_KEY, value)
+  } catch {
+    // the choice is just not remembered
+  }
+})
+
 const find = (harness: string, id: string) =>
   models.value.find((item) => item.harness === harness && item.id === id) ?? null
 
@@ -178,7 +203,8 @@ const showPrompt = async () => {
     promptText.value = await applicationApi.draftPrompt({
       vacancyId: props.vacancyId,
       hhAccountId: props.accountId,
-      resumeId: props.resumeId || undefined
+      resumeId: props.resumeId || undefined,
+      length: length.value
     })
   } catch (error) {
     promptError.value = describeError(error)
@@ -236,6 +262,7 @@ const run = async () => {
       vacancyId: props.vacancyId,
       hhAccountId: props.accountId,
       resumeId: props.resumeId || undefined,
+      length: length.value,
       harness: provider.value,
       model: model.value,
       effort: effort.value || undefined
@@ -291,6 +318,20 @@ const run = async () => {
         class="border-border"
         @refresh="catalogQuery.refetch()"
       />
+      <div class="inline-flex rounded-md border border-border p-0.5" role="group" aria-label="Длина письма">
+        <button
+          v-for="item in LENGTHS"
+          :key="item.id"
+          type="button"
+          :title="item.hint"
+          :disabled="running || disabled"
+          class="rounded px-2 py-1 text-xs transition-colors disabled:opacity-50"
+          :class="length === item.id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'"
+          @click="length = item.id"
+        >
+          {{ item.label }}
+        </button>
+      </div>
       <Button size="sm" :disabled="!canRun" @click="run">
         <LoaderCircle v-if="running" class="size-4 animate-spin" />
         <Sparkles v-else class="size-4" />

@@ -3,7 +3,9 @@ import {
   ANSWERS_PROMPT_VERSION,
   buildAnswersPrompt,
   buildCoverLetterPrompt,
+  buildDraftPrompt,
   buildResumePrompt,
+  resolveEmployment,
   COVER_LETTER_PROMPT_VERSION,
   detectWritingLanguage,
   RESUME_PROMPT_VERSION
@@ -271,5 +273,40 @@ describe("buildDraftPrompt", () => {
     expect(prompt.user).toContain("id=387049547 kind=single required=true")
     expect(prompt.user).toContain("optionId=387049548: Удалённо")
     expect(prompt.system).toContain("JSON-объект")
+  })
+})
+
+describe("draft cover letter", () => {
+  const base = { vacancy: vacancyRu, resumeText: resumeRu, coverLetter: "optional" as const, questions: [] }
+
+  test("is short by default and tells the model not to name the vacancy", () => {
+    const prompt = buildDraftPrompt(base)
+    expect(prompt.user).toContain("LENGTH: не больше 500 знаков")
+    expect(prompt.system).toContain("Меня заинтересовала вакансия")
+  })
+
+  test("length is selectable", () => {
+    expect(buildDraftPrompt({ ...base, length: "long" }).user).toContain("не больше 1500 знаков")
+  })
+
+  test("employment steers the wording", () => {
+    expect(buildDraftPrompt({ ...base, employment: "current" }).user).toContain("на текущем месте работы")
+    expect(buildDraftPrompt({ ...base, employment: "past" }).user).toContain("на прошлом месте работы")
+  })
+})
+
+describe("resolveEmployment", () => {
+  const open = [{ startDate: "2022-01", endDate: null }, { startDate: "2019-01", endDate: "2021-12" }]
+  const closed = [{ startDate: "2019-01", endDate: "2021-12" }]
+
+  test("derives from the end date of the jobs", () => {
+    expect(resolveEmployment(null, open)).toBe("current")
+    expect(resolveEmployment(undefined, closed)).toBe("past")
+    expect(resolveEmployment(null, [])).toBe("unknown")
+  })
+
+  test("the operator's override wins", () => {
+    expect(resolveEmployment(false, open)).toBe("past")
+    expect(resolveEmployment(true, closed)).toBe("current")
   })
 })

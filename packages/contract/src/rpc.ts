@@ -1216,6 +1216,11 @@ export const AgentCatalogGet = Rpc.make("AgentCatalogGet", {
   error: ApiError
 })
 
+/** How long the generated cover letter may be. Short is the default. */
+export const DraftLetterLength = Schema.Literals(["short", "medium", "long"])
+
+export type DraftLetterLength = typeof DraftLetterLength.Type
+
 /**
  * Draft the cover letter and the employer-test answers of a vacancy in one
  * model call. Needs a stored form (`VacancyFormGet`) so questions and option
@@ -1226,6 +1231,7 @@ export const DraftGenerate = Rpc.make("DraftGenerate", {
     vacancyId: VacancyId,
     hhAccountId: HhAccountId,
     resumeId: Schema.optional(Schema.String),
+    length: Schema.optional(DraftLetterLength),
     harness: Schema.String,
     model: Schema.optional(Schema.String),
     effort: Schema.optional(Schema.String)
@@ -1239,7 +1245,8 @@ export const DraftPromptPreview = Rpc.make("DraftPromptPreview", {
   payload: Schema.Struct({
     vacancyId: VacancyId,
     hhAccountId: HhAccountId,
-    resumeId: Schema.optional(Schema.String)
+    resumeId: Schema.optional(Schema.String),
+    length: Schema.optional(DraftLetterLength)
   }),
   success: Schema.Struct({
     system: Schema.String,
@@ -1354,6 +1361,7 @@ export const ResumeEnrichmentSave = Rpc.make("ResumeEnrichmentSave", {
     resumeId: ResumeId,
     data: Schema.Struct({
       comment: Schema.optional(Schema.String),
+      currentlyEmployed: Schema.optional(Schema.NullOr(Schema.Boolean)),
       salaries: Schema.optional(Schema.Array(ResumeSalary)),
       faq: Schema.optional(Schema.Array(ResumeFaqEntry)),
       experience: Schema.optional(

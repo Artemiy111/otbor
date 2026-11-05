@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm"
 import { randomUUID } from "node:crypto"
 import { Context, Effect, Layer } from "effect"
 import { Database, type DatabaseError, type Executor } from "../db/Database.ts"
+import * as ResumeEnrichmentRepository from "../repositories/ResumeEnrichmentRepository.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
 import * as VacancyFormRepository from "../repositories/VacancyFormRepository.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
@@ -12,6 +13,7 @@ import {
   buildAnswersPrompt,
   buildCoverLetterPrompt,
   buildResumePrompt,
+  resolveEmployment,
   type CoverLetterLength,
   type VacancyContext,
   type WritingLanguageOption,
@@ -44,6 +46,7 @@ export interface DraftInput {
   readonly vacancyId: string
   readonly hhAccountId: string
   readonly resumeId?: string
+  readonly length?: CoverLetterLength
   readonly harness: string
   readonly model?: string
   readonly effort?: string
@@ -70,6 +73,7 @@ export interface WritingServiceShape {
     readonly vacancyId: string
     readonly hhAccountId: string
     readonly resumeId?: string
+    readonly length?: CoverLetterLength
   }) => Effect.Effect<
     { readonly system: string; readonly user: string; readonly promptVersion: string },
     ApiError
@@ -323,7 +327,12 @@ export class WritingService extends Context.Service<WritingService, WritingServi
       /** Loads what a draft prompt needs and builds it. Shared by generate and preview. */
       const loadDraftPrompt = (
         tx: Executor,
-        input: { readonly vacancyId: string; readonly hhAccountId: string; readonly resumeId?: string }
+        input: {
+          readonly vacancyId: string
+          readonly hhAccountId: string
+          readonly resumeId?: string
+          readonly length?: CoverLetterLength
+        }
       ) =>
         Effect.gen(function*() {
           const account = yield* tx.execute(
@@ -341,6 +350,20 @@ export class WritingService extends Context.Service<WritingService, WritingServi
           const resumeText =
             resumeId === null ? null : yield* resumeTextFor(tx, currentUser.userId, resumeId)
           if (resumeId !== null && resumeText === null) return missing("Resume", resumeId)
+
+          // Works now or not: the operator's word on the resume, else its last job.
+          let employment = resolveEmployment(null, [])
+          if (resumeId !== null) {
+            const enrichment = yield* ResumeEnrichmentRepository.get(tx, currentUser.userId, resumeId)
+            const jobs = yield* tx.execute(
+              sql`select experience from resume where id = ${resumeId} and user_id = ${currentUser.userId} limit 1`
+            )
+            const experience = (jobs.rows[0] as { experience?: unknown } | undefined)?.experience
+            employment = resolveEmployment(
+              enrichment?.currentlyEmployed,
+              Array.isArray(experience) ? experience : []
+            )
+          }
 
           // The form is the vacancy's, the same for every applicant. Without one
           // (no test, never read) there are no questions to answer.
@@ -361,6 +384,8 @@ export class WritingService extends Context.Service<WritingService, WritingServi
               ? { firstName: accountRow.first_name ?? null, lastName: accountRow.last_name ?? null }
               : { firstName: accountRow.label ?? null },
             coverLetter: form?.coverLetter ?? (letterRequired ? "required" : "optional"),
+            ...(input.length === undefined ? {} : { length: input.length }),
+            employment,
             questions: (form?.questions ?? []).map((question) => ({
               id: question.id,
               kind: question.kind,
