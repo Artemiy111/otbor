@@ -5,6 +5,7 @@ import { FileText, LoaderCircle, Sparkles } from "@lucide/vue"
 import type { DraftLetterLength, FormQuestion, HarnessJob } from "@otbor/contract"
 import { parseGeneratedDraft, type GeneratedDraft } from "@otbor/domain"
 import { applicationApi, applicationKeys } from "@/entities/application"
+import { healthApi, healthKeys } from "@/entities/health"
 import { describeError } from "@/shared/lib"
 import {
   Button,
@@ -47,6 +48,21 @@ const catalogQuery = useQuery({
   staleTime: 30_000
 })
 const catalog = computed(() => catalogQuery.data.value ?? null)
+
+/* ---- executor ------------------------------------------------------------ */
+
+// A job queued with nobody polling just sits in `pending`; say so up front.
+const healthQuery = useQuery({
+  key: () => healthKeys.current(),
+  query: healthApi.get,
+  staleTime: 5_000
+})
+const healthTimer = setInterval(() => void healthQuery.refetch(), 10_000)
+const executorOffline = computed(
+  () =>
+    healthQuery.data.value !== undefined &&
+    !(healthQuery.data.value.harnesses ?? []).some((h) => h.online && h.kinds.includes("inference"))
+)
 
 const harnesses = computed<HarnessEntry[]>(() =>
   (catalog.value?.harnesses ?? []).map((harness) => ({
@@ -225,6 +241,7 @@ const stopTimer = () => {
   timer = null
 }
 onBeforeUnmount(() => {
+  clearInterval(healthTimer)
   cancelled = true
   stopTimer()
 })
@@ -341,7 +358,7 @@ const run = async () => {
         <FileText class="size-4" />
         Промпт
       </Button>
-      <span v-if="running" class="text-xs text-muted-foreground">Модель думает, {{ elapsed }} с…</span>
+      <span v-if="running && !executorOffline" class="text-xs text-muted-foreground">Модель думает, {{ elapsed }} с…</span>
     </div>
 
     <Sheet v-model:open="promptOpen">
@@ -371,7 +388,12 @@ const run = async () => {
         </template>
       </SheetContent>
     </Sheet>
-    <p v-if="catalogQuery.isLoading.value" class="text-xs text-muted-foreground">Загружаю список моделей…</p>
+    <p v-if="executorOffline" class="text-xs text-destructive">
+      Harness не запущен: задание встанет в очередь и будет ждать, пока вы не выполните
+      <code>otbor harness run</code> (или <code>otbor up</code>).
+      <template v-if="running">Сейчас оно ждёт уже {{ elapsed }} с.</template>
+    </p>
+    <p v-else-if="catalogQuery.isLoading.value" class="text-xs text-muted-foreground">Загружаю список моделей…</p>
     <p v-else-if="catalogError" class="text-xs text-amber-700 dark:text-amber-300">{{ catalogError }}</p>
     <p v-else-if="catalog !== null && (catalog.harnesses.length === 0 || catalogEmpty)" class="text-xs text-amber-700 dark:text-amber-300">
       Ни один харнес пока не сообщил свои модели. Запустите `otbor harness run`.

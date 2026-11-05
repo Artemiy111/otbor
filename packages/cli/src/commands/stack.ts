@@ -314,7 +314,11 @@ const up = Command.make(
       Flag.withDefault(false)
     ),
     harness: Flag.Boolean("harness").pipe(
-      Flag.withDescription("Also run `otbor harness run`"),
+      Flag.withDescription("Run `otbor harness run` (default: on when ~/.otbor/harness.json exists)"),
+      Flag.withDefault(false)
+    ),
+    noHarness: Flag.Boolean("no-harness").pipe(
+      Flag.withDescription("Do not run the harness even if it is registered"),
       Flag.withDefault(false)
     ),
     proxy: Flag.Boolean("proxy").pipe(
@@ -327,12 +331,15 @@ const up = Command.make(
       Flag.withDefault(false)
     )
   },
-  Effect.fn(function*({ noWeb, harness, proxy, detach }) {
+  Effect.fn(function*({ noWeb, harness, noHarness, proxy, detach }) {
     yield* ensurePostgres()
     yield* migrate()
     if (proxy) yield* startProxy()
 
-    const specs = serviceSpecs(repoRoot, { web: !noWeb, harness })
+    const specs = serviceSpecs(repoRoot, {
+      web: !noWeb,
+      harness: !noHarness && (harness || existsSync(harnessStatePath()))
+    })
     const names = specs.map((spec) => spec.name)
     yield* ensurePortsFree(specs)
 
@@ -459,6 +466,7 @@ const statusChecks = Effect.fn("stack.statusChecks")(function*() {
   const serverPid = livePid("server")
   const webPid = livePid("web")
   const foreign = " (not started by otbor up)"
+  const harnessOnline = (rpc?.harnesses ?? []).some((h) => h.online)
 
   const checks: Array<Check> = [
     {
@@ -483,10 +491,12 @@ const statusChecks = Effect.fn("stack.statusChecks")(function*() {
     },
     {
       name: "harness",
-      state: harnessPid !== null ? "ok" : "skip",
-      detail:
-        (harnessPid !== null ? `pid ${harnessPid}` : "not running (detached)") +
-        `, config ${harnessSaved ? "present" : "missing"}`
+      // The API's heartbeat view wins: a harness started by hand in a terminal counts.
+      state: harnessOnline ? "ok" : harnessSaved ? "warn" : "skip",
+      detail: harnessOnline
+        ? `online${harnessPid !== null ? `, pid ${harnessPid}` : ""}`
+        : `not running, so inference and browser jobs wait in the queue; start: otbor harness run` +
+          (harnessSaved ? "" : " (not registered yet)")
     }
   ]
   return checks
