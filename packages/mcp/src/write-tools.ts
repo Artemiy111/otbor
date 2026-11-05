@@ -238,12 +238,22 @@ export const ApplyFilterSetSettings = writeTool("apply_filter_set_settings", {
   description:
     "Change the scoring settings of the apply filter for one hh account and resume (without `resume`: the " +
     "account-wide filter): minFit (0-100), tests policy (human = needs the operator, skip, allow) and " +
-    "freshHalfLifeHours. Settings left out keep their value; the rules are kept as they are. If only the " +
+    "freshHalfLifeHours, plus the auto-apply settings: autoMode ('off' or 'drafts' only; 'auto' = sending real " +
+    "applications by itself is enabled by a human in the web UI or the CLI, this tool rejects it), dailyLimit " +
+    "(>= 0, hh allows 200 per account per day), batchSize (1-500), sort (priority, fit, newest, salary) and " +
+    "minPriority (>= 0). Settings left out keep their value; the rules are kept as they are. If only the " +
     "built-in default applied so far, it is stored as an explicit row. Sends nothing to hh.ru.",
   parameters: Schema.Struct({
     minFit: Schema.optional(Schema.Int).annotate({ description: "0-100: skip vacancies that score below this fit" }),
     tests: Schema.optional(Schema.Literals(["human", "skip", "allow"])),
     freshHalfLifeHours: Schema.optional(Schema.Int).annotate({ description: "Positive hours; how fast freshness decays" }),
+    autoMode: Schema.optional(Schema.String).annotate({
+      description: "'off' (default) or 'drafts'. 'auto' is rejected: only a human enables sending (UI or CLI)"
+    }),
+    dailyLimit: Schema.optional(Schema.Int).annotate({ description: "Responses per 24 hours per hh account, >= 0" }),
+    batchSize: Schema.optional(Schema.Int).annotate({ description: "Vacancies per auto-apply run, 1-500" }),
+    sort: Schema.optional(Schema.Literals(["priority", "fit", "newest", "salary"])),
+    minPriority: Schema.optional(Schema.Number).annotate({ description: "Skip decisions below this priority, >= 0" }),
     ...filterTarget
   }),
   success: ApplyFilterBrief,

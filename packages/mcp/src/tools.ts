@@ -357,6 +357,9 @@ export const ApplyFilterGet = readTool("apply_filter_get", {
   description:
     "The apply filter that decides which vacancies may be applied to for one hh account and resume: hard rules " +
     "(readable, ANDed), OR groups, and scoring settings (minFit, tests policy human/skip/allow, freshHalfLifeHours). " +
+    "It also shows the auto-apply settings: autoMode (off = default, drafts, auto = sends real applications), " +
+    "dailyLimit (default 200 per hh account), batchSize, sort, minPriority, the scoring `boosts`, and `usage` " +
+    "(responses sent in the last 24 hours, the limit and what remains). " +
     "A vacancy that fails a rule is a skip with reason blocked_filter whose detail lists the failed rules. " +
     "`source` says where it came from: exact (row for this resume), account (account-wide row, used when the " +
     "resume has none) or default (nothing stored, built-in template). Without `resume` the account-wide " +
@@ -713,7 +716,7 @@ const READ_INSTRUCTIONS = `otbor is an hh.ru auto-apply control plane.
 
 Domain model, in pipeline order:
 - vacancy: a job posting crawled from hh.ru (title, employer, salary, description, skills).
-- apply filter: per (hh account, resume) hard rules (apply_filter_get) that a vacancy must pass (the title check is just rules on \`title\`). A vacancy that fails them is skipped with reason \`blocked_filter\`, whose detail lists the failed rules. The filter also holds minFit, the tests policy and the freshness half-life. Without a stored row the account-wide row, then a built-in default, applies. Rules are edited in the web UI.
+- apply filter: per (hh account, resume) hard rules (apply_filter_get) that a vacancy must pass (the title check is just rules on \`title\`). A vacancy that fails them is skipped with reason \`blocked_filter\`, whose detail lists the failed rules. The filter also holds minFit, the tests policy and the freshness half-life, and the auto-apply settings: autoMode off (default) / drafts (the scheduled runner creates applications, reads forms and writes letters; the operator sends) / auto (the runner also sends finished applications for real, within the daily limit of 200 per hh account, tracked in \`usage\`), batchSize, sort, minPriority and scoring boosts. Without a stored row the account-wide row, then a built-in default, applies. Rules are edited in the web UI.
 - decision: the policy result for a vacancy: verdict (apply / draft / skip), fit (0-100 against the resume), priority (ranking score) and reasons (why). A vacancy is applicable when its verdict is apply. Reasons starting with "blocked_" explain a skip; \`blocked_filter\` lists the failed apply-filter rules. The "fit" reason says whether the number is "deterministic" (keyword rules, saturates near 95-100) or "llm" (a personal judgement, see fit_get).
 - application: created from an apply/draft decision; states draft, queued, submitting, submitted, skipped, needs_human, failed. Submit is at-most-once; "waiting" usually means draft or needs_human. Applications the operator made by hand on hh.ru are imported by the operator CLI command "otbor hh sync" as state submitted with origin "imported" (and hh's own status); they count as already applied (blocked_applied), cannot be approved or prepared again, and are not otbor submits. This server has no tool to run or change the sync.
 - kit: the cover letter and form answers prepared for an application.
@@ -733,7 +736,7 @@ export const READONLY_NOTE = "This server is running READ-ONLY (OTBOR_MCP_READON
 
 const WRITE_INSTRUCTIONS = `
 
-Apply filter (write tools): apply_filter_from_preset copies a saved apply preset into the filter of an account and resume (replacing its rules, keeping its settings); apply_filter_set_settings changes minFit, the tests policy and freshHalfLifeHours and keeps the rules. Both make existing decisions stale; a vacancy that now fails the rules becomes a blocked_filter skip. Show the user what changes (apply_filter_get before and after) and do not change the filter unasked.
+Apply filter (write tools): apply_filter_from_preset copies a saved apply preset into the filter of an account and resume (replacing its rules, keeping its settings); apply_filter_set_settings changes minFit, the tests policy, freshHalfLifeHours, autoMode (only off or drafts), dailyLimit, batchSize, sort and minPriority and keeps the rules. The mode \`auto\` (automatic sending) can NOT be set here: a human enables it in the web UI or with \`otbor filter set --auto auto --yes\`; if the user wants it, tell them so. Even with autoMode drafts, application_approve still sends for real. Both make existing decisions stale; a vacancy that now fails the rules becomes a blocked_filter skip. Show the user what changes (apply_filter_get before and after) and do not change the filter unasked.
 
 Applying (write tools). application_approve SENDS A REAL APPLICATION on hh.ru, once and irreversibly. Everything before it is a draft and can be redone or dropped. Recommended workflow, one vacancy at a time (the tools are atomic; you orchestrate):
 1. vacancies_top for candidates. Optionally read vacancy_get + resume_get and, if the keyword fit looks wrong, record your own view with fit_save (it re-ranks).

@@ -27,6 +27,7 @@ import {
   SelectValue
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
+import AutoApplySection from "./AutoApplySection.vue"
 
 /** Select values cannot be empty: this stands for the account-level row. */
 const ACCOUNT_DEFAULT = "__account__"
@@ -240,6 +241,8 @@ const sourceHint = computed(() => {
     </div>
 
     <p v-if="sourceHint" class="mb-4 text-xs text-muted-foreground">{{ sourceHint }}</p>
+
+    <AutoApplySection :account-id="accountId" :resume-id="resumeId" :view="view" />
 
     <Card class="mb-4">
       <CardContent class="space-y-2 p-4">

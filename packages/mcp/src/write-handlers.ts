@@ -110,8 +110,31 @@ export const OtborWriteHandlers = OtborWriteToolkit.toLayer(Effect.gen(function*
     }),
 
     apply_filter_set_settings: Effect.fn("mcp.apply_filter_set_settings")(function*(params) {
-      if (params.minFit === undefined && params.tests === undefined && params.freshHalfLifeHours === undefined) {
-        return yield* fail("pass at least one of minFit, tests, freshHalfLifeHours")
+      if (
+        params.minFit === undefined && params.tests === undefined && params.freshHalfLifeHours === undefined &&
+        params.autoMode === undefined && params.dailyLimit === undefined && params.batchSize === undefined &&
+        params.sort === undefined && params.minPriority === undefined
+      ) {
+        return yield* fail(
+          "pass at least one of minFit, tests, freshHalfLifeHours, autoMode, dailyLimit, batchSize, sort, minPriority"
+        )
+      }
+      if (params.autoMode === "auto") {
+        return yield* fail(
+          "autoMode 'auto' sends real applications on hh.ru and cannot be enabled through MCP; ask the user to enable it in the web UI or with `otbor filter set --auto auto --yes`. Use 'drafts' to prepare applications for review."
+        )
+      }
+      if (params.autoMode !== undefined && params.autoMode !== "off" && params.autoMode !== "drafts") {
+        return yield* fail("autoMode must be 'off' or 'drafts'")
+      }
+      if (params.dailyLimit !== undefined && params.dailyLimit < 0) {
+        return yield* fail("dailyLimit must be an integer >= 0")
+      }
+      if (params.batchSize !== undefined && (params.batchSize < 1 || params.batchSize > 500)) {
+        return yield* fail("batchSize must be an integer from 1 to 500")
+      }
+      if (params.minPriority !== undefined && !(params.minPriority >= 0)) {
+        return yield* fail("minPriority must be a number >= 0")
       }
       if (params.minFit !== undefined && (params.minFit < 0 || params.minFit > 100)) {
         return yield* fail("minFit must be an integer from 0 to 100")
@@ -136,7 +159,12 @@ export const OtborWriteHandlers = OtborWriteToolkit.toLayer(Effect.gen(function*
         filter: current.filter,
         ...(params.minFit === undefined ? {} : { minFit: params.minFit }),
         ...(params.tests === undefined ? {} : { tests: params.tests }),
-        ...(params.freshHalfLifeHours === undefined ? {} : { freshHalfLifeHours: params.freshHalfLifeHours })
+        ...(params.freshHalfLifeHours === undefined ? {} : { freshHalfLifeHours: params.freshHalfLifeHours }),
+        ...(params.autoMode === undefined ? {} : { autoMode: params.autoMode as "off" | "drafts" }),
+        ...(params.dailyLimit === undefined ? {} : { dailyLimit: params.dailyLimit }),
+        ...(params.batchSize === undefined ? {} : { batchSize: params.batchSize }),
+        ...(params.sort === undefined ? {} : { sort: params.sort }),
+        ...(params.minPriority === undefined ? {} : { minPriority: params.minPriority })
       }))
       return applyFilterBrief({ ...saved, source: resumeId === undefined ? "account" : "exact" }, accountDirectory(accounts))
     }),

@@ -1,5 +1,9 @@
 import type {
+  ApplyBoost,
   ApplyFilterRecord,
+  ApplyUsage,
+  AutoMode,
+  ApplySort,
   ApplyFilterView,
   HhAccountId,
   PresetFilter,
@@ -20,6 +24,17 @@ export interface ApplyFilterSetInput extends ApplyFilterTarget {
   readonly minFit: number
   readonly tests: TestsPolicy
   readonly freshHalfLifeHours: number
+}
+
+/** Auto-apply settings only: the stored filter is sent back unchanged. */
+export interface ApplyAutoSetInput extends ApplyFilterTarget {
+  readonly filter: PresetFilter
+  readonly autoMode: AutoMode
+  readonly dailyLimit: number
+  readonly batchSize: number
+  readonly sort: ApplySort
+  readonly minPriority: number
+  readonly boosts: ReadonlyArray<ApplyBoost>
 }
 
 export interface ApplyFilterFromPresetInput extends ApplyFilterTarget {
@@ -44,6 +59,21 @@ export const applyFilterApi = {
         freshHalfLifeHours: input.freshHalfLifeHours
       })
     ),
+  setAuto: (input: ApplyAutoSetInput): Promise<ApplyFilterRecord> =>
+    call((client) =>
+      client.ApplyFilterSet({
+        ...target(input),
+        filter: input.filter,
+        autoMode: input.autoMode,
+        dailyLimit: input.dailyLimit,
+        batchSize: input.batchSize,
+        sort: input.sort,
+        minPriority: input.minPriority,
+        boosts: input.boosts
+      })
+    ),
+  usage: (hhAccountId: string): Promise<ApplyUsage> =>
+    call((client) => client.ApplyUsageGet({ hhAccountId: hhAccountId as HhAccountId })),
   fromPreset: (input: ApplyFilterFromPresetInput): Promise<ApplyFilterRecord> =>
     call((client) =>
       client.ApplyFilterFromPreset({ ...target(input), presetId: input.presetId as PresetId })

@@ -1,7 +1,14 @@
 export {
   applyFilterApi,
+  type ApplyAutoSetInput,
   type ApplyFilterFromPresetInput,
   type ApplyFilterSetInput,
   type ApplyFilterTarget
 } from "./api"
-export { applyFilterKeys, applyFilterSourceLabel, testsPolicyOptions } from "./model"
+export {
+  applyFilterKeys,
+  applyFilterSourceLabel,
+  applySortOptions,
+  autoModeOptions,
+  testsPolicyOptions
+} from "./model"

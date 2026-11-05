@@ -4,6 +4,7 @@ import { Argument, Command, Flag } from "effect/cli"
 import { Api } from "../client.ts"
 import { formatApplication, shortId, table } from "../format.ts"
 import { resolveApplicationId, resolveDecisionId } from "../resolve.ts"
+import { resolveAccount } from "./filter.ts"
 
 const accountFlag = Flag.String("account").pipe(
   Flag.withDescription("hh account id (defaults to OTBOR_HH_ACCOUNT_ID)"),
@@ -222,7 +223,56 @@ const kit = Command.make(
   })
 ).pipe(Command.withDescription("Attach the prepared form kit to an application"))
 
+const RUN_COUNTS = ["selected", "created", "writingEnqueued", "kitsSet", "submitQueued", "needsHuman", "waiting"] as const
+
+/** Runs the `apply` schedule once and prints the counts of that run. */
+const run = Command.make(
+  "run",
+  {
+    account: Flag.String("account").pipe(
+      Flag.withDescription("hh account (id, prefix or label). Without it the user-wide apply schedule runs for every account"),
+      Flag.optional
+    ),
+    timeout: Flag.Int("timeout").pipe(Flag.withDescription("Seconds to wait for the result"), Flag.withDefault(120))
+  },
+  Effect.fn(function*({ account, timeout }) {
+    const api = yield* Api
+    const target = Option.isSome(account) ? String(yield* resolveAccount(account)) : "global"
+    const schedules = yield* api.SchedulesList()
+    const matches = (targetId: string) =>
+      target === "global" ? targetId === "global" || targetId === "default" || targetId === "" : targetId === target
+    let schedule = schedules.find((item) => item.kind === "apply" && matches(item.targetId.trim()))
+    if (schedule === undefined) {
+      // Created disabled: the worker does not pick it up until the operator enables it.
+      schedule = yield* api.ScheduleUpsert({ kind: "apply", targetId: target, intervalMinutes: 15, enabled: false })
+      yield* Console.log(`created the apply schedule ${shortId(schedule.id)} (target ${target}, every 15m, disabled)`)
+    }
+    const startedAt = Date.now() - 2000
+    const accepted = yield* api.ScheduleRunNow({ id: schedule.id })
+    if (!accepted.accepted) {
+      return yield* Effect.fail(new Error("the run was not accepted (is it already running?)"))
+    }
+    yield* Console.log(`running ${shortId(schedule.id)} ...`)
+    const deadline = Date.now() + timeout * 1000
+    while (Date.now() < deadline) {
+      yield* Effect.sleep("2 seconds")
+      const page = yield* api.ScheduleRunsList({ scheduleId: schedule.id, limit: 1 })
+      const latest = page.items[0]
+      if (latest === undefined || Date.parse(latest.startedAt) < startedAt || latest.status === "running") continue
+      if (latest.status === "error") {
+        return yield* Effect.fail(new Error(latest.error ?? "the run failed"))
+      }
+      const detail = (latest.detail ?? {}) as Record<string, unknown>
+      yield* Console.log(RUN_COUNTS.map((key) => `${key}=${typeof detail[key] === "number" ? detail[key] : 0}`).join("  "))
+      const errors = Array.isArray(detail.errors) ? detail.errors : []
+      for (const error of errors) yield* Console.log(`  error: ${String(error)}`)
+      return
+    }
+    yield* Console.log("no result yet; see: otbor schedule list")
+  })
+).pipe(Command.withDescription("Run the auto-apply schedule once and print the counts (modes off do nothing)"))
+
 export const applyCommand = Command.make("apply").pipe(
-  Command.withSubcommands([create, list, get, approve, skip, retry, kit]),
+  Command.withSubcommands([create, list, get, approve, skip, retry, kit, run]),
   Command.withDescription("Applications: create, review, approve, retry")
 )

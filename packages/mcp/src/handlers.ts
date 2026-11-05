@@ -439,7 +439,8 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
         hhAccountId: account.id,
         ...(resume === undefined ? {} : { resumeId: resume.id })
       }))
-      return applyFilterBrief(view, accountDirectory(accounts))
+      const usage = yield* run(rpc.ApplyUsageGet({ hhAccountId: account.id }))
+      return applyFilterBrief(view, accountDirectory(accounts), usage)
     }),
 
     employers_list: Effect.fn("mcp.employers_list")(function*(params) {

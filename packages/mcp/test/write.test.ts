@@ -231,9 +231,17 @@ const makeFake = (options: {
         minFit: 45,
         tests: "human",
         freshHalfLifeHours: 72,
+        autoMode: "off",
+        dailyLimit: 200,
+        batchSize: 20,
+        sort: "priority",
+        minPriority: 0,
+        boosts: [{ rule: { field: "salary", op: "gte", value: 250000, currency: "RUB" }, weight: 8 }],
         templatePresetId: null,
         updatedAt: null
       }),
+    ApplyUsageGet: (payload: { hhAccountId: string }) =>
+      Effect.succeed({ hhAccountId: payload.hhAccountId, used: 12, limit: 200, remaining: 188, oldest: null }),
     ApplyFilterSet: (payload: Record<string, unknown>) => {
       calls.filterSet.push(payload)
       return Effect.succeed({
@@ -244,6 +252,12 @@ const makeFake = (options: {
         minFit: payload.minFit ?? 45,
         tests: payload.tests ?? "human",
         freshHalfLifeHours: payload.freshHalfLifeHours ?? 72,
+        autoMode: payload.autoMode ?? "off",
+        dailyLimit: payload.dailyLimit ?? 200,
+        batchSize: payload.batchSize ?? 20,
+        sort: payload.sort ?? "priority",
+        minPriority: payload.minPriority ?? 0,
+        boosts: [],
         templatePresetId: null,
         updatedAt: "2026-11-05T00:00:00Z"
       })
@@ -258,6 +272,12 @@ const makeFake = (options: {
         minFit: 45,
         tests: "human",
         freshHalfLifeHours: 72,
+        autoMode: "off",
+        dailyLimit: 200,
+        batchSize: 20,
+        sort: "priority",
+        minPriority: 0,
+        boosts: [],
         templatePresetId: payload.presetId,
         updatedAt: "2026-11-05T00:00:00Z"
       })
@@ -767,6 +787,16 @@ describe("apply filter", () => {
     expect(out.groups[0]).toContain("title contains devops | title contains sre")
     expect(out.minFit).toBe(45)
     expect(out.tests).toBe("human")
+    const auto = result.structuredContent as {
+      autoMode: string
+      dailyLimit: number
+      boosts: Array<string>
+      usage: { used: number; limit: number; remaining: number }
+    }
+    expect(auto.autoMode).toBe("off")
+    expect(auto.dailyLimit).toBe(200)
+    expect(auto.boosts).toEqual(["salary >= 250000 (RUB) (+8)"])
+    expect(auto.usage).toMatchObject({ used: 12, limit: 200, remaining: 188 })
 
     const { tools } = await withClient(layer, (c) => c.listTools(), registrationFor(true))
     expect(tools.find((t) => t.name === "apply_filter_get")?.annotations?.readOnlyHint).toBe(true)
@@ -819,6 +849,38 @@ describe("apply filter", () => {
     expect(out.source).toBe("account")
   })
 
+  test("apply_filter_set_settings sets auto settings but never 'auto' mode", async () => {
+    const { layer, calls } = makeFake({})
+    const refusedAuto = await call(layer, "apply_filter_set_settings", { autoMode: "auto" })
+    expect(refusedAuto.isError).toBe(true)
+    expect(JSON.stringify(refusedAuto.content)).toContain("cannot be enabled through MCP")
+    expect((await call(layer, "apply_filter_set_settings", { autoMode: "bogus" })).isError).toBe(true)
+    expect((await call(layer, "apply_filter_set_settings", { batchSize: 0 })).isError).toBe(true)
+    expect((await call(layer, "apply_filter_set_settings", { batchSize: 501 })).isError).toBe(true)
+    expect((await call(layer, "apply_filter_set_settings", { dailyLimit: -1 })).isError).toBe(true)
+    expect((await call(layer, "apply_filter_set_settings", { minPriority: -1 })).isError).toBe(true)
+    expect(calls.filterSet).toHaveLength(0)
+
+    const ok = await call(layer, "apply_filter_set_settings", {
+      autoMode: "drafts",
+      dailyLimit: 50,
+      batchSize: 10,
+      sort: "fit",
+      minPriority: 30
+    })
+    expect(ok.isError).toBeFalsy()
+    expect(calls.filterSet).toEqual([{
+      hhAccountId: ACCOUNT,
+      filter: DEVOPS_FILTER,
+      autoMode: "drafts",
+      dailyLimit: 50,
+      batchSize: 10,
+      sort: "fit",
+      minPriority: 30
+    }])
+    expect((ok.structuredContent as { autoMode: string }).autoMode).toBe("drafts")
+  })
+
   test("server instructions mention the apply filter and blocked_filter", () => {
     for (const readOnly of [true, false]) {
       const text = serverInstructions(readOnly)
@@ -826,5 +888,7 @@ describe("apply filter", () => {
       expect(text).toContain("blocked_filter")
     }
     expect(serverInstructions(false)).toContain("apply_filter_set_settings")
+    expect(serverInstructions(false)).toContain("can NOT be set here")
+    expect(serverInstructions(true)).toContain("200 per hh account")
   })
 })

@@ -1,6 +1,7 @@
 import type {
   ApplicationRecord,
   ApplyFilterView,
+  ApplyUsage,
   DecisionRecord,
   EmployerSummary,
   HhAccountRecord,
@@ -227,6 +228,23 @@ export const ApplyFilterBrief = Schema.Struct({
   minFit: Schema.Int,
   tests: Schema.String,
   freshHalfLifeHours: Schema.Int,
+  /** off (default) | drafts (prepare, the operator sends) | auto (sends ready applications by itself). */
+  autoMode: Schema.String,
+  /** Responses per rolling 24 hours per hh account. */
+  dailyLimit: Schema.Int,
+  /** Vacancies the auto-apply runner takes per run. */
+  batchSize: Schema.Int,
+  sort: Schema.String,
+  minPriority: Schema.Number,
+  /** Readable scoring boosts, e.g. "salary >= 250000 (+8)". */
+  boosts: Schema.Array(Schema.String),
+  /** Responses in the last 24 hours (apply_filter_get only). */
+  usage: Schema.optional(Schema.Struct({
+    used: Schema.Int,
+    limit: Schema.Int,
+    remaining: Schema.Int,
+    oldest: NullableString
+  })),
   templatePresetId: NullableString,
   updatedAt: NullableString
 })
@@ -234,7 +252,11 @@ export type ApplyFilterBrief = typeof ApplyFilterBrief.Type
 
 
 /** Readable apply filter: rules and groups as one-line labels, switches as `options`. */
-export const applyFilterBrief = (view: ApplyFilterView, directory: AccountDirectory): ApplyFilterBrief => {
+export const applyFilterBrief = (
+  view: ApplyFilterView,
+  directory: AccountDirectory,
+  usage?: ApplyUsage
+): ApplyFilterBrief => {
   const filter = view.filter
   const options: Array<string> = []
   if (filter.text !== undefined && filter.text !== "") options.push(`text: ${filter.text}`)
@@ -253,6 +275,15 @@ export const applyFilterBrief = (view: ApplyFilterView, directory: AccountDirect
     minFit: view.minFit,
     tests: view.tests,
     freshHalfLifeHours: view.freshHalfLifeHours,
+    autoMode: view.autoMode,
+    dailyLimit: view.dailyLimit,
+    batchSize: view.batchSize,
+    sort: view.sort,
+    minPriority: view.minPriority,
+    boosts: view.boosts.map((boost) => `${describeRule(boost.rule)} (${boost.weight > 0 ? "+" : ""}${boost.weight})`),
+    ...(usage === undefined
+      ? {}
+      : { usage: { used: usage.used, limit: usage.limit, remaining: usage.remaining, oldest: usage.oldest } }),
     templatePresetId: view.templatePresetId,
     updatedAt: view.updatedAt
   }
