@@ -231,7 +231,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
         presets.remove(id).pipe(Effect.map((deleted) => ({ id, deleted }))),
       PresetsPreview: ({ filter }) => presets.preview(filter),
 
-      QueueStatsGet: () => queue.stats(),
+      QueueStatsGet: ({ kind }) => queue.stats(kind),
       QueueJobsList: (payload) => queue.jobs(payload),
 
       HarnessRegister: (payload) => queue.register(payload),

@@ -316,7 +316,7 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
     }),
 
     queue_stats: Effect.fn("mcp.queue_stats")(function*() {
-      return yield* run(rpc.QueueStatsGet())
+      return yield* run(rpc.QueueStatsGet({}))
     }),
 
     accounts_list: Effect.fn("mcp.accounts_list")(function*() {

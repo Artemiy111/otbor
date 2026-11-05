@@ -10,7 +10,7 @@ const stats = Command.make(
   },
   Effect.fn(function*({ json }) {
     const api = yield* Api
-    const result = yield* api.QueueStatsGet()
+    const result = yield* api.QueueStatsGet({})
 
     if (json) {
       yield* Console.log(JSON.stringify(result, null, 2))

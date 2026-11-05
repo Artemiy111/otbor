@@ -134,9 +134,10 @@ export interface CompleteResult {
 }
 
 export interface QueueServiceShape {
-  readonly stats: () => Effect.Effect<QueueStats, ApiError>
+  readonly stats: (kind?: string) => Effect.Effect<QueueStats, ApiError>
   readonly jobs: (options: {
     readonly status?: string
+    readonly kind?: string
     readonly limit?: number
   }) => Effect.Effect<ReadonlyArray<HarnessJob>, ApiError>
   readonly register: (input: RegisterInput) => Effect.Effect<HarnessRegistration, ApiError>
@@ -155,9 +156,9 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
       const database = yield* Database
       const currentUser = yield* CurrentUser
 
-      const stats: QueueServiceShape["stats"] = () =>
+      const stats: QueueServiceShape["stats"] = (kind) =>
         database
-          .asUser(currentUser.userId, (tx) => QueueRepository.stats(tx))
+          .asUser(currentUser.userId, (tx) => QueueRepository.stats(tx, kind))
           .pipe(Effect.mapError(toStorageError("queue.stats")))
 
       const jobs: QueueServiceShape["jobs"] = (options) =>

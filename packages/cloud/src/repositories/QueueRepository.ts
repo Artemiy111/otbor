@@ -363,7 +363,7 @@ export const recoverExpired = (tx: Executor): RepoEffect<ReadonlyArray<Recovered
       )
     )
 
-export const stats = (tx: Executor): RepoEffect<QueueStats> =>
+export const stats = (tx: Executor, kind?: string): RepoEffect<QueueStats> =>
   tx
     .execute(sql`
       select
@@ -377,9 +377,10 @@ export const stats = (tx: Executor): RepoEffect<QueueStats> =>
         count(*) filter (where status = 'needs_reconcile')::int as needs_reconcile,
         coalesce(max(extract(epoch from (now() - created_at))), 0)::int as oldest
       from harness_jobs
-      where status = 'pending'
+      where (status = 'pending'
         or status in ('leased', 'running')
-        or created_at > now() - interval '1 day'
+        or created_at > now() - interval '1 day')
+        ${kind === undefined ? sql`` : sql`and kind = ${kind}`}
     `)
     .pipe(
       Effect.map((result) => {
@@ -410,15 +411,16 @@ export const oldestPendingAge = (tx: Executor): RepoEffect<number> =>
 
 export const list = (
   tx: Executor,
-  options: { readonly status?: string; readonly limit?: number } = {}
+  options: { readonly status?: string; readonly kind?: string; readonly limit?: number } = {}
 ): RepoEffect<ReadonlyArray<HarnessJob>> =>
   tx
     .select()
     .from(harnessJob)
     .where(
-      options.status === undefined || options.status === ""
+      sql`${options.status === undefined || options.status === ""
         ? sql`true`
-        : sql`${harnessJob.status} = ${options.status}`
+        : sql`${harnessJob.status} = ${options.status}`}
+        and ${options.kind === undefined ? sql`true` : sql`${harnessJob.kind} = ${options.kind}`}`
     )
     .orderBy(sql`${harnessJob.createdAt} desc`)
     .limit(Math.min(Math.max(options.limit ?? 50, 1), 200))

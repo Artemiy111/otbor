@@ -84,7 +84,7 @@ export const navSections: ReadonlyArray<NavSection> = [
     id: "automation",
     label: "Автоматизация",
     items: [
-      { id: "queue", label: "Очередь", href: "/queue", icon: ListChecks },
+      { id: "queue", label: "Очереди", href: "/queue", icon: ListChecks },
       { id: "inference", label: "Генерация", href: "/inference", icon: Sparkles },
       { id: "presets", label: "Пресеты", href: "/presets", icon: SlidersHorizontal }
     ]

@@ -1089,6 +1089,7 @@ export const PresetsPreview = Rpc.make("PresetsPreview", {
 /* -------------------------------------------------------------------------- */
 
 export const QueueStatsGet = Rpc.make("QueueStatsGet", {
+  payload: Schema.Struct({ kind: Schema.optional(JobKind) }),
   success: QueueStats,
   error: ApiError
 })
@@ -1096,6 +1097,7 @@ export const QueueStatsGet = Rpc.make("QueueStatsGet", {
 export const QueueJobsList = Rpc.make("QueueJobsList", {
   payload: Schema.Struct({
     status: Schema.optional(Schema.String),
+    kind: Schema.optional(JobKind),
     limit: Schema.optional(Schema.Int)
   }),
   success: Schema.Array(HarnessJob),
