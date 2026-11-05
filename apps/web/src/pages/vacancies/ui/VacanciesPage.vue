@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, reactive, ref, watch } from "vue"
+import { computed, h, ref, watch } from "vue"
 import { useDebounceFn } from "@vueuse/core"
 import { useQuery } from "@pinia/colada"
 import { applicationApi, respondedByVacancy } from "@/entities/application"
@@ -65,9 +65,9 @@ const serverSort = computed<VacancySort | undefined>(() => {
 
 /** Ad-hoc rules: the same constructor as presets, applied on the server to the whole corpus. */
 const rulesOpen = ref(false)
-const rules = reactive(emptyEditable())
+const rules = ref(emptyEditable())
 const ruleFilter = computed(() => {
-  const built = buildFilter(rules)
+  const built = buildFilter(rules.value)
   if (built.rules === undefined && built.groups === undefined) return undefined
   // The header toggles own archive and blacklist visibility.
   return {
@@ -85,10 +85,10 @@ const applyPreset = (id: unknown) => {
   const preset = presets.value.find((item) => item.id === id)
   if (preset === undefined) return
   const next = toEditable(preset.filter)
-  rules.rules = next.rules
-  rules.groups = next.groups
-  rules.location = next.location
-  rules.keywordIds = next.keywordIds
+  rules.value.rules = next.rules
+  rules.value.groups = next.groups
+  rules.value.location = next.location
+  rules.value.keywordIds = next.keywordIds
   archived.value = next.includeArchived ? "all" : "active"
   includeBlacklisted.value = next.includeBlacklisted
   rulesOpen.value = true
@@ -96,10 +96,10 @@ const applyPreset = (id: unknown) => {
 
 const clearRules = () => {
   const empty = emptyEditable()
-  rules.rules = empty.rules
-  rules.groups = empty.groups
-  rules.location = empty.location
-  rules.keywordIds = undefined
+  rules.value.rules = empty.rules
+  rules.value.groups = empty.groups
+  rules.value.location = empty.location
+  rules.value.keywordIds = undefined
 }
 
 const ruleCount = computed(() => (ruleFilter.value?.rules?.length ?? 0) + (ruleFilter.value?.groups?.length ?? 0))
