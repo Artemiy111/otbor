@@ -83,12 +83,6 @@ export const useVacancyPage = (id: () => string) => {
     vacancyQuery.error.value === null ? null : describeError(vacancyQuery.error.value)
   )
 
-  const refresh = () => {
-    void vacancyQuery.refetch()
-    void decisionsQuery.refetch()
-    void applicationsQuery.refetch()
-    void contactsQuery.refetch()
-  }
   const refreshApplications = () => void applicationsQuery.refetch()
 
   const hydrating = ref(false)
@@ -111,13 +105,9 @@ export const useVacancyPage = (id: () => string) => {
       hydrating.value = false
     }
   }
-  watch(
-    () => vacancyQuery.data.value,
-    (detail) => {
-      if (detail !== undefined && detail.descriptionText.trim() === "") void hydrate(false)
-    },
-    { immediate: true }
-  )
+  // Opening the page tops the vacancy up from hh. The server skips the fetch
+  // when the stored text is already complete, so this is cheap on repeat visits.
+  watch(id, () => void hydrate(false), { immediate: true })
 
   return {
     id,
@@ -139,7 +129,6 @@ export const useVacancyPage = (id: () => string) => {
     isLoading,
     errorText,
     hydrating,
-    refresh,
     refreshApplications,
     hydrate: () => hydrate(true)
   }

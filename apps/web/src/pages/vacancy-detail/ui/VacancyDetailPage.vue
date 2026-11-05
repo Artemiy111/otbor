@@ -2,7 +2,6 @@
 import { computed } from "vue"
 import { useStorage } from "@vueuse/core"
 import { CircleAlert, ExternalLink, RefreshCw } from "@lucide/vue"
-import { RefreshButton } from "@/features/refresh-button"
 import { Alert, AlertDescription, AlertTitle, Button, Hint, Skeleton } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
 import { useVacancyPage } from "../model"
@@ -52,7 +51,6 @@ const data = page.data
             <ExternalLink class="h-4 w-4" />
           </a>
         </Button>
-        <RefreshButton :loading="page.isLoading.value" @refresh="page.refresh" />
       </template>
     </PageHeader>
 
