@@ -171,3 +171,39 @@ describe("negotiation resume", () => {
     expect(parseWithResume(page({ vacancyId: 1 })).topics[0]?.resumeId).toBeNull()
   })
 })
+
+describe("parseNegotiations on a live topic", () => {
+  // Shape of a real logged-in page (2026-11-05): numeric ids, `chatId`, and
+  // one topic per resume for the same vacancy, each with its own chat.
+  const topic = (chatId: number, resumeId: number, lastState: string) => ({
+    id: chatId - 1,
+    chatId,
+    communicationContext: { chatData: { id: chatId, type: "NEGOTIATION", subtype: null } },
+    initialState: "RESPONSE",
+    lastState,
+    lastSubState: "SHOW",
+    archived: false,
+    discardReason: lastState === "DISCARD" ? "DISCARD_BY_EMPLOYER" : null,
+    lastModified: "2026-11-05T18:56:12.847+03:00",
+    vacancyId: 138673985,
+    resumeId,
+    resources: [{ id: 138673985, type: "VACANCY" }, { id: resumeId, type: "RESUME" }],
+    actions: [{ name: "delete", method: "POST", href: "/applicant/negotiations/trash", substate: "HIDE" }],
+    aiInterview: null
+  })
+  const page = JSON.stringify({
+    applicantNegotiations: {
+      topicList: [topic(5770068788, 290733333, "RESPONSE"), topic(5732439170, 289972366, "DISCARD")]
+    }
+  })
+  const html = `<html><body><template id="HH-Lux-InitialState">${page}</template></body></html>`
+
+  test("keeps the chat and resume of every response to the same vacancy", () => {
+    const parsed = parseWithResume(html)
+    expect(parsed.readable).toBe(true)
+    expect(parsed.topics.map((item) => [item.vacancyId, item.resumeId, item.chatId, item.state])).toEqual([
+      ["138673985", "290733333", "5770068788", "RESPONSE"],
+      ["138673985", "289972366", "5732439170", "DISCARD"]
+    ])
+  })
+})

@@ -1,3 +1,5 @@
+import { Option, Schema } from "effect"
+import { HhNegotiationTopic } from "./negotiationTopic.ts"
 import { decodeEntities } from "./text.ts"
 import { hasRespondedMarker } from "./response.ts"
 
@@ -87,6 +89,8 @@ export interface NegotiationTopic {
   readonly vacancyName: string | null
   /** The hh resume the response was sent with (hh's numeric resume id), when the entry carries it. */
   readonly resumeId: string | null
+  /** The hh chat of this response (`chatId`); every resume has its own. */
+  readonly chatId: string | null
 }
 
 export interface NegotiationsPage {
@@ -125,14 +129,8 @@ const firstDate = (...values: ReadonlyArray<unknown>): string | null => {
   return null
 }
 
-const employerOf = (topic: Record<string, unknown>): string | null => {
-  const direct = text(topic.employerName) ?? text(topic.companyName)
-  if (direct !== null) return direct
-  const nested = topic.employer
-  return typeof nested === "object" && nested !== null
-    ? text((nested as Record<string, unknown>).name)
-    : null
-}
+const employerOf = (topic: HhNegotiationTopic): string | null =>
+  text(topic.employerName) ?? text(topic.companyName) ?? text(topic.employer?.name)
 
 const positiveInt = (value: unknown): number | null => {
   const number = typeof value === "string" && /^\d+$/.test(value) ? Number(value) : value
@@ -162,15 +160,10 @@ const idOf = (value: unknown): string | null => {
   return text(value)
 }
 
-const resumeOf = (topic: Record<string, unknown>): string | null => {
-  const nested = topic.resume
-  return (
-    idOf(topic.resumeId) ??
-    (typeof nested === "object" && nested !== null
-      ? idOf((nested as Record<string, unknown>).id ?? (nested as Record<string, unknown>).resumeId)
-      : null)
-  )
-}
+const resumeOf = (topic: HhNegotiationTopic): string | null =>
+  idOf(topic.resumeId) ?? idOf(topic.resume?.id ?? topic.resume?.resumeId)
+
+const decodeTopic = Schema.decodeUnknownOption(HhNegotiationTopic)
 
 export const parseNegotiations = (html: string): NegotiationsPage => {
   const state = readInitialState(html)
@@ -184,11 +177,10 @@ export const parseNegotiations = (html: string): NegotiationsPage => {
 
   const topics: Array<NegotiationTopic> = []
   for (const item of list) {
-    if (typeof item !== "object" || item === null) {
-      // One unreadable entry makes the whole page untrustworthy.
-      return unreadable
-    }
-    const topic = item as Record<string, unknown>
+    // One unreadable entry makes the whole page untrustworthy.
+    const decoded = decodeTopic(item)
+    if (Option.isNone(decoded)) return unreadable
+    const topic = decoded.value
     const vacancyId = idOf(topic.vacancyId)
     if (vacancyId === null) return unreadable
     topics.push({
@@ -207,7 +199,8 @@ export const parseNegotiations = (html: string): NegotiationsPage => {
       ),
       employerName: employerOf(topic),
       vacancyName: text(topic.vacancyName) ?? text(topic.vacancyTitle),
-      resumeId: resumeOf(topic)
+      resumeId: resumeOf(topic),
+      chatId: idOf(topic.chatId)
     })
   }
   return { readable: true, topics, pageCount: pageCountOf(record) }

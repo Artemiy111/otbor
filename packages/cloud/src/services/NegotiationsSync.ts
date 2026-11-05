@@ -162,6 +162,23 @@ export const importTopics = (
       else updated += 1
     }
 
+    // The chat of each response, once every row exists. Written for any origin:
+    // it is hh's fact about the response, not otbor's state.
+    for (const topic of input.topics) {
+      if (topic.chatId === null) continue
+      const vacancyId = yield* resolveVacancy(tx, topic)
+      if (vacancyId === null) continue
+      const resumeId = yield* resolveResume(tx, input.hhAccountId, topic)
+      yield* tx.execute(sql`
+        update application
+        set hh_chat_id = ${topic.chatId}
+        where hh_account_id = ${input.hhAccountId}
+          and vacancy_id = ${vacancyId}
+          and resume_id is not distinct from ${resumeId}::uuid
+          and hh_chat_id is distinct from ${topic.chatId}
+      `)
+    }
+
     return {
       counts: {
         pages: input.pages,
