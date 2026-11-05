@@ -1,4 +1,4 @@
-import type { ResumeRecord, ResumeId, HhAccountId } from "@otbor/contract"
+import type { ResumeRecord } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"

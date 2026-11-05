@@ -31,8 +31,7 @@ import {
   Seniority,
   StreamMode,
   TestsPolicy,
-  TitleVerdictSource,
-  WorkFormat
+  TitleVerdictSource
 } from "./enums.ts"
 import {
   ApplicationId,

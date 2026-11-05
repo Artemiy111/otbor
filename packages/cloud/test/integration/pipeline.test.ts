@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import type { VacancyId } from "@otbor/contract"
 import { eq, sql } from "drizzle-orm"
 import { Effect, Layer } from "effect"
-import { decision, vacancy } from "../../src/db/tables.ts"
+import { decision } from "../../src/db/tables.ts"
 import { Database } from "../../src/db/Database.ts"
 import { CrawlRunner, type CrawlRunnerResult } from "../../src/services/CrawlRunner.ts"
 import { DecisionService } from "../../src/services/DecisionService.ts"
@@ -335,7 +335,7 @@ if (!enabled || serverUrl === null) {
 
       expect(outcomes.find((o) => o.targetId.includes(suffix))).toMatchObject({ ok: true, error: null })
       expect(runs[0]).toMatchObject({ status: "done" })
-      expect((runs[0]?.detail as { evaluationError?: string }).evaluationError).toBeString()
+      expect((runs[0]!.detail as { evaluationError?: string }).evaluationError).toBeString()
     })
 
     test("the evaluate schedule kind sweeps vacancies nothing else evaluated", async () => {

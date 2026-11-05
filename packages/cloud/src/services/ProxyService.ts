@@ -13,7 +13,7 @@ export class ProxyService extends Context.Service<ProxyService, ProxyServiceShap
 ) {
   static readonly layer = Layer.effect(
     ProxyService,
-    Effect.gen(function*() {
+    Effect.sync(() => {
       const status: ProxyServiceShape["status"] = () =>
         Effect.try({
           try: () => loadProxyConfig(),

@@ -126,11 +126,6 @@ const reason = (
 const normalizedSet = (values: ReadonlyArray<string>): ReadonlySet<string> =>
   new Set(values.map(normalizeTerm))
 
-const intersectionCount = (
-  actual: ReadonlyArray<string>,
-  allowed: ReadonlySet<string>
-): number => actual.filter((value) => allowed.has(value)).length
-
 const salaryPasses = (vacancy: VacancySignal, threshold: number | null): boolean => {
   if (threshold === null) return true
   // A foreign currency needs a rate before it can be compared. Do not block on

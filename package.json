@@ -25,12 +25,15 @@
     "test:integration": "OTBOR_TEST_DATABASE_URL=${OTBOR_TEST_DATABASE_URL:-postgres://otbor:otbor@localhost:55432/postgres} bun test packages/cloud/test/integration",
     "typecheck": "tsc -p tsconfig.json && bun run --cwd apps/web typecheck",
     "up": "bun packages/cli/src/main.ts up",
-    "down": "bun packages/cli/src/main.ts down"
+    "down": "bun packages/cli/src/main.ts down",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix"
   },
   "devDependencies": {
     "@types/bun": "1.4.4",
     "@types/node": "^24.0.0",
     "effect": "4.1.0",
+    "oxlint": "^1.91.0",
     "typescript": "6.0.3"
   }
 }

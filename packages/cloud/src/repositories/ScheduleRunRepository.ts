@@ -1,4 +1,4 @@
-import type { ScheduleRun, ScheduleRunId, SourceSyncKind } from "@otbor/contract"
+import type { ScheduleRun, SourceSyncKind } from "@otbor/contract"
 import { eq, desc, sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"

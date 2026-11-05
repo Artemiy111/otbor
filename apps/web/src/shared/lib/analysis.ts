@@ -49,11 +49,6 @@ const TEST_TASK_LABELS: Record<string, string> = {
   unspecified: "возможно, не указано"
 }
 
-const REQUEST_LABELS: Record<string, string> = {
-  required: "обязательно",
-  preferred: "желательно"
-}
-
 const WORK_MODE_LABELS: Record<string, string> = {
   remote: "удалённо",
   hybrid: "гибрид",

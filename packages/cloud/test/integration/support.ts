@@ -52,7 +52,6 @@ import * as ApplicationRepository from "../../src/repositories/ApplicationReposi
 import * as HarnessRepository from "../../src/repositories/HarnessRepository.ts"
 import * as PresetRepository from "../../src/repositories/PresetRepository.ts"
 import * as QueueRepository from "../../src/repositories/QueueRepository.ts"
-import * as ScheduleRepository from "../../src/repositories/ScheduleRepository.ts"
 import { ContactService } from "../../src/services/ContactService.ts"
 import { ConversationService } from "../../src/services/ConversationService.ts"
 import { CorpusService } from "../../src/services/CorpusService.ts"

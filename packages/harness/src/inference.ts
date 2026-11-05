@@ -4,7 +4,6 @@ import {
   AcpUnavailable,
   type AcpConfigOption,
   type AcpEvent,
-  type AcpSessionInfo,
   findEffortOption,
   findModelOption
 } from "@otbor/acp"

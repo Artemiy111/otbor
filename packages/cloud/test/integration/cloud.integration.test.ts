@@ -46,7 +46,6 @@ import {
   addAccount,
   blacklistImportHh,
   blacklistList,
-  blacklistRemove,
   blacklistUpsert,
   blacklistUpsertFailure,
   claimAsHolder,
@@ -57,7 +56,6 @@ import {
   contactsList,
   conversationGet,
   conversationGetFailure,
-  conversationMessagesFor,
   conversationRowsFor,
   conversationVacanciesFor,
   conversationsList,
@@ -122,7 +120,6 @@ import {
   runDueSchedulesWithGateways,
   scheduleRemove,
   scheduleRunNowFailure,
-  scheduleRunNowWithRunner,
   scheduleRowsFor,
   scheduleUpsert,
   scheduleUpsertFailure,
@@ -151,8 +148,6 @@ import {
   telegramAccountUpsert,
   telegramAccountUpsertFailure,
   telegramAccountsList,
-  telegramLoginQr,
-  telegramLoginStatus,
   telegramSyncNow,
   testDatabaseUrl
 } from "./support.ts"
@@ -1274,7 +1269,7 @@ if (!integrationEnabled || serverUrl === null) {
       const tenant = await seedTenant("keyword-limit")
       const suffix = randomUUID().slice(0, 8)
       const alpha = await seedKeyword(`alpha-${suffix}`)
-      const beta = await seedKeyword(`beta-${suffix}`)
+      await seedKeyword(`beta-${suffix}`)
       await seedKeywordAlias(alpha, `alpha-one-${suffix}`)
       await seedKeywordAlias(alpha, `alpha-two-${suffix}`)
 

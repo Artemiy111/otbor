@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import { ResumeService } from "../../src/services/ResumeService.ts"
-import { testDatabaseUrl } from "./support.ts"
 import * as support from "./support.ts"
 
 const enabled = support.integrationEnabled

@@ -2,7 +2,6 @@ import type {
   ApiError,
   ApplicationDetail,
   ApplicationRecord,
-  DecisionRecord,
   KitAnswer,
   KitRecord,
   VacancyFormState

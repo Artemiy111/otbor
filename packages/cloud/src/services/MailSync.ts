@@ -1,10 +1,9 @@
 import type { ApiError, ContactKind, SyncResult } from "@otbor/contract"
-import { InvalidInput, NotFound, StorageError } from "@otbor/contract"
+import { NotFound, StorageError } from "@otbor/contract"
 import { extractContactsFromText, extractVacancyIds, mailThreadKey } from "@otbor/domain"
 import {
   normalizeMessageId,
   type MailFolderRole,
-  type MailGateway,
   type MailMessage
 } from "@otbor/mail"
 import { Context, Cause, Effect, Layer } from "effect"

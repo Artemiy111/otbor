@@ -17,7 +17,6 @@ import {
 } from "drizzle-orm/pg-core"
 import { users, vacancy } from "./corpus.ts"
 import { hhAccount, resume } from "./candidate.ts"
-import { keyword } from "./lexicon.ts"
 
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
 const updatedAt = () => timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()

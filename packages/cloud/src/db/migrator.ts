@@ -1,5 +1,5 @@
 import { Effect } from "effect"
-import { fromRecord, type Loader } from "effect/sql/Migrator"
+import { type Loader } from "effect/sql/Migrator"
 import { SqlClient } from "effect/sql/SqlClient"
 
 /**

@@ -55,15 +55,6 @@ const scanDecisions = (rpc: OtborApi, verdict: string | undefined, pages = DECIS
     return all
   })
 
-/** One decision per vacancy: the newest wins because the scan is newest-first. */
-const latestPerVacancy = (decisions: ReadonlyArray<DecisionRecord>) => {
-  const byVacancy = new Map<string, DecisionRecord>()
-  for (const decision of decisions) {
-    if (!byVacancy.has(decision.vacancyId)) byVacancy.set(decision.vacancyId, decision)
-  }
-  return [...byVacancy.values()]
-}
-
 /** Accepts a UUID, a UUID prefix, an hh.ru URL or an hh external id. */
 export const resolveVacancyId = (rpc: OtborApi, reference: string) =>
   Effect.gen(function*() {

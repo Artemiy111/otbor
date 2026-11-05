@@ -1,6 +1,6 @@
 import type { VacancyAnalysisFacts, VacancyDetail } from "@otbor/contract"
 import { ANALYSIS_LEVEL_LABELS, ANALYSIS_ROLE_LABELS } from "./analysis"
-import { employmentFormLabel, workFormatText } from "./vacancy-labels"
+import { employmentFormLabel } from "./vacancy-labels"
 import { seniorityLabel } from "./status"
 import { applicationRequestLabel, redFlagLabel } from "./vacancy-facts"
 
@@ -73,9 +73,6 @@ const aiAsk = (fact: Fact<"required" | "preferred" | "not_mentioned"> | undefine
 const LEVEL_NORM: Record<string, string> = {
   intern: "intern", junior: "junior", middle: "middle", senior: "senior",
   staff: "lead", tech_lead: "lead", team_lead: "lead", head: "lead", lead: "lead"
-}
-const LEVEL_TEXT: Record<string, string> = {
-  intern: "стажёр", junior: "junior", middle: "middle", senior: "senior", lead: "lead"
 }
 const HH_YEARS: Record<string, number> = { noExperience: 0, between1And3: 1, between3And6: 3, moreThan6: 6 }
 const HH_YEARS_TEXT: Record<string, string> = {
