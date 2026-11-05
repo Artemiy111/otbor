@@ -48,6 +48,9 @@ export interface VacancyRow {
   readonly blacklistLayers?: ReadonlyArray<BlacklistScope> | null
   readonly analysed?: boolean | null
   readonly analysisRole?: string | null
+  readonly letterRequired?: boolean | null
+  readonly hasTest?: boolean | null
+  readonly testRequired?: boolean | null
 }
 
 const toSnippet = (text: string | null): string | null => {
@@ -84,6 +87,9 @@ export const toSummary = (row: VacancyRow): VacancySummary => {
     responsesTotal: row.responsesTotal ?? null,
     responsesVacancy: row.responsesVacancy ?? null,
     analysisRole: row.analysisRole ?? null,
+    letterRequired: row.letterRequired ?? null,
+    hasTest: row.hasTest ?? null,
+    testRequired: row.testRequired ?? null,
     snippet: toSnippet(row.descriptionText)
   }
 }
@@ -400,6 +406,9 @@ export const rowSelection = {
   descriptionHtml: vacancy.descriptionHtml,
   workFormats: vacancy.workFormats,
   blacklistLayers: sql<ReadonlyArray<string>>`'[]'::json`,
+  letterRequired: sql<boolean | null>`(${vacancy.signals} -> 'hh' ->> 'letterRequired')::boolean`,
+  hasTest: sql<boolean | null>`(${vacancy.signals} -> 'hh' -> 'test' ->> 'hasTest')::boolean`,
+  testRequired: sql<boolean | null>`(${vacancy.signals} -> 'hh' -> 'test' ->> 'required')::boolean`,
   analysisRole: sql<string | null>`(
     select a.facts->'role'->>'value' from vacancy_analysis a
     where a.vacancy_id = ${vacancy.id} and a.prompt_version = ${ANALYSIS_PROMPT_VERSION}

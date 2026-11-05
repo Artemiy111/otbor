@@ -172,6 +172,10 @@ export const VacancySummary = Schema.Struct({
   /** Responses as shown by hh at the last hydration: all vacancies of the employer's group / this vacancy. */
   responsesTotal: Schema.optional(Schema.NullOr(Schema.Int)),
   responsesVacancy: Schema.optional(Schema.NullOr(Schema.Int)),
+  /** hh signals (`signals.hh`); null until the vacancy page was read. */
+  letterRequired: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  hasTest: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  testRequired: Schema.optional(Schema.NullOr(Schema.Boolean)),
   /** Role the AI analysis assigned (`facts.role`), absent without a current analysis. */
   analysisRole: Schema.optional(Schema.NullOr(Schema.String)),
   /** First characters of the description, for the listing card. */
