@@ -178,6 +178,31 @@ if (!enabled || serverUrl === null) {
       expect(rows[0]?.last_status).toBe("failed")
     })
 
+    test("a 403 on one vacancy is retried at the end of the queue and does not stop the pass", async () => {
+      const dead = await support.seedVacancyWithExternal("920001", "Dead vacancy")
+      const alive = await support.seedVacancyWithExternal("920002", "Alive vacancy")
+
+      const seen: string[] = []
+      const result = await runHydration((url) => {
+        const externalId = url.split("/").pop() ?? ""
+        seen.push(externalId)
+        if (externalId === "920001") return Promise.resolve({ status: 403, url, html: "" })
+        return Promise.resolve({ status: 200, url, html: vacancyPage(externalId, "Alive vacancy") })
+      })
+
+      expect(result.stoppedBy).toBeNull()
+      // Other tests in this database leave stubs behind, so only assert on ours.
+      expect(result.hydrated).toBeGreaterThanOrEqual(1)
+      expect(seen).toContain("920002")
+      expect(seen.filter((id) => id === "920001")).toHaveLength(3)
+      expect(seen.lastIndexOf("920002")).toBeLessThan(seen.lastIndexOf("920001"))
+      expect(result.errors.join(" ")).toContain("вакансия недоступна")
+
+      const rows = await attempts("vacancy")
+      expect(rows.find((row) => row.target_id === dead)?.deferred).toBe(true)
+      expect(rows.find((row) => row.target_id === alive)).toBeUndefined()
+    })
+
     test("a 403 stops the employer pass after the first attempt", async () => {
       await support.seedVacancyForEmployer({
         label: "emp-block-a",

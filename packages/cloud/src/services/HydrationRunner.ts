@@ -37,6 +37,14 @@ export type HydrationBlock = "captcha" | "auth" | "forbidden" | "geo" | "rate_li
 export const HYDRATION_STUB_RECHECK_SECONDS = 6 * 60 * 60
 /** A full page without a response count: hh may simply not show it, ask again tomorrow. */
 export const HYDRATION_NO_COUNT_RECHECK_SECONDS = 24 * 60 * 60
+/**
+ * A 403 on one vacancy page normally means the vacancy is no longer public.
+ * It goes to the end of the queue and is tried again (on another proxy node
+ * when rotation is enabled) up to this many times in one pass.
+ */
+export const HYDRATION_FORBIDDEN_ATTEMPTS = 3
+/** This many different vacancies in a row ending in 403 look like an IP ban, not dead pages. */
+export const HYDRATION_FORBIDDEN_STREAK_STOP = 5
 
 export interface FetchedVacancy {
   readonly vacancyId: string
@@ -449,12 +457,47 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
                   Effect.logWarning("vacancy hydration progress could not be persisted", cause))
               )
 
-        for (const [index, target] of targets.entries()) {
-          processed += 1
+        // Targets that hit a 403 go to the back and are tried again; the pass
+        // only stops for a wall that is not about one page (captcha, login,
+        // geo, 429) or when several different vacancies in a row stay 403.
+        const queue = targets.map((target) => ({ target, forbidden: 0 }))
+        let forbiddenStreak = 0
+
+        while (queue.length > 0) {
+          const entry = queue.shift()!
+          const target = entry.target
 
           const download = yield* downloadVacancy(target, config)
           rotations += download.rotations
           const outcome = download.outcome
+
+          if (outcome.kind === "blocked" && outcome.block === "forbidden") {
+            entry.forbidden += 1
+            if (entry.forbidden < HYDRATION_FORBIDDEN_ATTEMPTS) {
+              // Another try later; downloadVacancy already switched the node when it can.
+              queue.push(entry)
+              yield* Effect.sleep(`${delayMs} millis`)
+              continue
+            }
+            processed += 1
+            failed += 1
+            forbiddenStreak += 1
+            const message =
+              `fetch ${target.canonicalUrl}: HTTP 403, вакансия недоступна ` +
+              `(${entry.forbidden} попытки)`
+            pushError(message)
+            yield* rememberFailure(target, message)
+            if (forbiddenStreak >= HYDRATION_FORBIDDEN_STREAK_STOP) {
+              stoppedBy = "forbidden"
+              yield* reportProgress(target.title)
+              break
+            }
+            yield* reportProgress(target.title)
+            if (delayMs > 0 && queue.length > 0) yield* Effect.sleep(`${delayMs} millis`)
+            continue
+          }
+
+          processed += 1
 
           if (outcome.kind === "blocked") {
             failed += 1
@@ -464,6 +507,8 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
             yield* reportProgress(target.title)
             break
           }
+
+          forbiddenStreak = 0
 
           if (outcome.kind === "failed") {
             failed += 1
@@ -495,7 +540,7 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
 
           yield* reportProgress(target.title)
 
-          if (delayMs > 0 && index < targets.length - 1) {
+          if (delayMs > 0 && queue.length > 0) {
             yield* Effect.sleep(`${delayMs} millis`)
           }
         }
