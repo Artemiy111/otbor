@@ -99,6 +99,26 @@ watch(enrichmentQuery.data, (data) => {
   )
 }, { immediate: true })
 
+/**
+ * What the resume already says about a FAQ topic, shown under an empty field.
+ * Only topics the imported resume really carries: work formats and an English mention.
+ */
+const FORMAT_LABELS: Record<string, string> = { remote: "удалённо", hybrid: "гибрид", office: "офис", on_site: "офис" }
+const resumeHint = (key: string): string | null => {
+  const r = selectedResume.value
+  if (!r) return null
+  if (key === "office" && r.workFormats.length) {
+    return `формат работы: ${r.workFormats.map((f) => FORMAT_LABELS[f.toLowerCase()] ?? f).join(", ")}`
+  }
+  if (key === "english_level") {
+    const mention = [...r.skills, ...r.text.split(/\n+/)].find((line) => /англий|english/i.test(line))
+    return mention ? mention.trim().slice(0, 120) : null
+  }
+  return null
+}
+const emptyHint = (key: string, value: string | undefined): string | null =>
+  (value ?? "").trim() === "" ? resumeHint(key) : null
+
 const toAmount = (value: string): number | null => {
   const n = Number(value.replace(/\s+/g, ""))
   return value.trim() !== "" && Number.isInteger(n) && n > 0 ? n : null
@@ -308,6 +328,9 @@ const refresh = () => {
               <Label>{{ topic.question }}</Label>
               <Input v-if="'short' in topic" v-model="faqAnswers[topic.key]" />
               <Textarea v-else v-model="faqAnswers[topic.key]" rows="2" />
+              <p v-if="emptyHint(topic.key, faqAnswers[topic.key])" class="text-xs text-muted-foreground">
+                Не заполнено, агент возьмёт из резюме: {{ emptyHint(topic.key, faqAnswers[topic.key]) }}
+              </p>
             </div>
             <div v-for="entry in customFaq" :key="entry.id" class="space-y-1.5 rounded-md border p-3">
               <Input v-model="entry.question" placeholder="Вопрос" />
