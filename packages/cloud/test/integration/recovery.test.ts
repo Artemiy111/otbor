@@ -172,5 +172,50 @@ if (!enabled || serverUrl === null) {
       )
       expect(after).toBe(false)
     })
+
+    test("an interrupted pass pulls its schedule forward once, not in a loop", async () => {
+      const fresh = randomUUID()
+      const looping = randomUUID()
+      await ownerSql(sql`
+        insert into schedule (id, user_id, kind, target_id, interval_minutes, enabled, next_run_at)
+        values
+          (${fresh}, null, 'analysis', 'retry-a', 10, true, now() + interval '8 minutes'),
+          (${looping}, null, 'analysis', 'retry-b', 10, true, now() + interval '8 minutes')
+      `)
+      await ownerSql(sql`
+        insert into schedule_run (id, schedule_id, kind, status, started_at, heartbeat_at, finished_at, detail)
+        values
+          (${randomUUID()}, ${fresh}, 'analysis', 'done', now() - interval '30 minutes', now() - interval '30 minutes', now() - interval '25 minutes', '{}'::jsonb),
+          (${randomUUID()}, ${looping}, 'analysis', 'error', now() - interval '30 minutes', now() - interval '30 minutes', now() - interval '25 minutes', '{"interrupted": true}'::jsonb)
+      `)
+      await ownerSql(sql`
+        insert into schedule_run (id, schedule_id, kind, status, started_at, heartbeat_at)
+        values
+          (${randomUUID()}, ${fresh}, 'analysis', 'running', now() - interval '20 minutes', now() - interval '10 minutes'),
+          (${randomUUID()}, ${looping}, 'analysis', 'running', now() - interval '20 minutes', now() - interval '10 minutes')
+      `)
+
+      await support.runAs(
+        "owner",
+        Effect.gen(function*() {
+          const database = yield* Database
+          return yield* database.asOwner((tx) => recoverInterruptedRuns(tx))
+        })
+      )
+      const rows = await support.runAs(
+        "owner",
+        Effect.gen(function*() {
+          const database = yield* Database
+          return yield* database.asOwner((tx) =>
+            Effect.all([
+              tx.select().from(schedule).where(eq(schedule.id, fresh)),
+              tx.select().from(schedule).where(eq(schedule.id, looping))
+            ])
+          )
+        })
+      )
+      expect(rows[0]?.[0]?.nextRunAt?.getTime()).toBeLessThanOrEqual(Date.now())
+      expect(rows[1]?.[0]?.nextRunAt?.getTime()).toBeGreaterThan(Date.now())
+    })
   })
 }

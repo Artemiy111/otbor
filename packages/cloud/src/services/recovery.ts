@@ -41,8 +41,30 @@ export const recoverInterruptedRuns = (
           finished_at = now()
       where status = 'running'
         and coalesce(heartbeat_at, started_at) < now() - (${LIVE_RUN_SECONDS} * interval '1 second')
-      returning id
+      returning id, schedule_id
     `)
+    // An interrupted pass is retried at the next worker tick instead of waiting for
+    // the whole interval. If the retry fails or is interrupted again, the schedule
+    // is not pulled forward a second time in a row, so a crashing run cannot loop.
+    const interruptedSchedules = scheduleResult.rows.map((row) => (row as { schedule_id: string }).schedule_id)
+    if (interruptedSchedules.length > 0) {
+      yield* tx.execute(sql`
+        update schedule s
+        set next_run_at = now()
+        where s.id in (${sql.join(interruptedSchedules.map((id) => sql`${id}::uuid`), sql`, `)})
+          and s.enabled
+          and s.next_run_at > now()
+          and not exists (
+            select 1 from (
+              select detail from schedule_run
+              where schedule_id = s.id and status <> 'running'
+                and id not in (${sql.join(scheduleResult.rows.map((row) => sql`${(row as { id: string }).id}::uuid`), sql`, `)})
+              order by started_at desc limit 1
+            ) previous
+            where previous.detail->>'interrupted' = 'true'
+          )
+      `)
+    }
     const searchResult = yield* tx.execute(sql`
       update search_run
       set status = 'stopped',
