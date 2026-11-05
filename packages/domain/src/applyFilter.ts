@@ -5,7 +5,7 @@ import type { ApplyFilterSettings, PresetFilter, PresetRule } from "@otbor/contr
  * account row exists, and the content of the system preset "DevOps".
  *
  * It reproduces the former `DEFAULT_APPLY_POLICY` (salary floor, remote or
- * hybrid, seniority) and the former DevOps title gate (`gate.ts`).
+ * hybrid, seniority) and the former DevOps title gate.
  *
  * Title stems are plain `contains` (SQL `ilike`): Postgres has no lookbehind,
  * so the word boundary of the old regexes is gone. Consequences:
@@ -80,7 +80,7 @@ export const DEVOPS_APPLY_FILTER: PresetFilter = {
     ...DEVOPS_TITLE_REJECT_STEMS.map((stem) => title("not_contains", stem))
   ],
   groups: [
-    // Salary: from 250 000 RUR, or no salary stated. A foreign currency cannot
+    // Salary: from 250 000 RUB, or no salary stated. A foreign currency cannot
     // be compared without a rate, so it is not a block (as before).
     {
       branches: [

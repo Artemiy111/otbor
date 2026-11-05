@@ -316,7 +316,7 @@ export const parseResumePage = (html: string): ParsedResume | null => {
     workFormats: readStrings(resume.workFormats).map((item) => item.toUpperCase()),
     salaryAmount:
       salary === null ? null : readNumber(salary.amount) ?? readNumber(salary.salary) ?? readNumber(salary.string),
-    salaryCurrency: salary === null ? null : readString(salary.currency) ?? readString(salary.currencyCode),
+    salaryCurrency: salary === null ? null : (((c) => (c === "RUR" ? "RUB" : c))(readString(salary.currency) ?? readString(salary.currencyCode))),
     status: readString(attributes.status),
     areaName: readString(area?.name),
     relocation: readStrings(resume.relocation)[0] ?? null,

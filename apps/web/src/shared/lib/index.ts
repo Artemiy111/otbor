@@ -11,6 +11,7 @@ export { cn } from "./cn"
 export { contactHref } from "./contacts"
 export { describeError } from "./error"
 export {
+  currencySymbol,
   formatAge,
   formatDate,
   formatDuration,

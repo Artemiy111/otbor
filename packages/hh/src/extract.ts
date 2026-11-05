@@ -217,6 +217,9 @@ const normalizeEmployer = (company: HhCompany | null | undefined): EmployerDraft
   }
 }
 
+/** hh says `RUR` for the rouble; the system says `RUB`. */
+const normalizeCurrency = (code: string | null): string | null => (code === "RUR" ? "RUB" : code)
+
 const normalizeSalary = (
   compensation: HhCompensation | null | undefined
 ): SalaryDraft | null => {
@@ -233,7 +236,7 @@ const normalizeSalary = (
   return {
     from,
     to,
-    currency: asString(compensation.currency) ?? asString(compensation.currencyCode),
+    currency: normalizeCurrency(asString(compensation.currency) ?? asString(compensation.currencyCode)),
     gross: typeof compensation.gross === "boolean" ? compensation.gross : null,
     negotiable: false
   }

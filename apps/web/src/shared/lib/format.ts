@@ -20,12 +20,17 @@ export const formatDate = (value: string | null | undefined): string => {
   return Number.isNaN(date.getTime()) ? value : humanDate(date)
 }
 
+const CURRENCY_SYMBOLS: Record<string, string> = { RUB: "₽", RUR: "₽", USD: "$", EUR: "€", KZT: "₸", BYN: "Br" }
+
+/** `RUR`/`RUB` → `₽`, `USD` → `$`, `EUR` → `€`; unknown codes stay as they are. */
+export const currencySymbol = (code: string): string => CURRENCY_SYMBOLS[code.toUpperCase()] ?? code
+
 export const formatSalary = (
   from: number | null | undefined,
   to: number | null | undefined,
   currency: string | null | undefined
 ): string => {
-  const suffix = currency === null || currency === undefined || currency === "" ? "" : ` ${currency}`
+  const suffix = currency === null || currency === undefined || currency === "" ? "" : ` ${currencySymbol(currency)}`
   if (from !== null && from !== undefined && to !== null && to !== undefined) {
     return `${formatNumber(from)} – ${formatNumber(to)}${suffix}`
   }

@@ -11,7 +11,7 @@ import RuleRow from "./RuleRow.vue"
 /**
  * Compact rule constructor shared by presets and the vacancy list. Top-level
  * rules are ANDed. An "any of" group is OR over branches, and the rules inside
- * one branch are ANDed: `RUR >= 200k` / `USD >= 3k` is two branches.
+ * one branch are ANDed: `RUB >= 200k` / `USD >= 3k` is two branches.
  */
 const props = withDefaults(defineProps<{ disabled?: boolean; flags?: boolean }>(), {
   disabled: false,

@@ -4,7 +4,7 @@ import type {
   PresetOperator,
   PresetRule
 } from "@otbor/contract"
-import { areaLabel, ANALYSIS_LEVEL_LABELS, ANALYSIS_ROLE_LABELS, roleFamilyLabel, seniorityLabel, statusLabel, workFormatLabel } from "@/shared/lib"
+import { areaLabel, currencySymbol, ANALYSIS_LEVEL_LABELS, ANALYSIS_ROLE_LABELS, roleFamilyLabel, seniorityLabel, statusLabel, workFormatLabel } from "@/shared/lib"
 
 /**
  * Browser-side mirror of the preset whitelist. The backend owns enforcement;
@@ -197,7 +197,7 @@ export const PRESET_FIELDS: ReadonlyArray<PresetFieldMeta> = [
     group: "Текст и словарь",
     kind: "text",
     ops: TEXT_OPS,
-    hint: "Код валюты, например RUR."
+    hint: "Код валюты, например RUB."
   },
   {
     field: "source",
@@ -414,11 +414,11 @@ export const presetOperatorLabel = (op: PresetOperator, field?: PresetField): st
     : PRESET_OPERATOR_LABELS[op]
 
 export const SALARY_CURRENCIES: ReadonlyArray<PresetFieldOption> = [
-  { value: "RUR", label: "₽ RUR" },
-  { value: "USD", label: "$ USD" },
-  { value: "EUR", label: "€ EUR" },
-  { value: "KZT", label: "KZT" },
-  { value: "BYN", label: "BYN" }
+  { value: "RUB", label: "₽" },
+  { value: "USD", label: "$" },
+  { value: "EUR", label: "€" },
+  { value: "KZT", label: "₸" },
+  { value: "BYN", label: "Br" }
 ]
 
 export const isMultiValueOperator = (op: PresetOperator): boolean =>
@@ -469,6 +469,6 @@ export const describePresetRule = (rule: PresetRule): string => {
   const value = ruleValueLabel(rule)
   const base = value === "" ? `${label}: ${op}` : `${label}: ${op} ${value}`
   if (!meta.salary) return base
-  const currency = rule.currency === undefined || rule.currency === "" ? "" : ` ${rule.currency}`
+  const currency = rule.currency === undefined || rule.currency === "" ? "" : ` ${currencySymbol(rule.currency)}`
   return `${base}${currency}${rule.orMissing === true ? " (или не указана)" : ""}`
 }
