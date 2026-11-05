@@ -510,15 +510,7 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                 const usage = yield* applications.dailyUsage(hhAccountId)
                 // Auto applications waiting for their kit will take a slot each.
                 const pending = yield* database
-                  .asUser(userId, (tx) =>
-                    tx
-                      .execute(sql`
-                        select count(*)::int as n from application
-                        where user_id = ${userId} and hh_account_id = ${hhAccountId}
-                          and auto_run = 'auto' and state = 'queued' and intent_at is null
-                      `)
-                      .pipe(Effect.map((result) => Number((result.rows[0] as { n?: number } | undefined)?.n ?? 0)))
-                  )
+                  .asUser(userId, (tx) => ApplicationRepository.pendingAutoSlots(tx, userId, hhAccountId))
                   .pipe(Effect.mapError(toStorageError("autoApply.pending")))
                 return usage.remaining - (mode === "auto" ? pending : 0)
               })

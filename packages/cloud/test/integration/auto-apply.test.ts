@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { Database } from "../../src/db/Database.ts"
 import { AutoApplyRunner } from "../../src/services/AutoApplyRunner.ts"
+import { AutoApplyViewService } from "../../src/services/AutoApplyViewService.ts"
 import { ResumeService } from "../../src/services/ResumeService.ts"
 import * as support from "./support.ts"
 
@@ -662,6 +663,191 @@ if (!enabled || serverUrl === null) {
       expect(ran).toMatchObject({ kind: "apply", ok: true })
       expect(ran?.result?.detail).toMatchObject({ accounts: 1, selected: 1, created: 1 })
       expect(await applicationsOf(ctx.tenant.accountId)).toHaveLength(1)
+    }, 60_000)
+  })
+  /* ------------------------------------------------------------------------ */
+  /* Preview and progress                                                     */
+  /* ------------------------------------------------------------------------ */
+
+  describe("preview and progress", () => {
+    const previewOf = (ctx: Ctx, resumeId?: string) =>
+      support.runAs(
+        ctx.tenant.userId,
+        Effect.gen(function*() {
+          return yield* (yield* AutoApplyViewService).preview({
+            hhAccountId: ctx.tenant.accountId,
+            ...(resumeId === undefined ? {} : { resumeId })
+          })
+        })
+      )
+
+    const progressOf = (ctx: Ctx, options: { activeOnly?: boolean; limit?: number } = {}) =>
+      support.runAs(
+        ctx.tenant.userId,
+        Effect.gen(function*() {
+          return yield* (yield* AutoApplyViewService).progress({ hhAccountId: ctx.tenant.accountId, ...options })
+        })
+      )
+
+    test("preview lists what the next tick creates, in the same order; works with mode off", async () => {
+      const ctx = await setup("aa-prev")
+      const v = [
+        await decided(ctx, "aa-prev-1", 90),
+        await decided(ctx, "aa-prev-2", 80),
+        await decided(ctx, "aa-prev-3", 70),
+        await decided(ctx, "aa-prev-4", 60)
+      ]
+      await configure(ctx, { autoMode: "off", batchSize: 2 })
+
+      const off = await previewOf(ctx)
+      expect(off.settings).toMatchObject({ autoMode: "off", batchSize: 2, sort: "priority", sortDirection: "desc" })
+      expect(off.willTake.map((c) => c.vacancyId as string)).toEqual([v[0]!.vacancyId, v[1]!.vacancyId])
+      expect(off.willTake.map((c) => c.rank)).toEqual([1, 2])
+      expect(off.next.map((c) => c.vacancyId as string)).toEqual([v[2]!.vacancyId, v[3]!.vacancyId])
+      expect(off.next.map((c) => c.rank)).toEqual([3, 4])
+      expect(off.totalCandidates).toBe(4)
+      expect(off.excluded).toEqual({ alreadyApplied: 0, belowMinPriority: 0 })
+      expect(off.budget).toMatchObject({ used: 0, limit: 200, remaining: 200, oldest: null })
+      expect(off.willTake[0]).toMatchObject({ fit: 90, priority: 45, employerName: null })
+
+      await configure(ctx, { autoMode: "drafts" })
+      const before = await previewOf(ctx)
+      expect(before.willTake.map((c) => c.vacancyId as string)).toEqual(off.willTake.map((c) => c.vacancyId as string))
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ created: 2 })
+      expect((await applicationsOf(ctx.tenant.accountId)).map((row) => row.vacancy_id)).toEqual(
+        before.willTake.map((c) => c.vacancyId as string)
+      )
+
+      // the two taken are now "already applied"; the next ones are the next take
+      const after = await previewOf(ctx)
+      expect(after.excluded.alreadyApplied).toBe(2)
+      expect(after.willTake.map((c) => c.vacancyId as string)).toEqual(before.next.map((c) => c.vacancyId as string))
+      expect(after.next).toHaveLength(0)
+    }, 90_000)
+
+    test("exclusions, asc direction and a smaller budget", async () => {
+      const ctx = await setup("aa-prev-ex")
+      const best = await decided(ctx, "aa-pex-best", 90)
+      const mid = await decided(ctx, "aa-pex-mid", 70)
+      const low = await decided(ctx, "aa-pex-low", 50)
+      // priority 45 / 35 / 25; the floor of 30 removes `low`
+      await configure(ctx, { autoMode: "off", batchSize: 5, minPriority: 30, sortDirection: "asc", dailyLimit: 1 })
+
+      const view = await previewOf(ctx)
+      expect(view.excluded.belowMinPriority).toBe(1)
+      expect(view.totalCandidates).toBe(2)
+      // asc: worst first; the budget of one slot leaves a single willTake
+      expect(view.willTake.map((c) => c.vacancyId as string)).toEqual([mid.vacancyId])
+      expect(view.next.map((c) => c.vacancyId as string)).toEqual([best.vacancyId])
+      expect(view.budget).toMatchObject({ limit: 1, remaining: 1 })
+
+      // a manual application for `best` takes it out of the candidates
+      await support.seedApplication({
+        userId: ctx.tenant.userId,
+        accountId: ctx.tenant.accountId,
+        vacancyId: best.vacancyId,
+        state: "draft"
+      })
+      const again = await previewOf(ctx)
+      expect(again.excluded.alreadyApplied).toBe(1)
+      expect(again.totalCandidates).toBe(1)
+      expect(low.vacancyId).not.toBe(mid.vacancyId)
+    }, 60_000)
+
+    test("progress follows an application: waiting, writing, kit ready; the letter is returned", async () => {
+      const ctx = await setup("aa-prog")
+      await configure(ctx, { autoMode: "drafts" })
+      await decided(ctx, "aa-prog-1", 90)
+      expect((await progressOf(ctx)).items).toHaveLength(0)
+
+      await tick(ctx.tenant.userId)
+      let view = await progressOf(ctx)
+      expect(view.items).toHaveLength(1)
+      expect(view.items[0]).toMatchObject({ autoRun: "drafts", state: "draft", stage: "waiting", formReadStatus: "pending" })
+      expect(view.items[0]!.stageDetail).toBe("Ждёт чтения формы")
+      expect(view.summary.waiting).toBe(1)
+
+      await readForms(ctx, responseHtml)
+      view = await progressOf(ctx)
+      expect(view.items[0]).toMatchObject({ stage: "waiting", formReadStatus: "done" })
+
+      await tick(ctx.tenant.userId)
+      view = await progressOf(ctx)
+      expect(view.items[0]).toMatchObject({ stage: "writing" })
+      expect(view.items[0]!.stageDetail).toBe("Пишется письмо (попытка 1 из 3)")
+      expect(view.items[0]!.writingJob).toMatchObject({ status: "pending", attempts: 0, maxAttempts: 3 })
+      expect(view.summary.writing).toBe(1)
+      expect((await progressOf(ctx, { activeOnly: true })).items).toHaveLength(1)
+
+      await writeLetters(ctx, GOOD_DRAFT)
+      await tick(ctx.tenant.userId)
+      view = await progressOf(ctx)
+      expect(view.items[0]).toMatchObject({ stage: "kit_ready" })
+      expect(view.items[0]!.answersCount).toBeGreaterThanOrEqual(5)
+      expect(view.items[0]!.writingJob?.status).toBe("done")
+      expect(view.summary.kit_ready).toBe(1)
+      // the fixture form takes no letter, so store one by hand to see the text come back whole
+      expect(view.items[0]!.letter).toBeNull()
+      await owner((tx) =>
+        tx.execute(sql`update application_kit set letter = ${"Здравствуйте.\nПолный текст письма."} where application_id = ${view.items[0]!.applicationId}`)
+      )
+      expect((await progressOf(ctx)).items[0]!.letter).toBe("Здравствуйте.\nПолный текст письма.")
+    }, 120_000)
+
+    test("progress: an auto kit shows the submit queue; letter text is returned when the form takes a letter", async () => {
+      const ctx = await setup("aa-prog-auto")
+      await configure(ctx, { autoMode: "auto" })
+      await decided(ctx, "aa-prog-auto-1", 90)
+      await tick(ctx.tenant.userId)
+      await readForms(ctx, responseHtml)
+      await tick(ctx.tenant.userId)
+      await writeLetters(ctx, GOOD_DRAFT)
+      await tick(ctx.tenant.userId)
+
+      const view = await progressOf(ctx)
+      expect(view.items[0]).toMatchObject({ autoRun: "auto", state: "queued", stage: "submitting" })
+      expect(view.items[0]!.stageDetail).toBe("Отправка в очереди")
+      expect(view.summary.submitting).toBe(1)
+      // the fixture form takes no letter: the field is null, never undefined
+      expect(view.items[0]!.letter).toBeNull()
+    }, 120_000)
+
+    test("progress: a failed writing job ends as needs_human; code forms too", async () => {
+      const ctx = await setup("aa-prog-fail")
+      await configure(ctx, { autoMode: "drafts" })
+      await decided(ctx, "aa-prog-fail-1", 90)
+      await tick(ctx.tenant.userId)
+      await readForms(ctx, responseHtml)
+      await tick(ctx.tenant.userId)
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await leaseAndComplete(ctx, "inference", { tag: "inference_failed", message: "agent exited 1" })
+        await owner((tx) => tx.execute(sql`update harness_jobs set run_at = now() where stage = 'inference'`))
+      }
+      // before the runner looks again the dead job is already visible
+      let view = await progressOf(ctx)
+      expect(view.items[0]!.stage).toBe("failed")
+
+      await tick(ctx.tenant.userId)
+      view = await progressOf(ctx)
+      expect(view.items[0]).toMatchObject({ state: "needs_human", stage: "needs_human" })
+      expect(view.items[0]!.stageDetail).toContain("Нужен человек: ")
+      expect(view.items[0]!.lastError).toContain("writing job")
+      expect(view.summary.needs_human).toBe(1)
+      expect((await progressOf(ctx, { activeOnly: true })).items).toHaveLength(0)
+    }, 120_000)
+
+    test("manual applications are not in the progress", async () => {
+      const ctx = await setup("aa-prog-manual")
+      const vacancy = await support.seedVacancy("aa-prog-manual-1")
+      await support.seedApplication({
+        userId: ctx.tenant.userId,
+        accountId: ctx.tenant.accountId,
+        vacancyId: vacancy,
+        state: "draft"
+      })
+      const view = await progressOf(ctx)
+      expect(view.items).toHaveLength(0)
+      expect(Object.values(view.summary).reduce((a, b) => a + b, 0)).toBe(0)
     }, 60_000)
   })
 }

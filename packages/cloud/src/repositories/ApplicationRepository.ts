@@ -27,6 +27,7 @@ export interface ApplicationRow {
   readonly origin?: string
   readonly hh_status?: string | null
   readonly hh_responded_at?: Date | null
+  readonly auto_run?: string | null
   readonly created_at: Date
   readonly updated_at: Date
 }
@@ -52,6 +53,7 @@ export const toRecord = (row: ApplicationRow): ApplicationRecord => ({
   origin: (row.origin ?? "otbor") as ApplicationRecord["origin"],
   hhStatus: row.hh_status ?? null,
   hhRespondedAt: row.hh_responded_at?.toISOString() ?? null,
+  autoRun: (row.auto_run ?? null) as ApplicationRecord["autoRun"],
   createdAt: row.created_at.toISOString(),
   updatedAt: row.updated_at.toISOString()
 })
@@ -432,3 +434,21 @@ export const openAttempt = (
     .orderBy(sql`${applicationAttempt.seq} desc`)
     .limit(1)
     .pipe(Effect.map((rows) => rows[0]?.id ?? null))
+
+/**
+ * Auto applications of one account that already hold (or will hold) a daily
+ * slot but have not claimed it yet: `queued`, kit not submitted (`intent_at`
+ * null). The runner and its preview subtract them from the budget in `auto`.
+ */
+export const pendingAutoSlots = (
+  tx: Executor,
+  userId: string,
+  hhAccountId: string
+): RepoEffect<number> =>
+  tx
+    .execute(sql`
+      select count(*)::int as n from application
+      where user_id = ${userId} and hh_account_id = ${hhAccountId}
+        and auto_run = 'auto' and state = 'queued' and intent_at is null
+    `)
+    .pipe(Effect.map((result) => Number((result.rows[0] as { n?: number } | undefined)?.n ?? 0)))

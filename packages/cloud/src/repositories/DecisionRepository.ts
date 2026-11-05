@@ -354,62 +354,121 @@ export interface AutoApplyCandidateOptions {
  * (any state, any origin) removes the decision; an application with an unknown
  * resume counts for every resume, like `ApplicationRepository.existsForVacancy`.
  */
+/** Candidate columns beyond the decision: what the preview shows. */
+export interface AutoApplyCandidateRow extends DecisionRow {
+  readonly employer_name: string | null
+  readonly published_at: Date | null
+  readonly salary_from: number | null
+  readonly salary_to: number | null
+  readonly salary_currency: string | null
+}
+
+/**
+ * The shared FROM/WHERE of the auto-apply selection: current `apply` decisions
+ * of the account in the resume scope, WITHOUT the min-priority floor and the
+ * "already applied" test (those are added by the callers, so the counts of the
+ * preview use the very same predicates).
+ */
+const currentApplyFrom = (userId: string, options: AutoApplyCandidateOptions): SQL => sql`
+  from (
+    select distinct on (x.vacancy_id, x.resume_id) x.*
+    from decision x
+    where x.user_id = ${userId} and x.hh_account_id = ${options.hhAccountId}
+    order by x.vacancy_id, x.resume_id, x.created_at desc, x.id desc
+  ) d
+  join vacancy on vacancy.id = d.vacancy_id
+  left join employer on employer.id = vacancy.employer_id
+  where d.verdict = 'apply'
+    and vacancy.archived = false
+    and d.policy_version = ${options.policyVersion}
+    and d.vacancy_content_hash is not distinct from vacancy.content_hash
+    and not exists (
+      select 1 from apply_filter f
+      where f.user_id = ${userId} and f.rules_changed_at > d.created_at
+    )
+    and not exists (
+      select 1 from vacancy_analysis a
+      where a.vacancy_id = vacancy.id
+        and a.prompt_version = ${options.analysisPromptVersion}
+        and a.updated_at > d.created_at
+    )
+    and not exists (
+      select 1 from decision newer
+      where newer.user_id = d.user_id
+        and newer.vacancy_id = d.vacancy_id
+        and newer.hh_account_id = d.hh_account_id
+        and newer.created_at > d.created_at
+    )
+    ${options.resumeId === null
+      ? options.excludeResumeIds.length === 0
+        ? sql``
+        : sql`and (d.resume_id is null or d.resume_id not in (${sql.join(
+            options.excludeResumeIds.map((id) => sql`${id}`),
+            sql`, `
+          )}))`
+      : sql`and d.resume_id = ${options.resumeId}`}
+`
+
+/** An application of the account to the vacancy (any state); an unknown resume counts for every resume. */
+const appliedPredicate: SQL = sql`exists (
+  select 1 from application a
+  where a.hh_account_id = d.hh_account_id
+    and a.vacancy_id = d.vacancy_id
+    and (d.resume_id is null or a.resume_id = d.resume_id or a.resume_id is null)
+)`
+
+/**
+ * THE selection of the auto-apply runner and of its preview: the candidates in
+ * final order, with the columns the preview shows. `autoApplyCandidates` is
+ * this, trimmed to the decision.
+ */
+export const autoApplyCandidateRows = (
+  tx: Executor,
+  userId: string,
+  options: AutoApplyCandidateOptions
+): RepoEffect<ReadonlyArray<AutoApplyCandidateRow>> =>
+  tx
+    .execute(sql`
+      select d.*, vacancy.title as vacancy_title, ${livePriorityExpr} as live_priority,
+        employer.name as employer_name, vacancy.published_at as published_at,
+        vacancy.salary_from as salary_from, vacancy.salary_to as salary_to,
+        vacancy.salary_currency as salary_currency
+      ${currentApplyFrom(userId, options)}
+        and ${livePriorityExpr} >= ${options.minPriority}
+        and not ${appliedPredicate}
+      order by ${decisionOrder(options.sort, options.sortDirection)}
+      limit ${Math.max(0, Math.trunc(options.limit))}
+    `)
+    .pipe(Effect.map((result) => result.rows as unknown as ReadonlyArray<AutoApplyCandidateRow>))
+
 export const autoApplyCandidates = (
   tx: Executor,
   userId: string,
   options: AutoApplyCandidateOptions
 ): RepoEffect<ReadonlyArray<DecisionRecord>> =>
+  autoApplyCandidateRows(tx, userId, options).pipe(Effect.map((rows) => rows.map(toRecord)))
+
+/** Counts over the same current `apply` decisions the selection looks at. */
+export const autoApplyCounts = (
+  tx: Executor,
+  userId: string,
+  options: AutoApplyCandidateOptions
+): RepoEffect<{ readonly alreadyApplied: number; readonly belowMinPriority: number; readonly total: number }> =>
   tx
     .execute(sql`
-      select d.*, vacancy.title as vacancy_title, ${livePriorityExpr} as live_priority
-      from (
-        select distinct on (x.vacancy_id, x.resume_id) x.*
-        from decision x
-        where x.user_id = ${userId} and x.hh_account_id = ${options.hhAccountId}
-        order by x.vacancy_id, x.resume_id, x.created_at desc, x.id desc
-      ) d
-      join vacancy on vacancy.id = d.vacancy_id
-      where d.verdict = 'apply'
-        and ${livePriorityExpr} >= ${options.minPriority}
-        and vacancy.archived = false
-        and d.policy_version = ${options.policyVersion}
-        and d.vacancy_content_hash is not distinct from vacancy.content_hash
-        and not exists (
-          select 1 from apply_filter f
-          where f.user_id = ${userId} and f.rules_changed_at > d.created_at
-        )
-        and not exists (
-          select 1 from vacancy_analysis a
-          where a.vacancy_id = vacancy.id
-            and a.prompt_version = ${options.analysisPromptVersion}
-            and a.updated_at > d.created_at
-        )
-        and not exists (
-          select 1 from decision newer
-          where newer.user_id = d.user_id
-            and newer.vacancy_id = d.vacancy_id
-            and newer.hh_account_id = d.hh_account_id
-            and newer.created_at > d.created_at
-        )
-        ${options.resumeId === null
-          ? options.excludeResumeIds.length === 0
-            ? sql``
-            : sql`and (d.resume_id is null or d.resume_id not in (${sql.join(
-                options.excludeResumeIds.map((id) => sql`${id}`),
-                sql`, `
-              )}))`
-          : sql`and d.resume_id = ${options.resumeId}`}
-        and not exists (
-          select 1 from application a
-          where a.hh_account_id = d.hh_account_id
-            and a.vacancy_id = d.vacancy_id
-            and (d.resume_id is null or a.resume_id = d.resume_id or a.resume_id is null)
-        )
-      order by ${decisionOrder(options.sort, options.sortDirection)}
-      limit ${Math.max(0, Math.trunc(options.limit))}
+      select
+        count(*) filter (where ${appliedPredicate})::int as already_applied,
+        count(*) filter (where not ${appliedPredicate} and ${livePriorityExpr} < ${options.minPriority})::int as below_min,
+        count(*) filter (where not ${appliedPredicate} and ${livePriorityExpr} >= ${options.minPriority})::int as total
+      ${currentApplyFrom(userId, options)}
     `)
     .pipe(
-      Effect.map((result) =>
-        (result.rows as unknown as ReadonlyArray<DecisionRow>).map(toRecord)
-      )
+      Effect.map((result) => {
+        const row = (result.rows[0] ?? {}) as { already_applied?: number; below_min?: number; total?: number }
+        return {
+          alreadyApplied: Number(row.already_applied ?? 0),
+          belowMinPriority: Number(row.below_min ?? 0),
+          total: Number(row.total ?? 0)
+        }
+      })
     )

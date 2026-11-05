@@ -829,6 +829,8 @@ export const ApplicationRecord = Schema.Struct({
   /** hh's own negotiation state, for imported applications. */
   hhStatus: Schema.optional(Schema.NullOr(Schema.String)),
   hhRespondedAt: Schema.optional(Schema.NullOr(Schema.String)),
+  /** `drafts` / `auto` when the auto-apply runner made this application; null for a manual one. */
+  autoRun: Schema.optional(Schema.NullOr(Schema.Literals(["drafts", "auto"]))),
   createdAt: Schema.String,
   updatedAt: Schema.String
 })
@@ -1456,6 +1458,137 @@ export const ApplyUsage = Schema.Struct({
 })
 
 export type ApplyUsage = typeof ApplyUsage.Type
+
+/* -------------------------------------------------------------------------- */
+/* Auto-apply: preview and progress                                           */
+/* -------------------------------------------------------------------------- */
+
+/** One vacancy the auto-apply runner would take (or take later). */
+export const AutoApplyCandidate = Schema.Struct({
+  decisionId: DecisionId,
+  vacancyId: VacancyId,
+  title: Schema.String,
+  employerName: Schema.NullOr(Schema.String),
+  fit: Schema.Number,
+  /** Live priority (fit x freshness now). */
+  priority: Schema.Number,
+  publishedAt: Schema.NullOr(Schema.String),
+  salaryFrom: Schema.NullOr(Schema.Int),
+  salaryTo: Schema.NullOr(Schema.Int),
+  salaryCurrency: Schema.NullOr(Schema.String),
+  resumeId: Schema.NullOr(ResumeId),
+  /** 1-based position in the final order (willTake first, then next). */
+  rank: Schema.Int
+})
+
+export type AutoApplyCandidate = typeof AutoApplyCandidate.Type
+
+export const AutoApplyPreviewSettings = Schema.Struct({
+  autoMode: AutoMode,
+  sort: ApplySort,
+  sortDirection: SortDirection,
+  batchSize: Schema.Int,
+  minPriority: Schema.Number,
+  dailyLimit: Schema.Int
+})
+
+export type AutoApplyPreviewSettings = typeof AutoApplyPreviewSettings.Type
+
+export const AutoApplyPreviewResult = Schema.Struct({
+  settings: AutoApplyPreviewSettings,
+  budget: Schema.Struct({
+    used: Schema.Int,
+    limit: Schema.Int,
+    remaining: Schema.Int,
+    oldest: Schema.NullOr(Schema.String)
+  }),
+  /** The next run's selection: min(batchSize, remaining) items in final order. */
+  willTake: Schema.Array(AutoApplyCandidate),
+  /** The following (up to 20) after `willTake`. */
+  next: Schema.Array(AutoApplyCandidate),
+  excluded: Schema.Struct({
+    /** Current apply decisions that already have an application. */
+    alreadyApplied: Schema.Int,
+    /** Current, not yet applied apply decisions under `minPriority`. */
+    belowMinPriority: Schema.Int
+  }),
+  /** Not yet applied, current, at or over `minPriority`: all that could ever be taken. */
+  totalCandidates: Schema.Int
+})
+
+export type AutoApplyPreviewResult = typeof AutoApplyPreviewResult.Type
+
+export const AutoApplyStage = Schema.Literals([
+  "reading_form",
+  "writing",
+  "kit_ready",
+  "submitting",
+  "submitted",
+  "needs_human",
+  "failed",
+  "waiting"
+])
+
+export type AutoApplyStage = typeof AutoApplyStage.Type
+
+export const AutoApplyWritingJob = Schema.Struct({
+  id: Schema.String,
+  status: Schema.String,
+  attempts: Schema.Int,
+  maxAttempts: Schema.Int,
+  /** When the job was queued (the queue keeps no separate start time). */
+  startedAt: Schema.optional(Schema.NullOr(Schema.String)),
+  /** Last update of a job that ended (done, failed, dead, cancelled). */
+  finishedAt: Schema.optional(Schema.NullOr(Schema.String)),
+  error: Schema.optional(Schema.NullOr(Schema.String))
+})
+
+export type AutoApplyWritingJob = typeof AutoApplyWritingJob.Type
+
+export const AutoApplyProgressItem = Schema.Struct({
+  applicationId: ApplicationId,
+  vacancyId: VacancyId,
+  title: Schema.String,
+  employerName: Schema.NullOr(Schema.String),
+  autoRun: Schema.Literals(["drafts", "auto"]),
+  state: ApplicationState,
+  stage: AutoApplyStage,
+  /** Human readable, Russian. */
+  stageDetail: Schema.String,
+  writingJob: Schema.NullOr(AutoApplyWritingJob),
+  /** Status of the latest form_read job of the vacancy, null when none. */
+  formReadStatus: Schema.NullOr(Schema.String),
+  /** The kit letter for the current form hash, full text. */
+  letter: Schema.NullOr(Schema.String),
+  answersCount: Schema.Int,
+  lastError: Schema.NullOr(Schema.String),
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+  submittedAt: Schema.NullOr(Schema.String)
+})
+
+export type AutoApplyProgressItem = typeof AutoApplyProgressItem.Type
+
+export const AutoApplyProgressSummary = Schema.Struct({
+  reading_form: Schema.Int,
+  writing: Schema.Int,
+  kit_ready: Schema.Int,
+  submitting: Schema.Int,
+  submitted: Schema.Int,
+  needs_human: Schema.Int,
+  failed: Schema.Int,
+  waiting: Schema.Int
+})
+
+export type AutoApplyProgressSummary = typeof AutoApplyProgressSummary.Type
+
+export const AutoApplyProgressResult = Schema.Struct({
+  items: Schema.Array(AutoApplyProgressItem),
+  /** Over all auto applications of the last 3 days (account filter applies). */
+  summary: AutoApplyProgressSummary
+})
+
+export type AutoApplyProgressResult = typeof AutoApplyProgressResult.Type
 
 export const PresetFacet = Schema.Struct({
   term: Schema.String,

@@ -65,6 +65,7 @@ import { CrawlService, type CrawlSavePageInput } from "../../src/services/CrawlS
 import { CurrentUser } from "../../src/services/CurrentUser.ts"
 import { AnalysisRunner } from "../../src/services/AnalysisRunner.ts"
 import { AutoApplyRunner } from "../../src/services/AutoApplyRunner.ts"
+import { AutoApplyViewService } from "../../src/services/AutoApplyViewService.ts"
 import { SystemOneClient } from "../../src/services/SystemOneClient.ts"
 import { EmployerHydrator } from "../../src/services/EmployerHydrator.ts"
 import { LexiconService, type LexiconServiceShape } from "../../src/services/LexiconService.ts"
@@ -277,6 +278,10 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
     LexiconService.layer.pipe(Layer.provide(shared)),
     PresetService.layer.pipe(Layer.provide(shared)),
     ApplyFilterService.layer.pipe(Layer.provide(shared)),
+    AutoApplyViewService.layer.pipe(
+      Layer.provide(Layer.merge(ApplicationService.layer, ApplyFilterService.layer)),
+      Layer.provide(shared)
+    ),
     ScheduleService.layer.pipe(Layer.provide(Layer.merge(shared, dispatcher)))
   )
 }
@@ -306,6 +311,7 @@ type Requirements =
   | EmployerHydrator
   | AnalysisRunner
   | AutoApplyRunner
+  | AutoApplyViewService
   | BlacklistService
   | DecisionService
   | EvaluationRunner

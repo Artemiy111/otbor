@@ -2,6 +2,7 @@ import { OtborRpcs, type ProxyMode, type VacancyId } from "@otbor/contract"
 import { Effect, Layer } from "effect"
 import { ProxyService } from "../services/ProxyService.ts"
 import { ApplyFilterService } from "../services/ApplyFilterService.ts"
+import { AutoApplyViewService } from "../services/AutoApplyViewService.ts"
 import { ApplicationService } from "../services/ApplicationService.ts"
 import { BlacklistService } from "../services/BlacklistService.ts"
 import { ContactService } from "../services/ContactService.ts"
@@ -70,6 +71,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const applications = yield* ApplicationService
     const presets = yield* PresetService
     const applyFilters = yield* ApplyFilterService
+    const autoApplyView = yield* AutoApplyViewService
     const queue = yield* QueueService
     const schedules = yield* ScheduleService
     const contacts = yield* ContactService
@@ -245,6 +247,8 @@ export const OtborHandlers = OtborRpcs.toLayer(
       ApplyFilterSet: (payload) => applyFilters.set(payload),
       ApplyFilterFromPreset: (payload) => applyFilters.fromPreset(payload),
       ApplyUsageGet: ({ hhAccountId }) => applications.dailyUsage(hhAccountId),
+      AutoApplyPreview: (payload) => autoApplyView.preview(payload),
+      AutoApplyProgress: (payload) => autoApplyView.progress(payload),
 
       QueueStatsGet: ({ kind }) => queue.stats(kind),
       QueueJobsList: (payload) => queue.jobs(payload),
@@ -334,6 +338,9 @@ export const OtborServices = Layer.mergeAll(
   ApplicationService.layer,
   PresetService.layer,
   ApplyFilterService.layer,
+  AutoApplyViewService.layer.pipe(
+    Layer.provide(Layer.merge(ApplicationService.layer, ApplyFilterService.layer))
+  ),
   NegotiationsSync.layer,
   LetterAttach.layer,
   QueueService.layer

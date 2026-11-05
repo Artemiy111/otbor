@@ -90,6 +90,8 @@ import {
   ApplyFilterRecord,
   ApplyFilterView,
   ApplyUsage,
+  AutoApplyPreviewResult,
+  AutoApplyProgressResult,
   PresetFilter,
   PresetPreview,
   PresetRecord,
@@ -1210,6 +1212,34 @@ export const ApplyUsageGet = Rpc.make("ApplyUsageGet", {
   error: ApiError
 })
 
+/**
+ * Read-only: what the next auto-apply run would take for (account, resume)
+ * under the settings that apply (exact row, else account row, else default).
+ * Answers even when `autoMode` is `off`.
+ */
+export const AutoApplyPreview = Rpc.make("AutoApplyPreview", {
+  payload: Schema.Struct({
+    hhAccountId: HhAccountId,
+    resumeId: Schema.optional(ResumeId)
+  }),
+  success: AutoApplyPreviewResult,
+  error: ApiError
+})
+
+/**
+ * Read-only: where the applications of the auto-apply runner stand (form read,
+ * writing, kit, submit), newest first, plus counts of the last 3 days.
+ */
+export const AutoApplyProgress = Rpc.make("AutoApplyProgress", {
+  payload: Schema.Struct({
+    hhAccountId: Schema.optional(HhAccountId),
+    limit: Schema.optional(Schema.Int),
+    activeOnly: Schema.optional(Schema.Boolean)
+  }),
+  success: AutoApplyProgressResult,
+  error: ApiError
+})
+
 /** Copies the preset's filter into the row for (account, resume); settings stay. */
 export const ApplyFilterFromPreset = Rpc.make("ApplyFilterFromPreset", {
   payload: Schema.Struct({
@@ -1605,6 +1635,8 @@ export const OtborRpcs = RpcGroup.make(
   ApplyFilterSet,
   ApplyFilterFromPreset,
   ApplyUsageGet,
+  AutoApplyPreview,
+  AutoApplyProgress,
   QueueStatsGet,
   QueueJobsList,
   HarnessRegister,
