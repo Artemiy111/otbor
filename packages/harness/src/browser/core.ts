@@ -113,6 +113,16 @@ export const RELOCATION_SELECTOR = '[data-qa="relocation-warning-confirm"]'
 
 export const LETTER_ATTACH_SELECTOR = '[data-qa="responded-success-attach-cover-letter"]'
 
+/** "Отправить" in the cover letter dialog; the letter is not saved without it. */
+export const LETTER_SUBMIT_SELECTOR = '[data-qa="vacancy-response-letter-submit"]'
+
+/** Evidence of a `letter_attach` that never clicked the send button. */
+export const letterUnclicked = (url: string, tag: HarnessExit["tag"], message: string): HarnessExit => ({
+  tag,
+  message,
+  artifacts: { clicked: false, closed: false, url }
+})
+
 export type FillPlan =
   | { readonly _tag: "plan"; readonly steps: ReadonlyArray<FillStep> }
   | { readonly _tag: "missing"; readonly questionId: string; readonly message: string }

@@ -1508,3 +1508,17 @@ export const Health = Schema.Struct({
 })
 
 export type Health = typeof Health.Type
+
+
+/**
+ * The newest "attach a cover letter to the response" job of a vacancy for an
+ * account. `sent`: hh closed the letter dialog after the send click.
+ * `needs_human`: the click may have reached hh, check the response there.
+ */
+export const LetterAttachStatus = Schema.Struct({
+  status: Schema.Literals(["none", "pending", "running", "sent", "failed", "needs_human"]),
+  message: Schema.NullOr(Schema.String),
+  updatedAt: Schema.NullOr(Schema.String)
+})
+
+export type LetterAttachStatus = typeof LetterAttachStatus.Type

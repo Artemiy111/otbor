@@ -78,6 +78,14 @@ const html = (body: string) =>
   new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } })
 
 let reconcileMode = "open"
+let lettersSent = 0
+
+const letterPage = (stuck: boolean) => `<html><body>
+<button data-qa="responded-success-attach-cover-letter" onclick="document.getElementById('dlg').style.display='block'">Приложить сопроводительное письмо</button>
+<div id="dlg" style="display:none">
+  <textarea data-qa="vacancy-response-popup-form-letter-input" name="text"></textarea>
+  <button data-qa="vacancy-response-letter-submit" onclick="fetch('/letter',{method:'POST'}).then(()=>{ if (!${stuck}) document.getElementById('dlg').style.display='none' })">Отправить</button>
+</div></body></html>`
 const visited: Array<string> = []
 
 let mode = "ok"
@@ -97,6 +105,10 @@ beforeAll(async () => {
         posts += 1
         return new Response("{}", { headers: { "content-type": "application/json" } })
       }
+      if (url.pathname === "/letter" && request.method === "POST") {
+        lettersSent += 1
+        return new Response("{}", { headers: { "content-type": "application/json" } })
+      }
       if (url.pathname === "/account/login") {
         return new Response("<html><body>login</body></html>", {
           headers: { "content-type": "text/html; charset=utf-8" }
@@ -106,6 +118,8 @@ beforeAll(async () => {
       if (url.pathname === "/vacancy/100500") {
         visited.push(url.pathname)
         if (reconcileMode === "login") return Response.redirect(`${origin}/account/login`, 302)
+        if (reconcileMode === "letter") return html(letterPage(false))
+        if (reconcileMode === "letter-stuck") return html(letterPage(true))
         return html(reconcileMode === "responded" ? vacancyResponded : vacancyOpen)
       }
       if (url.pathname === "/applicant/negotiations") {
@@ -353,3 +367,47 @@ if (!hasBrowser) {
     expect(hasBrowser).toBe(false)
   })
 }
+
+describe.skipIf(!hasBrowser)("attachLetter", () => {
+  const payload = {
+    vacancyId: "vac",
+    externalId: "100500",
+    canonicalUrl: "https://hh.ru/vacancy/100500",
+    sessionProfile: "test-account",
+    letter: "Здравствуйте, это письмо."
+  }
+
+  test("types the letter, presses send once and reports the closed dialog", async () => {
+    reconcileMode = "letter"
+    lettersSent = 0
+    const exit = await run(executor().attachLetter({ payload, beforeClick: Effect.succeed(true) }))
+    expect(exit.tag).toBe("submitted")
+    expect(exit.artifacts).toMatchObject({ clicked: true, closed: true })
+    expect(lettersSent).toBe(1)
+  }, 40_000)
+
+  test("a dialog that stays open after the click is ambiguous, not sent", async () => {
+    reconcileMode = "letter-stuck"
+    lettersSent = 0
+    const exit = await run(executor().attachLetter({ payload, beforeClick: Effect.succeed(true) }))
+    expect(exit.tag).toBe("ambiguous")
+    expect(exit.artifacts).toMatchObject({ clicked: true, closed: false })
+    expect(lettersSent).toBe(1)
+  }, 40_000)
+
+  test("a lost lease means no click", async () => {
+    reconcileMode = "letter"
+    lettersSent = 0
+    const exit = await run(executor().attachLetter({ payload, beforeClick: Effect.succeed(false) }))
+    expect(exit.artifacts).toMatchObject({ clicked: false })
+    expect(lettersSent).toBe(0)
+  }, 40_000)
+
+  test("a vacancy without a response is not touched", async () => {
+    reconcileMode = "open"
+    lettersSent = 0
+    const exit = await run(executor().attachLetter({ payload, beforeClick: Effect.succeed(true) }))
+    expect(exit.tag).toBe("not_submitted")
+    expect(lettersSent).toBe(0)
+  }, 40_000)
+})

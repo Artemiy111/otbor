@@ -271,3 +271,40 @@ export const resumeSyncJob = (
     },
     idempotencyKey: `account:${input.hhAccountId}:resume_sync:${input.sequence}`
   })
+
+/**
+ * Adds a cover letter to a response hh already holds. One attempt only. The
+ * caller decides whether a new job is allowed (nothing active, nothing sent).
+ */
+export const letterAttachJob = (
+  tx: Executor,
+  input: {
+    readonly userId: string
+    readonly hhAccountId: string
+    readonly vacancyId: string
+    readonly externalId: string
+    readonly canonicalUrl: string
+    readonly sessionProfile: string | null
+    readonly letter: string
+    readonly letterHash: string
+    /** Grows with every earlier job of this vacancy and account, so a failed try can be redone. */
+    readonly sequence: number
+  }
+) =>
+  QueueRepository.enqueue(tx, {
+    userId: input.userId,
+    hhAccountId: input.hhAccountId,
+    applicationId: null,
+    stage: "letter_attach",
+    kind: "browser",
+    priority: 5,
+    maxAttempts: 1,
+    payload: {
+      vacancyId: input.vacancyId,
+      externalId: input.externalId,
+      canonicalUrl: input.canonicalUrl,
+      sessionProfile: input.sessionProfile,
+      letter: input.letter
+    },
+    idempotencyKey: `vacancy:${input.vacancyId}:account:${input.hhAccountId}:letter_attach:${input.letterHash}:${input.sequence}`
+  })

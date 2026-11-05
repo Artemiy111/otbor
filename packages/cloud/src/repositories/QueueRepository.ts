@@ -92,7 +92,7 @@ export const enqueue = (tx: Executor, input: EnqueueInput): RepoEffect<HarnessJo
         payload: input.payload,
         priority: input.priority ?? 0,
         runAt: input.runAt ?? new Date(),
-        maxAttempts: input.stage === "submit" ? 1 : input.maxAttempts ?? 3,
+        maxAttempts: input.stage === "submit" || input.stage === "letter_attach" ? 1 : input.maxAttempts ?? 3,
         idempotencyKey: input.idempotencyKey
       })
       .onConflictDoNothing({ target: harnessJob.idempotencyKey })
@@ -601,5 +601,53 @@ export const countForAccount = (
   tx
     .execute(
       sql`select count(*)::int as n from harness_jobs where hh_account_id = ${hhAccountId} and stage = ${stage}`
+    )
+    .pipe(Effect.map((result) => Number((result.rows[0] as { n?: number } | undefined)?.n ?? 0)))
+
+/** Newest non-cancelled job of a stage for a vacancy and account (jobs without an application). */
+export const latestForVacancy = (
+  tx: Executor,
+  hhAccountId: string,
+  vacancyId: string,
+  stage: JobStage
+): RepoEffect<{
+  readonly job: HarnessJob
+  readonly lastError: string | null
+  readonly updatedAt: Date
+} | null> =>
+  tx
+    .select()
+    .from(harnessJob)
+    .where(
+      sql`${harnessJob.hhAccountId} = ${hhAccountId}
+        and ${harnessJob.stage} = ${stage}
+        and ${harnessJob.payload}->>'vacancyId' = ${vacancyId}
+        and ${harnessJob.status} <> 'cancelled'`
+    )
+    .orderBy(sql`${harnessJob.createdAt} desc`)
+    .limit(1)
+    .pipe(
+      Effect.map((rows) =>
+        rows[0] === undefined
+          ? null
+          : {
+              job: toJob(fromSelect(rows[0])),
+              lastError: rows[0].lastError ?? null,
+              updatedAt: rows[0].updatedAt
+            }
+      )
+    )
+
+/** How many jobs of a stage a vacancy and account have ever had. */
+export const countForVacancy = (
+  tx: Executor,
+  hhAccountId: string,
+  vacancyId: string,
+  stage: JobStage
+): RepoEffect<number> =>
+  tx
+    .execute(
+      sql`select count(*)::int as n from harness_jobs
+          where hh_account_id = ${hhAccountId} and stage = ${stage} and payload->>'vacancyId' = ${vacancyId}`
     )
     .pipe(Effect.map((result) => Number((result.rows[0] as { n?: number } | undefined)?.n ?? 0)))

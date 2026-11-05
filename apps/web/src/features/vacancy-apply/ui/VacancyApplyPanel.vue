@@ -17,6 +17,7 @@ import { applicationApi, applicationKeys } from "@/entities/application"
 import { describeError, formatDate, statusLabel } from "@/shared/lib"
 import AccountResumePicker from "./AccountResumePicker.vue"
 import DraftGenerator from "./DraftGenerator.vue"
+import LetterAttachBlock from "./LetterAttachBlock.vue"
 import { Alert, AlertDescription, AlertTitle, Badge, Button, StatusBadge, Textarea } from "@/shared/ui"
 
 const props = defineProps<{
@@ -636,6 +637,13 @@ const NO_FORM = "no-form"
         Чтобы откликнуться другим резюме, выберите его выше.
       </AlertDescription>
     </Alert>
+
+    <LetterAttachBlock
+      v-if="finished || sent.some((item) => item.accountId === accountId)"
+      :vacancy-id="vacancyId"
+      :account-id="accountId"
+      :applications="applications"
+    />
 
     <template v-else>
       <!-- the vacancy form: read once, shared by every applicant -->

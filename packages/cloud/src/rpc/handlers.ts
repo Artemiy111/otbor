@@ -24,6 +24,7 @@ import { InferenceService } from "../services/InferenceService.ts"
 import { MailGatewayProvider } from "../services/MailGatewayProvider.ts"
 import { MailService } from "../services/MailService.ts"
 import { MailSync } from "../services/MailSync.ts"
+import { LetterAttach } from "../services/LetterAttach.ts"
 import { NegotiationsSync } from "../services/NegotiationsSync.ts"
 import { ResumeSync } from "../services/ResumeSync.ts"
 import { PresetService } from "../services/PresetService.ts"
@@ -74,6 +75,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const hhAccounts = yield* HhAccountService
     const resumes = yield* ResumeService
     const negotiations = yield* NegotiationsSync
+    const letters = yield* LetterAttach
     const resumeSync = yield* ResumeSync
 
     /**
@@ -221,6 +223,8 @@ export const OtborHandlers = OtborRpcs.toLayer(
       ApplicationsCreateManual: (payload) => applications.createManual(payload),
       VacancyFormGet: (payload) => applications.formGet(payload.vacancyId),
       VacancyFormRefresh: (payload) => applications.formRefresh(payload),
+      VacancyLetterAttach: (payload) => letters.attach(payload),
+      VacancyLetterAttachStatus: (payload) => letters.status(payload),
       ApplicationsApprove: ({ id }) => applications.approve(id),
       ApplicationsSkip: (payload) => applications.skip(payload),
       ApplicationsRetry: ({ id }) => applications.retry(id),
@@ -317,5 +321,6 @@ export const OtborServices = Layer.mergeAll(
   ApplicationService.layer,
   PresetService.layer,
   NegotiationsSync.layer,
+  LetterAttach.layer,
   QueueService.layer
 )

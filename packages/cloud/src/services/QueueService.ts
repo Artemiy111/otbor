@@ -26,6 +26,7 @@ import {
   checkKit,
   judgePrepare,
   judgeReconcile,
+  judgeLetterAttach,
   judgeNegotiationsSync,
   judgeResumeSync,
   judgeSubmit,
@@ -688,6 +689,23 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                       status = "pending"
                       runAt = retryLater(exit, 120)
                       message = `negotiations sync retry ${job.attempts + 1}/${job.maxAttempts}: ${verdict.reason}`
+                    }
+                    break
+                  }
+
+                  case "letter_attach": {
+                    // One attempt, never retried: a click that may have reached hh
+                    // is left for the operator to look at.
+                    const verdict = judgeLetterAttach(exit)
+                    if (verdict._tag === "sent") {
+                      status = "done"
+                      message = "cover letter sent"
+                    } else if (verdict._tag === "human") {
+                      status = "needs_human"
+                      message = `cover letter: ${verdict.reason}`
+                    } else {
+                      status = "failed"
+                      message = verdict.reason
                     }
                     break
                   }

@@ -3,6 +3,7 @@ import {
   type HarnessExit,
   type HarnessExitTag,
   type KitAnswer,
+  LetterAttachEvidence,
   NegotiationsSyncEvidence,
   PrepareArtifacts,
   ReconcileEvidence,
@@ -662,4 +663,35 @@ export const judgeResumeSync = (exit: HarnessExit): ResumeSyncVerdict => {
     return parsed === undefined ? [] : [parsed]
   })
   return { _tag: "read", found: refs.length, resumes, unreadable: refs.length - resumes.length }
+}
+
+export type LetterAttachVerdict =
+  /** hh closed the letter dialog after the click. */
+  | { readonly _tag: "sent" }
+  /** Nothing was clicked; the reason is for the operator. */
+  | { readonly _tag: "failed"; readonly reason: string }
+  /** The click may have reached hh: never retried, the operator checks hh. */
+  | { readonly _tag: "human"; readonly reason: string }
+
+/**
+ * A letter is "sent" only when the harness clicked and the dialog closed. A
+ * missing or contradictory `clicked` is treated as a click that may have
+ * happened, so an unknown outcome never turns into a second send.
+ */
+export const judgeLetterAttach = (exit: HarnessExit): LetterAttachVerdict => {
+  const evidence = Schema.decodeUnknownOption(LetterAttachEvidence)(exit.artifacts)
+  const clicked = Option.isSome(evidence) ? evidence.value.clicked : true
+  if (exit.tag === "submitted" && Option.isSome(evidence) && evidence.value.clicked && evidence.value.closed) {
+    return { _tag: "sent" }
+  }
+  if (!clicked) {
+    if (exit.tag === "session_expired") return { _tag: "failed", reason: "hh session expired; log in again" }
+    if (exit.tag === "captcha") return { _tag: "failed", reason: "hh asked for a captcha" }
+    if (exit.tag === "not_submitted") return { _tag: "failed", reason: exit.message ?? "hh shows no response to this vacancy" }
+    return { _tag: "failed", reason: exit.message ?? `letter was not sent (${exit.tag})` }
+  }
+  return {
+    _tag: "human",
+    reason: exit.message ?? "the letter may have been sent; check the response on hh"
+  }
 }

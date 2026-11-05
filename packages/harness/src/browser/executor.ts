@@ -1,4 +1,4 @@
-import type { FormReadJobPayload, HarnessExit, NegotiationsSyncJobPayload, ResumeSyncJobPayload, ReconcileJobPayload, SubmitJobPayload } from "@otbor/contract"
+import type { FormReadJobPayload, LetterAttachJobPayload, HarnessExit, NegotiationsSyncJobPayload, ResumeSyncJobPayload, ReconcileJobPayload, SubmitJobPayload } from "@otbor/contract"
 import { Context, Effect, Layer } from "effect"
 
 /**
@@ -16,9 +16,17 @@ export interface SubmitRequest {
   readonly beforeClick: Effect.Effect<boolean>
 }
 
+export interface LetterAttachRequest {
+  readonly payload: LetterAttachJobPayload
+  /** Called immediately before the send button is pressed; `false` means do not click. */
+  readonly beforeClick: Effect.Effect<boolean>
+}
+
 export interface BrowserExecutorShape {
   readonly prepare: (payload: FormReadJobPayload) => Effect.Effect<HarnessExit>
   readonly submit: (request: SubmitRequest) => Effect.Effect<HarnessExit>
+  /** Adds a cover letter to a response hh already holds. Sends at most once. */
+  readonly attachLetter: (request: LetterAttachRequest) => Effect.Effect<HarnessExit>
   /**
    * Reads the vacancy page and the negotiations list in the account's session
    * and returns them as evidence. It never clicks a respond control and never
@@ -50,6 +58,9 @@ export class BrowserExecutor extends Context.Service<BrowserExecutor, BrowserExe
         submit:
           handlers.submit ??
           (() => Effect.succeed<HarnessExit>({ tag: "blocked", message: "fake executor: submit" })),
+        attachLetter:
+          handlers.attachLetter ??
+          (() => Effect.succeed<HarnessExit>({ tag: "blocked", message: "fake executor: attach letter" })),
         reconcile:
           handlers.reconcile ??
           (() => Effect.succeed<HarnessExit>({ tag: "blocked", message: "fake executor: reconcile" })),

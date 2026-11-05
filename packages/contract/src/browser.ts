@@ -35,6 +35,33 @@ export const FormReadJobPayload = Schema.Struct({
 
 export type FormReadJobPayload = typeof FormReadJobPayload.Type
 
+/**
+ * `letter_attach`: add a cover letter to a response hh already holds, from the
+ * vacancy page ("Приложить сопроводительное письмо"). Not tied to an application;
+ * the vacancy and the account are the target. The letter is sent at most once.
+ */
+export const LetterAttachJobPayload = Schema.Struct({
+  vacancyId: Schema.String,
+  externalId: Schema.String,
+  canonicalUrl: Schema.String,
+  sessionProfile: Schema.optional(Schema.NullOr(Schema.String)),
+  letter: Schema.String
+})
+
+export type LetterAttachJobPayload = typeof LetterAttachJobPayload.Type
+
+/**
+ * `letter_attach` artifacts. `clicked` is the harness's claim that the send
+ * button was pressed; `closed` says the letter dialog went away afterwards.
+ */
+export const LetterAttachEvidence = Schema.Struct({
+  clicked: Schema.Boolean,
+  closed: Schema.Boolean,
+  url: Schema.String
+})
+
+export type LetterAttachEvidence = typeof LetterAttachEvidence.Type
+
 export const SubmitKit = Schema.Struct({
   formHash: Schema.String,
   letter: Schema.NullOr(Schema.String),

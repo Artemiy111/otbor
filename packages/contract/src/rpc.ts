@@ -58,6 +58,7 @@ import {
   CrawlRun,
   CrawlSchedule,
   NegotiationsSyncStatus,
+  LetterAttachStatus,
   ResumeSyncStatus,
   DecisionRecord,
   EvaluateBatchResult,
@@ -1020,6 +1021,26 @@ export const VacancyFormRefresh = Rpc.make("VacancyFormRefresh", {
   error: ApiError
 })
 
+/**
+ * Adds a cover letter to the response hh already holds for the vacancy. Queues
+ * one browser job and returns at once. The same letter is never queued twice.
+ */
+export const VacancyLetterAttach = Rpc.make("VacancyLetterAttach", {
+  payload: Schema.Struct({
+    vacancyId: VacancyId,
+    hhAccountId: HhAccountId,
+    letter: Schema.String
+  }),
+  success: LetterAttachStatus,
+  error: ApiError
+})
+
+export const VacancyLetterAttachStatusGet = Rpc.make("VacancyLetterAttachStatus", {
+  payload: Schema.Struct({ vacancyId: VacancyId, hhAccountId: HhAccountId }),
+  success: LetterAttachStatus,
+  error: ApiError
+})
+
 export const ApplicationsApprove = Rpc.make("ApplicationsApprove", {
   payload: Schema.Struct({ id: ApplicationId }),
   success: ApplicationRecord,
@@ -1462,6 +1483,8 @@ export const OtborRpcs = RpcGroup.make(
   ApplicationsCreateManual,
   VacancyFormGet,
   VacancyFormRefresh,
+  VacancyLetterAttach,
+  VacancyLetterAttachStatusGet,
   ApplicationsApprove,
   ApplicationsSkip,
   ApplicationsRetry,

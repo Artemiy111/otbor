@@ -11,6 +11,7 @@ import type {
   HhAccountId,
   KitAnswer,
   KitRecord,
+  LetterAttachStatus,
   VacancyFormState,
   VacancyId
 } from "@otbor/contract"
@@ -115,6 +116,29 @@ export const applicationApi = {
     ),
   approve: (id: string): Promise<ApplicationRecord> =>
     call((client) => client.ApplicationsApprove({ id: id as ApplicationId })),
+  /** Adds a cover letter to the response hh already holds. Queues one job; sent at most once. */
+  letterAttach: (input: {
+    readonly vacancyId: string
+    readonly hhAccountId: string
+    readonly letter: string
+  }): Promise<LetterAttachStatus> =>
+    call((client) =>
+      client.VacancyLetterAttach({
+        vacancyId: input.vacancyId as VacancyId,
+        hhAccountId: input.hhAccountId as HhAccountId,
+        letter: input.letter
+      })
+    ),
+  letterAttachStatus: (input: {
+    readonly vacancyId: string
+    readonly hhAccountId: string
+  }): Promise<LetterAttachStatus> =>
+    call((client) =>
+      client.VacancyLetterAttachStatus({
+        vacancyId: input.vacancyId as VacancyId,
+        hhAccountId: input.hhAccountId as HhAccountId
+      })
+    ),
   syncRun: (hhAccountId: string): Promise<NegotiationsSyncStatus> =>
     call((client) => client.NegotiationsSyncRun({ hhAccountId: hhAccountId as HhAccountId })),
   syncStatus: (hhAccountId: string): Promise<NegotiationsSyncStatus> =>

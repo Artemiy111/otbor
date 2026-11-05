@@ -2,6 +2,7 @@ import type {
   HarnessExit,
   NegotiationsSyncJobPayload,
   FormReadJobPayload,
+  LetterAttachJobPayload,
   ReconcileJobPayload,
   ResumeSyncJobPayload,
   ReconcilePage,
@@ -14,6 +15,8 @@ import { chromium, type Page } from "playwright"
 import {
   LETTER_ATTACH_SELECTOR,
   LETTER_SELECTOR,
+  LETTER_SUBMIT_SELECTOR,
+  letterUnclicked,
   MAX_NEGOTIATION_PAGES,
   MAX_SYNC_PAGES,
   MAX_SYNC_RESUMES,
@@ -33,7 +36,7 @@ import {
   wantsMoreNegotiations,
   wantsMoreSyncPages
 } from "./core.ts"
-import { BrowserExecutor, type SubmitRequest } from "./executor.ts"
+import { BrowserExecutor, type LetterAttachRequest, type SubmitRequest } from "./executor.ts"
 import { DEFAULT_CHROME_PATH, hhProfileDir } from "./profile.ts"
 
 export class BrowserError extends Schema.TaggedError<BrowserError>()("BrowserError", {
@@ -177,12 +180,89 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
         }
       }
       yield* attempt(() => field.fill(letter, { timeout: 5_000 }))
-      // hh saves the letter on blur.
-      yield* attempt(() => field.blur())
-      yield* sleep(400)
       const value = yield* attempt(() => field.inputValue())
-      return value.trim() === letter.trim()
+      if (value.trim() !== letter.trim()) return false
+      // The dialog keeps the text until "Отправить" is pressed.
+      yield* attempt(() => page.locator(LETTER_SUBMIT_SELECTOR).first().click({ timeout: 5_000 }))
+      yield* attempt(() => field.waitFor({ state: "hidden", timeout: 8_000 }))
+      return true
     }).pipe(Effect.orElseSucceed(() => false))
+
+  const attachLetter = ({ payload, beforeClick }: LetterAttachRequest): Effect.Effect<HarnessExit> => {
+    let clicked = false
+    let lastUrl = vacancyUrl(baseUrl, payload.externalId)
+
+    const run = withPage(payload.sessionProfile, (page) =>
+      Effect.gen(function*() {
+        yield* attempt(() =>
+          page.goto(lastUrl, { waitUntil: "domcontentloaded", timeout: config.navigationTimeoutMs })
+        )
+        yield* sleep(config.settleMs)
+        lastUrl = page.url()
+        const html = (yield* content(page)) ?? ""
+        const kind = classifyResponsePage(html, lastUrl)
+        if (kind === "login") return letterUnclicked(lastUrl, "session_expired", "hh redirected to the login page")
+        if (kind === "captcha") return letterUnclicked(lastUrl, "captcha", "hh asked for a captcha")
+        if (kind !== "responded") {
+          return letterUnclicked(lastUrl, "not_submitted", "hh shows no response to this vacancy")
+        }
+
+        const toggle = page.locator(LETTER_ATTACH_SELECTOR).first()
+        if ((yield* attempt(() => toggle.count())) === 0) {
+          return letterUnclicked(lastUrl, "blocked", "the cover letter control is not on the page")
+        }
+        yield* attempt(() => toggle.click({ timeout: 5_000 }))
+        const field = page.locator(LETTER_SELECTOR).first()
+        yield* attempt(() => field.waitFor({ state: "visible", timeout: 8_000 }))
+        yield* attempt(() => field.fill(payload.letter, { timeout: 5_000 }))
+        const typed = yield* attempt(() => field.inputValue())
+        if (typed.trim() !== payload.letter.trim()) {
+          return letterUnclicked(lastUrl, "blocked", "the letter did not land in the field")
+        }
+
+        // The last look before the only click: is this lease still ours?
+        if (!(yield* beforeClick)) {
+          return letterUnclicked(lastUrl, "transport", "lease lost before the click")
+        }
+        clicked = true
+        yield* attempt(() => page.locator(LETTER_SUBMIT_SELECTOR).first().click({ timeout: 5_000 }))
+        const closed = yield* attempt(() => field.waitFor({ state: "hidden", timeout: 10_000 })).pipe(
+          Effect.as(true),
+          Effect.orElseSucceed(() => false)
+        )
+        return {
+          tag: closed ? "submitted" : "ambiguous",
+          message: closed ? "letter sent" : "the letter dialog did not close after the click",
+          artifacts: { clicked: true, closed, url: page.url() }
+        } satisfies HarnessExit
+      })
+    )
+
+    return run.pipe(
+      Effect.catch((error) =>
+        Effect.succeed<HarnessExit>(
+          clicked
+            ? {
+                tag: "ambiguous",
+                message: `browser failed after the click: ${error.message}`,
+                artifacts: { clicked: true, closed: false, url: lastUrl }
+              }
+            : letterUnclicked(lastUrl, "transport", error.message)
+        )
+      ),
+      Effect.catchDefect((defect) =>
+        Effect.succeed<HarnessExit>(
+          clicked
+            ? {
+                tag: "ambiguous",
+                message: String(defect),
+                artifacts: { clicked: true, closed: false, url: lastUrl }
+              }
+            : letterUnclicked(lastUrl, "transport", String(defect))
+        )
+      )
+    )
+  }
 
   const submit = ({ payload, beforeClick }: SubmitRequest): Effect.Effect<HarnessExit> => {
     let clicked = false
@@ -461,7 +541,7 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
       )
     )
 
-  return BrowserExecutor.of({ prepare, submit, reconcile, negotiationsSync, resumeSync })
+  return BrowserExecutor.of({ prepare, submit, attachLetter, reconcile, negotiationsSync, resumeSync })
 }
 
 export const PlaywrightBrowserExecutor = {

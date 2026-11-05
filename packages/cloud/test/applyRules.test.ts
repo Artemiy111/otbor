@@ -3,7 +3,7 @@ import { parseResponseForm } from "@otbor/hh"
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { checkKit, judgePrepare, judgeSubmit, toFormAnswers } from "../src/services/applyRules.ts"
+import { checkKit, judgeLetterAttach, judgePrepare, judgeSubmit, toFormAnswers } from "../src/services/applyRules.ts"
 
 const fixture = (name: string) =>
   readFileSync(join(import.meta.dir, "../../hh/test/fixtures", name), "utf8")
@@ -273,5 +273,29 @@ describe("judgePrepare", () => {
     expect(judgePrepare({ tag: "already_responded" })._tag).toBe("skip")
     expect(judgePrepare({ tag: "transport" })._tag).toBe("retry")
     expect(judgePrepare({ tag: "permanent" })._tag).toBe("failed")
+  })
+})
+
+
+describe("judgeLetterAttach", () => {
+  const artifacts = (clicked: boolean, closed: boolean) => ({ clicked, closed, url: URL_OK })
+
+  test("sent only when the harness clicked and the dialog closed", () => {
+    expect(judgeLetterAttach({ tag: "submitted", artifacts: artifacts(true, true) })._tag).toBe("sent")
+  })
+
+  test("a click that may have reached hh is left to a human, never retried", () => {
+    expect(judgeLetterAttach({ tag: "ambiguous", artifacts: artifacts(true, false) })._tag).toBe("human")
+    expect(judgeLetterAttach({ tag: "submitted", artifacts: artifacts(true, false) })._tag).toBe("human")
+  })
+
+  test("missing evidence counts as a possible click", () => {
+    expect(judgeLetterAttach({ tag: "transport" })._tag).toBe("human")
+    expect(judgeLetterAttach({ tag: "submitted" })._tag).toBe("human")
+  })
+
+  test("an unclicked exit is a plain failure", () => {
+    expect(judgeLetterAttach({ tag: "not_submitted", artifacts: artifacts(false, false) })._tag).toBe("failed")
+    expect(judgeLetterAttach({ tag: "session_expired", artifacts: artifacts(false, false) })._tag).toBe("failed")
   })
 })

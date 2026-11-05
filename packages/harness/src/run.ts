@@ -5,6 +5,7 @@ import {
   type HarnessJob,
   type LeaseId,
   FormReadJobPayload,
+  LetterAttachJobPayload,
   PrepareJobPayload,
   NegotiationsSyncJobPayload,
   ResumeSyncJobPayload,
@@ -134,6 +135,34 @@ const runBrowserExit = (
           onFailure: (error) => Effect.succeed(badPayload("submit", error.message)),
           onSuccess: (payload) =>
             executor.submit({
+              payload,
+              beforeClick: gateway
+                .heartbeat({
+                  harnessId: config.harnessId,
+                  token: config.token,
+                  jobId: job.id,
+                  leaseId,
+                  epoch: job.leaseEpoch
+                })
+                .pipe(
+                  Effect.map((result) => result.ok),
+                  Effect.orElseSucceed(() => false)
+                )
+            })
+        })
+      )
+    case "letter_attach":
+      return Schema.decodeUnknownEffect(LetterAttachJobPayload)(job.payload).pipe(
+        Effect.matchEffect({
+          // Nothing was clicked, so a bad payload sent nothing.
+          onFailure: (error) =>
+            Effect.succeed<HarnessExit>({
+              tag: "permanent",
+              message: `invalid letter_attach payload: ${error.message}`,
+              artifacts: { clicked: false, closed: false, url: "" }
+            }),
+          onSuccess: (payload) =>
+            executor.attachLetter({
               payload,
               beforeClick: gateway
                 .heartbeat({
