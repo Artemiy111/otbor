@@ -127,4 +127,37 @@ if (!enabled || serverUrl === null) {
     await support.corpusIngest(tenant.userId, [{ ...full, hhSignals: signals(false) }])
     expect(await pending()).not.toContain(id)
   })
+
+  test("response counts: listed until captured, and a search card does not erase them", async () => {
+    const tenant = await support.seedTenant("hh-counts")
+    const externalId = `rc-${Math.random().toString(36).slice(2, 10)}`
+    const full: VacancyDraft = {
+      externalId,
+      canonicalUrl: `https://hh.ru/vacancy/${externalId}`,
+      title: "Platform Engineer",
+      descriptionHtml: "<p>x</p>",
+      descriptionText: "Строим платформу на Kubernetes и Terraform. ".repeat(20)
+    }
+    const first = await support.corpusIngest(tenant.userId, [full])
+    const id = first.items[0]!.id
+    const pending = () =>
+      support.runAs(
+        tenant.userId,
+        Effect.gen(function*() {
+          const database = yield* Database
+          const rows = yield* database.asOwner((tx) =>
+            VacancyRepository.listNeedingHydration(tx, { limit: 500, missingResponses: true })
+          )
+          return rows.map((row) => row.id)
+        })
+      )
+    expect(await pending()).toContain(id)
+
+    await support.corpusIngest(tenant.userId, [{ ...full, responsesTotal: 42 }])
+    expect(await pending()).not.toContain(id)
+
+    // A later search card carries no count; the stored one stays.
+    await support.corpusIngest(tenant.userId, [{ ...full, responsesTotal: null }])
+    expect(await pending()).not.toContain(id)
+  })
 }

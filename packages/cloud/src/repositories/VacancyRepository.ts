@@ -303,6 +303,28 @@ export const hhSignalsOf = (tx: Executor, vacancyId: string) =>
       })
     )
 
+/**
+ * The text did not change, but the page carried fresh response counts. Store
+ * them without rewriting the row; a null side keeps what is stored.
+ */
+export const mergeResponseCounts = (
+  tx: Executor,
+  id: string,
+  counts: { readonly total: number | null; readonly vacancy: number | null }
+) =>
+  tx
+    .update(vacancy)
+    .set({
+      responsesTotal: sql`coalesce(${counts.total}::int, ${vacancy.responsesTotal})`,
+      responsesVacancy: sql`coalesce(${counts.vacancy}::int, ${vacancy.responsesVacancy})`
+    })
+    .where(sql`${vacancy.id} = ${id}`)
+    .pipe(
+      Effect.andThen(
+        insertResponseSample(tx, { vacancyId: id, total: counts.total, vacancy: counts.vacancy })
+      )
+    )
+
 export const touch = (tx: Executor, id: string) =>
   tx
     .update(vacancy)
@@ -433,6 +455,11 @@ export interface HydrationFilter {
    * hh response signals (letter required, test, schedule) were never captured.
    */
   readonly missingHhSignals?: boolean
+  /**
+   * Backfill mode: complete, non-archived vacancies without a response count.
+   * Only the vacancy page carries it, and a search upsert used to erase it.
+   */
+  readonly missingResponses?: boolean
 }
 
 /**
@@ -461,7 +488,15 @@ export const listNeedingHydration = (tx: Executor, filter: HydrationFilter = {})
     .leftJoin(employer, eq(vacancy.employerId, employer.id))
     .where(sql`
       ${vacancy.source} = 'hh'
-      and ${filter.missingHhSignals === true
+      and ${filter.missingResponses === true
+        ? sql`(
+            ${vacancy.hydrationStatus} = 'full'
+            and ${vacancy.descriptionHtml} is not null
+            and coalesce(length(btrim(${vacancy.descriptionText})), 0) >= ${min}
+            and not ${vacancy.archived}
+            and ${vacancy.responsesTotal} is null
+          )`
+        : filter.missingHhSignals === true
         ? sql`(
             ${vacancy.hydrationStatus} = 'full'
             and ${vacancy.descriptionHtml} is not null

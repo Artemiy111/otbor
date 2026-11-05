@@ -24,6 +24,7 @@ const vacancyPage = (externalId: string, title: string): string =>
     JSON.stringify({
       vacancyView: {
         vacancyFull: {
+          extraVacancyFields: { totalResponsesCount: 5 },
           vacancy: {
             vacancyId: Number(externalId),
             name: title,

@@ -71,6 +71,13 @@ const persistDraft = (tx: Executor, draft: VacancyDraft, contactUserId: string) 
       if (draft.hhSignals !== undefined) {
         yield* VacancyRepository.mergeHhSignals(tx, existing.id, draft.hhSignals)
       }
+      // Counts are not part of the content hash: hydrating an unchanged page must still store them.
+      if (draft.responsesTotal != null || draft.responsesVacancy != null) {
+        yield* VacancyRepository.mergeResponseCounts(tx, existing.id, {
+          total: draft.responsesTotal ?? null,
+          vacancy: draft.responsesVacancy ?? null
+        })
+      }
       return { status: "skipped" as const, row: existing }
     }
 

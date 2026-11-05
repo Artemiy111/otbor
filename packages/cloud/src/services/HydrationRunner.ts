@@ -35,6 +35,8 @@ export type HydrationBlock = "captcha" | "auth" | "forbidden" | "geo" | "rate_li
  * serves a short description). Look again in six hours instead of every pass.
  */
 export const HYDRATION_STUB_RECHECK_SECONDS = 6 * 60 * 60
+/** A full page without a response count: hh may simply not show it, ask again tomorrow. */
+export const HYDRATION_NO_COUNT_RECHECK_SECONDS = 24 * 60 * 60
 
 export interface FetchedVacancy {
   readonly vacancyId: string
@@ -233,14 +235,14 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
             Effect.asVoid
           )
 
-      const rememberShortPage = (target: VacancyTargetLike) =>
+      const rememberDeferred = (target: VacancyTargetLike, seconds: number, note: string) =>
         database
           .asOwner((tx) =>
             HydrationAttemptRepository.recordDeferred(tx, {
               kind: "vacancy",
               id: target.id,
               externalId: target.externalId
-            }, HYDRATION_STUB_RECHECK_SECONDS, "страница без полного описания")
+            }, seconds, note)
           )
           .pipe(
             Effect.catchCause((cause) =>
@@ -248,6 +250,21 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
             ),
             Effect.asVoid
           )
+
+      const rememberShortPage = (target: VacancyTargetLike) =>
+        rememberDeferred(target, HYDRATION_STUB_RECHECK_SECONDS, "страница без полного описания")
+
+      /** Short page, a page without the response count, or a clean success. */
+      const rememberOutcome = (
+        target: VacancyTargetLike,
+        outcome: { readonly stillStub: boolean; readonly draft: VacancyDraft }
+      ) => {
+        if (outcome.stillStub) return rememberShortPage(target)
+        if (outcome.draft.responsesTotal == null) {
+          return rememberDeferred(target, HYDRATION_NO_COUNT_RECHECK_SECONDS, "hh не показал число откликов")
+        }
+        return rememberSuccess(target)
+      }
 
       const attemptVacancy = (
         target: VacancyTargetLike,
@@ -361,7 +378,8 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
         const proxy = proxyState(proxyMode, config)
 
         // Stubs first; spare capacity backfills hh response signals (letter
-        // required, test, schedule) on vacancies hydrated before they were read.
+        // required, test, schedule), then response counts, on vacancies
+        // hydrated before they were read.
         const targets = yield* database
           .asUser(userId, (tx) =>
             Effect.gen(function*() {
@@ -370,12 +388,20 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
                 onlyDue: true
               })
               if (stubs.length >= limit) return stubs
-              const backfill = yield* VacancyRepository.listNeedingHydration(tx, {
+              const signals = yield* VacancyRepository.listNeedingHydration(tx, {
                 limit: limit - stubs.length,
                 onlyDue: true,
                 missingHhSignals: true
               })
-              return [...stubs, ...backfill]
+              const taken = stubs.length + signals.length
+              if (taken >= limit) return [...stubs, ...signals]
+              const counts = yield* VacancyRepository.listNeedingHydration(tx, {
+                limit: limit - taken,
+                onlyDue: true,
+                missingResponses: true
+              })
+              const seen = new Set([...stubs, ...signals].map((item) => item.id))
+              return [...stubs, ...signals, ...counts.filter((item) => !seen.has(item.id))]
             })
           )
           .pipe(
@@ -463,8 +489,7 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
               inserted += saved.inserted
               updated += saved.updated
               skipped += saved.skipped
-              if (outcome.stillStub) yield* rememberShortPage(target)
-              else yield* rememberSuccess(target)
+              yield* rememberOutcome(target, outcome)
             }
           }
 
@@ -565,8 +590,7 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
           return false
         }
 
-        if (outcome.stillStub) yield* rememberShortPage(target)
-        else yield* rememberSuccess(target)
+        yield* rememberOutcome(target, outcome)
         yield* Effect.logInfo(`vacancy hydrated: ${row.externalId}`)
         return true
       })
