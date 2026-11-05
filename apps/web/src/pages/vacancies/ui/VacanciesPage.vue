@@ -2,7 +2,6 @@
 import { computed, ref, watch } from "vue"
 import { useDebounceFn } from "@vueuse/core"
 import { useQuery } from "@pinia/colada"
-import { applicationApi, respondedByVacancy } from "@/entities/application"
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { ALL_ACCOUNTS, useAccountFilter } from "@/entities/hh-account"
 import { accountFilterOptions } from "@/features/account-filter"
@@ -129,11 +128,6 @@ watch([gate, analysed, archived, includeBlacklisted, search, sortKey, sortDirect
   pageIndex.value = 0
 })
 
-const applicationsQuery = useQuery({
-  key: () => ["applications", "by-vacancy"],
-  query: () => applicationApi.list({ limit: 2000 })
-})
-const respondedAccounts = computed(() => respondedByVacancy(applicationsQuery.data.value ?? []))
 const resumesQuery = useQuery({ key: () => resumeKeys.list(), query: () => resumeApi.list() })
 const resumes = computed(() => resumesQuery.data.value ?? [])
 
@@ -339,7 +333,7 @@ const refresh = () => {
         :key="vacancy.id"
         :vacancy="vacancy"
         :gate="gateFor(vacancy.title)"
-        :responded="respondedAccounts.get(vacancy.id) ?? []"
+        :responded="vacancy.responded ?? []"
         :accounts="accounts"
         :resumes="resumes"
       />

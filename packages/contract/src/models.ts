@@ -182,7 +182,16 @@ export const VacancySummary = Schema.Struct({
   /** Minimum years of experience the AI analysis read from the text (`facts.yearsMin`). */
   analysisYearsMin: Schema.optional(Schema.NullOr(Schema.Number)),
   /** First characters of the description, for the listing card. */
-  snippet: Schema.optional(Schema.NullOr(Schema.String))
+  snippet: Schema.optional(Schema.NullOr(Schema.String)),
+  /** Accounts with an active response to this vacancy, each with the resumes it used. */
+  responded: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        accountId: Schema.String,
+        resumeIds: Schema.Array(Schema.NullOr(Schema.String))
+      })
+    )
+  )
 })
 
 export type VacancySummary = typeof VacancySummary.Type

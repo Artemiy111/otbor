@@ -53,6 +53,7 @@ export interface VacancyRow {
   readonly letterRequired?: boolean | null
   readonly hasTest?: boolean | null
   readonly testRequired?: boolean | null
+  readonly responded?: ReadonlyArray<{ readonly accountId: string; readonly resumeIds: ReadonlyArray<string | null> }> | null
 }
 
 const toSnippet = (text: string | null): string | null => {
@@ -94,7 +95,8 @@ export const toSummary = (row: VacancyRow): VacancySummary => {
     letterRequired: row.letterRequired ?? null,
     hasTest: row.hasTest ?? null,
     testRequired: row.testRequired ?? null,
-    snippet: toSnippet(row.descriptionText)
+    snippet: toSnippet(row.descriptionText),
+    responded: [...(row.responded ?? [])]
   }
 }
 
@@ -414,6 +416,15 @@ export const rowSelection = {
   letterRequired: sql<boolean | null>`(${vacancy.signals} -> 'hh' ->> 'letterRequired')::boolean`,
   hasTest: sql<boolean | null>`(${vacancy.signals} -> 'hh' -> 'test' ->> 'hasTest')::boolean`,
   testRequired: sql<boolean | null>`(${vacancy.signals} -> 'hh' -> 'test' ->> 'required')::boolean`,
+  responded: sql<ReadonlyArray<unknown>>`coalesce((
+    select json_agg(json_build_object('accountId', r.hh_account_id, 'resumeIds', r.resume_ids))
+    from (
+      select ap.hh_account_id, json_agg(distinct ap.resume_id) as resume_ids
+      from application ap
+      where ap.vacancy_id = ${vacancy.id} and ap.state in ('submitted', 'submitting', 'queued')
+      group by ap.hh_account_id
+    ) r
+  ), '[]'::json)`,
   analysisYearsMin: sql<number | null>`(
     select (a.facts->'yearsMin'->>'value')::float8 from vacancy_analysis a
     where a.vacancy_id = ${vacancy.id} and a.prompt_version = ${ANALYSIS_PROMPT_VERSION}

@@ -1,15 +1,18 @@
 <script setup lang="ts">
+import { computed } from "vue"
 import { AccountChip } from "@/entities/hh-account"
 import { applicationPath } from "@/shared/lib"
 import { SentLetterButton } from "@/features/vacancy-apply"
 import { useResponseRows, type ResponseSummaryProps } from "./useResponseRows"
 
 const props = defineProps<ResponseSummaryProps>()
-const { rows } = useResponseRows(props)
+const { rows: allRows } = useResponseRows(props)
+// Only resumes that actually responded; the "not applied" placeholder for the selected resume is not shown.
+const rows = computed(() => allRows.value.filter((row) => row.application !== null))
 </script>
 
 <template>
-  <div class="divide-y divide-border overflow-hidden rounded-lg border border-border text-sm">
+  <div v-if="rows.length > 0" class="divide-y divide-border overflow-hidden rounded-lg border border-border text-sm">
     <div
       v-for="row in rows"
       :key="row.key"

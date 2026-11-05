@@ -2,7 +2,6 @@
 import { computed, ref, watch } from "vue"
 import { useQuery } from "@pinia/colada"
 import { CircleAlert, ExternalLink } from "@lucide/vue"
-import { applicationApi, respondedByVacancy } from "@/entities/application"
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { AccountChip, useDefaultAccount } from "@/entities/hh-account"
 import { blacklistApi, blacklistKeys } from "@/entities/blacklist"
@@ -149,11 +148,6 @@ const nativeHideIds = computed(() => [
 ])
 const isBlacklisted = computed(() => blacklistRecords.value.length > 0)
 
-const applicationsQuery = useQuery({
-  key: () => ["applications", "by-vacancy"],
-  query: () => applicationApi.list({ limit: 2000 })
-})
-const respondedAccounts = computed(() => respondedByVacancy(applicationsQuery.data.value ?? []))
 const resumesQuery = useQuery({ key: () => resumeKeys.list(), query: () => resumeApi.list() })
 const resumes = computed(() => resumesQuery.data.value ?? [])
 
@@ -360,9 +354,9 @@ const errorText = computed(() =>
                   {{ formatDate(vacancy.publishedAt ?? vacancy.lastSeenAt) }}
                 </TableCell>
                 <TableCell>
-                  <div v-if="respondedAccounts.has(vacancy.id)" class="flex flex-wrap gap-1">
+                  <div v-if="(vacancy.responded ?? []).length > 0" class="flex flex-wrap gap-1">
                     <AccountChip
-                      v-for="item in respondedAccounts.get(vacancy.id)"
+                      v-for="item in vacancy.responded"
                       :key="item.accountId"
                       :account-id="item.accountId"
                       :accounts="accounts"
