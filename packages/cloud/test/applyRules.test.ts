@@ -3,7 +3,7 @@ import { parseResponseForm } from "@otbor/hh"
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { checkKit, judgeLetterAttach, judgePrepare, judgeSubmit, toFormAnswers } from "../src/services/applyRules.ts"
+import { checkKit, judgeLetterAttach, judgeNegotiationsSync, judgePrepare, judgeSubmit, toFormAnswers } from "../src/services/applyRules.ts"
 
 const fixture = (name: string) =>
   readFileSync(join(import.meta.dir, "../../hh/test/fixtures", name), "utf8")
@@ -297,5 +297,42 @@ describe("judgeLetterAttach", () => {
   test("an unclicked exit is a plain failure", () => {
     expect(judgeLetterAttach({ tag: "not_submitted", artifacts: artifacts(false, false) })._tag).toBe("failed")
     expect(judgeLetterAttach({ tag: "session_expired", artifacts: artifacts(false, false) })._tag).toBe("failed")
+  })
+})
+
+describe("judgeNegotiationsSync", () => {
+  test("keeps one topic per vacancy and resume, each with its own chat", () => {
+    const topic = (chatId: number, resumeId: number) => ({
+      chatId,
+      vacancyId: 138673985,
+      resumeId,
+      lastState: "RESPONSE",
+      lastModified: "2026-11-05T18:56:12.847+03:00"
+    })
+    const state = JSON.stringify({
+      applicantNegotiations: {
+        topicList: [topic(5770068788, 290733333), topic(5732439170, 289972366), topic(1, 290733333)],
+        pageCount: "1"
+      }
+    })
+    const exit: HarnessExit = {
+      tag: "reconciled",
+      artifacts: {
+        pages: [
+          {
+            url: "https://hh.ru/applicant/negotiations?page=0",
+            html: `<template id="HH-Lux-InitialState">${state}</template>`
+          }
+        ]
+      }
+    }
+    const verdict = judgeNegotiationsSync(exit)
+    expect(verdict._tag).toBe("read")
+    if (verdict._tag !== "read") return
+    // The repeated (vacancy, resume) pair is the older entry of the same response.
+    expect(verdict.topics.map((item) => [item.resumeId, item.chatId])).toEqual([
+      ["290733333", "5770068788"],
+      ["289972366", "5732439170"]
+    ])
   })
 })

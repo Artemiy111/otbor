@@ -593,7 +593,10 @@ export const judgeNegotiationsSync = (exit: HarnessExit): NegotiationsSyncVerdic
     if (!page.readable) break
     readPages += 1
     for (const topic of page.topics) {
-      if (!topics.has(topic.vacancyId)) topics.set(topic.vacancyId, topic)
+      // One per vacancy and resume: hh keeps a response, and a chat, for each
+      // resume used on the same vacancy. The list is newest first.
+      const key = `${topic.vacancyId}|${topic.resumeId ?? ""}`
+      if (!topics.has(key)) topics.set(key, topic)
     }
     if (page.topics.length === 0 || (page.pageCount !== null && readPages >= page.pageCount)) {
       complete = true
