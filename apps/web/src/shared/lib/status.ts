@@ -261,7 +261,7 @@ export const scheduleKindLabel = (value: string): string =>
 
 /** hh's own negotiation states, as stored for imported applications. */
 const HH_STATUS: Record<string, { label: string; tone: StatusTone }> = {
-  RESPONSE: { label: "Отклик отправлен, ждёт ответа", tone: "info" },
+  RESPONSE: { label: "Ждёт ответа", tone: "info" },
   NOT_VIEWED: { label: "Не просмотрен", tone: "neutral" },
   VIEWED: { label: "Просмотрен", tone: "info" },
   INTERVIEW: { label: "Приглашение", tone: "success" },

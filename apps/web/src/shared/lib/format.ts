@@ -1,16 +1,23 @@
 const numberFormat = new Intl.NumberFormat("ru-RU")
 
-const dateFormat = new Intl.DateTimeFormat("ru-RU", {
-  dateStyle: "short",
-  timeStyle: "short"
-})
+const dayFormat = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short" })
+const timeFormat = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" })
+
+/** "5 окт. 14:33"; with the year ("5 окт. 2025, 14:33") when it is not the current one. */
+const humanDate = (date: Date): string => {
+  const day = dayFormat.format(date)
+  const time = timeFormat.format(date)
+  return date.getFullYear() === new Date().getFullYear()
+    ? `${day} ${time}`
+    : `${day} ${date.getFullYear()}, ${time}`
+}
 
 export const formatNumber = (value: number): string => numberFormat.format(value)
 
 export const formatDate = (value: string | null | undefined): string => {
   if (value === null || value === undefined || value === "") return "—"
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : dateFormat.format(date)
+  return Number.isNaN(date.getTime()) ? value : humanDate(date)
 }
 
 export const formatSalary = (
