@@ -4,7 +4,7 @@ import { useQuery } from "@pinia/colada"
 import { queueJobApi, queueJobKeys } from "@/entities/queue-job"
 import { scheduleRunApi, scheduleRunKeys } from "@/entities/schedule-run"
 import { RefreshButton } from "@/features/refresh-button"
-import { Card, CardContent, Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui"
+import { Card, CardContent } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
 import BackgroundQueuePanel from "./BackgroundQueuePanel.vue"
 import JobQueuePanel from "./JobQueuePanel.vue"
@@ -86,15 +86,8 @@ const isRefreshing = computed(() => browserStats.isLoading.value || inferenceSta
       </button>
     </div>
 
-    <Tabs v-model="tab">
-      <TabsList>
-        <TabsTrigger value="browser">Браузер</TabsTrigger>
-        <TabsTrigger value="inference">Генерация</TabsTrigger>
-        <TabsTrigger value="background">Фоновые запуски</TabsTrigger>
-      </TabsList>
-      <TabsContent value="browser"><JobQueuePanel ref="browserPanel" kind="browser" /></TabsContent>
-      <TabsContent value="inference"><JobQueuePanel ref="inferencePanel" kind="inference" /></TabsContent>
-      <TabsContent value="background"><BackgroundQueuePanel ref="backgroundPanel" /></TabsContent>
-    </Tabs>
+    <JobQueuePanel v-show="tab === 'browser'" ref="browserPanel" kind="browser" />
+    <JobQueuePanel v-show="tab === 'inference'" ref="inferencePanel" kind="inference" />
+    <BackgroundQueuePanel v-show="tab === 'background'" ref="backgroundPanel" />
   </section>
 </template>
