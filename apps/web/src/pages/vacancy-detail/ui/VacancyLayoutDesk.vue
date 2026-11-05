@@ -13,8 +13,9 @@ const h2 = "mb-2 text-sm font-semibold"
 </script>
 
 <template>
-  <div v-if="page.data.value" class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_28rem]">
-    <div class="min-w-0 space-y-6">
+  <div v-if="page.data.value" class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_28rem] xl:gap-0">
+    <div class="min-w-0 space-y-6 xl:pr-6">
+      <slot name="head" />
       <ResponseRows
         :vacancy-id="page.id()"
         :applications="page.applications.value"
@@ -31,9 +32,10 @@ const h2 = "mb-2 text-sm font-semibold"
         <VacancyDescription :data="page.data.value" />
       </section>
     </div>
-    <div class="min-w-0 space-y-4 xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:self-start xl:overflow-y-auto">
+    <div class="min-w-0 xl:border-l xl:border-border xl:pl-6">
+    <div class="space-y-5 xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:self-start xl:overflow-y-auto">
       <VacancyApply :page="page" />
-      <div class="rounded-lg border border-border p-4">
+      <div class="border-t border-border pt-5">
         <VacancyDecision
           :decisions="page.decisions.value"
           :applications="page.applications.value"
@@ -42,6 +44,7 @@ const h2 = "mb-2 text-sm font-semibold"
           :default-account-id="page.defaultAccountId.value"
         />
       </div>
+    </div>
     </div>
   </div>
 </template>

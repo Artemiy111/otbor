@@ -604,7 +604,7 @@ const NO_FORM = "no-form"
 </script>
 
 <template>
-  <section class="space-y-4 rounded-lg border border-border bg-card p-4 text-sm">
+  <section class="space-y-4 text-sm">
     <div class="flex items-center justify-between gap-2">
       <h2 class="text-base font-semibold">Отклик</h2>
       <StatusBadge v-if="state && !finished" :value="state" />

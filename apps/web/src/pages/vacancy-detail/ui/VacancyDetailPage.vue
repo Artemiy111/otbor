@@ -67,6 +67,21 @@ const data = page.data
     </div>
 
     <template v-else-if="data">
+      <div :class="data.vacancy.archived ? 'opacity-75 saturate-50' : ''">
+        <VacancyLayoutDesk v-if="layout === 'desk'" :page="page">
+          <template #head>
+<div class="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div class="min-w-0 flex-1 space-y-2.5">
+          <VacancyMetaLine :data="data" />
+          <VacancyProfileChips :data="data" :recon="page.recon.value" />
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <VacancyLayoutSwitch v-model="layout" />
+        </div>
+      </div>
+          </template>
+        </VacancyLayoutDesk>
+        <template v-else>
       <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0 flex-1 space-y-2.5">
           <VacancyMetaLine :data="data" />
@@ -76,9 +91,8 @@ const data = page.data
           <VacancyLayoutSwitch v-model="layout" />
         </div>
       </div>
-      <div :class="data.vacancy.archived ? 'opacity-75 saturate-50' : ''">
-        <VacancyLayoutDesk v-if="layout === 'desk'" :page="page" />
-        <VacancyLayoutFocus v-else :page="page" />
+          <VacancyLayoutFocus :page="page" />
+        </template>
       </div>
     </template>
   </section>
