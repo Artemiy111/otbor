@@ -41,7 +41,7 @@ const groups = computed(() =>
   ].filter((group) => group.items.length > 0)
 )
 
-const ruleCount = (preset: PresetRecord): number => presetRules(preset.filter).length
+const ruleCount = (preset: PresetRecord): number => presetRules(preset.filter).length + (preset.filter.groups?.length ?? 0)
 </script>
 
 <template>

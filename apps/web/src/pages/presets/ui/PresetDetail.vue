@@ -36,6 +36,7 @@ const props = withDefaults(
 const emit = defineEmits<{ edit: []; remove: [] }>()
 
 const rules = computed(() => presetRules(props.preset.filter))
+const groups = computed(() => props.preset.filter.groups ?? [])
 const confirmDelete = ref(false)
 
 const previewQuery = useQuery({
@@ -68,7 +69,7 @@ const keywordCount = computed(() => props.preset.filter.keywordIds?.length ?? 0)
             </div>
             <CardDescription class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
               <span>обновлён {{ formatDate(props.preset.updatedAt) }}</span>
-              <span>правил: {{ rules.length }}</span>
+              <span>правил: {{ rules.length + groups.length }}</span>
               <span v-if="props.preset.filter.includeArchived">архивные включены</span>
               <span v-if="locationLabel">словарь: {{ locationLabel }}</span>
               <span
@@ -127,15 +128,30 @@ const keywordCount = computed(() => props.preset.filter.keywordIds?.length ?? 0)
           <h3 class="text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
             Правила
           </h3>
-          <span class="text-[11px] tabular-nums text-muted-foreground">{{ rules.length }}</span>
+          <span class="text-[11px] tabular-nums text-muted-foreground">{{ rules.length + groups.length }}</span>
         </div>
 
-        <div v-if="rules.length > 0" class="space-y-1">
+        <div v-if="rules.length > 0 || groups.length > 0" class="space-y-1">
           <div v-for="(rule, index) in rules" :key="index" class="flex gap-2 text-sm">
             <span class="w-4 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
               {{ index + 1 }}.
             </span>
             <span class="min-w-0 break-words">{{ describePresetRule(rule) }}</span>
+          </div>
+          <div
+            v-for="(group, gi) in groups"
+            :key="`g${gi}`"
+            class="mt-1 rounded-md border border-l-2 border-l-violet-400/70 bg-muted/20 p-2 text-sm"
+          >
+            <p class="mb-1 text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
+              Любой из вариантов
+            </p>
+            <template v-for="(branch, bi) in group.branches" :key="bi">
+              <p v-if="bi > 0" class="my-0.5 text-[10px] font-bold uppercase text-muted-foreground">или</p>
+              <p v-for="(rule, ri) in branch.rules" :key="ri" class="break-words">
+                <span v-if="ri > 0" class="text-muted-foreground">и </span>{{ describePresetRule(rule) }}
+              </p>
+            </template>
           </div>
         </div>
         <p v-else class="text-xs text-muted-foreground">
@@ -143,7 +159,7 @@ const keywordCount = computed(() => props.preset.filter.keywordIds?.length ?? 0)
         </p>
 
         <p class="text-[11px] text-muted-foreground">
-          Все правила объединяются через «и».
+          Правила объединяются через «и», внутри группы варианты через «или».
           <template v-if="props.preset.system">Системный пресет доступен только для чтения.</template>
         </p>
       </CardContent>
