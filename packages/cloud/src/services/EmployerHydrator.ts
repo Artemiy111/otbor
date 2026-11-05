@@ -19,6 +19,7 @@ import { Cause, Context, Effect, Layer } from "effect"
 import { Database } from "../db/Database.ts"
 import * as EmployerRepository from "../repositories/EmployerRepository.ts"
 import * as HydrationAttemptRepository from "../repositories/HydrationAttemptRepository.ts"
+import { HYDRATION_FORBIDDEN_ATTEMPTS, HYDRATION_FORBIDDEN_STREAK_STOP } from "./HydrationRunner.ts"
 import { PageFetch } from "./pageFetch.ts"
 import { ProxyRotator } from "./proxyRotator.ts"
 
@@ -436,12 +437,44 @@ export class EmployerHydrator extends Context.Service<
                   Effect.logWarning("employer hydration progress could not be persisted", cause))
               )
 
-        for (const [index, target] of targets.entries()) {
-          processed += 1
+        // A 403 on one company page goes to the back of the queue and is tried
+        // again; only a streak of different companies ending in 403 stops the pass.
+        const queue = targets.map((target) => ({ target, forbidden: 0 }))
+        let forbiddenStreak = 0
+
+        while (queue.length > 0) {
+          const entry = queue.shift()!
+          const target = entry.target
 
           const download = yield* downloadEmployer(target, config)
           rotations += download.rotations
           const outcome = download.outcome
+
+          if (outcome.kind === "blocked" && outcome.block === "forbidden") {
+            entry.forbidden += 1
+            if (entry.forbidden < HYDRATION_FORBIDDEN_ATTEMPTS) {
+              queue.push(entry)
+              if (delayMs > 0) yield* Effect.sleep(`${delayMs} millis`)
+              continue
+            }
+            processed += 1
+            failed += 1
+            forbiddenStreak += 1
+            const message =
+              `fetch https://hh.ru/employer/${target.externalId}: HTTP 403, страница недоступна ` +
+              `(${entry.forbidden} попытки)`
+            pushError(message)
+            yield* rememberFailure(target, message)
+            yield* reportProgress(target.name)
+            if (forbiddenStreak >= HYDRATION_FORBIDDEN_STREAK_STOP) {
+              stoppedBy = "forbidden"
+              break
+            }
+            if (delayMs > 0 && queue.length > 0) yield* Effect.sleep(`${delayMs} millis`)
+            continue
+          }
+
+          processed += 1
 
           if (outcome.kind === "blocked") {
             failed += 1
@@ -451,6 +484,8 @@ export class EmployerHydrator extends Context.Service<
             yield* reportProgress(target.name)
             break
           }
+
+          forbiddenStreak = 0
 
           if (outcome.kind === "failed") {
             failed += 1
@@ -467,7 +502,7 @@ export class EmployerHydrator extends Context.Service<
 
           yield* reportProgress(target.name)
 
-          if (delayMs > 0 && index < targets.length - 1) {
+          if (delayMs > 0 && queue.length > 0) {
             yield* Effect.sleep(`${delayMs} millis`)
           }
         }

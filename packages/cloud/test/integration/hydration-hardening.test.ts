@@ -203,7 +203,7 @@ if (!enabled || serverUrl === null) {
       expect(rows.find((row) => row.target_id === alive)).toBeUndefined()
     })
 
-    test("a 403 stops the employer pass after the first attempt", async () => {
+    test("a 403 on employer pages is retried and does not stop a short pass", async () => {
       await support.seedVacancyForEmployer({
         label: "emp-block-a",
         title: "Backend developer emp-block-a",
@@ -221,11 +221,11 @@ if (!enabled || serverUrl === null) {
         Promise.resolve({ status: 403, url: "https://hh.ru/employer/700001", html: "" })
       )
 
-      expect(result.processed).toBe(1)
       expect(result.updated).toBe(0)
-      expect(result.failed).toBe(1)
-      expect(result.stoppedBy).toBe("forbidden")
-      expect((await attempts("employer")).length).toBe(1)
+      expect(result.failed).toBeGreaterThanOrEqual(2)
+      expect(result.processed).toBe(result.failed)
+      expect(result.stoppedBy).toBeNull()
+      expect((await attempts("employer")).length).toBeGreaterThanOrEqual(2)
     })
 
     test("a captcha with rotation enabled switches the node and retries once", async () => {
