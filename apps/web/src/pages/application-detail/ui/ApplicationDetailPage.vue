@@ -206,7 +206,6 @@ const cost = (value: number | null | undefined): string =>
         <CardContent>
           <div class="flex flex-wrap items-center gap-2">
             <StatusBadge :value="data.decision.verdict" raw />
-            <StatusBadge :value="data.decision.gate" raw />
             <Badge variant="outline">соответствие {{ data.decision.fit }}</Badge>
             <Badge variant="outline" class="font-mono">
               приоритет {{ formatPriority(data.decision.priority) }}

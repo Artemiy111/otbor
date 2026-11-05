@@ -11,12 +11,9 @@ import {
   currentVersions,
   decide,
   detectVacancyTextFacts,
-  gateTitle,
   mergeTextFacts,
-  titleCacheKey,
   toDecisionAnalysis,
   type LexiconMatch,
-  type RoleGateOutput,
   type VacancySignal
 } from "@otbor/domain"
 import { sql } from "drizzle-orm"
@@ -103,13 +100,6 @@ export const MAX_BATCH = 2000
 /** One transaction per chunk: bounded lock time, partial progress survives. */
 const CHUNK = 50
 
-/** The result of the shared cascade for one vacancy, before the title cache write. */
-interface Evaluated {
-  readonly record: DecisionRecord
-  /** A rules verdict to cache for the next vacancy with this normalized title. */
-  readonly cache: RoleGateOutput | null
-}
-
 /**
  * The decision cascade for one vacancy, inside a user-scoped transaction.
  * Single and batch evaluation both call this, so the cascade exists once.
@@ -121,7 +111,7 @@ export const evaluateInTx = (
   hhAccountId: string | null,
   /** Analyses loaded for the whole batch in one query; omitted, this vacancy's is read here. */
   preloaded?: { readonly analysis: VacancyAnalysisRepository.StoredAnalysis | null }
-): RepoEffect<Evaluated | null> =>
+): RepoEffect<DecisionRecord | null> =>
   Effect.gen(function*() {
     const row = yield* VacancyRepository.findById(tx, input.vacancyId)
     if (row === null) return null
@@ -139,16 +129,6 @@ export const evaluateInTx = (
 
     const stored = yield* LexiconRepository.matchesFor(tx, input.vacancyId)
     const keywords = stored.map(toLexiconMatch)
-
-    // The title gate no longer decides anything (the apply filter has title
-    // rules). Its rules verdict is still cached for the `gate` search rule and
-    // the title preview until stage 2 removes them.
-    const gateRules = gateTitle(row.title)
-    const found = yield* DecisionRepository.findVerdict(tx, titleCacheKey(row.title))
-    const cached = found !== null &&
-        (found.source === "user" || found.rulesVersion >= gateRules.rulesVersion)
-      ? found
-      : null
 
     // An explicit fit wins. Otherwise a current personal judgement (LLM or
     // external agent) replaces the deterministic fit; a stale one is ignored,
@@ -208,25 +188,21 @@ export const evaluateInTx = (
       now: new Date()
     })
 
-    const record = yield* DecisionRepository.persist(tx, {
+    return yield* DecisionRepository.persist(tx, {
       userId,
       hhAccountId,
       resumeId,
       vacancyId: row.id,
       verdict: decision.verdict,
-      gate: decision.gate,
-      roleFamily: decision.roleFamily,
       fit: decision.fit,
       priority: decision.priority,
       reasons: decision.reasons,
       policyVersion: decision.policyVersion,
-      rulesVersion: decision.rulesVersion,
       inputHash,
       vacancyContentHash: row.contentHash,
       restamp: analysis !== null
     })
 
-    return { record, cache: cached === null ? gateRules : null }
   })
 
 const chunked = <A>(items: ReadonlyArray<A>, size: number): ReadonlyArray<ReadonlyArray<A>> => {
@@ -253,18 +229,6 @@ export interface Evaluator {
  * schedule owner) share one implementation.
  */
 export const makeEvaluator = (database: Database["Service"]): Evaluator => {
-  const writeCaches = (caches: Iterable<RoleGateOutput>) => {
-    const unique = new Map<string, RoleGateOutput>()
-    for (const gate of caches) unique.set(gate.titleNormalized, gate)
-    if (unique.size === 0) return Effect.void
-    return database
-      .asOwner((tx) =>
-        Effect.forEach([...unique.values()], (gate) =>
-          DecisionRepository.cacheRulesVerdict(tx, gate), { discard: true })
-      )
-      .pipe(Effect.mapError(toStorageError("title.cache")))
-  }
-
   const evaluate: Evaluator["evaluate"] = (userId, input) =>
     Effect.gen(function*() {
       if (input.fit !== undefined && input.fit !== null && (input.fit < 0 || input.fit > 100)) {
@@ -286,8 +250,7 @@ export const makeEvaluator = (database: Database["Service"]): Evaluator => {
         return yield* new NotFound({ entity: "Vacancy", id: input.vacancyId })
       }
 
-      if (result.cache !== null) yield* writeCaches([result.cache])
-      return result.record
+      return result
     })
 
   const evaluateBatch: Evaluator["evaluateBatch"] = (userId, input) =>
@@ -297,7 +260,6 @@ export const makeEvaluator = (database: Database["Service"]): Evaluator => {
       const staleOptions = {
         userId,
         policyVersion: currentVersions.policyVersion,
-        rulesVersion: currentVersions.rulesVersion,
         analysisPromptVersion: ANALYSIS_PROMPT_VERSION,
         vacancyIds: input.vacancyIds
       }
@@ -345,16 +307,13 @@ export const makeEvaluator = (database: Database["Service"]): Evaluator => {
           )
           .pipe(Effect.mapError(toStorageError("decision.evaluateBatch")))
 
-        const caches: Array<RoleGateOutput> = []
         for (const result of results) {
           if (result === null) continue
           evaluated += 1
-          verdicts[result.record.verdict] += 1
-          const reason = result.record.reasons[0]?.code ?? "none"
+          verdicts[result.verdict] += 1
+          const reason = result.reasons[0]?.code ?? "none"
           byReason[reason] = (byReason[reason] ?? 0) + 1
-          if (result.cache !== null) caches.push(result.cache)
         }
-        yield* writeCaches(caches)
       }
 
       const pending = yield* database

@@ -82,7 +82,7 @@ const evaluate = Command.make(
     })
 
     yield* Console.log(`${decision.vacancyTitle ?? decision.vacancyId}: ${decision.verdict}`)
-    yield* Console.log(`gate: ${decision.gate}, fit: ${decision.fit}, priority: ${decision.priority}`)
+    yield* Console.log(`fit: ${decision.fit}, priority: ${decision.priority}`)
     if (decision.reasons.length > 0) {
       yield* Console.log(
         `reasons: ${decision.reasons
@@ -137,7 +137,7 @@ const list = Command.make(
     }
 
     yield* Console.log(
-      table(["id", "verdict", "gate", "fit", "priority", "vacancy", "reasons"], decisions.map(formatDecision))
+      table(["id", "verdict", "fit", "priority", "vacancy", "reasons"], decisions.map(formatDecision))
     )
   })
 ).pipe(Command.withDescription("List stored decisions"))

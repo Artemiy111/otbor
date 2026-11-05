@@ -48,7 +48,7 @@ const enqueue = Command.make(
       Flag.optional
     ),
     all: Flag.Boolean("all-gated").pipe(
-      Flag.withDescription("Include vacancies whose latest decision is not apply, if the title gate passed"),
+      Flag.withDescription("Include vacancies whose latest decision is not apply"),
       Flag.withDefault(false)
     ),
     force: Flag.Boolean("force").pipe(

@@ -41,7 +41,6 @@ export {
   jobKindLabel,
   jobStageLabel,
   presetKindLabel,
-  roleFamilyLabel,
   scheduleKindLabel,
   seniorityLabel,
   statusLabel,
@@ -63,7 +62,6 @@ export {
 export {
   employmentFormLabel,
   experienceLabel,
-  titleVerdictLabel,
   workFormatText
 } from "./vacancy-labels"
 export { makeResumeMatcher } from "./resume-match"

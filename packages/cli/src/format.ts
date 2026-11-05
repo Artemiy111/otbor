@@ -40,7 +40,6 @@ export const formatVacancy = (vacancy: VacancySummary): Array<string> => [
 export const formatDecision = (decision: DecisionRecord): Array<string> => [
   shortId(decision.id),
   decision.verdict,
-  decision.gate,
   `${decision.fit}`,
   `${decision.priority}`,
   decision.vacancyTitle ?? shortId(decision.vacancyId),

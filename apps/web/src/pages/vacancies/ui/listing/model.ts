@@ -1,4 +1,4 @@
-import type { GateVerdict, HhAccountRecord, ResumeRecord, VacancySortKey, VacancySummary } from "@otbor/contract"
+import type { HhAccountRecord, ResumeRecord, VacancySortKey, VacancySummary } from "@otbor/contract"
 
 export const SORT_OPTIONS: ReadonlyArray<{ value: VacancySortKey; label: string; defaultDirection: "asc" | "desc" }> = [
   { value: "date", label: "Дата публикации", defaultDirection: "desc" },
@@ -26,7 +26,6 @@ export interface RowAccount {
 /** Props shared by every row variant, so variants can be swapped without touching the page. */
 export interface RowProps {
   readonly vacancy: VacancySummary
-  readonly gate: GateVerdict | null
   readonly responded: ReadonlyArray<RowAccount>
   readonly accounts: ReadonlyArray<HhAccountRecord>
   readonly resumes: ReadonlyArray<ResumeRecord>

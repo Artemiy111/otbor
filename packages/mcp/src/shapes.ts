@@ -109,11 +109,9 @@ export const DecisionBrief = Schema.Struct({
   vacancyId: Schema.String,
   title: NullableString,
   verdict: Schema.String,
-  gate: Schema.String,
   fit: Schema.Number,
   priority: Schema.Number,
   account: Schema.NullOr(AccountRef),
-  roleFamily: NullableString,
   reasons: Schema.Array(Schema.String),
   decidedAt: Schema.String
 })
@@ -128,11 +126,9 @@ export const decisionBrief = (
   vacancyId: d.vacancyId,
   title: d.vacancyTitle ?? null,
   verdict: d.verdict,
-  gate: d.gate,
   fit: d.fit,
   priority: d.priority,
   account: d.hhAccountId == null ? null : accountRef(accounts, d.hhAccountId),
-  roleFamily: d.roleFamily,
   reasons: humanReasons(d.reasons, topReasons),
   decidedAt: d.createdAt
 })
@@ -242,7 +238,6 @@ export const applyFilterBrief = (view: ApplyFilterView, directory: AccountDirect
   const filter = view.filter
   const options: Array<string> = []
   if (filter.text !== undefined && filter.text !== "") options.push(`text: ${filter.text}`)
-  if (filter.gate !== undefined) options.push(`gate: ${filter.gate}`)
   if (filter.keywordIds !== undefined && filter.keywordIds.length > 0) {
     options.push(`${filter.keywordIds.length} keywords${filter.location === undefined ? "" : ` in ${filter.location}`}`)
   }

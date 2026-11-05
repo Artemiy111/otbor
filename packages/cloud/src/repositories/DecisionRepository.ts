@@ -1,111 +1,8 @@
-import type { DecisionReason, DecisionRecord, GateVerdict, TitleVerdictRecord } from "@otbor/contract"
-import type { RoleGateOutput } from "@otbor/domain"
+import type { DecisionReason, DecisionRecord } from "@otbor/contract"
 import { sql, type SQL } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
-import { decision, titleVerdict } from "../db/tables.ts"
-
-/* -------------------------------------------------------------------------- */
-/* Title verdicts                                                             */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Rules only write a verdict if no user verdict exists and the stored rules are
- * older. A user's "this is garbage" outranks every future policy version; only
- * another explicit user verdict replaces it.
- */
-export const cacheRulesVerdict = (tx: Executor, gate: RoleGateOutput): RepoEffect<void> =>
-  Effect.gen(function*() {
-    yield* tx
-      .insert(titleVerdict)
-      .values({
-        normalizedTitle: gate.titleNormalized,
-        roleFamily: gate.role,
-        verdict: gate.verdict,
-        source: "rules",
-        matched: gate.matched,
-        rejectedBy: gate.rejectedBy,
-        rulesVersion: gate.rulesVersion
-      })
-      .onConflictDoUpdate({
-        target: titleVerdict.normalizedTitle,
-        set: {
-          roleFamily: sql`excluded.role_family`,
-          verdict: sql`excluded.verdict`,
-          source: sql`excluded.source`,
-          matched: sql`excluded.matched`,
-          rejectedBy: sql`excluded.rejected_by`,
-          rulesVersion: sql`excluded.rules_version`,
-          updatedAt: sql`now()`
-        },
-        where: sql`${titleVerdict.source} <> 'user' and ${titleVerdict.rulesVersion} < excluded.rules_version`
-      })
-  })
-
-export const findVerdict = (
-  tx: Executor,
-  normalizedTitle: string
-): RepoEffect<TitleVerdictRecord | null> =>
-  Effect.gen(function*() {
-    const [row] = yield* tx
-      .select()
-      .from(titleVerdict)
-      .where(sql`${titleVerdict.normalizedTitle} = ${normalizedTitle}`)
-      .limit(1)
-
-    if (row === undefined) return null
-    return {
-      normalizedTitle: row.normalizedTitle,
-      roleFamily: row.roleFamily,
-      verdict: row.verdict as GateVerdict,
-      source: row.source as TitleVerdictRecord["source"],
-      matched: row.matched,
-      rejectedBy: row.rejectedBy,
-      rulesVersion: row.rulesVersion,
-      createdAt: row.createdAt.toISOString()
-    }
-  })
-
-export const setUserVerdict = (
-  tx: Executor,
-  input: { readonly normalizedTitle: string; readonly verdict: GateVerdict; readonly roleFamily: string | null; readonly matched: ReadonlyArray<string> }
-): RepoEffect<TitleVerdictRecord> =>
-  Effect.gen(function*() {
-    const [row] = yield* tx
-      .insert(titleVerdict)
-      .values({
-        normalizedTitle: input.normalizedTitle,
-        roleFamily: input.roleFamily,
-        verdict: input.verdict,
-        source: "user",
-        matched: input.matched,
-        rejectedBy: null,
-        rulesVersion: 0
-      })
-      .onConflictDoUpdate({
-        target: titleVerdict.normalizedTitle,
-        set: {
-          roleFamily: sql`excluded.role_family`,
-          verdict: sql`excluded.verdict`,
-          source: sql`'user'`,
-          matched: sql`excluded.matched`,
-          rejectedBy: sql`null`,
-          updatedAt: sql`now()`
-        }
-      })
-      .returning()
-
-    return {
-      normalizedTitle: row!.normalizedTitle,
-      roleFamily: row!.roleFamily,
-      verdict: row!.verdict as GateVerdict,
-      source: "user",
-      matched: row!.matched,
-      rejectedBy: row!.rejectedBy,
-      rulesVersion: row!.rulesVersion,
-      createdAt: row!.createdAt.toISOString()
-    }
-  })
+import { decision } from "../db/tables.ts"
 
 /* -------------------------------------------------------------------------- */
 /* Decisions                                                                  */
@@ -119,13 +16,10 @@ export interface DecisionRow {
   readonly vacancy_id: string
   readonly vacancy_title: string | null
   readonly verdict: string
-  readonly gate: string
-  readonly role_family: string | null
   readonly fit: number
   readonly priority: number
   readonly reasons: ReadonlyArray<DecisionReason>
   readonly policy_version: number
-  readonly rules_version: number
   readonly created_at: Date
 }
 
@@ -136,9 +30,7 @@ export const toRecord = (row: DecisionRow): DecisionRecord => ({
   resumeId: row.resume_id as DecisionRecord["resumeId"],
   vacancyId: row.vacancy_id as DecisionRecord["vacancyId"],
   vacancyTitle: row.vacancy_title ?? undefined,
-  roleFamily: row.role_family,
   verdict: row.verdict as DecisionRecord["verdict"],
-  gate: row.gate as DecisionRecord["gate"],
   fit: row.fit,
   priority: row.priority,
   reasons: row.reasons,
@@ -152,13 +44,10 @@ export interface PersistDecisionInput {
   readonly resumeId: string | null
   readonly vacancyId: string
   readonly verdict: "apply" | "draft" | "skip"
-  readonly gate: GateVerdict
-  readonly roleFamily: string | null
   readonly fit: number
   readonly priority: number
   readonly reasons: ReadonlyArray<DecisionReason>
   readonly policyVersion: number
-  readonly rulesVersion: number
   readonly inputHash: string
   /** `vacancy.content_hash` the decision was made for (drives staleness). */
   readonly vacancyContentHash: string
@@ -189,13 +78,10 @@ export const persist = (
         resumeId: input.resumeId,
         vacancyId: input.vacancyId,
         verdict: input.verdict,
-        gate: input.gate,
-        roleFamily: input.roleFamily,
         fit: input.fit,
         priority: input.priority,
         reasons: input.reasons,
         policyVersion: input.policyVersion,
-        rulesVersion: input.rulesVersion,
         inputHash: input.inputHash,
         vacancyContentHash: input.vacancyContentHash
       })
@@ -322,7 +208,6 @@ export const list = (
 export interface StaleVacanciesOptions {
   readonly userId: string
   readonly policyVersion: number
-  readonly rulesVersion: number
   /** Include vacancies whose decision is current. */
   readonly force?: boolean
   readonly vacancyIds?: ReadonlyArray<string>
@@ -332,14 +217,14 @@ export interface StaleVacanciesOptions {
 
 /**
  * The SQL twin of `isDecisionStale` in `@otbor/domain`: no decision, other
- * content, other policy version, or older (non-user) gate rules. Compared
+ * content, or other policy version. Compared
  * against the newest decision of the user for the vacancy. Also stale: the
  * decision predates an edit of any of the user's apply filters.
  */
 const staleFrom = (options: StaleVacanciesOptions) => sql`
   from vacancy
   left join lateral (
-    select x.vacancy_content_hash, x.policy_version, x.rules_version, x.created_at
+    select x.vacancy_content_hash, x.policy_version, x.created_at
     from decision x
     where x.user_id = ${options.userId} and x.vacancy_id = vacancy.id
     order by x.created_at desc, x.id desc
@@ -355,7 +240,6 @@ const staleFrom = (options: StaleVacanciesOptions) => sql`
       or d.policy_version is null
       or d.vacancy_content_hash is distinct from vacancy.content_hash
       or d.policy_version <> ${options.policyVersion}
-      or (d.rules_version <> 0 and d.rules_version < ${options.rulesVersion})
       -- Editing an apply filter re-decides everything decided before the edit.
       or exists (
         select 1 from apply_filter f

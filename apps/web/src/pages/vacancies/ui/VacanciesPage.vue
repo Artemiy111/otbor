@@ -5,11 +5,11 @@ import { useQuery } from "@pinia/colada"
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { ALL_ACCOUNTS, useAccountFilter } from "@/entities/hh-account"
 import { accountFilterOptions } from "@/features/account-filter"
-import type { GateVerdict, VacancySort, VacancySortKey, VacancySummary } from "@otbor/contract"
+import type { VacancySort, VacancySortKey, VacancySummary } from "@otbor/contract"
 import { ArrowDownNarrowWide, ArrowUpNarrowWide, CircleAlert, ListFilter } from "@lucide/vue"
 import { vacancyApi, vacancyKeys } from "@/entities/vacancy"
 import { blacklistVisibilityOptions } from "@/features/blacklist-filter"
-import { vacancyAnalysedOptions, vacancyArchiveOptions, vacancyGateOptions } from "@/features/vacancy-filter"
+import { vacancyAnalysedOptions, vacancyArchiveOptions } from "@/features/vacancy-filter"
 import { RefreshButton } from "@/features/refresh-button"
 import { presetApi, presetKeys } from "@/entities/preset"
 import { RuleBuilder, buildFilter, emptyEditable, toEditable } from "@/features/rule-builder"
@@ -35,7 +35,6 @@ import { PageHeader } from "@/widgets/page-header"
 
 const PAGE_SIZE = 25
 
-const gate = ref("all")
 const analysed = ref("all")
 const archived = ref("active")
 const includeBlacklisted = ref(false)
@@ -114,17 +113,14 @@ const flagCount = computed(
   () =>
     Number(archived.value !== "active") +
     Number(includeBlacklisted.value) +
-    Number(gate.value !== "all") +
     Number(analysed.value !== "all") +
     Number(accountId.value !== ALL_ACCOUNTS)
 )
 
-const gateCache = new Map<string, GateVerdict>()
-
 const { accounts, accountId, hhAccountId, scopeKey, defaultAccountId } = useAccountFilter(ALL_ACCOUNTS)
 
 // Any change of what is listed starts from the first page.
-watch([gate, analysed, archived, includeBlacklisted, search, sortKey, sortDirection, accountId], () => {
+watch([analysed, archived, includeBlacklisted, search, sortKey, sortDirection, accountId], () => {
   pageIndex.value = 0
 })
 
@@ -134,7 +130,6 @@ const resumes = computed(() => resumesQuery.data.value ?? [])
 const listQuery = useQuery({
   key: () =>
     vacancyKeys.list({
-      gate: gate.value,
       analysed: analysed.value,
       respondedAccountId: scopeKey.value,
       search: search.value,
@@ -150,7 +145,6 @@ const listQuery = useQuery({
     vacancyApi.list({
       limit: PAGE_SIZE,
       offset: pageIndex.value * PAGE_SIZE,
-      gate: gate.value === "all" ? undefined : gate.value,
       analysed: analysed.value === "all" ? undefined : analysed.value === "yes",
       respondedAccountId: hhAccountId.value,
       search: search.value === "" ? undefined : search.value,
@@ -166,41 +160,10 @@ const vacancies = computed<ReadonlyArray<VacancySummary>>(() => listQuery.data.v
 const total = computed(() => listQuery.data.value?.total ?? 0)
 
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)))
-const pageTitles = computed(() => [...new Set(vacancies.value.map((vacancy) => vacancy.title))])
-
-const gatesQuery = useQuery({
-  key: () => ["vacancies", "gates", pageTitles.value] as const,
-  query: async (): Promise<Record<string, GateVerdict>> => {
-    const missing = pageTitles.value.filter((title) => !gateCache.has(title))
-    const settled = await Promise.all(
-      missing.map(async (title) => {
-        try {
-          const preview = await vacancyApi.titlePreview(title)
-          return [title, preview.verdict] as const
-        } catch {
-          return [title, null] as const
-        }
-      })
-    )
-    for (const [title, verdict] of settled) {
-      if (verdict !== null) gateCache.set(title, verdict)
-    }
-    const gates: Record<string, GateVerdict> = {}
-    for (const title of pageTitles.value) {
-      const verdict = gateCache.get(title)
-      if (verdict !== undefined) gates[title] = verdict
-    }
-    return gates
-  },
-  enabled: () => pageTitles.value.length > 0
-})
-
-const gateFor = (title: string): GateVerdict | null => gatesQuery.data.value?.[title] ?? null
-const isLoading = computed(() => listQuery.isLoading.value || gatesQuery.isLoading.value)
+const isLoading = computed(() => listQuery.isLoading.value)
 
 const refresh = () => {
   void listQuery.refetch()
-  void gatesQuery.refetch()
 }
 </script>
 
@@ -269,12 +232,6 @@ const refresh = () => {
               <SelectItem v-for="o in blacklistVisibilityOptions" :key="o.value" :value="o.value">{{ o.label }}</SelectItem>
             </SelectContent>
           </Select>
-          <Select :model-value="gate" @update:model-value="gate = String($event)">
-            <SelectTrigger class="h-8 w-[180px] text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem v-for="o in vacancyGateOptions" :key="o.value" :value="o.value">{{ o.label }}</SelectItem>
-            </SelectContent>
-          </Select>
           <Select :model-value="analysed" @update:model-value="analysed = String($event)">
             <SelectTrigger class="h-8 w-[190px] text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -325,14 +282,13 @@ const refresh = () => {
     <EmptyState
       v-else-if="vacancies.length === 0"
       title="Вакансий не найдено"
-      description="Измените запрос, проверку заголовка или включите архивные. Если корпус пуст, создайте расписание поиска на странице «Обход» и запустите его."
+      description="Измените запрос или включите архивные. Если корпус пуст, создайте расписание поиска на странице «Обход» и запустите его."
     />
     <div v-else class="divide-y divide-border border-y border-border">
       <RowFeed
         v-for="vacancy in vacancies"
         :key="vacancy.id"
         :vacancy="vacancy"
-        :gate="gateFor(vacancy.title)"
         :responded="vacancy.responded ?? []"
         :accounts="accounts"
         :resumes="resumes"

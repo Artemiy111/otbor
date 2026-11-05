@@ -17,7 +17,6 @@ import {
   describeError,
   formatDate,
   formatPriority,
-  roleFamilyLabel,
   statusLabel,
   vacancyPath
 } from "@/shared/lib"
@@ -132,12 +131,6 @@ const columns: ColumnDef<DecisionRecord>[] = [
     cell: ({ row }) => h(StatusBadge, { value: row.original.verdict })
   },
   {
-    id: "gate",
-    accessorFn: (row) => statusLabel(row.gate),
-    header: sortableHeader<DecisionRecord>("Проверка"),
-    cell: ({ row }) => h(StatusBadge, { value: row.original.gate })
-  },
-  {
     accessorKey: "fit",
     header: sortableHeader<DecisionRecord>("Соответствие"),
     cell: ({ row }) => h("span", { class: "tabular-nums" }, String(row.original.fit))
@@ -163,12 +156,6 @@ const columns: ColumnDef<DecisionRecord>[] = [
         resumeIds: [row.original.resumeId],
         resumes: resumes.value
       })
-  },
-  {
-    id: "role",
-    accessorFn: (row) => row.roleFamily ?? "",
-    header: sortableHeader<DecisionRecord>("Роль"),
-    cell: ({ row }) => h("span", null, roleFamilyLabel(row.original.roleFamily))
   },
   {
     id: "actions",

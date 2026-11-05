@@ -244,7 +244,6 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
         fit: d.fit,
         priority: d.priority,
         verdict: d.verdict,
-        gate: d.gate,
         account: d.hhAccountId == null ? null : accountRef(directory, d.hhAccountId),
         reasons: humanReasons(d.reasons, 4),
         seniority: v?.seniority ?? null,
@@ -388,7 +387,6 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
           bodyCount: k.bodyCount,
           typo: k.typo
         })),
-        titleGate: detail.titleVerdict ?? null,
         decision: latest === undefined ? null : decisionBrief(latest, 8, directory),
         analysis: stored === null ? null : analysisBrief(stored)
       }
@@ -545,7 +543,6 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
       }
       if (v.blacklisted) warnings.push("the employer is on the blacklist (ignored in manual mode); mention it to the user")
       if (v.archived) warnings.push("the vacancy is archived on hh.ru; applying may not be possible")
-      if (detail.titleVerdict === "reject") warnings.push("the title gate rejects this title (ignored in manual mode)")
       if (resume === null) {
         warnings.push("this account has no active resume stored, so there is nothing to write from and answer hints are weaker: ask the user")
       } else if (resume.enrichment === null) {

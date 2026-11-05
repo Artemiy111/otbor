@@ -72,8 +72,7 @@ export const FitSave = writeTool("fit_save", {
       id: Schema.String,
       verdict: Schema.String,
       fit: Schema.Number,
-      priority: Schema.Number,
-      gate: Schema.String
+      priority: Schema.Number
     })
   }),
   idempotent: true
@@ -110,7 +109,7 @@ export const ApplicationPrepare = writeTool("application_prepare", {
 
 export const ApplicationPrepareManual = writeTool("application_prepare_manual", {
   description:
-    "Manual mode: start an application for a vacancy the operator chose, WITHOUT a decision. Policy (title gate, " +
+    "Manual mode: start an application for a vacancy the operator chose, WITHOUT a decision. Policy (apply filter, " +
     "decision verdict, blacklist, fit) is bypassed; one application per (hh account, vacancy), the daily limit and " +
     "kit validation still apply, and nothing is sent. `vacancy` is an hh.ru URL, an external id, a vacancy UUID or " +
     "a UUID prefix (same resolution as vacancy_get); an hh URL or id that is not in the corpus yet is fetched once " +

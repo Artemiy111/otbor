@@ -16,13 +16,11 @@ describe("preset filter parsing", () => {
     expect(
       parsePresetFilter({
         text: "  DevOps  ",
-        gate: "match",
         keywordIds: [firstKeyword, firstKeyword, secondKeyword],
         includeArchived: false
       })
     ).toEqual({
       text: "DevOps",
-      gate: "match",
       keywordIds: [firstKeyword, secondKeyword]
     })
     expect(parsePresetFilter({ text: "   ", keywordIds: [] })).toEqual({})
@@ -37,14 +35,39 @@ describe("preset filter parsing", () => {
     expect(parsePresetFilter({ includeBlacklisted: false })).toEqual({})
   })
 
-  test("an unknown gate is rejected instead of silently ignored", () => {
-    expect(() => parsePresetFilter({ gate: "maybe" })).toThrow()
+  test("a legacy gate key and gate / role_family rules are silently dropped", () => {
+    expect(parsePresetFilter({ gate: "match" })).toEqual({})
+    expect(parsePresetFilter({ gate: "maybe" })).toEqual({})
+    const salary = { field: "salary", op: "gte", value: "250000" } as const
+    expect(
+      parsePresetFilter({
+        text: "DevOps",
+        gate: "reject",
+        rules: [
+          { field: "gate", op: "eq", value: "match" },
+          salary,
+          { field: "role_family", op: "in", value: ["devops"] }
+        ],
+        groups: [
+          {
+            branches: [
+              { rules: [{ field: "gate", op: "eq", value: "match" }] },
+              { rules: [{ field: "role_family", op: "eq", value: "sre" }, salary] }
+            ]
+          },
+          { branches: [{ rules: [{ field: "gate", op: "neq", value: "reject" }] }] }
+        ]
+      })
+    ).toEqual({
+      text: "DevOps",
+      rules: [salary],
+      groups: [{ branches: [{ rules: [salary] }] }]
+    })
   })
 
   test("the schema round-trips a concrete filter", () => {
     const filter = {
       text: "DevOps",
-      gate: "reject" as const,
       keywordIds: [firstKeyword],
       location: "skills" as const,
       includeArchived: true

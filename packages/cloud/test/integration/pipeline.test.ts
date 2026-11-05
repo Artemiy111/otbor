@@ -143,11 +143,9 @@ if (!enabled || serverUrl === null) {
       expect((await decisionRows(v)).length).toBe(2)
       expect((await evaluateIds(tenant.userId, [v])).evaluated).toBe(0)
 
-      // Old policy / gate rules versions are stale too.
+      // An old policy version is stale too.
       await ownerSql(sql`update decision set policy_version = 0 where vacancy_id = ${v}`)
       expect((await evaluateIds(tenant.userId, [v])).evaluated).toBe(1)
-      await ownerSql(sql`update decision set rules_version = 0 where vacancy_id = ${v}`)
-      // rules_version 0 marks a user verdict, which never goes stale on rules
       expect((await evaluateIds(tenant.userId, [v])).evaluated).toBe(0)
 
       const forced = await evaluateIds(tenant.userId, [v], { force: true })

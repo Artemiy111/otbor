@@ -79,15 +79,3 @@ export const vacancyKeyword = pgTable(
     index("vacancy_keyword_body_idx").on(table.keywordId)
   ]
 )
-
-export const titleVerdict = pgTable("title_verdict", {
-  normalizedTitle: text("normalized_title").primaryKey(),
-  roleFamily: text("role_family"),
-  verdict: text("verdict").notNull(),
-  source: text("source").notNull(),
-  matched: jsonb("matched").$type<ReadonlyArray<string>>().notNull().default([]),
-  rejectedBy: text("rejected_by"),
-  rulesVersion: integer("rules_version").notNull(),
-  createdAt: createdAt(),
-  updatedAt: updatedAt()
-})

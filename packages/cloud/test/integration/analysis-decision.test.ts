@@ -102,7 +102,7 @@ if (!enabled || serverUrl === null) {
       expect((await batch(tenant.userId, [id])).evaluated).toBe(1)
       const before = await latest(tenant.userId, id)
       expect(before?.verdict).toBe("skip")
-      expect(before?.gate).toBe("unknown")
+      expect(before?.reasons[0]?.code).toBe("blocked_filter")
       // Nothing changed: not stale.
       expect((await batch(tenant.userId, [id])).evaluated).toBe(0)
 
@@ -110,7 +110,6 @@ if (!enabled || serverUrl === null) {
       expect((await batch(tenant.userId, [id])).evaluated).toBe(1)
       const after = await latest(tenant.userId, id)
       expect(after?.verdict).toBe("apply")
-      expect(after?.gate).toBe("match")
       expect(after?.reasons.find((reason) => reason.code === "seniority")?.detail).toBe(
         "analysis: senior -> senior (0.90)"
       )

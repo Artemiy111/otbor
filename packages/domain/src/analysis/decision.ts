@@ -22,7 +22,7 @@ export const toDecisionAnalysis = (facts: VacancyAnalysisFacts): DecisionAnalysi
   requiredLevel: facts.requiredLevel
 })
 
-/** Roles the analysis may promote an `unknown` title to a gate `match`. */
+/** Roles the analysis may promote an `unknown` title to a passing title. */
 export const PROMOTABLE_ROLES: ReadonlyArray<AnalysisRole> = ["devops", "sre", "platform"]
 
 const confident = (fact: { readonly confidence: number } | null): boolean =>
@@ -30,7 +30,7 @@ const confident = (fact: { readonly confidence: number } | null): boolean =>
 
 /**
  * An IT vacancy that the model confidently places in a devops-like role. Only
- * ever applied to an `unknown` title verdict: a title `reject` is final.
+ * ever used to widen the title rules of the apply filter.
  */
 export const analysisRoleMatch = (
   analysis: DecisionAnalysis | null | undefined

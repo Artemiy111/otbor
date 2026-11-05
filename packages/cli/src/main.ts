@@ -14,7 +14,6 @@ import { decisionCommand } from "./commands/decision.ts"
 import { analysisCommand } from "./commands/analysis.ts"
 import { filterCommand } from "./commands/filter.ts"
 import { fitCommand } from "./commands/fit.ts"
-import { gateCommand } from "./commands/gate.ts"
 import { harnessCommand } from "./commands/harness.ts"
 import { hydrateCommand } from "./commands/hydrate.ts"
 import { inferenceCommand } from "./commands/inference.ts"
@@ -39,7 +38,7 @@ import { writeCommand } from "./commands/write.ts"
  * - `db` commands are local operator tools and may use the database directly.
  */
 const root = Command.make("otbor").pipe(
-  Command.withDescription("hh.ru application pipeline: corpus, gates, queue, harness")
+  Command.withDescription("hh.ru application pipeline: corpus, apply filter, queue, harness")
 )
 
 /**
@@ -81,7 +80,6 @@ root
       healthCommand,
       dbCommand,
       vacancyCommand,
-      gateCommand,
       lexiconCommand,
       decisionCommand,
       fitCommand,

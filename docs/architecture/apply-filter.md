@@ -47,7 +47,7 @@
 `title_verdict` и колонка `decision.gate` пока остаются: в `decision.gate`
 пишется `match`, если фильтр пройден, иначе `unknown`.
 
-**Этап 2.** Удалить `gate.ts`, `GateService`, `title_verdict`, `decision.gate`,
+**Этап 2 (сделан 05.11.2026, миграция `0036_drop_gate.sql`).** Удалено: `gate.ts`, `GateService`, `title_verdict`, `decision.gate`,
 команду `otbor gate`, поля `gate`/`role_family` в правилах пресета и `gate` в
 `staleness`.
 

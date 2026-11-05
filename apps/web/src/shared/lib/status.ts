@@ -184,9 +184,6 @@ export const statusTone = (value: string): StatusTone => {
 
 export const seniorityLabel = (value: string): string => LABELS[value] ?? value
 
-export const roleFamilyLabel = (value: string | null | undefined): string =>
-  value === null || value === undefined || value === "" ? "—" : (LABELS[value] ?? value)
-
 export const decisionReasonLabel = (value: string): string => LABELS[value] ?? value
 
 export const presetKindLabel = (value: string): string =>

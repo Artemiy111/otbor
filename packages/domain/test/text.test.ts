@@ -3,8 +3,7 @@ import {
   countMatches,
   findTypos,
   normalizeTerm,
-  termPattern,
-  titleCacheKey
+  termPattern
 } from "../src/text.ts"
 
 describe("normalizeTerm", () => {
@@ -32,19 +31,6 @@ describe("termPattern", () => {
 
   test("counts multiple occurrences", () => {
     expect(countMatches("k8s, k8s и ещё k8s", termPattern("k8s"))).toBe(3)
-  })
-})
-
-describe("titleCacheKey", () => {
-  test("strips grade and work format", () => {
-    expect(titleCacheKey("Senior DevOps Engineer (Remote)")).toBe("devops engineer")
-    expect(titleCacheKey("Ведущий инженер инфраструктуры, удалённо")).toBe(
-      "инженер инфраструктуры"
-    )
-  })
-
-  test("keeps management markers", () => {
-    expect(titleCacheKey("Руководитель DevOps")).toBe("руководитель devops")
   })
 })
 

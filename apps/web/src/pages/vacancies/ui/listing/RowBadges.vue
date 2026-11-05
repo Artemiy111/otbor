@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import type { RowProps } from "./model"
 import { AccountChip } from "@/entities/hh-account"
-import { Badge, StatusBadge } from "@/shared/ui"
+import { Badge } from "@/shared/ui"
 
-defineProps<RowProps & { showGate?: boolean }>()
+defineProps<RowProps>()
 </script>
 
 <template>
@@ -14,7 +14,6 @@ defineProps<RowProps & { showGate?: boolean }>()
   <Badge v-if="vacancy.archived" variant="neutral" class="text-[10px]">архив</Badge>
   <Badge v-if="vacancy.blacklisted" variant="destructive" class="text-[10px]">чёрный список</Badge>
   <Badge v-if="vacancy.analysed" variant="info" class="text-[10px]">ИИ-анализ</Badge>
-  <StatusBadge v-if="showGate !== false && gate" :value="gate" />
   <AccountChip
     v-for="item in responded"
     :key="item.accountId"

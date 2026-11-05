@@ -93,7 +93,6 @@ const printFilter = (view: FilterLike) =>
     }
     const options: Array<string> = []
     if (filter.text !== undefined && filter.text !== "") options.push(`text: ${filter.text}`)
-    if (filter.gate !== undefined) options.push(`gate: ${filter.gate}`)
     if (filter.keywordIds !== undefined && filter.keywordIds.length > 0) {
       options.push(`${filter.keywordIds.length} keywords${filter.location === undefined ? "" : ` in ${filter.location}`}`)
     }

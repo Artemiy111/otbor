@@ -1,11 +1,10 @@
-import type { GateVerdict, PresetFilter, VacancyAnalysis, VacancyDetail, VacancySummary } from "@otbor/contract"
+import type { PresetFilter, VacancyAnalysis, VacancyDetail, VacancySummary } from "@otbor/contract"
 import type { VacancyId, VacancySort } from "@otbor/contract"
 import { call } from "@/shared/api"
 
 export interface VacancyListInput {
   readonly limit?: number
   readonly offset?: number
-  readonly gate?: string
   readonly analysed?: boolean
   readonly respondedAccountId?: string
   readonly search?: string
@@ -27,7 +26,6 @@ export const vacancyApi = {
       client.VacanciesList({
         limit: input.limit,
         offset: input.offset,
-        gate: input.gate,
         analysed: input.analysed,
         respondedAccountId: input.respondedAccountId as any,
         search: input.search,
@@ -43,7 +41,5 @@ export const vacancyApi = {
   analysis: (id: string): Promise<VacancyAnalysis | null> =>
     call((client) => client.VacancyAnalysisGet({ vacancyId: id as VacancyId })),
   hydrate: (id: string, force = false): Promise<{ readonly hydrated: boolean }> =>
-    call((client) => client.VacanciesHydrateOne({ id: id as VacancyId, force: force || undefined })),
-  titlePreview: (title: string): Promise<{ readonly verdict: GateVerdict }> =>
-    call((client) => client.TitlesPreview({ title }))
+    call((client) => client.VacanciesHydrateOne({ id: id as VacancyId, force: force || undefined }))
 }

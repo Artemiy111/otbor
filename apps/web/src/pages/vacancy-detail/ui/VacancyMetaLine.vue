@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import type { VacancyDetail } from "@otbor/contract"
-import { companyPath, formatDate, formatRating, titleVerdictLabel } from "@/shared/lib"
-import { Badge, StatusBadge } from "@/shared/ui"
+import { companyPath, formatDate, formatRating } from "@/shared/lib"
+import { Badge } from "@/shared/ui"
 
 const props = defineProps<{ data: VacancyDetail }>()
 
@@ -35,10 +35,5 @@ const validUntil = computed(() => props.data.facts?.hh?.validUntil ?? null)
       <span>актуальна до {{ formatDate(validUntil) }}</span>
     </template>
     <Badge v-if="vacancy.blacklisted" variant="destructive">в чёрном списке</Badge>
-    <StatusBadge
-      v-if="data.titleVerdict"
-      :value="data.titleVerdict"
-      :label="titleVerdictLabel(data.titleVerdict)"
-    />
   </div>
 </template>

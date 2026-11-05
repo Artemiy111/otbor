@@ -75,8 +75,7 @@ export const OtborWriteHandlers = OtborWriteToolkit.toLayer(Effect.gen(function*
           id: saved.decision.id,
           verdict: saved.decision.verdict,
           fit: saved.decision.fit,
-          priority: saved.decision.priority,
-          gate: saved.decision.gate
+          priority: saved.decision.priority
         }
       }
     }),

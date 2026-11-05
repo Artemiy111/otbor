@@ -3,14 +3,12 @@ import { currentVersions, isDecisionStale, type DecisionFingerprint } from "../s
 
 const current = {
   contentHash: "h2",
-  policyVersion: currentVersions.policyVersion,
-  rulesVersion: currentVersions.rulesVersion
+  policyVersion: currentVersions.policyVersion
 }
 
 const fresh: DecisionFingerprint = {
   vacancyContentHash: "h2",
-  policyVersion: currentVersions.policyVersion,
-  rulesVersion: currentVersions.rulesVersion
+  policyVersion: currentVersions.policyVersion
 }
 
 describe("decision staleness", () => {
@@ -18,7 +16,7 @@ describe("decision staleness", () => {
     expect(isDecisionStale(null, current)).toBe(true)
   })
 
-  test("a decision for the same content, policy and rules is current", () => {
+  test("a decision for the same content, and policy is current", () => {
     expect(isDecisionStale(fresh, current)).toBe(false)
   })
 
@@ -33,11 +31,5 @@ describe("decision staleness", () => {
   test("another policy version is stale in both directions", () => {
     expect(isDecisionStale({ ...fresh, policyVersion: currentVersions.policyVersion - 1 }, current)).toBe(true)
     expect(isDecisionStale({ ...fresh, policyVersion: currentVersions.policyVersion + 1 }, current)).toBe(true)
-  })
-
-  test("older gate rules are stale, but a user verdict (rules version 0) never is", () => {
-    const bumped = { ...current, rulesVersion: currentVersions.rulesVersion + 1 }
-    expect(isDecisionStale(fresh, bumped)).toBe(true)
-    expect(isDecisionStale({ ...fresh, rulesVersion: 0 }, bumped)).toBe(false)
   })
 })

@@ -113,7 +113,6 @@ export const TopItem = Schema.Struct({
   fit: Schema.Number,
   priority: Schema.Number,
   verdict: Schema.String,
-  gate: Schema.String,
   account: Schema.NullOr(AccountRef),
   reasons: Schema.Array(Schema.String),
   /** Vacancy seniority: unknown, junior, middle, senior or lead. "unknown" means not stated, not "mid". */
@@ -155,7 +154,7 @@ export const VacanciesTop = readTool("vacancies_top", {
 const SEARCH_DESCRIPTION = `Search the vacancy corpus with ad-hoc filters, for chat requests like "take 10 mediocre vacancies, around middle level, with Kubernetes, not big companies". Returns vacancies that have a decision (the pipeline makes decisions), joined with seniority, experience, top skills, employer, salary, fit, priority, account and hh url, so you can explain each choice. All criteria are ANDed. Filtering runs server-side in SQL with the same engine presets use (see presets_list / preset_preview). \`presetId\` and \`filter\` can be combined: the ad-hoc rules extend the preset's.
 
 PARAMETERS
-- filter: { rules?: [{field, op, value?}], text?, gate?, location?, includeArchived?, includeBlacklisted? }. Archived and blacklisted vacancies are excluded unless included explicitly. Prefer rules.
+- filter: { rules?: [{field, op, value?}], text?, location?, includeArchived?, includeBlacklisted? }. Archived and blacklisted vacancies are excluded unless included explicitly. Prefer rules.
 - verdict: apply (default) | draft | skip. The default "apply" only sees vacancies the policy would apply to; for "mediocre" or lower-fit requests pass verdict "draft" or "skip" and bound the score with minFit / maxFit (roughly 40-70 for mediocre).
 - minFit / maxFit: fit score bounds, 0-100.
 - account: hh account id, prefix or name. limit (default 10, max 50), offset.
@@ -169,7 +168,7 @@ RULE FIELDS, operators and value shapes
 - work_format: in / not_in with a string array of remote, hybrid, onsite, field.
 - Salary: field "salary" with ops gt, gte, lt, lte, eq, neq and optional rule keys currency (RUB, USD, EUR, ...) and orMissing (true: vacancies without a salary pass too). It compares the vacancy's range: gt/gte look at its upper end, lt/lte at its lower end, eq means the number lies inside the range. A range is two rules. OR is a group: {"groups":[{"branches":[{"rules":[...]},{"rules":[...]}]}]} passes when all rules of any one branch hold, e.g. 300000+ RUB or 4000+ USD. Top-level rules are ANDed.
 - Number fields: salary_from, salary_to (in the vacancy's own currency; vacancies without a salary never match), published_days (published within N days: use lte), responses_total, description_length, skills_count, employer_vacancies, employer_rating, employer_reviews. Operators: gte, lte, gt, lt, eq, neq with a number. A null value (no rating, no reviews, no salary) never matches a number rule.
-- archived: is_true / is_false. gate: eq with match | unknown | reject. role_family: eq with a family name.
+- archived: is_true / is_false.
 - analysis_role, analysis_level (from the local vacancy analysis model, only where it was confident; otherwise empty, which matches nothing for eq/in): eq / neq / in / not_in. analysis_role: devops, sre, platform, sysadmin, security, backend, frontend, fullstack, mobile, qa, data, analyst, dba, support, manager, other. analysis_level (the level the text requires): intern, junior, middle, senior, staff, tech_lead, team_lead, head. Useful to see through an "unknown" seniority, e.g. {field:"analysis_level",op:"in",value:["middle","senior"]}.
 
 SENIORITY. vacancy.seniority is junior, middle, senior, lead or unknown. About two thirds of the corpus is "unknown" (the vacancy does not say), which is not the same as "not middle". For "around middle" use {field:"seniority", op:"in", value:["middle","unknown"]}; strict "middle" drops most of the corpus. A second, independent signal is experience (hh requirement): noExperience, between1And3 (junior to middle), between3And6 (middle to senior), moreThan6 (senior). For example add experience in ["between1And3","between3And6"], or seniority not_in ["senior","lead"]. Every result carries both, so say which signal you relied on.
@@ -186,7 +185,7 @@ export const VacanciesSearch = readTool("vacancies_search", {
   description: SEARCH_DESCRIPTION,
   parameters: Schema.Struct({
     filter: Schema.optional(PresetFilter).annotate({
-      description: "Ad-hoc vacancy filter {rules:[{field,op,value}], text?, gate?, location?, includeArchived?, includeBlacklisted?}. See the tool description."
+      description: "Ad-hoc vacancy filter {rules:[{field,op,value}], text?, location?, includeArchived?, includeBlacklisted?}. See the tool description."
     }),
     presetId: text("Also require this saved preset's filter (see presets_list); ANDed with `filter`"),
     verdict: Schema.optional(Schema.Literals(["apply", "draft", "skip"])).annotate({
@@ -211,7 +210,7 @@ export const VacanciesSearch = readTool("vacancies_search", {
 export const VacancyGet = readTool("vacancy_get", {
   description:
     "One vacancy in full: description text (trimmed to maxChars, `truncated` says if cut), skills, matched " +
-    "lexicon keywords, salary, employer, title gate verdict, the latest decision if any and `analysis` (facts " +
+    "lexicon keywords, salary, employer, the latest decision if any and `analysis` (facts " +
     "from the local vacancy model: role, required level, company type, test task, overtime, red flags and more, " +
     "each {value, confidence}; only facts the model was confident about appear in `facts`, the rest are listed " +
     "in `unknown`; null when the vacancy was not analysed). `id` may be a " +
@@ -238,7 +237,6 @@ export const VacancyGet = readTool("vacancy_get", {
       bodyCount: Schema.Int,
       typo: Schema.Boolean
     })),
-    titleGate: NullableString,
     decision: Schema.NullOr(DecisionBrief),
     analysis: Schema.NullOr(Schema.Struct({
       model: Schema.String,
@@ -252,7 +250,7 @@ export const VacancyGet = readTool("vacancy_get", {
 
 export const DecisionsList = readTool("decisions_list", {
   description:
-    "Recent decisions (newest first) with gate, fit, priority and reasons. Use vacancies_top for a ranked " +
+    "Recent decisions (newest first) with fit, priority and reasons. Use vacancies_top for a ranked " +
     "shortlist; use this to audit why vacancies were skipped. minFit is applied client-side to the fetched page.",
   parameters: Schema.Struct({
     verdict: Schema.optional(Schema.Literals(["apply", "draft", "skip"])),
@@ -547,7 +545,7 @@ export const CoverLetterContext = readTool("cover_letter_context", {
     "resume with the operator's enrichment, the existing application, kit and form state if any, and the style " +
     "rules. `vacancy` is an hh.ru URL, an external id, a vacancy UUID or a UUID prefix. If an hh URL or id is not " +
     "in the corpus yet, the public vacancy page is fetched once and stored (no application is created and " +
-    "nothing is sent). Policy (title gate, decision, blacklist, fit) is NOT consulted: manual mode. `warnings` " +
+    "nothing is sent). Policy (apply filter, decision, blacklist, fit) is NOT consulted: manual mode. `warnings` " +
     "lists things worth telling the user (blacklisted employer, archived vacancy, already submitted). " +
     "Next: application_prepare_manual.",
   parameters: Schema.Struct({
@@ -715,9 +713,8 @@ const READ_INSTRUCTIONS = `otbor is an hh.ru auto-apply control plane.
 
 Domain model, in pipeline order:
 - vacancy: a job posting crawled from hh.ru (title, employer, salary, description, skills).
-- apply filter: per (hh account, resume) hard rules (apply_filter_get) that a vacancy must pass; the title check is just rules on \`title\`. A vacancy that fails them is skipped with reason \`blocked_filter\`, whose detail lists the failed rules. The filter also holds minFit, the tests policy and the freshness half-life. Without a stored row the account-wide row, then a built-in default, applies. Rules are edited in the web UI.
-- gate: a deterministic title check (match / unknown / reject). Only "match" vacancies can be applied to.
-- decision: the policy result for a vacancy: verdict (apply / draft / skip), fit (0-100 against the resume), priority (ranking score) and reasons (why). Reasons starting with "blocked_" explain a skip. The "fit" reason says whether the number is "deterministic" (keyword rules, saturates near 95-100) or "llm" (a personal judgement, see fit_get).
+- apply filter: per (hh account, resume) hard rules (apply_filter_get) that a vacancy must pass (the title check is just rules on \`title\`). A vacancy that fails them is skipped with reason \`blocked_filter\`, whose detail lists the failed rules. The filter also holds minFit, the tests policy and the freshness half-life. Without a stored row the account-wide row, then a built-in default, applies. Rules are edited in the web UI.
+- decision: the policy result for a vacancy: verdict (apply / draft / skip), fit (0-100 against the resume), priority (ranking score) and reasons (why). A vacancy is applicable when its verdict is apply. Reasons starting with "blocked_" explain a skip; \`blocked_filter\` lists the failed apply-filter rules. The "fit" reason says whether the number is "deterministic" (keyword rules, saturates near 95-100) or "llm" (a personal judgement, see fit_get).
 - application: created from an apply/draft decision; states draft, queued, submitting, submitted, skipped, needs_human, failed. Submit is at-most-once; "waiting" usually means draft or needs_human. Applications the operator made by hand on hh.ru are imported by the operator CLI command "otbor hh sync" as state submitted with origin "imported" (and hh's own status); they count as already applied (blocked_applied), cannot be approved or prepared again, and are not otbor submits. This server has no tool to run or change the sync.
 - kit: the cover letter and form answers prepared for an application.
 Also: hh accounts (accounts_list; several can exist), presets (saved filters), employers (with blacklist state), resumes (with operator enrichment), conversations and contacts (replies from recruiters), schedules (crawls) and the harness queue.
@@ -748,7 +745,7 @@ Applying (write tools). application_approve SENDS A REAL APPLICATION on hh.ru, o
 7. Later: application_get shows queued -> submitting -> submitted and the attempts. Never approve again to "retry" a submit that is in flight or looks ambiguous; report it to the user. application_skip drops a draft you will not send.
 The server enforces a daily limit of submits per hh account (LimitExceeded): if it is hit, stop, tell the user when the next slot frees, and do not retry.
 
-Manual mode ("here is a vacancy URL, write the cover letter", and answer the employer test if there is one). The operator chose the vacancy, so policy is bypassed: title gate, decision verdict, blacklist and fit are NOT consulted (cover_letter_context only warns about them). Safety is not bypassed: one application per (account, vacancy), the daily submit limit, kit validation and the at-most-once submit all apply, and application_approve still needs the user's explicit confirmation. Sequence:
+Manual mode ("here is a vacancy URL, write the cover letter", and answer the employer test if there is one). The operator chose the vacancy, so policy is bypassed: apply filter, decision verdict, blacklist and fit are NOT consulted (cover_letter_context only warns about them). Safety is not bypassed: one application per (account, vacancy), the daily submit limit, kit validation and the at-most-once submit all apply, and application_approve still needs the user's explicit confirmation. Sequence:
 1. cover_letter_context with vacancy (hh.ru URL, external id, UUID or prefix) and optionally account. One call returns the vacancy, skills, employer, the account's active resume with the operator's enrichment, any existing application and kit, the style rules and warnings. A vacancy that is not in the corpus yet is fetched once from its public hh.ru page. Read warnings to the user (already submitted, blacklisted employer, archived). If the call fails because the page cannot be fetched, tell the user to run \`otbor vacancy fetch <url>\` (or \`otbor crawl <search url> --hydrate\`) and retry.
 2. application_prepare_manual with the same vacancy and account. It creates the draft without a decision (idempotent: an existing application for that account and vacancy is returned) and queues the browser job that opens the response form.
 3. Poll application_form until prepare.status is "prepared". If the vacancy has an employer test or questions, they appear in form.questions (kind single/multiple/text/code, option ids, maxLength, required, hint). blocked, unreadable or skipped: stop and tell the user; an unreadable form (layout not recognized) must be filled in on hh.ru by hand.

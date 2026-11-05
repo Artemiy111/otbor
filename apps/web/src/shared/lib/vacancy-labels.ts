@@ -35,10 +35,3 @@ export const workFormatText = (value: string): string => {
   const known = lookup(WORK_FORMAT, value)
   return known !== value ? known : value.toLowerCase() === "remote" ? "удалённо" : value
 }
-
-const GATE: Record<string, string> = {
-  match: "Название подходит",
-  unknown: "Название неясно",
-  reject: "Название не подходит"
-}
-export const titleVerdictLabel = (value: string): string => GATE[value] ?? value

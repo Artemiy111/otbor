@@ -15,10 +15,8 @@ import {
   ANALYSIS_PROMPT_VERSION,
   detectVacancyTextFacts,
   extractContactsFromText,
-  gateTitle,
   matchLexicon,
-  mergeTextFacts,
-  titleCacheKey
+  mergeTextFacts
 } from "@otbor/domain"
 import { Effect, Context, Layer } from "effect"
 import type { Executor } from "../db/Database.ts"
@@ -109,9 +107,6 @@ const persistDraft = (tx: Executor, draft: VacancyDraft, contactUserId: string) 
       total: effective.responsesTotal ?? null,
       vacancy: effective.responsesVacancy ?? null
     })
-
-    const gate = gateTitle(effective.title)
-    yield* DecisionRepository.cacheRulesVerdict(tx, gate)
 
     const entries = yield* LexiconRepository.loadEntries(tx)
     const matches = matchLexicon(entries, {
@@ -247,10 +242,9 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
                 const row = yield* VacancyRepository.findById(tx, id)
                 if (row === null) return null
                 const keywords = yield* LexiconRepository.matchesFor(tx, id)
-                const verdict = yield* DecisionRepository.findVerdict(tx, titleCacheKey(row.title))
                 const hhSignals = yield* VacancyRepository.hhSignalsOf(tx, id)
                 const analysis = yield* VacancyAnalysisRepository.get(tx, id, ANALYSIS_PROMPT_VERSION)
-                return { row, keywords, verdict, hhSignals, analysis }
+                return { row, keywords, hhSignals, analysis }
               })
             )
             .pipe(Effect.mapError(toStorageError("vacancy.get")))
@@ -265,7 +259,6 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
             descriptionHtml: detail.row.descriptionHtml,
             skills: detail.row.skills,
             keywords: detail.keywords.map(toKeywordMatch),
-            titleVerdict: detail.verdict?.verdict ?? null,
             facts: {
               hh: detail.hhSignals,
               text: mergeTextFacts(

@@ -4,9 +4,9 @@ import { DecisionRecord } from "./models.ts"
 
 /**
  * The model's (or an external agent's) verdict on how well one resume fits one
- * vacancy. Gate G2 of the pipeline: it never decides whether a vacancy is the
- * right role (the title gate does that), only how strong the match is among
- * vacancies that already passed the gate.
+ * vacancy. It never decides whether a vacancy is the right role (the apply
+ * filter does that), only how strong the match is among vacancies that already
+ * passed the filter.
  */
 export const FitVerdict = Schema.Literals(["strong", "ok", "weak", "no"])
 export type FitVerdict = typeof FitVerdict.Type

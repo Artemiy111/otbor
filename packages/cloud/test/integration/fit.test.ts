@@ -114,7 +114,7 @@ if (!enabled || serverUrl === null) {
     "Пять лет Kubernetes и Terraform, поднимал CI/CD."
   ].join("\n")
 
-  /** A DevOps title that passes the gate and the default apply policy. */
+  /** A DevOps title that passes the default apply filter. */
   const devops = (label: string) =>
     support.seedVacancyTitled(label, `DevOps engineer ${label}`, {
       salaryFrom: 400_000,
@@ -217,15 +217,15 @@ if (!enabled || serverUrl === null) {
       const third = await fit(tenant.userId, (s) => s.enqueue({}))
       expect(third.enqueued).toBe(0)
 
-      // The gate-rejected vacancy was never a candidate.
+      // The vacancy the filter rejects was never a candidate.
       const rejected = await fit(tenant.userId, (s) => s.get({ vacancyId: cook as VacancyId }))
       expect(rejected).toBeNull()
     })
 
-    test("onlyApply=false widens to every vacancy that passed the title gate", async () => {
+    test("onlyApply=false widens to every vacancy that passed the apply filter", async () => {
       const { tenant } = await setup("fit-widen", [])
       const low = await devops(`widen-${randomUUID().slice(0, 6)}`)
-      // fit 10 < minFit: the decision is a skip, but the title gate matched.
+      // fit 10 < minFit: the decision is a skip, but the filter passed.
       await evaluateWith(tenant.userId, low, 10)
 
       expect((await fit(tenant.userId, (s) => s.enqueue({}))).enqueued).toBe(0)

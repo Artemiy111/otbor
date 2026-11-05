@@ -132,7 +132,6 @@ import {
   seedKit,
   seedPreset,
   seedTenant,
-  seedTitleVerdict,
   seedVacancy,
   seedVacancyForEmployer,
   seedVacancyKeyword,
@@ -1168,16 +1167,6 @@ if (!integrationEnabled || serverUrl === null) {
         archived: true
       })
 
-      for (const title of [
-        "DevOps Kubernetes engineer",
-        "DevOps Kubernetes platform engineer",
-        "Backend TypeScript developer",
-        "DevOps Kubernetes archived"
-      ]) {
-        await seedTitleVerdict(title, "match")
-      }
-      await seedTitleVerdict("DevOps manager", "reject")
-
       // Two forms of the same keyword on one vacancy must count as one vacancy.
       await seedVacancyKeyword({ vacancyId: devops, keywordId: kubernetes, matchedForm: "kubernetes" })
       await seedVacancyKeyword({ vacancyId: devops, keywordId: kubernetes, matchedForm: "k8s" })
@@ -1197,13 +1186,15 @@ if (!integrationEnabled || serverUrl === null) {
       await seedVacancyKeyword({ vacancyId: rejected, keywordId: kubernetes, matchedForm: "kubernetes" })
       await seedVacancyKeyword({ vacancyId: archived, keywordId: kubernetes, matchedForm: "kubernetes" })
 
+      // The "DevOps manager" vacancy is excluded by a title rule.
+      const notManager = [{ field: "title", op: "not_contains", value: "manager" }]
       const devopsPreset = await seedPreset(tenant.userId, {
         title: "DevOps match",
-        filter: { text: "DevOps", gate: "match" }
+        filter: { text: "DevOps", rules: notManager }
       })
       const backendPreset = await seedPreset(tenant.userId, {
         title: "Backend match",
-        filter: { text: "Backend", gate: "match" }
+        filter: { text: "Backend" }
       })
 
       const asCounts = (keywords: ReadonlyArray<{ term: string; vacancyCount: number }>) =>
@@ -1224,7 +1215,7 @@ if (!integrationEnabled || serverUrl === null) {
       // Archived vacancies only join when the preset asks for them.
       const withArchived = await seedPreset(tenant.userId, {
         title: "DevOps match with archive",
-        filter: { text: "DevOps", gate: "match", includeArchived: true }
+        filter: { text: "DevOps", rules: notManager, includeArchived: true }
       })
       expect(asCounts(await lexiconList(tenant.userId, { presetId: withArchived }))).toEqual({
         [`docker-${suffix}`]: 2,
@@ -1234,7 +1225,7 @@ if (!integrationEnabled || serverUrl === null) {
       // keywordIds narrows the returned keyword list without changing counts.
       const dockerOnly = await seedPreset(tenant.userId, {
         title: "DevOps docker only",
-        filter: { text: "DevOps", gate: "match", keywordIds: [docker] }
+        filter: { text: "DevOps", rules: notManager, keywordIds: [docker] }
       })
       const onlyDocker = await lexiconList(tenant.userId, { presetId: dockerOnly })
       expect(onlyDocker.map((keyword) => keyword.term)).toEqual([`docker-${suffix}`])
@@ -1251,6 +1242,37 @@ if (!integrationEnabled || serverUrl === null) {
       // An unknown preset is a typed NotFound, not an empty keyword list.
       const missing = await lexiconListFailure(tenant.userId, { presetId: randomUUID() })
       expect(missing._tag).toBe("NotFound")
+    })
+
+    test("a stored preset filter with legacy gate / role_family decodes and is cleaned", async () => {
+      const tenant = await seedTenant("preset-legacy-gate")
+      const suffix = randomUUID().slice(0, 6)
+      const title = { field: "title", op: "contains", value: `legacy-${suffix}` } as const
+      const presetId = await seedPreset(tenant.userId, {
+        title: "legacy",
+        filter: {
+          text: `legacy-${suffix}`,
+          gate: "match",
+          rules: [{ field: "gate", op: "eq", value: "match" }, title],
+          groups: [
+            {
+              branches: [
+                { rules: [{ field: "role_family", op: "eq", value: "devops" }] },
+                { rules: [title] }
+              ]
+            }
+          ]
+        }
+      })
+
+      const stored = await findPreset(tenant.userId, presetId)
+      expect(stored?.filter).toEqual({
+        text: `legacy-${suffix}`,
+        rules: [title],
+        groups: [{ branches: [{ rules: [title] }] }]
+      })
+      // The cleaned filter also drives the keyword counts without failing.
+      expect(await lexiconList(tenant.userId, { presetId })).toBeArray()
     })
 
     test("remove deletes only the caller's preset", async () => {
@@ -1302,8 +1324,6 @@ if (!integrationEnabled || serverUrl === null) {
         descriptionText: "TypeScript and PostgreSQL",
         workFormats: ["office"]
       })
-      await seedTitleVerdict(devopsTitle, "match")
-      await seedTitleVerdict(backendTitle, "reject")
       await seedVacancySkill(devops, `Kube-${suffix}`)
       await seedVacancySkill(backend, `TypeScript-${suffix}`)
       await seedVacancyKeyword({
@@ -1326,14 +1346,6 @@ if (!integrationEnabled || serverUrl === null) {
         ]
       })
       expect(bySalary.count).toBe(1)
-
-      const byGate = await presetPreview(tenant.userId, {
-        rules: [
-          { field: "title", op: "contains", value: suffix },
-          { field: "gate", op: "eq", value: "match" }
-        ]
-      })
-      expect(byGate.count).toBe(1)
 
       const bySkills = await presetPreview(tenant.userId, {
         rules: [{ field: "skills", op: "contains", value: `Kube-${suffix}` }]

@@ -154,24 +154,6 @@ const ruleClause = (rule: PresetRule, filter: PresetFilter, context: VacancyFilt
     return op === "not_in" || op === "neq" ? sql`not (${hidden})` : hidden
   }
 
-  if (rule.field === "gate") {
-    const verdict = textValue(value)
-    return sql`exists (
-      select 1 from title_verdict
-      where title_verdict.normalized_title = regexp_replace(lower(btrim(vacancy.title)), '\\s+', ' ', 'g')
-        and title_verdict.verdict = ${verdict}
-    )`
-  }
-
-  if (rule.field === "role_family") {
-    const role = textValue(value)
-    return sql`exists (
-      select 1 from title_verdict
-      where title_verdict.normalized_title = regexp_replace(lower(btrim(vacancy.title)), '\\s+', ' ', 'g')
-        and title_verdict.role_family = ${role}
-    )`
-  }
-
   if (rule.field === "salary") {
     const amount = numberValue(value)
     const low = sql`coalesce(vacancy.salary_from, vacancy.salary_to)`
@@ -312,8 +294,7 @@ const ruleClause = (rule: PresetRule, filter: PresetFilter, context: VacancyFilt
 
 /**
  * The vacancy predicate shared by the keyword count and the "has matching
- * vacancies" filter. `vacancy` is in scope in both correlated subqueries, and
- * `title_verdict` keys are normalized exactly like `VacancyRepository.list`.
+ * vacancies" filter. `vacancy` is in scope in both correlated subqueries.
  */
 export interface VacancyFilterContext {
   /** Enables the default app-layer blacklist exclusion for presets. */
@@ -328,7 +309,7 @@ interface FilterPart {
 
 /**
  * The clauses of a filter in evaluation order: the implicit ones
- * (archived, app blacklist, legacy `text`/`gate`), every rule, every OR group.
+ * (archived, app blacklist, legacy `text`), every rule, every OR group.
  * `vacancyFilterSql` ANDs them; `evaluateFilter` reports each separately.
  */
 const filterParts = (
@@ -363,17 +344,6 @@ const filterParts = (
     parts.push({
       label: `title contains ${text}`,
       clause: sql`vacancy.title ilike ${likePattern(text)}`
-    })
-  }
-
-  if (filter.gate !== undefined) {
-    parts.push({
-      label: `gate = ${filter.gate}`,
-      clause: sql`exists (
-      select 1 from title_verdict
-      where title_verdict.normalized_title = regexp_replace(lower(btrim(vacancy.title)), '\\s+', ' ', 'g')
-        and title_verdict.verdict = ${filter.gate}
-    )`
     })
   }
 

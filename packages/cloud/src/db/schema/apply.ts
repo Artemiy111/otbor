@@ -35,13 +35,10 @@ export const decision = pgTable(
       .notNull()
       .references(() => vacancy.id, { onDelete: "cascade" }),
     verdict: text("verdict").notNull(),
-    gate: text("gate").notNull(),
-    roleFamily: text("role_family"),
     fit: integer("fit").notNull().default(0),
     priority: doublePrecision("priority").notNull().default(0),
     reasons: jsonb("reasons").$type<ReadonlyArray<unknown>>().notNull().default([]),
     policyVersion: integer("policy_version").notNull(),
-    rulesVersion: integer("rules_version").notNull(),
     inputHash: text("input_hash").notNull(),
     /** `vacancy.content_hash` the decision was made for; null on legacy rows. */
     vacancyContentHash: text("vacancy_content_hash"),

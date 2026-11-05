@@ -1,5 +1,5 @@
 /**
- * Text primitives for the gate and the lexicon.
+ * Text primitives for the lexicon.
  *
  * Everything here is pure and synchronous: the same functions run in the
  * browser harness and in the cloud, and there is no locale-dependent casing.
@@ -32,54 +32,6 @@ export const normalizeText = (input: string): string =>
     .toLowerCase()
     .replace(/ё/g, "е")
     .replace(/[\u00a0\u202f\u2009]/g, " ")
-
-const SENIORITY_TOKENS = new Set([
-  "senior",
-  "middle",
-  "junior",
-  "lead",
-  "principal",
-  "staff",
-  "intern",
-  "trainee",
-  "сеньор",
-  "мидл",
-  "джун",
-  "стажер",
-  "стажёр",
-  "ведущий",
-  "старший",
-  "младший"
-])
-
-const FORMAT_TOKENS = new Set([
-  "remote",
-  "hybrid",
-  "onsite",
-  "office",
-  "удаленно",
-  "гибрид",
-  "офис"
-])
-
-/**
- * Stable cache key for `title_verdict`.
- *
- * Grade and work-format words are removed so "Senior DevOps (remote)" and
- * "DevOps engineer" share one role decision. Seniority itself is detected from
- * the original title and stored on the vacancy.
- */
-export const titleCacheKey = (input: string): string => {
-  const tokens = normalizeText(input)
-    .replace(/[‐‑‒–—―]/g, "-")
-    .replace(/[^\p{L}\p{N}\s/+#.-]/gu, " ")
-    .split(/[\s-]+/)
-    .filter((token) => token.length > 0 && !SENIORITY_TOKENS.has(token) && !FORMAT_TOKENS.has(token))
-
-  return collapseWhitespace(tokens.join(" "))
-    .replace(/\s*\/\s*/g, "/")
-    .replace(/[.,;:!?]+$/g, "")
-}
 
 export const escapeRegExp = (input: string): string =>
   input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")

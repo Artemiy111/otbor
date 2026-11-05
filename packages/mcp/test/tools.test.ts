@@ -18,9 +18,7 @@ const decision = (
   userId: "u",
   vacancyId: id(over.vacancyN),
   vacancyTitle: `Vacancy ${over.vacancyN}`,
-  roleFamily: "backend",
   verdict: "apply",
-  gate: "match",
   fit: 70,
   priority: 10,
   reasons: [

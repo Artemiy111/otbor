@@ -381,17 +381,10 @@ export const makeFitJudge = (database: Database["Service"]): FitJudgeCore => {
         return yield* new NotFound({ entity: "Vacancy", id: input.vacancyId })
       }
 
-      const cache = outcome.evaluated.cache
-      if (cache !== null) {
-        yield* database
-          .asOwner((tx) => DecisionRepository.cacheRulesVerdict(tx, cache))
-          .pipe(Effect.mapError(toStorageError("title.cache")))
-      }
-
       return {
         // Saved against the live inputs, so it is current by construction.
         judgement: FitJudgementRepository.toRecord(outcome.stored, true),
-        decision: outcome.evaluated.record
+        decision: outcome.evaluated
       }
     })
 

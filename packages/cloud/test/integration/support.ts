@@ -41,7 +41,6 @@ import {
   searchQuery,
   searchRun,
   telegramAccount,
-  titleVerdict,
   users,
   vacancy,
   vacancyKeyword,
@@ -67,7 +66,7 @@ import { CurrentUser } from "../../src/services/CurrentUser.ts"
 import { AnalysisRunner } from "../../src/services/AnalysisRunner.ts"
 import { SystemOneClient } from "../../src/services/SystemOneClient.ts"
 import { EmployerHydrator } from "../../src/services/EmployerHydrator.ts"
-import { GateService, type GateServiceShape } from "../../src/services/GateService.ts"
+import { LexiconService, type LexiconServiceShape } from "../../src/services/LexiconService.ts"
 import { HydrationRunner } from "../../src/services/HydrationRunner.ts"
 import {
   InferenceService,
@@ -272,7 +271,7 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
     NegotiationsSync.layer.pipe(Layer.provide(shared)),
     ApplicationService.layer.pipe(Layer.provide(shared)),
     InferenceService.layer.pipe(Layer.provide(shared)),
-    GateService.layer.pipe(Layer.provide(shared)),
+    LexiconService.layer.pipe(Layer.provide(shared)),
     PresetService.layer.pipe(Layer.provide(shared)),
     ApplyFilterService.layer.pipe(Layer.provide(shared)),
     ScheduleService.layer.pipe(Layer.provide(Layer.merge(shared, dispatcher)))
@@ -287,7 +286,7 @@ type Requirements =
   | ResumeSync
   | InferenceService
   | CrawlService
-  | GateService
+  | LexiconService
   | PresetService
   | ApplyFilterService
   | CorpusService
@@ -626,27 +625,6 @@ export const seedVacancyKeyword = async (input: {
   )
 }
 
-/** Mirrors the normalized title `title_verdict` is keyed by. */
-export const normalizedTitle = (title: string): string =>
-  title.trim().toLowerCase().replace(/\s+/g, " ")
-
-export const seedTitleVerdict = async (
-  title: string,
-  verdict: "match" | "unknown" | "reject"
-): Promise<void> => {
-  await runAs(
-    "owner",
-    ownerTx((tx) =>
-      tx.insert(titleVerdict).values({
-        normalizedTitle: normalizedTitle(title),
-        verdict,
-        source: "rules",
-        rulesVersion: 1
-      })
-    )
-  )
-}
-
 export const seedPreset = async (
   userId: string,
   input: {
@@ -654,7 +632,9 @@ export const seedPreset = async (
     readonly title: string
     readonly filter?: {
       readonly text?: string
-      readonly gate?: "match" | "unknown" | "reject"
+      readonly rules?: ReadonlyArray<Record<string, unknown>>
+      /** Legacy keys of old stored filters (`gate`, ...) may be seeded on purpose. */
+      readonly [legacy: string]: unknown
       readonly keywordIds?: ReadonlyArray<string>
       readonly includeArchived?: boolean
       readonly includeBlacklisted?: boolean
@@ -987,17 +967,17 @@ export const crawlStatus = async (userId: string, runId: string) =>
   )
 
 /* -------------------------------------------------------------------------- */
-/* Gate and preset calls                                                      */
+/* Lexicon and preset calls                                                   */
 /* -------------------------------------------------------------------------- */
 
-type LexiconListInput = Parameters<GateServiceShape["lexiconList"]>[0]
+type LexiconListInput = Parameters<LexiconServiceShape["lexiconList"]>[0]
 
 export const lexiconList = async (userId: string, options: LexiconListInput = {}) =>
   runAs(
     userId,
     Effect.gen(function*() {
-      const gate = yield* GateService
-      return yield* gate.lexiconList(options)
+      const lexicon = yield* LexiconService
+      return yield* lexicon.lexiconList(options)
     })
   )
 
@@ -1005,8 +985,8 @@ export const lexiconListFailure = async (userId: string, options: LexiconListInp
   runAsFailure(
     userId,
     Effect.gen(function*() {
-      const gate = yield* GateService
-      return yield* gate.lexiconList(options)
+      const lexicon = yield* LexiconService
+      return yield* lexicon.lexiconList(options)
     })
   )
 

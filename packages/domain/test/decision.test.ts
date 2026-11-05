@@ -69,7 +69,6 @@ describe("decide", () => {
   test("applies to a vacancy that passes the filter", () => {
     const result = run()
     expect(result.verdict).toBe("apply")
-    expect(result.gate).toBe("match")
     expect(result.fit).toBeGreaterThanOrEqual(DEFAULT_APPLY_SETTINGS.minFit)
     expect(result.priority).toBeGreaterThan(0)
     expect(result.reasons.map((r) => r.code)).toContain("skill_match")
@@ -82,7 +81,6 @@ describe("decide", () => {
       filter: { passed: false, failed: ["salary >= 250000", "work_format in remote,hybrid"] }
     })
     expect(result.verdict).toBe("skip")
-    expect(result.gate).toBe("unknown")
     expect(result.fit).toBe(0)
     expect(result.priority).toBe(0)
     expect(result.reasons).toEqual([

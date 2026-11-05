@@ -10,21 +10,16 @@ const list = Command.make(
   "list",
   {
     limit: Flag.Int("limit").pipe(Flag.withDefault(20)),
-    gate: Flag.String("gate").pipe(
-      Flag.withDescription("Filter by the stored title verdict (match, unknown, reject)"),
-      Flag.optional
-    ),
     archived: Flag.Boolean("archived").pipe(
       Flag.withDescription("Include archived vacancies"),
       Flag.withDefault(false)
     ),
     json: Flag.Boolean("json").pipe(Flag.withDefault(false))
   },
-  Effect.fn(function*({ limit, gate, archived, json }) {
+  Effect.fn(function*({ limit, archived, json }) {
     const api = yield* Api
     const { items, total } = yield* api.VacanciesList({
       limit,
-      gate: Option.getOrUndefined(gate),
       includeArchived: archived
     })
 
@@ -61,9 +56,6 @@ const get = Command.make(
     yield* Console.log(`seniority: ${vacancy.seniority}`)
     yield* Console.log(`published: ${vacancy.publishedAt ?? "-"}`)
     yield* Console.log(`url:      ${vacancy.canonicalUrl}`)
-    if (detail.titleVerdict !== null && detail.titleVerdict !== undefined) {
-      yield* Console.log(`gate:     ${detail.titleVerdict}`)
-    }
     if (detail.skills.length > 0) {
       yield* Console.log(`skills:   ${detail.skills.join(", ")}`)
     }

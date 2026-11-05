@@ -241,7 +241,7 @@ export interface CandidateOptions {
   readonly resumeId: string
   readonly resumeHash: string
   readonly promptVersion: string
-  /** `true`: latest decision is `apply`. `false`: any vacancy that passed the title gate. */
+  /** `true`: latest decision is `apply`. `false`: any vacancy that passed the apply filter. */
   readonly onlyApply: boolean
   readonly force: boolean
   /** A preset's vacancy filter, already compiled over the `vacancy` table. */
@@ -256,7 +256,7 @@ export interface CandidateOptions {
  */
 const candidatesFrom = (options: CandidateOptions) => sql`
   from (
-    select distinct on (x.vacancy_id) x.vacancy_id, x.verdict, x.gate, x.priority, x.fit
+    select distinct on (x.vacancy_id) x.vacancy_id, x.verdict, x.reasons, x.priority, x.fit
     from decision x
     where x.user_id = ${options.userId}
     order by x.vacancy_id, x.created_at desc, x.id desc
@@ -269,7 +269,7 @@ const candidatesFrom = (options: CandidateOptions) => sql`
    and j.vacancy_content_hash = vacancy.content_hash
    and j.resume_hash = ${options.resumeHash}
    and j.prompt_version = ${options.promptVersion}
-  where ${options.onlyApply ? sql`d.verdict = 'apply'` : sql`d.gate = 'match'`}
+  where ${options.onlyApply ? sql`d.verdict = 'apply'` : sql`(d.verdict <> 'skip' or d.reasons->0->>'code' in ('blocked_test', 'blocked_low_fit'))`}
     and not vacancy.archived
     and (
       j.id is null

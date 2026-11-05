@@ -582,7 +582,6 @@ export interface VacancyFilter {
   readonly limit?: number
   readonly offset?: number
   readonly includeArchived?: boolean
-  readonly gate?: string
   /** `true`: only vacancies with an analysis for the current prompt version; `false`: only without. */
   readonly analysed?: boolean
   /** Only vacancies with an active response from this hh account. */
@@ -615,15 +614,6 @@ export const list = (tx: Executor, filter: VacancyFilter = {}) => {
     ? sql`true`
     : sql`not vacancy.archived`
   const extraClause = filter.extraWhere === undefined ? sql`true` : sql`(${filter.extraWhere})`
-
-  const gateClause =
-    filter.gate === undefined || filter.gate === ""
-      ? sql`true`
-      : sql`exists (
-          select 1 from title_verdict tv
-          where tv.normalized_title = regexp_replace(lower(btrim(vacancy.title)), '\\s+', ' ', 'g')
-            and tv.verdict = ${filter.gate}
-        )`
 
   const analysedExists = sql`exists (
     select 1 from vacancy_analysis a
@@ -698,7 +688,7 @@ export const list = (tx: Executor, filter: VacancyFilter = {}) => {
       )}
       from vacancy
       left join employer on employer.id = vacancy.employer_id
-      where ${archivedClause} and ${gateClause} and ${analysedClause} and ${respondedClause} and ${searchClause} and ${blacklistClause} and ${extraClause}
+      where ${archivedClause} and ${analysedClause} and ${respondedClause} and ${searchClause} and ${blacklistClause} and ${extraClause}
       order by ${orderBy}
       limit ${limit} offset ${offset}
     `)
@@ -707,7 +697,7 @@ export const list = (tx: Executor, filter: VacancyFilter = {}) => {
       select count(*)::int as count
       from vacancy
       left join employer on employer.id = vacancy.employer_id
-      where ${archivedClause} and ${gateClause} and ${analysedClause} and ${respondedClause} and ${searchClause} and ${blacklistClause} and ${extraClause}
+      where ${archivedClause} and ${analysedClause} and ${respondedClause} and ${searchClause} and ${blacklistClause} and ${extraClause}
     `)
 
     return {

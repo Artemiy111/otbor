@@ -111,7 +111,7 @@ if (!enabled || serverUrl === null) {
       })
 
       const decision = await evaluate(tenant.userId, { vacancyId: cheapOffice })
-      expect(decision).toMatchObject({ verdict: "skip", gate: "unknown", fit: 0, priority: 0 })
+      expect(decision).toMatchObject({ verdict: "skip", fit: 0, priority: 0 })
       const reason = decision.reasons[0]!
       expect(reason.code).toBe("blocked_filter")
       expect(reason.detail).toContain("salary >= 250000")

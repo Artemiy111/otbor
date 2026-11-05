@@ -4,7 +4,7 @@ import type {
   PresetOperator,
   PresetRule
 } from "@otbor/contract"
-import { areaLabel, currencySymbol, ANALYSIS_LEVEL_LABELS, ANALYSIS_ROLE_LABELS, roleFamilyLabel, seniorityLabel, statusLabel, workFormatLabel } from "@/shared/lib"
+import { areaLabel, currencySymbol, ANALYSIS_LEVEL_LABELS, ANALYSIS_ROLE_LABELS, seniorityLabel, workFormatLabel } from "@/shared/lib"
 
 /**
  * Browser-side mirror of the preset whitelist. The backend owns enforcement;
@@ -96,25 +96,6 @@ const EMPLOYMENT_FORM_OPTIONS = OPTIONS(
   ["PROJECT", "Проектная работа"],
   ["VOLUNTEER", "Волонтёрство"],
   ["PROBATION", "Стажировка"]
-)
-
-const GATE_OPTIONS = OPTIONS(
-  ["match", statusLabel("match")],
-  ["unknown", statusLabel("unknown")],
-  ["reject", statusLabel("reject")]
-)
-
-const ROLE_FAMILY_OPTIONS = OPTIONS(
-  ["devops", roleFamilyLabel("devops")],
-  ["sre", roleFamilyLabel("sre")],
-  ["platform", roleFamilyLabel("platform")],
-  ["backend", roleFamilyLabel("backend")],
-  ["frontend", roleFamilyLabel("frontend")],
-  ["mobile", roleFamilyLabel("mobile")],
-  ["qa", roleFamilyLabel("qa")],
-  ["analyst", roleFamilyLabel("analyst")],
-  ["manager", roleFamilyLabel("manager")],
-  ["other", roleFamilyLabel("other")]
 )
 
 /** Static selectors of the `hidden` rule; per-account ones are added from the account list. */
@@ -238,23 +219,6 @@ export const PRESET_FIELDS: ReadonlyArray<PresetFieldMeta> = [
     kind: "select",
     ops: SELECT_OPS,
     options: EMPLOYMENT_FORM_OPTIONS
-  },
-  {
-    field: "gate",
-    label: "Проверка заголовка",
-    group: "Классификация",
-    kind: "select",
-    ops: SELECT_OPS,
-    options: GATE_OPTIONS,
-    hint: "Правило по заголовку: подходит, неясно или отклонено. Это не ИИ."
-  },
-  {
-    field: "role_family",
-    label: "Роль",
-    group: "Классификация",
-    kind: "select",
-    ops: SELECT_OPS,
-    options: ROLE_FAMILY_OPTIONS
   },
   {
     field: "analysis_role",

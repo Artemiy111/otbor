@@ -1,33 +1,8 @@
 import { Schema } from "effect"
 
-/** What the employer is looking for. A role is a policy decision, not a tag. */
-export const RoleFamily = Schema.Literals([
-  "devops",
-  "sre",
-  "platform",
-  "backend",
-  "frontend",
-  "mobile",
-  "qa",
-  "analyst",
-  "manager",
-  "other"
-])
-
-export type RoleFamily = typeof RoleFamily.Type
-
 export const Seniority = Schema.Literals(["junior", "middle", "senior", "lead", "unknown"])
 
 export type Seniority = typeof Seniority.Type
-
-/**
- * `match` is the only verdict that may be auto-applied.
- * `unknown` is a quiet "maybe" list: it never spams and never gets retried.
- * `reject` means a hard negative matched the title.
- */
-export const GateVerdict = Schema.Literals(["match", "unknown", "reject"])
-
-export type GateVerdict = typeof GateVerdict.Type
 
 export const KeywordMatchLocation = Schema.Literals([
   "any",
@@ -155,11 +130,6 @@ export const DecisionReasonCode = Schema.Literals([
 ])
 
 export type DecisionReasonCode = typeof DecisionReasonCode.Type
-
-/** The only manual label in the product: "this is garbage". */
-export const TitleVerdictSource = Schema.Literals(["rules", "llm", "user"])
-
-export type TitleVerdictSource = typeof TitleVerdictSource.Type
 
 /**
  * What the harness reports after an attempt. The cloud does not trust it for

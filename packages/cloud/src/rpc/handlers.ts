@@ -18,7 +18,7 @@ import { HydrationService } from "../services/HydrationService.ts"
 import { EvaluationRunner } from "../services/EvaluationRunner.ts"
 import { FitJudgeRunner } from "../services/FitJudgeRunner.ts"
 import { FitJudgeService } from "../services/FitJudgeService.ts"
-import { GateService } from "../services/GateService.ts"
+import { LexiconService } from "../services/LexiconService.ts"
 import { HhAccountService } from "../services/HhAccountService.ts"
 import { HydrationRunner } from "../services/HydrationRunner.ts"
 import { InferenceService } from "../services/InferenceService.ts"
@@ -63,7 +63,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const agentCatalog = yield* AgentCatalogService
     const decisions = yield* DecisionService
     const fitJudge = yield* FitJudgeService
-    const gate = yield* GateService
+    const lexicon = yield* LexiconService
     const applications = yield* ApplicationService
     const presets = yield* PresetService
     const applyFilters = yield* ApplyFilterService
@@ -196,20 +196,16 @@ export const OtborHandlers = OtborRpcs.toLayer(
       TelegramLoginQr: ({ id }) => telegram.loginQr(id),
       TelegramLoginStatus: ({ id }) => telegram.loginStatus(id),
 
-      TitlesPreview: ({ title }) => gate.preview(title),
-      TitlesSetUserVerdict: ({ title, verdict, roleFamily }) =>
-        gate.setUserVerdict({ title, verdict, roleFamily }),
-
-      LexiconList: (payload) => gate.lexiconList(payload),
-      LexiconUpsert: (payload) => gate.lexiconUpsert(payload),
+      LexiconList: (payload) => lexicon.lexiconList(payload),
+      LexiconUpsert: (payload) => lexicon.lexiconUpsert(payload),
       LexiconRematch: () => corpus.rematchStart(),
       LexiconRematchStatus: () => corpus.rematchStatus(),
-      LexiconAliasAdd: (payload) => gate.lexiconAliasAdd(payload),
-      LexiconAliasSetTypo: (payload) => gate.lexiconAliasSetTypo(payload),
+      LexiconAliasAdd: (payload) => lexicon.lexiconAliasAdd(payload),
+      LexiconAliasSetTypo: (payload) => lexicon.lexiconAliasSetTypo(payload),
       LexiconAliasRemove: ({ id }) =>
-        gate.lexiconAliasRemove(id).pipe(Effect.map((deleted) => ({ id, deleted }))),
+        lexicon.lexiconAliasRemove(id).pipe(Effect.map((deleted) => ({ id, deleted }))),
       LexiconRemove: ({ id }) =>
-        gate.lexiconRemove(id).pipe(Effect.map((deleted) => ({ id, deleted }))),
+        lexicon.lexiconRemove(id).pipe(Effect.map((deleted) => ({ id, deleted }))),
 
       DecisionsList: (payload) => decisions.list(payload),
       DecisionsEvaluateBatch: (payload) => decisions.evaluateBatch(payload),
@@ -325,7 +321,7 @@ export const OtborServices = Layer.mergeAll(
   DecisionService.layer,
   FitJudgeService.layer,
   VacancyAnalysisService.layer,
-  GateService.layer,
+  LexiconService.layer,
   ApplicationService.layer,
   PresetService.layer,
   ApplyFilterService.layer,

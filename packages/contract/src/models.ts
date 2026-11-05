@@ -1,4 +1,4 @@
-import { Schema } from "effect"
+import { Predicate, Schema } from "effect"
 import { FormAnswer, ResponseForm, StoredForm } from "./form.ts"
 import {
   ApplicationOrigin,
@@ -13,7 +13,6 @@ import {
   CrawlRunStatus,
   DecisionReasonCode,
   DecisionVerdict,
-  GateVerdict,
   HarnessExitTag,
   JobKind,
   JobStage,
@@ -30,8 +29,7 @@ import {
   SourceSyncKind,
   Seniority,
   StreamMode,
-  TestsPolicy,
-  TitleVerdictSource
+  TestsPolicy
 } from "./enums.ts"
 import {
   ApplicationId,
@@ -382,7 +380,6 @@ export const VacancyDetail = Schema.Struct({
   descriptionHtml: Schema.optional(Schema.NullOr(Schema.String)),
   skills: Schema.Array(Schema.String),
   keywords: Schema.Array(KeywordMatchRecord),
-  titleVerdict: Schema.optional(Schema.NullOr(GateVerdict)),
   /** Cover-letter/test requirements, conditions and red flags; see `VacancyFacts`. */
   facts: Schema.optional(VacancyFacts),
   /** Responses to the vacancy as shown by hh at the last hydration. */
@@ -715,35 +712,8 @@ export const TelegramLoginStatusValue = Schema.Literals([
 export type TelegramLoginStatusValue = typeof TelegramLoginStatusValue.Type
 
 /* -------------------------------------------------------------------------- */
-/* Gate, lexicon, decisions                                                   */
+/* Lexicon, decisions                                                         */
 /* -------------------------------------------------------------------------- */
-
-export const TitleGateResult = Schema.Struct({
-  title: Schema.String,
-  titleNormalized: Schema.String,
-  roleFamily: Schema.NullOr(Schema.String),
-  verdict: GateVerdict,
-  matched: Schema.Array(Schema.String),
-  rejectedBy: Schema.optional(Schema.NullOr(Schema.String)),
-  strong: Schema.Array(Schema.String),
-  weak: Schema.Array(Schema.String),
-  rulesVersion: Schema.Int
-})
-
-export type TitleGateResult = typeof TitleGateResult.Type
-
-export const TitleVerdictRecord = Schema.Struct({
-  normalizedTitle: Schema.String,
-  roleFamily: Schema.NullOr(Schema.String),
-  verdict: GateVerdict,
-  source: TitleVerdictSource,
-  matched: Schema.Array(Schema.String),
-  rejectedBy: Schema.optional(Schema.NullOr(Schema.String)),
-  rulesVersion: Schema.Int,
-  createdAt: Schema.String
-})
-
-export type TitleVerdictRecord = typeof TitleVerdictRecord.Type
 
 export const KeywordAliasRecord = Schema.Struct({
   id: KeywordAliasId,
@@ -803,9 +773,7 @@ export const DecisionRecord = Schema.Struct({
   resumeId: Schema.optional(Schema.NullOr(ResumeId)),
   vacancyId: VacancyId,
   vacancyTitle: Schema.optional(Schema.String),
-  roleFamily: Schema.NullOr(Schema.String),
   verdict: DecisionVerdict,
-  gate: GateVerdict,
   fit: Schema.Int,
   priority: Schema.Number,
   reasons: Schema.Array(DecisionReason),
@@ -1147,15 +1115,14 @@ export type HeartbeatResult = typeof HeartbeatResult.Type
  * The concrete filter a preset carries. Every field is optional: an absent
  * field does not constrain the result.
  *
- * `text` matches the vacancy title case-insensitively, `gate` keeps only
- * titles with that cached verdict, and `includeArchived` widens the search to
+ * `text` matches the vacancy title case-insensitively, and `includeArchived` widens the search to
  * archived vacancies. `keywordIds` only narrows which keywords are returned;
  * it never changes which vacancies are counted.
  */
 /**
  * A preset is a conjunction of rules plus a few legacy shorthands. The legacy
- * `text`/`gate` fields predate the rule builder and are normalized into rules
- * by the UI; they stay in the schema so old rows keep working.
+ * `text` field predates the rule builder and is normalized into rules by the
+ * UI; it stays in the schema so old rows keep working.
  */
 export const PresetField = Schema.Literals([
   "title",
@@ -1184,8 +1151,6 @@ export const PresetField = Schema.Literals([
   "employment_form",
   "published_days",
   "archived",
-  "gate",
-  "role_family",
   "source",
   "responses_total",
   "description_length",
@@ -1265,7 +1230,6 @@ export const PresetFilter = Schema.Struct({
   /** Additional AND clauses, each an OR over branches of rules. */
   groups: Schema.optional(Schema.Array(PresetGroup)),
   text: Schema.optional(Schema.String),
-  gate: Schema.optional(GateVerdict),
   keywordIds: Schema.optional(Schema.Array(KeywordId)),
   /** Where a keyword must appear: title, body, HH skills, or text+skills. */
   location: Schema.optional(KeywordMatchLocation),
@@ -1281,13 +1245,49 @@ export type PresetFilter = typeof PresetFilter.Type
 
 export const emptyPresetFilter: PresetFilter = {}
 
+/** Fields of the removed title gate; old stored filters may still carry them. */
+const LEGACY_GATE_FIELDS: ReadonlySet<unknown> = new Set(["gate", "role_family"])
+
+const withoutLegacyRules = (rules: unknown): unknown =>
+  Array.isArray(rules)
+    ? rules.filter((rule) => !(Predicate.isObject(rule) && LEGACY_GATE_FIELDS.has(rule.field)))
+    : rules
+
+/**
+ * Removes the legacy `gate` key and every `gate` / `role_family` rule (top
+ * level and inside group branches) from a raw filter, so filters stored before
+ * the title gate was removed still decode. Anything else is passed through.
+ */
+export const stripLegacyGate = (input: unknown): unknown => {
+  if (!Predicate.isObject(input) || Array.isArray(input)) return input
+  const { gate: _gate, ...rest } = input as Record<string, unknown>
+  return {
+    ...rest,
+    ...(rest.rules === undefined ? {} : { rules: withoutLegacyRules(rest.rules) }),
+    ...(Array.isArray(rest.groups)
+      ? {
+        groups: rest.groups.map((group) =>
+          Predicate.isObject(group) && Array.isArray(group.branches)
+            ? {
+              ...group,
+              branches: group.branches.map((branch) =>
+                Predicate.isObject(branch) ? { ...branch, rules: withoutLegacyRules(branch.rules) } : branch
+              )
+            }
+            : group
+        )
+      }
+      : {})
+  }
+}
+
 /**
  * Parses a stored or submitted filter and drops values that mean "no
  * constraint": blank text, an empty keyword list and `includeArchived: false`.
  * Unknown properties (the legacy `{"all":[]}` default) are ignored.
  */
 export const parsePresetFilter = (input: unknown): PresetFilter => {
-  const decoded = Schema.decodeUnknownSync(PresetFilter)(input ?? {})
+  const decoded = Schema.decodeUnknownSync(PresetFilter)(stripLegacyGate(input ?? {}))
   const text = decoded.text?.trim() ?? ""
   const keywordIds = decoded.keywordIds === undefined
     ? []
@@ -1310,7 +1310,6 @@ export const parsePresetFilter = (input: unknown): PresetFilter => {
     ...(rules.length === 0 ? {} : { rules }),
     ...(groups.length === 0 ? {} : { groups }),
     ...(text === "" ? {} : { text }),
-    ...(decoded.gate === undefined ? {} : { gate: decoded.gate }),
     ...(keywordIds.length === 0 ? {} : { keywordIds }),
     ...(decoded.location === undefined || decoded.location === "any"
       ? {}

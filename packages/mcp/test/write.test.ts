@@ -14,9 +14,7 @@ const decision = (n: number, verdict = "apply"): DecisionRecord => ({
   userId: "u",
   vacancyId: id(n),
   vacancyTitle: `Vacancy ${n}`,
-  roleFamily: "backend",
   verdict,
-  gate: "match",
   fit: 80,
   priority: 50,
   reasons: [],
@@ -151,8 +149,7 @@ const makeFake = (options: {
         },
         descriptionText: "Мы ищем разработчика. ".repeat(100),
         skills: ["TypeScript"],
-        keywords: [],
-        titleVerdict: "reject"
+        keywords: []
       }),
     EmployersGet: () =>
       Effect.succeed({
@@ -628,7 +625,6 @@ describe("manual mode", () => {
     expect(body.application).toBeNull()
     expect(body.styleRules.join(" ")).toContain("em dash")
     expect(body.warnings.join(" ")).toContain("blacklist")
-    expect(body.warnings.join(" ")).toContain("title gate")
     expect(body.next).toContain("application_prepare_manual")
     // reading it creates nothing
     expect(calls.manual).toHaveLength(0)

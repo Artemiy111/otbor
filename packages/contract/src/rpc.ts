@@ -95,8 +95,6 @@ import {
   SyncResult,
   TelegramAccountRecord,
   TelegramLoginStatusValue,
-  TitleGateResult,
-  TitleVerdictRecord,
   VacancyDetail,
   VacancyDraft,
   VacancySummary
@@ -154,7 +152,6 @@ export const VacanciesList = Rpc.make("VacanciesList", {
   payload: Schema.Struct({
     limit: Schema.optional(Schema.Int),
     offset: Schema.optional(Schema.Int),
-    gate: Schema.optional(Schema.String),
     /** `true`: only analysed vacancies; `false`: only not analysed; omitted: all. */
     analysed: Schema.optional(Schema.Boolean),
     /** Only vacancies with an active response (submitted, submitting or queued) from this account. */
@@ -769,26 +766,8 @@ export const HhAccountRemove = Rpc.make("HhAccountRemove", {
 })
 
 /* -------------------------------------------------------------------------- */
-/* Gate and lexicon                                                           */
+/* Lexicon                                                                    */
 /* -------------------------------------------------------------------------- */
-
-export const TitlesPreview = Rpc.make("TitlesPreview", {
-  payload: Schema.Struct({
-    title: Schema.String
-  }),
-  success: TitleGateResult,
-  error: ApiError
-})
-
-export const TitlesSetUserVerdict = Rpc.make("TitlesSetUserVerdict", {
-  payload: Schema.Struct({
-    title: Schema.String,
-    verdict: Schema.Literals(["match", "unknown", "reject"]),
-    roleFamily: Schema.optional(Schema.String)
-  }),
-  success: TitleVerdictRecord,
-  error: ApiError
-})
 
 export const LexiconList = Rpc.make("LexiconList", {
   payload: Schema.Struct({
@@ -903,7 +882,7 @@ export const DecisionsList = Rpc.make("DecisionsList", {
 
 /**
  * Evaluates the vacancies that have no current decision: none at all, or one
- * made for older vacancy content, policy or gate rules. Bounded by `limit`;
+ * made for older vacancy content, or policy version. Bounded by `limit`;
  * call again while `remaining > 0`.
  */
 export const DecisionsEvaluateBatch = Rpc.make("DecisionsEvaluateBatch", {
@@ -1006,7 +985,7 @@ export const ApplicationsCreateFromDecision = Rpc.make("ApplicationsCreateFromDe
 
 /**
  * Manual mode: an application the operator chose, without a decision. Policy
- * (gate, verdict, blacklist, fit) is not consulted; at most one application per
+ * (verdict, blacklist, fit) is not consulted; at most one application per
  * (account, vacancy) still holds, so an existing one is returned with
  * `created: false`. Queues the same prepare job as a decision-based draft.
  */
@@ -1556,8 +1535,6 @@ export const OtborRpcs = RpcGroup.make(
   HhAccountUpsert,
   HhAccountSessionSet,
   HhAccountRemove,
-  TitlesPreview,
-  TitlesSetUserVerdict,
   LexiconList,
   LexiconUpsert,
   LexiconRematch,

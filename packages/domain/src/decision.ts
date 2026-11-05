@@ -1,8 +1,6 @@
 import type {
   DecisionReason,
   DecisionVerdict,
-  GateVerdict,
-  RoleFamily,
   Seniority,
   TestsPolicy,
   WorkFormat
@@ -56,7 +54,7 @@ export interface DecisionSettings {
  * Version of the decision logic (not of the filter: a filter edit changes the
  * input hash instead). Bump it when `decide` itself changes.
  */
-export const APPLY_POLICY_VERSION = 2
+export const APPLY_POLICY_VERSION = 3
 
 /**
  * Scoring constants. They only rank; they never block. They are the former
@@ -83,15 +81,10 @@ export interface DecideInput {
 
 export interface DecisionResult {
   readonly verdict: DecisionVerdict
-  /** `match` when the filter passed, `unknown` otherwise (stage 1 keeps the column). */
-  readonly gate: GateVerdict
-  readonly roleFamily: RoleFamily | null
   readonly fit: number
   readonly priority: number
   readonly reasons: ReadonlyArray<DecisionReason>
   readonly policyVersion: number
-  /** Always 0: no gate rules are involved any more. */
-  readonly rulesVersion: number
 }
 
 const reason = (
@@ -181,17 +174,12 @@ export const decide = (input: DecideInput): DecisionResult => {
     ? null
     : `analysis: ${levelFact.level} -> ${levelFact.seniority} (${levelFact.confidence.toFixed(2)})`
 
-  const gate: GateVerdict = input.filter.passed ? "match" : "unknown"
-
   const skip = (blocked: DecisionReason, fit = 0): DecisionResult => ({
     verdict: "skip",
-    gate,
-    roleFamily: null,
     fit,
     priority: 0,
     reasons: [blocked],
-    policyVersion: APPLY_POLICY_VERSION,
-    rulesVersion: 0
+    policyVersion: APPLY_POLICY_VERSION
   })
 
   // Applied first: it is a fact about this account and resume, true whatever
@@ -241,12 +229,9 @@ export const decide = (input: DecideInput): DecisionResult => {
 
   return {
     verdict: "apply",
-    gate,
-    roleFamily: null,
     fit,
     priority,
     reasons,
-    policyVersion: APPLY_POLICY_VERSION,
-    rulesVersion: 0
+    policyVersion: APPLY_POLICY_VERSION
   }
 }
