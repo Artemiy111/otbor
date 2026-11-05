@@ -106,7 +106,11 @@ const program = Effect.gen(function*() {
   )
 
   const sweepLoop = sweep.pipe(Effect.repeat(Schedule.spaced(`${sweepSeconds} seconds`)))
+  // A tick is forked, not awaited: a long crawl must not stop the next tick from
+  // starting hydration or analysis. One live run per kind is enforced per run.
   const scheduleLoop = runDueSchedules().pipe(
+    Effect.forkDetach,
+    Effect.asVoid,
     Effect.repeat(Schedule.spaced(`${scheduleSeconds} seconds`))
   )
 

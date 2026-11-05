@@ -44,7 +44,7 @@ export const createRun = (
 ): RepoEffect<string> =>
   tx
     .insert(scheduleRun)
-    .values({ scheduleId, kind, status: "running" })
+    .values({ scheduleId, kind, status: "running", heartbeatAt: new Date() })
     .returning({ id: scheduleRun.id })
     .pipe(Effect.map((rows) => rows[0]!.id))
 
@@ -56,9 +56,33 @@ export const updateDetail = (
 ): RepoEffect<void> =>
   tx
     .update(scheduleRun)
-    .set({ detail })
+    .set({ detail, heartbeatAt: new Date() })
     .where(eq(scheduleRun.id, id))
     .pipe(Effect.asVoid)
+
+/** A run with no heartbeat for this long is dead, whatever its status says. */
+export const LIVE_RUN_SECONDS = 180
+
+/** Proof of life while a run does work that reports no progress. */
+export const heartbeat = (tx: Executor, id: string): RepoEffect<void> =>
+  tx
+    .update(scheduleRun)
+    .set({ heartbeatAt: new Date() })
+    .where(sql`${scheduleRun.id} = ${id} and ${scheduleRun.status} = 'running'`)
+    .pipe(Effect.asVoid)
+
+/** True when a run of this kind is running and still beating. */
+export const hasLiveRun = (tx: Executor, kind: string): RepoEffect<boolean> =>
+  tx
+    .select({ id: scheduleRun.id })
+    .from(scheduleRun)
+    .where(
+      sql`${scheduleRun.kind} = ${kind} and ${scheduleRun.status} = 'running'
+        and coalesce(${scheduleRun.heartbeatAt}, ${scheduleRun.startedAt})
+          > now() - (${LIVE_RUN_SECONDS} * interval '1 second')`
+    )
+    .limit(1)
+    .pipe(Effect.map((rows) => rows.length > 0))
 
 export interface FinishRunInput {
   readonly status: "done" | "error"

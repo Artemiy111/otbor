@@ -151,7 +151,8 @@ export const scheduleRun = pgTable(
     detail: jsonb("detail").$type<Record<string, unknown> | null>(),
     error: text("error"),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
-    finishedAt: timestamp("finished_at", { withTimezone: true })
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    heartbeatAt: timestamp("heartbeat_at", { withTimezone: true })
   },
   (table) => [index("schedule_run_schedule_started_idx").on(table.scheduleId, table.startedAt)]
 )

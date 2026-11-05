@@ -3,6 +3,7 @@ import { Effect } from "effect"
 import { Database } from "../db/Database.ts"
 import * as ScheduleRepository from "../repositories/ScheduleRepository.ts"
 import * as ScheduleRunRepository from "../repositories/ScheduleRunRepository.ts"
+import { withRunHeartbeat } from "./scheduleHeartbeat.ts"
 import { ScheduleDispatcher, type ScheduleDispatchResult } from "./ScheduleDispatcher.ts"
 
 export interface ScheduleRunOutcome {
@@ -12,12 +13,17 @@ export interface ScheduleRunOutcome {
   readonly ok: boolean
   readonly error: string | null
   readonly result?: ScheduleDispatchResult
+  /** Not run: a run of the same kind was still alive. The schedule comes back in a minute. */
+  readonly skipped?: true
 }
 
 export interface DueScheduleOptions {
   readonly now?: Date
   readonly limit?: number
 }
+
+/** How long a deferred schedule waits before it is claimed again. */
+const DEFER_SECONDS = 60
 
 const errorMessage = (error: ApiError): string => {
   if (error._tag === "NotFound") return `${error.entity} not found: ${error.id}`
@@ -69,9 +75,28 @@ export const runDueSchedules = (
 
     yield* Effect.logInfo(`Running ${due.length} due schedule(s)`)
 
-    const outcomes: Array<ScheduleRunOutcome> = []
+    const runOne = (schedule: ScheduleRepository.StoredSchedule): Effect.Effect<ScheduleRunOutcome> =>
+      Effect.gen(function*() {
+      // One live run per kind: a second analysis or hydration pass would only
+      // fight the first for the same rows. The schedule returns shortly.
+      const busy = yield* database.asOwner((tx) => ScheduleRunRepository.hasLiveRun(tx, schedule.kind)).pipe(
+        Effect.catchCause(() => Effect.succeed(false))
+      )
+      if (busy) {
+        yield* database
+          .asOwner((tx) => ScheduleRepository.deferNext(tx, schedule.id, DEFER_SECONDS))
+          .pipe(Effect.catchCause((cause) => Effect.logError(`schedule ${schedule.id}: could not defer`, cause)))
+        yield* Effect.logInfo(`schedule ${schedule.id}: ${schedule.kind} is still running, deferred`)
+        return {
+          scheduleId: schedule.id,
+          targetId: schedule.targetId,
+          kind: schedule.kind,
+          ok: true,
+          error: null,
+          skipped: true as const
+        } satisfies ScheduleRunOutcome
+      }
 
-    for (const schedule of due) {
       const runId = yield* database
         .asOwner((tx) => ScheduleRunRepository.createRun(tx, schedule.id, schedule.kind))
         .pipe(Effect.catchCause((cause) =>
@@ -87,7 +112,7 @@ export const runDueSchedules = (
                 Effect.logError(`schedule ${schedule.id}: could not finish run`, cause)
               ))
 
-      const outcome = yield* dispatcher.run(schedule, { runId: runId ?? undefined }).pipe(
+      const outcome = yield* withRunHeartbeat(database, runId, dispatcher.run(schedule, { runId: runId ?? undefined })).pipe(
         Effect.matchEffect({
           onFailure: (error: ApiError) =>
             finishRun("error", null, errorMessage(error)).pipe(
@@ -134,8 +159,18 @@ export const runDueSchedules = (
         )
       )
 
-      outcomes.push(outcome)
-    }
+      return outcome
+      })
+
+    // Kinds run side by side; inside a kind schedules go one after another.
+    const lanes = new Map<string, Array<ScheduleRepository.StoredSchedule>>()
+    for (const schedule of due) lanes.set(schedule.kind, [...(lanes.get(schedule.kind) ?? []), schedule])
+    const laneOutcomes = yield* Effect.forEach(
+      [...lanes.values()],
+      (lane) => Effect.forEach(lane, runOne),
+      { concurrency: "unbounded" }
+    )
+    const outcomes = laneOutcomes.flat()
 
     return outcomes
   })

@@ -267,6 +267,18 @@ export const claimDue = (
     return claimed
   })
 
+/** Puts a claimed schedule back: it did not run, so it is due again shortly. */
+export const deferNext = (
+  tx: Executor,
+  id: string,
+  seconds: number
+): RepoEffect<void> =>
+  tx
+    .update(schedule)
+    .set({ nextRunAt: new Date(Date.now() + seconds * 1000) })
+    .where(eq(schedule.id, id))
+    .pipe(Effect.asVoid)
+
 export const setError = (
   tx: Executor,
   id: string,

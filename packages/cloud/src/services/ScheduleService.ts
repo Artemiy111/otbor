@@ -1,11 +1,12 @@
 import type { ApiError, CrawlSchedule, ScheduleId, ScheduleRun, SourceSyncKind } from "@otbor/contract"
-import { InvalidInput, NotFound } from "@otbor/contract"
+import { Conflict, InvalidInput, NotFound } from "@otbor/contract"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "../db/Database.ts"
 import * as ScheduleRepository from "../repositories/ScheduleRepository.ts"
 import * as ScheduleRunRepository from "../repositories/ScheduleRunRepository.ts"
 import { ScheduleDispatcher } from "./ScheduleDispatcher.ts"
 import { CurrentUser } from "./CurrentUser.ts"
+import { withRunHeartbeat } from "./scheduleHeartbeat.ts"
 import { toStorageError } from "./support.ts"
 
 export interface ScheduleUpsertInput {
@@ -154,7 +155,7 @@ export class ScheduleService extends Context.Service<ScheduleService, ScheduleSe
                     Effect.logError(`schedule ${schedule.id}: could not finish run`, cause)
                   ))
 
-          yield* dispatcher.run(stored, { runId: runId ?? undefined }).pipe(
+          yield* withRunHeartbeat(database, runId, dispatcher.run(stored, { runId: runId ?? undefined })).pipe(
             Effect.matchEffect({
               onFailure: (error) =>
                 finishRun("error", null, errorMessage(error)).pipe(
@@ -187,6 +188,16 @@ export class ScheduleService extends Context.Service<ScheduleService, ScheduleSe
 
           if (existing === null) {
             return yield* new NotFound({ entity: "Schedule", id })
+          }
+
+          const busy = yield* database
+            .asOwner((tx) => ScheduleRunRepository.hasLiveRun(tx, existing.kind))
+            .pipe(Effect.mapError(toStorageError("schedule.runNow")))
+          if (busy) {
+            return yield* new Conflict({
+              entity: "Schedule",
+              message: `запуск вида ${existing.kind} уже идёт, дождитесь его завершения`
+            })
           }
 
           const now = new Date()

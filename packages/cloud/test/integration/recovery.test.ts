@@ -5,6 +5,7 @@ import { Effect } from "effect"
 import { Database } from "../../src/db/Database.ts"
 import { schedule, scheduleRun, searchQuery, searchRun } from "../../src/db/tables.ts"
 import { recoverInterruptedRuns } from "../../src/services/recovery.ts"
+import * as ScheduleRunRepository from "../../src/repositories/ScheduleRunRepository.ts"
 import * as support from "./support.ts"
 
 const enabled = support.integrationEnabled
@@ -112,6 +113,64 @@ if (!enabled || serverUrl === null) {
       expect(freshScheduleRun?.[0]?.error).toBeNull()
       expect(freshSearchRun?.[0]?.status).toBe("running")
       expect(freshSearchRun?.[0]?.finishedAt).toBeNull()
+    })
+
+    test("a run is alive by its heartbeat, not by its start time", async () => {
+      const scheduleId = randomUUID()
+      const beatingId = randomUUID()
+      const silentId = randomUUID()
+      await ownerSql(sql`
+        insert into schedule (id, user_id, kind, target_id, interval_minutes, enabled, next_run_at)
+        values (${scheduleId}, null, 'analysis', 'global', 10, true, now())
+      `)
+      await ownerSql(sql`
+        insert into schedule_run (id, schedule_id, kind, status, started_at, heartbeat_at)
+        values
+          (${beatingId}, ${scheduleId}, 'analysis', 'running', now() - interval '1 hour', now() - interval '10 seconds'),
+          (${silentId}, ${scheduleId}, 'analysis', 'running', now() - interval '1 hour', now() - interval '10 minutes')
+      `)
+
+      const live = await support.runAs(
+        "owner",
+        Effect.gen(function*() {
+          const database = yield* Database
+          return yield* database.asOwner((tx) => ScheduleRunRepository.hasLiveRun(tx, "analysis"))
+        })
+      )
+      expect(live).toBe(true)
+
+      await support.runAs(
+        "owner",
+        Effect.gen(function*() {
+          const database = yield* Database
+          return yield* database.asOwner((tx) => recoverInterruptedRuns(tx))
+        })
+      )
+      const rows = await support.runAs(
+        "owner",
+        Effect.gen(function*() {
+          const database = yield* Database
+          return yield* database.asOwner((tx) =>
+            Effect.all([
+              tx.select().from(scheduleRun).where(eq(scheduleRun.id, beatingId)),
+              tx.select().from(scheduleRun).where(eq(scheduleRun.id, silentId))
+            ])
+          )
+        })
+      )
+      expect(rows[0]?.[0]?.status).toBe("running")
+      expect(rows[1]?.[0]?.status).toBe("error")
+
+      // Once the beating run ends, nothing blocks the next one.
+      await ownerSql(sql`update schedule_run set status = 'done' where id = ${beatingId}`)
+      const after = await support.runAs(
+        "owner",
+        Effect.gen(function*() {
+          const database = yield* Database
+          return yield* database.asOwner((tx) => ScheduleRunRepository.hasLiveRun(tx, "analysis"))
+        })
+      )
+      expect(after).toBe(false)
     })
   })
 }

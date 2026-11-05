@@ -3,6 +3,7 @@ import { Effect } from "effect"
 import type { DatabaseError, Executor } from "../db/Database.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
+import { LIVE_RUN_SECONDS } from "../repositories/ScheduleRunRepository.ts"
 import { nextSequence, reconcileJob, targetFor } from "./jobs.ts"
 
 /**
@@ -39,7 +40,7 @@ export const recoverInterruptedRuns = (
           detail = coalesce(detail, '{}'::jsonb) || '{"interrupted": true}'::jsonb,
           finished_at = now()
       where status = 'running'
-        and started_at < now() - (${STALE_RUN_MINUTES} * interval '1 minute')
+        and coalesce(heartbeat_at, started_at) < now() - (${LIVE_RUN_SECONDS} * interval '1 second')
       returning id
     `)
     const searchResult = yield* tx.execute(sql`
