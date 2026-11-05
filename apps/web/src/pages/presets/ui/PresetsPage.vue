@@ -135,6 +135,25 @@ const startEdit = () => {
   notice.value = null
 }
 
+/** A system preset is shared and read-only; a copy is the user's own and editable. */
+const duplicate = async () => {
+  const source = selected.value
+  if (source === null) return
+  notice.value = null
+  try {
+    const saved = await upsertMutation.mutateAsync({
+      kind: source.kind,
+      title: `${source.title} (копия)`,
+      filter: source.filter
+    })
+    selectedId.value = saved.id
+    editing.value = saved.id
+    notice.value = "Копия создана, можно менять правила."
+  } catch {
+    // The mutation error is rendered inside the editor.
+  }
+}
+
 const cancelEdit = () => {
   editing.value = null
   upsertMutation.reset()
@@ -238,6 +257,7 @@ const remove = async () => {
           :error="removeError"
           @edit="startEdit"
           @remove="remove"
+          @duplicate="duplicate"
         />
 
         <EmptyState

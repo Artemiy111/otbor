@@ -81,7 +81,7 @@ if (!enabled || serverUrl === null) {
     })
 
   describe("apply filter", () => {
-    test("without a row the built-in default applies, and it keeps the old behaviour", async () => {
+    test("without a row the built-in default applies; it judges the role, not salary or work format", async () => {
       const tenant = await support.seedTenant("af-default")
       const view = await support.applyFilterGet(tenant.userId, { hhAccountId: tenant.accountId })
       expect(view).toMatchObject({ source: "default", id: null, minFit: 45, tests: "human", freshHalfLifeHours: 72 })
@@ -98,24 +98,24 @@ if (!enabled || serverUrl === null) {
       })
 
       expect((await evaluate(tenant.userId, { vacancyId: good })).verdict).toBe("apply")
-      expect((await evaluate(tenant.userId, { vacancyId: cheap })).reasons[0]!.code).toBe("blocked_filter")
-      expect((await evaluate(tenant.userId, { vacancyId: office })).reasons[0]!.code).toBe("blocked_filter")
+      // Salary and work format are personal: the template does not block on them.
+      expect((await evaluate(tenant.userId, { vacancyId: cheap })).verdict).toBe("apply")
+      expect((await evaluate(tenant.userId, { vacancyId: office })).verdict).toBe("apply")
       expect((await evaluate(tenant.userId, { vacancyId: other })).reasons[0]!.code).toBe("blocked_filter")
     })
 
     test("a skip names the failed rules", async () => {
       const tenant = await support.seedTenant("af-reasons")
-      const cheapOffice = await support.seedVacancyTitled("af-reasons-1", "DevOps engineer reasons", {
-        salaryFrom: 100_000,
-        workFormats: ["office"]
+      const sales = await support.seedVacancyTitled("af-reasons-1", "DevOps менеджер по продажам", {
+        salaryFrom: 400_000,
+        workFormats: ["remote"]
       })
 
-      const decision = await evaluate(tenant.userId, { vacancyId: cheapOffice })
+      const decision = await evaluate(tenant.userId, { vacancyId: sales })
       expect(decision).toMatchObject({ verdict: "skip", fit: 0, priority: 0 })
       const reason = decision.reasons[0]!
       expect(reason.code).toBe("blocked_filter")
-      expect(reason.detail).toContain("salary >= 250000")
-      expect(reason.detail).toContain("work_format in remote")
+      expect(reason.detail).toContain("title not_contains продаж")
       // The passing rules are not listed.
       expect(reason.detail).not.toContain("title contains devops")
     })

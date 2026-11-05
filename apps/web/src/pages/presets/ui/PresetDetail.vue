@@ -2,7 +2,7 @@
 import { computed, ref } from "vue"
 import { useQuery } from "@pinia/colada"
 import type { PresetRecord } from "@otbor/contract"
-import { CircleAlert, Pencil, Trash2 } from "@lucide/vue"
+import { CircleAlert, Copy, Pencil, Trash2 } from "@lucide/vue"
 import { presetApi, presetKeys } from "@/entities/preset"
 import { describeError, formatDate } from "@/shared/lib"
 import {
@@ -33,7 +33,7 @@ const props = withDefaults(
   { removing: false, error: null }
 )
 
-const emit = defineEmits<{ edit: []; remove: [] }>()
+const emit = defineEmits<{ edit: []; remove: []; duplicate: [] }>()
 
 const rules = computed(() => presetRules(props.preset.filter))
 const groups = computed(() => props.preset.filter.groups ?? [])
@@ -81,8 +81,15 @@ const keywordCount = computed(() => props.preset.filter.keywordIds?.length ?? 0)
             </CardDescription>
           </div>
 
+          <div v-if="props.preset.system" class="flex shrink-0 flex-wrap items-center gap-2">
+            <Button size="sm" variant="outline" @click="emit('duplicate')">
+              <Copy class="h-3.5 w-3.5" />
+              Сделать копию
+            </Button>
+          </div>
+
           <div
-            v-if="!props.preset.system"
+            v-else
             class="flex shrink-0 flex-wrap items-center gap-2"
           >
             <template v-if="confirmDelete">
@@ -160,7 +167,7 @@ const keywordCount = computed(() => props.preset.filter.keywordIds?.length ?? 0)
 
         <p class="text-[11px] text-muted-foreground">
           Правила объединяются через «и», внутри группы варианты через «или».
-          <template v-if="props.preset.system">Системный пресет доступен только для чтения.</template>
+          <template v-if="props.preset.system">Системный пресет общий и доступен только для чтения: сделайте копию, чтобы изменить правила.</template>
         </p>
       </CardContent>
     </Card>

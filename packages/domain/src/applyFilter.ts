@@ -25,7 +25,15 @@ export const DEVOPS_TITLE_STEMS: ReadonlyArray<string> = [
   "devops",
   "dev ops",
   "dev-ops",
+  "devsecops",
+  "dev sec ops",
+  "dev-sec-ops",
+  "mlops",
+  "ml ops",
+  "ml-ops",
   "девопс",
+  "девсекопс",
+  "млопс",
   "sre",
   "site reliability",
   "site-reliability",
@@ -80,23 +88,8 @@ export const DEVOPS_APPLY_FILTER: PresetFilter = {
     ...DEVOPS_TITLE_REJECT_STEMS.map((stem) => title("not_contains", stem))
   ],
   groups: [
-    // Salary: from 250 000 RUB, or no salary stated. A foreign currency cannot
-    // be compared without a rate, so it is not a block (as before).
-    {
-      branches: [
-        { rules: [{ field: "salary", op: "gte", value: 250_000, orMissing: true }] },
-        { rules: [{ field: "salary_currency", op: "in", value: ["USD", "EUR", "KZT", "BYN"] }] }
-      ]
-    },
-    // `work_format in a,b` means "has all of them", so "remote or hybrid" is
-    // one branch per format. An unknown format is not a block (as before).
-    {
-      branches: [
-        { rules: [{ field: "work_format", op: "in", value: ["remote"] }] },
-        { rules: [{ field: "work_format", op: "in", value: ["hybrid"] }] },
-        { rules: [{ field: "work_format", op: "in", value: ["unknown"] }] }
-      ]
-    },
+    // Salary and work format are deliberately not part of the template: they
+    // are personal and belong to the user's own apply filter.
     // Identity: a DevOps stem in the title, or a confident analysis role.
     {
       branches: [

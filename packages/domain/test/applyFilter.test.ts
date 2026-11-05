@@ -48,7 +48,15 @@ describe("rule labels", () => {
       ]
     })
     expect(label).toBe("any of: title contains devops | title contains sre & salary > 1")
-    const long = describeGroup(DEFAULT_APPLY_FILTER.filter.groups![2]!)
+    const long = describeGroup(DEFAULT_APPLY_FILTER.filter.groups![0]!)
     expect(long.length).toBeLessThanOrEqual(160)
+  })
+})
+
+describe("devops title stems", () => {
+  test("cover devsecops and mlops spellings", () => {
+    for (const stem of ["devsecops", "dev-sec-ops", "mlops", "ml ops", "девсекопс", "млопс"]) {
+      expect(DEVOPS_TITLE_STEMS).toContain(stem)
+    }
   })
 })
