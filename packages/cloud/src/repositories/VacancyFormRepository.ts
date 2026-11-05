@@ -189,11 +189,17 @@ export const recordFailure = (
   input: { readonly vacancyId: string; readonly message: string }
 ): RepoEffect<void> =>
   tx
-    .execute(sql`
-      update vacancy_form_state
-         set last_error = ${input.message}, last_error_at = now()
-       where vacancy_id = ${input.vacancyId}
-    `)
+    .insert(vacancyFormState)
+    .values({
+      vacancyId: input.vacancyId,
+      status: "unreadable",
+      lastError: input.message,
+      lastErrorAt: new Date()
+    })
+    .onConflictDoUpdate({
+      target: vacancyFormState.vacancyId,
+      set: { lastError: input.message, lastErrorAt: sql`now()` }
+    })
     .pipe(Effect.asVoid)
 
 /**
