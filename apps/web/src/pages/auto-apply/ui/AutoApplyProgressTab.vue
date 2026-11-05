@@ -125,6 +125,12 @@ const columns: ColumnDef<AutoApplyProgressItem>[] = [
       ])
   },
   {
+    id: "resume",
+    accessorFn: (row) => row.resumeTitle ?? "",
+    header: sortableHeader<AutoApplyProgressItem>("Резюме"),
+    cell: ({ row }) => row.original.resumeTitle ?? "—"
+  },
+  {
     id: "mode",
     accessorFn: (row) => row.autoRun,
     header: sortableHeader<AutoApplyProgressItem>("Режим"),
@@ -226,7 +232,8 @@ const error = computed(() => (query.error.value === null ? null : describeError(
           <SheetHeader>
             <SheetTitle>{{ selected.title }}</SheetTitle>
             <SheetDescription>
-              {{ selected.employerName ?? "Компания не указана" }} · {{ autoRunLabel(selected.autoRun) }}
+              {{ selected.employerName ?? "Компания не указана" }} · {{ autoRunLabel(selected.autoRun) }} ·
+              резюме: {{ selected.resumeTitle ?? "не выбрано" }}
             </SheetDescription>
           </SheetHeader>
           <div class="mt-4 space-y-4 text-sm">

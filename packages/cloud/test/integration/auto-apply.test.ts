@@ -713,6 +713,177 @@ if (!enabled || serverUrl === null) {
     }, 60_000)
   })
   /* ------------------------------------------------------------------------ */
+  /* Which resume                                                             */
+  /* ------------------------------------------------------------------------ */
+
+  describe("resume resolution", () => {
+    const resumesOf = (accountId: string) =>
+      owner((tx) =>
+        tx
+          .execute(sql`select id, title, is_active from resume where hh_account_id = ${accountId} order by created_at, id`)
+          .pipe(Effect.map((r) => r.rows as unknown as ReadonlyArray<{ id: string; title: string; is_active: boolean }>))
+      )
+
+    /** The setup resume (active) plus a second one; `activeSecond` and the update order are set by SQL. */
+    const withTwoResumes = async (ctx: Ctx, label: string, options: { activeSecond?: boolean; secondNewer?: boolean } = {}) => {
+      await createResume(ctx.tenant.userId, ctx.tenant.accountId, `aa-resume2-${label}`)
+      const [first, second] = await resumesOf(ctx.tenant.accountId)
+      // A trigger stamps updated_at with now(): the resume touched in the LATER transaction is the newer.
+      const touch = (id: string, active: boolean) =>
+        owner((tx) => tx.execute(sql`update resume set is_active = ${active} where id = ${id}`))
+      const secondActive = options.activeSecond === true
+      if (options.secondNewer === true) {
+        await touch(first!.id, true)
+        await touch(second!.id, secondActive)
+      } else {
+        await touch(second!.id, secondActive)
+        await touch(first!.id, true)
+      }
+      return { first: first!, second: second! }
+    }
+
+    const appRows = (accountId: string) =>
+      owner((tx) =>
+        tx
+          .execute(sql`select id, resume_id, state, auto_run, last_error from application where hh_account_id = ${accountId} order by created_at, id`)
+          .pipe(
+            Effect.map(
+              (r) =>
+                r.rows as unknown as ReadonlyArray<{
+                  id: string
+                  resume_id: string | null
+                  state: string
+                  auto_run: string | null
+                  last_error: string | null
+                }>
+            )
+          )
+      )
+
+    const jobPayloads = (accountId: string, stage: string) =>
+      owner((tx) =>
+        tx
+          .execute(sql`select payload from harness_jobs where hh_account_id = ${accountId} and stage = ${stage} order by created_at`)
+          .pipe(Effect.map((r) => r.rows.map((row) => (row as { payload: Record<string, any> }).payload)))
+      )
+
+    test("a decision without a resume uses the single active resume for the application, the letter and the submit", async () => {
+      const ctx = await setup("aa-res-one")
+      const { first, second } = await withTwoResumes(ctx, "aa-res-one")
+      await configure(ctx, { autoMode: "auto" })
+      await decided(ctx, "aa-res-one-1", 90)
+
+      const view = await support.runAs(
+        ctx.tenant.userId,
+        Effect.gen(function*() {
+          return yield* (yield* AutoApplyViewService).preview({ hhAccountId: ctx.tenant.accountId })
+        })
+      )
+      expect(view.willTake[0]).toMatchObject({ resumeId: first.id, resumeTitle: first.title })
+      expect(view.fallbackResume).toMatchObject({ id: first.id, title: first.title, others: [second.title] })
+
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ created: 1 })
+      const [app] = await appRows(ctx.tenant.accountId)
+      expect(app!.resume_id).toBe(first.id)
+
+      await readForms(ctx, responseHtml)
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ writingEnqueued: 1 })
+      const [writing] = await jobPayloads(ctx.tenant.accountId, "inference")
+      expect(String(writing!.prompt)).toContain(`Resume ${first.title}`)
+      expect(String(writing!.prompt)).not.toContain(`Resume ${second.title}`)
+
+      await writeLetters(ctx, GOOD_DRAFT)
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ submitQueued: 1 })
+      const [submit] = await jobPayloads(ctx.tenant.accountId, "submit")
+      expect(submit!.resumeTitle).toBe(first.title)
+    }, 120_000)
+
+    test("with several active resumes the most recently updated one is used", async () => {
+      const ctx = await setup("aa-res-two")
+      const { second } = await withTwoResumes(ctx, "aa-res-two", { activeSecond: true, secondNewer: true })
+      await configure(ctx, { autoMode: "drafts" })
+      await decided(ctx, "aa-res-two-1", 90)
+      await tick(ctx.tenant.userId)
+      const [app] = await appRows(ctx.tenant.accountId)
+      expect(app!.resume_id).toBe(second.id)
+    }, 60_000)
+
+    test("no active resume and several resumes: parked for a human, no writing job", async () => {
+      const ctx = await setup("aa-res-none")
+      await withTwoResumes(ctx, "aa-res-none")
+      await owner((tx) => tx.execute(sql`update resume set is_active = false where hh_account_id = ${ctx.tenant.accountId}`))
+      await configure(ctx, { autoMode: "auto" })
+      await decided(ctx, "aa-res-none-1", 90)
+
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ created: 1, needsHuman: 1 })
+      const [app] = await appRows(ctx.tenant.accountId)
+      expect(app!.state).toBe("needs_human")
+      expect(app!.resume_id).toBeNull()
+      expect(app!.last_error).toContain("не выбрано резюме для откликов")
+      await readForms(ctx, responseHtml)
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ writingEnqueued: 0 })
+      expect(await writingJobs(ctx.tenant.accountId)).toHaveLength(0)
+      expect(await submitCount(app!.id)).toBe(0)
+    }, 60_000)
+
+    test("an existing auto draft without a resume is backfilled before the letter", async () => {
+      const ctx = await setup("aa-res-fill")
+      const { first } = await withTwoResumes(ctx, "aa-res-fill")
+      await configure(ctx, { autoMode: "drafts" })
+      await decided(ctx, "aa-res-fill-1", 90)
+      await tick(ctx.tenant.userId)
+      await owner((tx) => tx.execute(sql`update application set resume_id = null where hh_account_id = ${ctx.tenant.accountId}`))
+      await readForms(ctx, responseHtml)
+
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ writingEnqueued: 1 })
+      const [app] = await appRows(ctx.tenant.accountId)
+      expect(app!.resume_id).toBe(first.id)
+      const [writing] = await jobPayloads(ctx.tenant.accountId, "inference")
+      expect(String(writing!.prompt)).toContain(`Resume ${first.title}`)
+    }, 60_000)
+
+    test("a backfill that would collide with an existing (account, vacancy, resume) row is parked", async () => {
+      const ctx = await setup("aa-res-clash")
+      const { first } = await withTwoResumes(ctx, "aa-res-clash")
+      await configure(ctx, { autoMode: "drafts" })
+      const { vacancyId } = await decided(ctx, "aa-res-clash-1", 90)
+      await tick(ctx.tenant.userId)
+      await readForms(ctx, responseHtml)
+      await owner((tx) =>
+        Effect.gen(function*() {
+          yield* tx.execute(sql`update application set resume_id = null where hh_account_id = ${ctx.tenant.accountId}`)
+          yield* tx.execute(sql`insert into application (user_id, hh_account_id, vacancy_id, resume_id, state)
+            values (${ctx.tenant.userId}, ${ctx.tenant.accountId}, ${vacancyId}, ${first.id}, 'draft')`)
+        })
+      )
+
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ needsHuman: 1, writingEnqueued: 0 })
+      const rows = await appRows(ctx.tenant.accountId)
+      const auto = rows.find((row) => row.auto_run !== null)!
+      expect(auto.state).toBe("needs_human")
+      expect(auto.resume_id).toBeNull()
+      expect(auto.last_error).toContain("не выбрано резюме для откликов")
+    }, 60_000)
+
+    test("manual applications without a resume are never touched", async () => {
+      const ctx = await setup("aa-res-manual")
+      await withTwoResumes(ctx, "aa-res-manual")
+      await configure(ctx, { autoMode: "drafts" })
+      const vacancyId = await support.seedVacancyTitled("aa-res-manual-1", "DevOps engineer manual", { salaryFrom: 300_000 })
+      const id = await support.seedApplication({
+        userId: ctx.tenant.userId,
+        accountId: ctx.tenant.accountId,
+        vacancyId,
+        state: "draft"
+      })
+      await tick(ctx.tenant.userId)
+      await tick(ctx.tenant.userId)
+      const [app] = await appRows(ctx.tenant.accountId)
+      expect(app).toMatchObject({ id, resume_id: null, state: "draft", auto_run: null })
+    }, 60_000)
+  })
+
+  /* ------------------------------------------------------------------------ */
   /* Preview and progress                                                     */
   /* ------------------------------------------------------------------------ */
 

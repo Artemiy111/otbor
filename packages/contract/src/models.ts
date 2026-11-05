@@ -1490,7 +1490,9 @@ export const AutoApplyCandidate = Schema.Struct({
   salaryFrom: Schema.NullOr(Schema.Int),
   salaryTo: Schema.NullOr(Schema.Int),
   salaryCurrency: Schema.NullOr(Schema.String),
+  /** The resume the auto-apply WILL use (the decision's, else the account fallback); null: none resolvable. */
   resumeId: Schema.NullOr(ResumeId),
+  resumeTitle: Schema.NullOr(Schema.String),
   /** 1-based position in the final order (willTake first, then next). */
   rank: Schema.Int
 })
@@ -1516,6 +1518,17 @@ export const AutoApplyPreviewResult = Schema.Struct({
     remaining: Schema.Int,
     oldest: Schema.NullOr(Schema.String)
   }),
+  /**
+   * Set when the candidates use the account fallback resume (decision without a
+   * resume): the chosen one and the other resumes of the account.
+   */
+  fallbackResume: Schema.NullOr(
+    Schema.Struct({
+      id: ResumeId,
+      title: Schema.String,
+      others: Schema.Array(Schema.String)
+    })
+  ),
   /** The next run's selection: min(batchSize, remaining) items in final order. */
   willTake: Schema.Array(AutoApplyCandidate),
   /** The following (up to 20) after `willTake`. */
@@ -1564,6 +1577,8 @@ export const AutoApplyProgressItem = Schema.Struct({
   vacancyId: VacancyId,
   title: Schema.String,
   employerName: Schema.NullOr(Schema.String),
+  /** Title of the application's resume; null while it has none. */
+  resumeTitle: Schema.NullOr(Schema.String),
   autoRun: Schema.Literals(["drafts", "auto"]),
   state: ApplicationState,
   stage: AutoApplyStage,

@@ -17,6 +17,7 @@ import * as ApplyFilterRepository from "../repositories/ApplyFilterRepository.ts
 import * as DecisionRepository from "../repositories/DecisionRepository.ts"
 import { FORM_TTL_MS } from "../repositories/VacancyFormRepository.ts"
 import { ApplicationService } from "./ApplicationService.ts"
+import { accountResumeTitles, type ApplyResume, resolveApplyResume } from "./applyResume.ts"
 import { ApplyFilterService } from "./ApplyFilterService.ts"
 import { CurrentUser } from "./CurrentUser.ts"
 import { toStorageError } from "./support.ts"
@@ -45,6 +46,7 @@ interface ProgressRow {
   readonly vacancy_id: string
   readonly title: string | null
   readonly employer_name: string | null
+  readonly resume_title: string | null
   readonly auto_run: "drafts" | "auto"
   readonly state: ApplicationState
   readonly last_error: string | null
@@ -180,7 +182,16 @@ export class AutoApplyViewService extends Context.Service<AutoApplyViewService, 
                 } satisfies DecisionRepository.AutoApplyCandidateOptions
                 const candidates = yield* DecisionRepository.autoApplyCandidateRows(tx, userId, options)
                 const counts = yield* DecisionRepository.autoApplyCounts(tx, userId, options)
-                return { takeCount, candidates, counts }
+                // The resume each candidate WILL use: the very function the runner calls.
+                const resolved = new Map<string, ApplyResume | null>()
+                for (const row of candidates) {
+                  const key = row.resume_id ?? ""
+                  if (!resolved.has(key)) {
+                    resolved.set(key, yield* resolveApplyResume(tx, userId, input.hhAccountId, row.resume_id))
+                  }
+                }
+                const allResumes = yield* accountResumeTitles(tx, userId, input.hhAccountId)
+                return { takeCount, candidates, counts, resolved, allResumes }
               })
             )
             .pipe(Effect.mapError(toStorageError("autoApply.preview")))
@@ -197,12 +208,24 @@ export class AutoApplyViewService extends Context.Service<AutoApplyViewService, 
               salaryFrom: row.salary_from,
               salaryTo: row.salary_to,
               salaryCurrency: row.salary_currency,
-              resumeId: row.resume_id as AutoApplyCandidate["resumeId"],
+              resumeId: (view.resolved.get(row.resume_id ?? "")?.id ?? null) as AutoApplyCandidate["resumeId"],
+              resumeTitle: view.resolved.get(row.resume_id ?? "")?.title ?? null,
               rank: index + 1
             })
           )
 
+          const fallback = [...view.resolved.values()].find((value) => value !== null && value.fallback)
+          const fallbackResume =
+            fallback === undefined || fallback === null || view.allResumes.length < 2
+              ? null
+              : {
+                  id: fallback.id as NonNullable<AutoApplyCandidate["resumeId"]>,
+                  title: fallback.title,
+                  others: view.allResumes.filter((r) => r.id !== fallback.id).map((r) => r.title)
+                }
+
           return {
+            fallbackResume,
             settings: {
               autoMode: settings.autoMode,
               sort: settings.sort,
@@ -230,7 +253,7 @@ export class AutoApplyViewService extends Context.Service<AutoApplyViewService, 
             .asUser(userId, (tx) =>
               tx
                 .execute(sql`
-                  select a.id, a.vacancy_id, v.title, e.name as employer_name, a.auto_run, a.state,
+                  select a.id, a.vacancy_id, v.title, e.name as employer_name, r.title as resume_title, a.auto_run, a.state,
                     a.last_error, a.created_at, a.updated_at, a.submitted_at,
                     fs.status as form_status, fs.checked_at as form_checked_at, ver.form_hash,
                     kit.letter as kit_letter,
@@ -244,6 +267,7 @@ export class AutoApplyViewService extends Context.Service<AutoApplyViewService, 
                   from application a
                   join vacancy v on v.id = a.vacancy_id
                   left join employer e on e.id = v.employer_id
+                  left join resume r on r.id = a.resume_id
                   left join vacancy_form_state fs on fs.vacancy_id = a.vacancy_id
                   left join vacancy_form_version ver on ver.id = fs.current_version_id
                   left join lateral (
@@ -304,6 +328,7 @@ export class AutoApplyViewService extends Context.Service<AutoApplyViewService, 
               vacancyId: row.vacancy_id as AutoApplyProgressItem["vacancyId"],
               title: row.title ?? "",
               employerName: row.employer_name,
+              resumeTitle: row.resume_title,
               autoRun: row.auto_run,
               state: row.state,
               stage,

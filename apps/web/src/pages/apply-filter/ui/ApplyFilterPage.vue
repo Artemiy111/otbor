@@ -219,7 +219,10 @@ const sourceHint = computed(() => {
         </Select>
       </div>
       <div class="space-y-1">
-        <Label class="text-xs">Резюме</Label>
+        <Label class="flex items-center gap-1 text-xs">
+          Резюме
+          <HelpHint :text="applyFilterHelp.allResumes" label="все резюме аккаунта" />
+        </Label>
         <Select v-model="resumeSelection" :disabled="busy">
           <SelectTrigger class="h-8 w-[280px] text-sm"><SelectValue /></SelectTrigger>
           <SelectContent>

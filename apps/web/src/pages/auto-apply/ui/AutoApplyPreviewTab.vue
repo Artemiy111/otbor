@@ -81,6 +81,14 @@ const columns: ColumnDef<AutoApplyCandidate>[] = [
     cell: ({ row }) => row.original.employerName ?? "—"
   },
   {
+    id: "resume",
+    accessorFn: (row) => row.resumeTitle ?? "",
+    header: sortableHeader<AutoApplyCandidate>("Резюме"),
+    cell: ({ row }) =>
+      row.original.resumeTitle ??
+      h("span", { class: "text-destructive" }, "не выбрано")
+  },
+  {
     id: "fit",
     accessorFn: (row) => row.fit,
     header: sortableHeader<AutoApplyCandidate>("Fit", "right"),
@@ -200,6 +208,11 @@ const error = computed(() => (query.error.value === null ? null : describeError(
         порога: {{ data.excluded.belowMinPriority }}.
         <HelpHint :text="autoApplyHelp.minPriority" label="мин. приоритет" />
         <HelpHint :text="autoApplyHelp.budget" label="бюджет" />
+      </p>
+
+      <p v-if="data.fallbackResume" class="text-xs text-muted-foreground">
+        Откликаемся резюме «{{ data.fallbackResume.title }}». Другие резюме аккаунта:
+        {{ data.fallbackResume.others.join(", ") }}.
       </p>
 
       <p v-if="shortNote && willTake.length > 0" class="text-xs text-muted-foreground">{{ shortNote }}</p>

@@ -23,6 +23,7 @@ import * as QueueRepository from "../repositories/QueueRepository.ts"
 import * as VacancyFormRepository from "../repositories/VacancyFormRepository.ts"
 import { DRAFT_PROMPT_VERSION } from "../writing/prompts.ts"
 import { ApplicationService } from "./ApplicationService.ts"
+import { NO_RESUME_MESSAGE, resolveApplyResume } from "./applyResume.ts"
 import { checkKit, type KitProblem } from "./applyRules.ts"
 import { CurrentUser } from "./CurrentUser.ts"
 import { inferenceJob } from "./jobs.ts"
@@ -254,23 +255,38 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
               .pipe(Effect.mapError(toStorageError("autoApply.park")), Effect.asVoid)
 
           /**
-           * The resume a letter is written from: the application's own, else the
-           * account's active one (hh picks the default resume for a response
-           * without one), else the only resume.
+           * An auto application that was made before the resume was resolved
+           * (resume_id NULL): sets the resolved resume, guarded by the unique index
+           * (account, vacancy, resume). Only `auto_run` rows, only while still NULL.
+           * Returns the effective resume id, or a reason to park it.
            */
-          const resumeForLetter = (tx: Executor, app: RunnerApplication) =>
-            app.resumeId !== null
-              ? Effect.succeed(app.resumeId)
-              : tx
-                  .execute(sql`
-                    select id from resume
-                    where user_id = ${userId} and hh_account_id = ${app.hhAccountId}
-                    order by is_active desc, updated_at desc
+          const backfillResume = (app: RunnerApplication) =>
+            database
+              .asUser(userId, (tx) =>
+                Effect.gen(function*() {
+                  const resume = yield* resolveApplyResume(tx, userId, app.hhAccountId, null)
+                  if (resume === null) return { reason: NO_RESUME_MESSAGE, resumeId: null }
+                  const clash = yield* tx.execute(sql`
+                    select 1 from application
+                    where hh_account_id = ${app.hhAccountId} and vacancy_id = ${app.vacancyId}
+                      and resume_id = ${resume.id} and id <> ${app.id}
                     limit 1
                   `)
-                  .pipe(
-                    Effect.map((result) => (result.rows[0] as { id?: string } | undefined)?.id ?? null)
-                  )
+                  if (clash.rows.length > 0) {
+                    return {
+                      reason: `не выбрано резюме для откликов: на эту вакансию уже есть отклик резюме «${resume.title}»`,
+                      resumeId: null
+                    }
+                  }
+                  yield* tx.execute(sql`
+                    update application set resume_id = ${resume.id}, updated_at = now()
+                    where id = ${app.id} and user_id = ${userId}
+                      and auto_run is not null and resume_id is null
+                  `)
+                  return { reason: null, resumeId: resume.id }
+                })
+              )
+              .pipe(Effect.mapError(toStorageError("autoApply.resume")))
 
           const progress = (app: RunnerApplication): Effect.Effect<Step, ApiError> =>
             Effect.gen(function*() {
@@ -316,6 +332,14 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
               if (!mine) return idle
               // A submit job exists: the submit path owns it from here.
               if (submit !== null) return idle
+
+              /* One resume for the response and the letter: set it on old NULL rows. */
+              let effectiveResumeId: string | null = current.resumeId ?? null
+              if (effectiveResumeId === null) {
+                const filled = yield* backfillResume(app)
+                if (filled.reason !== null || filled.resumeId === null) return human(filled.reason ?? NO_RESUME_MESSAGE)
+                effectiveResumeId = filled.resumeId
+              }
 
               /* The form must be read and fresh before anything is written. */
               if (form.reading) return waiting
@@ -367,12 +391,7 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
 
               /* No kit yet: one writing job per (application, form hash). */
               if (job === null) {
-                const resumeId = yield* database
-                  .asUser(userId, (tx) => resumeForLetter(tx, app))
-                  .pipe(Effect.mapError(toStorageError("autoApply.resume")))
-                if (resumeId === null) {
-                  return human("there is no resume to write the cover letter from")
-                }
+                const resumeId = effectiveResumeId
                 // The operator's writer (agent, model, effort) from the filter row
                 // that governs this application; none set: the harness default.
                 const writer = yield* database
@@ -563,13 +582,14 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
               counts.selected += candidates.length
 
               for (const decision of candidates) {
+                const resolved = yield* database
+                  .asUser(userId, (tx) => resolveApplyResume(tx, userId, hhAccountId, decision.resumeId ?? null))
+                  .pipe(Effect.mapError(toStorageError("autoApply.resume")))
                 const made = yield* applications
                   .createFromDecision({
                     decisionId: decision.id,
                     hhAccountId,
-                    ...(decision.resumeId === null || decision.resumeId === undefined
-                      ? {}
-                      : { resumeId: decision.resumeId }),
+                    ...(resolved === null ? {} : { resumeId: resolved.id }),
                     mode,
                     autoRun: true
                   })
@@ -580,6 +600,11 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                   continue
                 }
                 counts.created += 1
+                if (resolved === null && made.success.id !== undefined) {
+                  // Never send with the resume hh happens to preselect.
+                  yield* parkForHuman(made.success.id, NO_RESUME_MESSAGE)
+                  counts.needsHuman += 1
+                }
               }
             }
 
