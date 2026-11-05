@@ -86,7 +86,7 @@ export const useVacancyPage = (id: () => string) => {
   const refreshApplications = () => void applicationsQuery.refetch()
 
   const hydrating = ref(false)
-  const hydrate = async (force: boolean) => {
+  const hydrate = async (force: boolean, syncResponses = false) => {
     if (hydrating.value) return
     hydrating.value = true
     try {
@@ -95,7 +95,7 @@ export const useVacancyPage = (id: () => string) => {
         await vacancyQuery.refetch()
         void contactsQuery.refetch()
       }
-      if (force && accountId.value !== "") {
+      if (syncResponses && accountId.value !== "") {
         // Responses made by hand on hh.ru only show up after a negotiations sync.
         void applicationApi.syncRun(accountId.value).catch(() => undefined)
       }
@@ -106,8 +106,18 @@ export const useVacancyPage = (id: () => string) => {
     }
   }
   // Opening the page tops the vacancy up from hh. The server skips the fetch
-  // when the stored text is already complete, so this is cheap on repeat visits.
-  watch(id, () => void hydrate(false), { immediate: true })
+  // when the stored text is complete, so repeat visits are cheap. Without a
+  // response count the page is fetched anyway: only the vacancy page has it.
+  let toppedUp: string | null = null
+  watch(
+    [id, data],
+    ([vacancyId, detail]) => {
+      if (detail === undefined || detail === null || toppedUp === vacancyId) return
+      toppedUp = vacancyId
+      void hydrate(detail.responsesTotal == null && !detail.vacancy.archived)
+    },
+    { immediate: true }
+  )
 
   return {
     id,
@@ -130,7 +140,7 @@ export const useVacancyPage = (id: () => string) => {
     errorText,
     hydrating,
     refreshApplications,
-    hydrate: () => hydrate(true)
+    hydrate: () => hydrate(true, true)
   }
 }
 
