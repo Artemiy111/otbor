@@ -1054,6 +1054,128 @@ if (!enabled || serverUrl === null) {
       expect((await progressOf(ctx, { activeOnly: true })).items).toHaveLength(0)
     }, 120_000)
 
+    const retryOf = (ctx: Ctx, input: { applicationId?: string; hhAccountId?: string } = {}) =>
+      support.runAs(
+        ctx.tenant.userId,
+        Effect.gen(function*() {
+          return yield* (yield* AutoApplyViewService).retry(input as never)
+        })
+      )
+
+    const killWriting = (accountId: string) =>
+      owner((tx) =>
+        tx.execute(
+          sql`update harness_jobs set status = 'dead', last_error = 'quota is over'
+              where stage = 'inference' and hh_account_id = ${accountId}
+                and idempotency_key like 'autoapply:writing:%' and idempotency_key not like '%:retried:%'`
+        )
+      )
+
+    /** An application whose form is read and whose first writing job is dead and parked. */
+    const parkedByDeadJob = async (label: string, mode: "drafts" | "auto") => {
+      const ctx = await setup(label)
+      await configure(ctx, { autoMode: mode })
+      await decided(ctx, `${label}-1`, 90)
+      await tick(ctx.tenant.userId)
+      await readForms(ctx, responseHtml)
+      await tick(ctx.tenant.userId)
+      await killWriting(ctx.tenant.accountId)
+      await tick(ctx.tenant.userId)
+      const [row] = await applicationsOf(ctx.tenant.accountId)
+      expect(row!.state).toBe("needs_human")
+      return { ctx, id: row!.id }
+    }
+
+    test("retry: a dead writing job is replaced on the next tick and the application proceeds", async () => {
+      const { ctx, id } = await parkedByDeadJob("aa-retry-1", "drafts")
+      expect((await progressOf(ctx)).items[0]).toMatchObject({ stage: "needs_human", retryable: true })
+
+      const result = await retryOf(ctx, { applicationId: id })
+      expect(result).toEqual({ retried: 1, skipped: [] })
+      const [row] = await applicationsOf(ctx.tenant.accountId)
+      expect(row).toMatchObject({ state: "draft", last_error: null, intent_at: null })
+      // the dead job stays as history under a retired key; no model call happened inline
+      const jobs = (await owner((tx) =>
+        tx
+          .execute(sql`select status, idempotency_key from harness_jobs
+                       where stage = 'inference' and hh_account_id = ${ctx.tenant.accountId}`)
+          .pipe(Effect.map((r) => r.rows as unknown as ReadonlyArray<{ status: string; idempotency_key: string }>))
+      ))
+      expect(jobs).toHaveLength(1)
+      expect(jobs[0]!.idempotency_key).toMatch(/:retried:1$/)
+      expect((await progressOf(ctx)).items[0]).toMatchObject({ retryable: false, state: "draft" })
+
+      // a second call is a no-op
+      const again = await retryOf(ctx, { applicationId: id })
+      expect(again.retried).toBe(0)
+      expect(again.skipped).toHaveLength(1)
+      expect(await retryOf(ctx, { hhAccountId: ctx.tenant.accountId })).toEqual({ retried: 0, skipped: [] })
+      expect(await writingJobs(ctx.tenant.accountId)).toHaveLength(1)
+
+      // the next tick queues one fresh job under the base key
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ writingEnqueued: 1 })
+      const after = await writingJobs(ctx.tenant.accountId)
+      expect(after).toHaveLength(2)
+      expect(after.filter((job) => !(job as { idempotency_key?: string }).idempotency_key?.includes(":retried:"))).toHaveLength(1)
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ writingEnqueued: 0 })
+
+      await writeLetters(ctx, GOOD_DRAFT)
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ kitsSet: 1 })
+      expect(await kitOf(id)).not.toBeNull()
+      expect((await progressOf(ctx)).items[0]).toMatchObject({ stage: "kit_ready", retryable: false })
+    }, 120_000)
+
+    test("retry: all stopped ones of an account at once; a failed-but-not-yet-parked one too; auto goes back to queued", async () => {
+      const { ctx, id } = await parkedByDeadJob("aa-retry-auto", "auto")
+      expect((await applicationsOf(ctx.tenant.accountId))[0]!.state).toBe("needs_human")
+      const result = await retryOf(ctx, { hhAccountId: ctx.tenant.accountId })
+      expect(result).toEqual({ retried: 1, skipped: [] })
+      expect((await applicationsOf(ctx.tenant.accountId))[0]).toMatchObject({ state: "queued", last_error: null })
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ writingEnqueued: 1 })
+      await writeLetters(ctx, GOOD_DRAFT)
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ kitsSet: 1, submitQueued: 1 })
+      expect(await submitCount(id)).toBe(1)
+    }, 120_000)
+
+    test("retry: sent, intent-marked and manual applications are never touched", async () => {
+      const { ctx, id } = await parkedByDeadJob("aa-retry-safe", "drafts")
+      await owner((tx) => tx.execute(sql`update application set intent_at = now() where id = ${id}`))
+      expect((await progressOf(ctx)).items[0]!.retryable).toBe(false)
+      const blocked = await retryOf(ctx, { applicationId: id })
+      expect(blocked.retried).toBe(0)
+      expect(blocked.skipped[0]!.reason).toContain("отправка")
+      await owner((tx) => tx.execute(sql`update application set intent_at = null, state = 'submitted' where id = ${id}`))
+      expect((await retryOf(ctx, { applicationId: id })).retried).toBe(0)
+      expect((await retryOf(ctx, { hhAccountId: ctx.tenant.accountId })).retried).toBe(0)
+
+      const vacancy = await support.seedVacancy("aa-retry-manual-1")
+      const manual = await support.seedApplication({
+        userId: ctx.tenant.userId,
+        accountId: ctx.tenant.accountId,
+        vacancyId: vacancy,
+        state: "draft"
+      })
+      const result = await retryOf(ctx, { applicationId: manual })
+      expect(result.retried).toBe(0)
+      expect(result.skipped).toHaveLength(1)
+      expect((await retryOf(ctx, { hhAccountId: ctx.tenant.accountId })).retried).toBe(0)
+    }, 120_000)
+
+    test("retry: bounded to five replacements per application", async () => {
+      const { ctx, id } = await parkedByDeadJob("aa-retry-cap", "drafts")
+      for (let n = 1; n <= 5; n++) {
+        expect((await retryOf(ctx, { applicationId: id })).retried).toBe(1)
+        expect(await tick(ctx.tenant.userId)).toMatchObject({ writingEnqueued: 1 })
+        await killWriting(ctx.tenant.accountId)
+        await tick(ctx.tenant.userId)
+      }
+      expect((await progressOf(ctx)).items[0]!.retryable).toBe(false)
+      const capped = await retryOf(ctx, { applicationId: id })
+      expect(capped.retried).toBe(0)
+      expect(capped.skipped[0]!.reason).toContain("лимит")
+      expect((await applicationsOf(ctx.tenant.accountId))[0]!.state).toBe("needs_human")
+    }, 180_000)
+
     test("manual applications are not in the progress", async () => {
       const ctx = await setup("aa-prog-manual")
       const vacancy = await support.seedVacancy("aa-prog-manual-1")

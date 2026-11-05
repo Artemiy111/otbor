@@ -1593,7 +1593,9 @@ export const AutoApplyProgressItem = Schema.Struct({
   lastError: Schema.NullOr(Schema.String),
   createdAt: Schema.String,
   updatedAt: Schema.String,
-  submittedAt: Schema.NullOr(Schema.String)
+  submittedAt: Schema.NullOr(Schema.String),
+  /** The cover letter can be retried now (AutoApplyRetry would take it). */
+  retryable: Schema.Boolean
 })
 
 export type AutoApplyProgressItem = typeof AutoApplyProgressItem.Type
@@ -1618,6 +1620,13 @@ export const AutoApplyProgressResult = Schema.Struct({
 })
 
 export type AutoApplyProgressResult = typeof AutoApplyProgressResult.Type
+
+export const AutoApplyRetryResult = Schema.Struct({
+  retried: Schema.Int,
+  skipped: Schema.Array(Schema.Struct({ applicationId: ApplicationId, reason: Schema.String }))
+})
+
+export type AutoApplyRetryResult = typeof AutoApplyRetryResult.Type
 
 export const PresetFacet = Schema.Struct({
   term: Schema.String,

@@ -1,6 +1,8 @@
 import type {
   AutoApplyPreviewResult,
   AutoApplyProgressResult,
+  AutoApplyRetryResult,
+  ApplicationId,
   HhAccountId,
   ResumeId
 } from "@otbor/contract"
@@ -18,6 +20,12 @@ export interface AutoApplyProgressInput {
   readonly activeOnly?: boolean
 }
 
+export interface AutoApplyRetryInput {
+  /** One application; left out: every retryable one of the account (or of the user). */
+  readonly applicationId?: string
+  readonly hhAccountId?: string
+}
+
 export const autoApplyApi = {
   preview: (input: AutoApplyPreviewInput): Promise<AutoApplyPreviewResult> =>
     call((client) =>
@@ -32,6 +40,13 @@ export const autoApplyApi = {
         hhAccountId: input.hhAccountId as HhAccountId | undefined,
         limit: input.limit,
         activeOnly: input.activeOnly
+      })
+    ),
+  retry: (input: AutoApplyRetryInput): Promise<AutoApplyRetryResult> =>
+    call((client) =>
+      client.AutoApplyRetry({
+        applicationId: input.applicationId as ApplicationId | undefined,
+        hhAccountId: input.hhAccountId as HhAccountId | undefined
       })
     )
 }

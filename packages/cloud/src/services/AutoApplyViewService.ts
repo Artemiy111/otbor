@@ -6,12 +6,13 @@ import type {
   AutoApplyProgressItem,
   AutoApplyProgressResult,
   AutoApplyProgressSummary,
+  AutoApplyRetryResult,
   AutoApplyStage
 } from "@otbor/contract"
 import { ANALYSIS_PROMPT_VERSION, APPLY_POLICY_VERSION } from "@otbor/domain"
-import { sql } from "drizzle-orm"
+import { sql, type SQL } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
-import { Database } from "../db/Database.ts"
+import { Database, type Executor } from "../db/Database.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
 import * as ApplyFilterRepository from "../repositories/ApplyFilterRepository.ts"
 import * as DecisionRepository from "../repositories/DecisionRepository.ts"
@@ -39,7 +40,18 @@ export interface AutoApplyViewServiceShape {
     readonly limit?: number | undefined
     readonly activeOnly?: boolean | undefined
   }) => Effect.Effect<AutoApplyProgressResult, ApiError>
+  /**
+   * Gives a dead cover-letter job a way out: frees its idempotency slot and
+   * puts the application back where the runner picks it up. Never runs the model.
+   */
+  readonly retry: (input: {
+    readonly applicationId?: string | undefined
+    readonly hhAccountId?: string | undefined
+  }) => Effect.Effect<AutoApplyRetryResult, ApiError>
 }
+
+/** A writing job is replaced at most this many times per application. */
+export const MAX_WRITING_RETRIES = 5
 
 interface ProgressRow {
   readonly id: string
@@ -67,6 +79,8 @@ interface ProgressRow {
   readonly write_updated: Date | string | null
   readonly write_error: string | null
   readonly submit_status: string | null
+  readonly intent_at: Date | string | null
+  readonly write_retries: number | null
   readonly read_status: string | null
 }
 
@@ -137,6 +151,82 @@ export const deriveStage = (
     detail: `Письмо не написано: ${reason(row.write_error)}`
   }
 }
+
+const FAILED_JOB = new Set(["failed", "dead", "cancelled"])
+const RETRY_STATES = new Set<ApplicationState>(["needs_human", "draft", "queued"])
+
+/**
+ * Why the cover letter of this auto application cannot be retried, or null when
+ * it can. The one predicate behind `AutoApplyProgressItem.retryable` and
+ * `AutoApplyRetry`. It never allows anything that may have been sent: a submit
+ * job or an intent row closes the door, whatever the writing job did.
+ */
+export const retryBlock = (row: ProgressRow): string | null => {
+  if (row.auto_run === null) return "это не автоотклик"
+  if (!RETRY_STATES.has(row.state)) return "отклик уже не ждёт письма"
+  if (row.intent_at !== null || row.submit_status !== null) return "отправка уже начиналась"
+  if (row.kit_exists) return "кит для текущей формы уже есть"
+  if (row.write_status === null) return "задачи письма нет, бегунок поставит её сам"
+  if (!FAILED_JOB.has(row.write_status)) return "письмо ещё пишется или уже написано"
+  if ((row.write_retries ?? 0) >= MAX_WRITING_RETRIES) {
+    return `исчерпан лимит повторов (${MAX_WRITING_RETRIES}), причина: ${reason(row.write_error)}`
+  }
+  return null
+}
+
+/** The progress rows (one application, or a filtered set) with everything the stage and the retry need. */
+const progressRows = (tx: Executor, userId: string, where: SQL) =>
+  tx
+    .execute(sql`
+      select a.id, a.vacancy_id, v.title, e.name as employer_name, r.title as resume_title, a.auto_run, a.state,
+        a.last_error, a.created_at, a.updated_at, a.submitted_at, a.intent_at,
+        fs.status as form_status, fs.checked_at as form_checked_at, ver.form_hash,
+        kit.letter as kit_letter,
+        case when kit.id is null then null else jsonb_array_length(kit.answers) end as kit_answers,
+        (kit.id is not null) as kit_exists,
+        wj.id as write_id, wj.status as write_status, wj.attempts as write_attempts,
+        wj.max_attempts as write_max, wj.created_at as write_created,
+        wj.updated_at as write_updated, wj.last_error as write_error,
+        (select count(*)::int from harness_jobs rj2
+          where rj2.idempotency_key like 'autoapply:writing:' || a.id::text || ':%:retried:%') as write_retries,
+        sj.status as submit_status,
+        rj.status as read_status
+      from application a
+      join vacancy v on v.id = a.vacancy_id
+      left join employer e on e.id = v.employer_id
+      left join resume r on r.id = a.resume_id
+      left join vacancy_form_state fs on fs.vacancy_id = a.vacancy_id
+      left join vacancy_form_version ver on ver.id = fs.current_version_id
+      left join lateral (
+        select k.id, k.letter, k.answers from application_kit k
+        where k.application_id = a.id and k.form_hash = ver.form_hash
+        order by k.created_at desc limit 1
+      ) kit on true
+      -- the key is writingKey(application, formHash) of AutoApplyRunner; a replaced
+      -- (retried) job keeps its history under '<key>:retried:<n>'
+      left join lateral (
+        select j.id, j.status, j.attempts, j.max_attempts, j.created_at, j.updated_at, j.last_error
+        from harness_jobs j
+        where j.idempotency_key = 'autoapply:writing:' || a.id::text || ':' || ver.form_hash
+      ) wj on true
+      left join lateral (
+        select j.status from harness_jobs j
+        where j.application_id = a.id and j.stage = 'submit' and j.status <> 'cancelled'
+        order by j.created_at desc limit 1
+      ) sj on true
+      left join lateral (
+        select j.status from harness_jobs j
+        where j.stage = 'form_read' and j.status <> 'cancelled'
+          and j.payload->>'vacancyId' = a.vacancy_id::text
+        order by j.created_at desc limit 1
+      ) rj on true
+      where a.user_id = ${userId}
+        and a.auto_run is not null
+        and a.state <> 'skipped'
+        and ${where}
+      order by a.created_at desc, a.id desc
+    `)
+    .pipe(Effect.map((result) => result.rows as unknown as ReadonlyArray<ProgressRow>))
 
 export class AutoApplyViewService extends Context.Service<AutoApplyViewService, AutoApplyViewServiceShape>()(
   "otbor/cloud/AutoApplyViewService"
@@ -249,58 +339,17 @@ export class AutoApplyViewService extends Context.Service<AutoApplyViewService, 
       const progress: AutoApplyViewServiceShape["progress"] = Effect.fn("AutoApplyViewService.progress")(
         function*(input) {
           const limit = Math.min(MAX_PROGRESS_LIMIT, Math.max(1, Math.trunc(input.limit ?? DEFAULT_PROGRESS_LIMIT)))
+          const accountFilter =
+            input.hhAccountId === undefined ? sql`true` : sql`a.hh_account_id = ${input.hhAccountId}`
           const rows = yield* database
             .asUser(userId, (tx) =>
-              tx
-                .execute(sql`
-                  select a.id, a.vacancy_id, v.title, e.name as employer_name, r.title as resume_title, a.auto_run, a.state,
-                    a.last_error, a.created_at, a.updated_at, a.submitted_at,
-                    fs.status as form_status, fs.checked_at as form_checked_at, ver.form_hash,
-                    kit.letter as kit_letter,
-                    case when kit.id is null then null else jsonb_array_length(kit.answers) end as kit_answers,
-                    (kit.id is not null) as kit_exists,
-                    wj.id as write_id, wj.status as write_status, wj.attempts as write_attempts,
-                    wj.max_attempts as write_max, wj.created_at as write_created,
-                    wj.updated_at as write_updated, wj.last_error as write_error,
-                    sj.status as submit_status,
-                    rj.status as read_status
-                  from application a
-                  join vacancy v on v.id = a.vacancy_id
-                  left join employer e on e.id = v.employer_id
-                  left join resume r on r.id = a.resume_id
-                  left join vacancy_form_state fs on fs.vacancy_id = a.vacancy_id
-                  left join vacancy_form_version ver on ver.id = fs.current_version_id
-                  left join lateral (
-                    select k.id, k.letter, k.answers from application_kit k
-                    where k.application_id = a.id and k.form_hash = ver.form_hash
-                    order by k.created_at desc limit 1
-                  ) kit on true
-                  -- the key is writingKey(application, formHash) of AutoApplyRunner
-                  left join lateral (
-                    select j.id, j.status, j.attempts, j.max_attempts, j.created_at, j.updated_at, j.last_error
-                    from harness_jobs j
-                    where j.idempotency_key = 'autoapply:writing:' || a.id::text || ':' || ver.form_hash
-                  ) wj on true
-                  left join lateral (
-                    select j.status from harness_jobs j
-                    where j.application_id = a.id and j.stage = 'submit' and j.status <> 'cancelled'
-                    order by j.created_at desc limit 1
-                  ) sj on true
-                  left join lateral (
-                    select j.status from harness_jobs j
-                    where j.stage = 'form_read' and j.status <> 'cancelled'
-                      and j.payload->>'vacancyId' = a.vacancy_id::text
-                    order by j.created_at desc limit 1
-                  ) rj on true
-                  where a.user_id = ${userId}
-                    and a.auto_run is not null
-                    and a.state <> 'skipped'
-                    ${input.hhAccountId === undefined ? sql`` : sql`and a.hh_account_id = ${input.hhAccountId}`}
-                    and (a.state in ('draft', 'queued', 'submitting')
-                      or a.updated_at > now() - ${`${RECENT_DAYS} days`}::interval)
-                  order by a.created_at desc, a.id desc
-                `)
-                .pipe(Effect.map((result) => result.rows as unknown as ReadonlyArray<ProgressRow>))
+              progressRows(
+                tx,
+                userId,
+                sql`${accountFilter}
+                  and (a.state in ('draft', 'queued', 'submitting')
+                    or a.updated_at > now() - ${`${RECENT_DAYS} days`}::interval)`
+              )
             )
             .pipe(Effect.mapError(toStorageError("autoApply.progress")))
 
@@ -351,14 +400,80 @@ export class AutoApplyViewService extends Context.Service<AutoApplyViewService, 
               lastError: row.last_error,
               createdAt: new Date(row.created_at).toISOString(),
               updatedAt: new Date(row.updated_at).toISOString(),
-              submittedAt: iso(row.submitted_at)
+              submittedAt: iso(row.submitted_at),
+              retryable: retryBlock(row) === null
             })
           }
           return { items, summary } satisfies AutoApplyProgressResult
         }
       )
 
-      return AutoApplyViewService.of({ preview, progress })
+      const retryOne = (applicationId: string) =>
+        database
+          .asUser(userId, (tx) =>
+            Effect.gen(function*() {
+              // Serializes two retries of the same application: the second one sees the first's result.
+              const locked = yield* tx.execute(
+                sql`select id from application where id = ${applicationId} and user_id = ${userId} for update`
+              )
+              if (locked.rows.length === 0) return "не найден"
+              const [row] = yield* progressRows(tx, userId, sql`a.id = ${applicationId}`)
+              if (row === undefined) return "это не автоотклик"
+              const blocked = retryBlock(row)
+              if (blocked !== null) return blocked
+              // Free the slot, keep the dead job and its error as history.
+              const freed = yield* tx.execute(sql`
+                update harness_jobs
+                set idempotency_key = idempotency_key || ':retried:' || ${(row.write_retries ?? 0) + 1}::text,
+                    updated_at = now()
+                where id = ${row.write_id} and status in ('failed', 'dead', 'cancelled')
+                returning id
+              `)
+              if (freed.rows.length === 0) return "задача письма уже изменилась"
+              // Only a state the runner owns; intent_at stays untouched and null.
+              yield* tx.execute(sql`
+                update application
+                set state = case when state = 'needs_human'
+                      then (case when auto_run = 'auto' then 'queued' else 'draft' end)
+                      else state end,
+                    last_error = null, updated_at = now()
+                where id = ${applicationId} and user_id = ${userId} and intent_at is null
+                  and auto_run is not null and state in ('needs_human', 'draft', 'queued')
+              `)
+              return null
+            })
+          )
+          .pipe(Effect.mapError(toStorageError("autoApply.retry")))
+
+      const retry: AutoApplyViewServiceShape["retry"] = Effect.fn("AutoApplyViewService.retry")(
+        function*(input) {
+          const skipped: Array<{ applicationId: AutoApplyRetryResult["skipped"][number]["applicationId"]; reason: string }> = []
+          let retried = 0
+          let ids: ReadonlyArray<string>
+          if (input.applicationId !== undefined) {
+            ids = [input.applicationId]
+          } else {
+            const accountFilter =
+              input.hhAccountId === undefined ? sql`true` : sql`a.hh_account_id = ${input.hhAccountId}`
+            const rows = yield* database
+              .asUser(userId, (tx) =>
+                progressRows(tx, userId, sql`${accountFilter} and a.state in ('needs_human', 'draft', 'queued')`)
+              )
+              .pipe(Effect.mapError(toStorageError("autoApply.retryScan")))
+            // Only applications whose writing job died; the others are not "stopped" ones.
+            ids = rows.filter((row) => row.write_status !== null && FAILED_JOB.has(row.write_status)).map((row) => row.id)
+          }
+          for (const id of ids) {
+            const blocked = yield* retryOne(id)
+            if (blocked === null) retried += 1
+            else skipped.push({ applicationId: id as (typeof skipped)[number]["applicationId"], reason: blocked })
+          }
+          yield* Effect.logInfo(`autoapply retry: ${retried} retried, ${skipped.length} skipped`)
+          return { retried, skipped } satisfies AutoApplyRetryResult
+        }
+      )
+
+      return AutoApplyViewService.of({ preview, progress, retry })
     })
   )
 }

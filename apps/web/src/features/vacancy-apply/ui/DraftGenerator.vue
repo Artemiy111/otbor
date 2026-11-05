@@ -4,7 +4,8 @@ import { useQuery } from "@pinia/colada"
 import { FileText, LoaderCircle, Sparkles } from "@lucide/vue"
 import type { DraftLetterLength, FormQuestion, HarnessJob } from "@otbor/contract"
 import { parseGeneratedDraft, type GeneratedDraft } from "@otbor/domain"
-import { applicationApi, applicationKeys } from "@/entities/application"
+import { applicationApi } from "@/entities/application"
+import { useHarnessCatalog } from "@/features/harness-catalog"
 import { healthApi, healthKeys } from "@/entities/health"
 import { describeError } from "@/shared/lib"
 import {
@@ -15,9 +16,7 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-  resolveHarnessEffort,
-  type HarnessEntry,
-  type HarnessModel
+  resolveHarnessEffort
 } from "@/shared/ui"
 
 const props = defineProps<{
@@ -42,12 +41,17 @@ const GIVE_UP_MS = 5 * 60 * 1000
 
 /* ---- catalog ------------------------------------------------------------- */
 
-const catalogQuery = useQuery({
-  key: () => applicationKeys.agentCatalog,
-  query: () => applicationApi.agentCatalog(),
-  staleTime: 30_000
-})
-const catalog = computed(() => catalogQuery.data.value ?? null)
+const {
+  catalog,
+  harnesses,
+  models,
+  loading: catalogLoading,
+  error: catalogError,
+  catalogEmpty,
+  harnessOk,
+  find,
+  refetch: refetchCatalog
+} = useHarnessCatalog()
 
 /* ---- executor ------------------------------------------------------------ */
 
@@ -63,36 +67,6 @@ const executorOffline = computed(
     healthQuery.data.value !== undefined &&
     !(healthQuery.data.value.harnesses ?? []).some((h) => h.online && h.kinds.includes("inference"))
 )
-
-const harnesses = computed<HarnessEntry[]>(() =>
-  (catalog.value?.harnesses ?? []).map((harness) => ({
-    id: harness.id,
-    name: harness.name,
-    error: harness.available ? null : (harness.error ?? "недоступен")
-  }))
-)
-const models = computed<HarnessModel[]>(() =>
-  (catalog.value?.harnesses ?? []).flatMap((harness) =>
-    harness.models.map((model) => ({
-      id: model.id,
-      harness: harness.id,
-      label: model.label,
-      efforts: [...model.efforts],
-      ...(model.defaultEffort ? { defaultEffort: model.defaultEffort } : {}),
-      ...(model.variant ? { variant: model.variant } : {})
-    }))
-  )
-)
-const catalogEmpty = computed(
-  () => catalog.value !== null && !models.value.some((item) => harnessOk(item.harness))
-)
-const harnessOk = (id: string) =>
-  catalog.value?.harnesses.find((harness) => harness.id === id)?.available === true
-
-const catalogError = computed(() => {
-  if (catalogQuery.error.value) return `Каталог моделей недоступен: ${describeError(catalogQuery.error.value)}`
-  return null
-})
 
 /* ---- the operator's last choice ------------------------------------------ */
 
@@ -146,9 +120,6 @@ watch(length, (value) => {
     // the choice is just not remembered
   }
 })
-
-const find = (harness: string, id: string) =>
-  models.value.find((item) => item.harness === harness && item.id === id) ?? null
 
 /** Saved choice if it is still in the catalog, else the first available harness default. */
 const settle = () => {
@@ -329,11 +300,11 @@ const run = async () => {
         v-model:effort="effort"
         :harnesses="harnesses"
         :models="models"
-        :loading="catalogQuery.isLoading.value"
+        :loading="catalogLoading"
         :error="catalogError"
         :disabled="running || disabled"
         class="border-border"
-        @refresh="catalogQuery.refetch()"
+        @refresh="refetchCatalog()"
       />
       <div class="inline-flex rounded-md border border-border p-0.5" role="group" aria-label="Длина письма">
         <button
@@ -393,7 +364,7 @@ const run = async () => {
       <code>otbor harness run</code> (или <code>otbor up</code>).
       <template v-if="running">Сейчас оно ждёт уже {{ elapsed }} с.</template>
     </p>
-    <p v-else-if="catalogQuery.isLoading.value" class="text-xs text-muted-foreground">Загружаю список моделей…</p>
+    <p v-else-if="catalogLoading" class="text-xs text-muted-foreground">Загружаю список моделей…</p>
     <p v-else-if="catalogError" class="text-xs text-amber-700 dark:text-amber-300">{{ catalogError }}</p>
     <p v-else-if="catalog !== null && (catalog.harnesses.length === 0 || catalogEmpty)" class="text-xs text-amber-700 dark:text-amber-300">
       Ни один харнес пока не сообщил свои модели. Запустите `otbor harness run`.

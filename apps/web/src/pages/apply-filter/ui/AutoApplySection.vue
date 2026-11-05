@@ -10,8 +10,8 @@ import {
   sortDirectionOptions,
   autoModeOptions
 } from "@/entities/apply-filter"
-import { applicationApi, applicationKeys } from "@/entities/application"
 import { scheduleKeys } from "@/entities/schedule"
+import { useHarnessCatalog } from "@/features/harness-catalog"
 import { RUN_COUNT_LABELS, useAutoApplyRun } from "@/features/auto-apply-run"
 import { FieldPicker, RuleRow, buildRule, isComplete, newRule, toEditableRule } from "@/features/rule-builder"
 import type { EditableRule } from "@/features/rule-builder"
@@ -26,6 +26,7 @@ import {
   Card,
   CardContent,
   FieldLabel,
+  HarnessModelPicker,
   Input,
   Select,
   SelectContent,
@@ -101,26 +102,23 @@ const removeBoost = (id: number) => {
 }
 const incompleteBoosts = computed(() => boosts.value.some((boost) => !isComplete(boost.rule)))
 
-/* Writer suggestions: the agent catalog is only a hint, any text can be typed ---- */
+/* Writer: the same picker as the cover-letter generator. Empty = harness default ---- */
 
-const catalogQuery = useQuery({
-  key: () => applicationKeys.agentCatalog,
-  query: () => applicationApi.agentCatalog(),
-  staleTime: 30_000
-})
-const catalogHarnesses = computed(() => catalogQuery.data.value?.harnesses ?? [])
-const pickedHarness = computed(() => catalogHarnesses.value.find((harness) => harness.id === writingHarness.value.trim()))
-const modelSuggestions = computed(() => {
-  const harnesses = pickedHarness.value === undefined ? catalogHarnesses.value : [pickedHarness.value]
-  return [...new Set(harnesses.flatMap((harness) => harness.models.map((model) => model.id)))]
-})
-const effortSuggestions = computed(() => {
-  const models = pickedHarness.value === undefined
-    ? catalogHarnesses.value.flatMap((harness) => harness.models)
-    : pickedHarness.value.models
-  const picked = models.filter((model) => model.id === writingModel.value.trim())
-  return [...new Set((picked.length > 0 ? picked : models).flatMap((model) => model.efforts))]
-})
+const {
+  harnesses: catalogHarnesses,
+  models: catalogModels,
+  loading: catalogLoading,
+  error: catalogError,
+  refetch: refetchCatalog
+} = useHarnessCatalog()
+const writerSet = computed(
+  () => writingHarness.value !== "" || writingModel.value !== "" || writingEffort.value !== ""
+)
+const resetWriter = () => {
+  writingHarness.value = ""
+  writingModel.value = ""
+  writingEffort.value = ""
+}
 
 /* Usage ------------------------------------------------------------------- */
 
@@ -332,45 +330,26 @@ const modeBadge = (value: AutoMode) => (value === "off" ? "secondary" : value ==
         </div>
       </div>
 
-      <div class="grid gap-3 border-t border-border pt-3 sm:grid-cols-3">
-        <div class="space-y-1">
-          <FieldLabel :hint="applyFilterHelp.writer">Агент (harness)</FieldLabel>
-          <Input
-            v-model="writingHarness"
-            list="writing-harness-options"
-            placeholder="по умолчанию харнеса"
-            class="h-8"
+      <div class="space-y-1 border-t border-border pt-3">
+        <FieldLabel :hint="applyFilterHelp.writer">Кто пишет письма</FieldLabel>
+        <div class="flex flex-wrap items-center gap-2">
+          <HarnessModelPicker
+            v-model:provider="writingHarness"
+            v-model:model="writingModel"
+            v-model:effort="writingEffort"
+            :harnesses="catalogHarnesses"
+            :models="catalogModels"
+            :loading="catalogLoading"
+            :error="catalogError"
             :disabled="busy"
-          />
-          <datalist id="writing-harness-options">
-            <option v-for="harness in catalogHarnesses" :key="harness.id" :value="harness.id">{{ harness.name }}</option>
-          </datalist>
-        </div>
-        <div class="space-y-1">
-          <FieldLabel :hint="applyFilterHelp.writer">Модель</FieldLabel>
-          <Input
-            v-model="writingModel"
-            list="writing-model-options"
             placeholder="по умолчанию харнеса"
-            class="h-8"
-            :disabled="busy"
+            class="border-border"
+            @refresh="refetchCatalog()"
           />
-          <datalist id="writing-model-options">
-            <option v-for="model in modelSuggestions" :key="model" :value="model" />
-          </datalist>
-        </div>
-        <div class="space-y-1">
-          <FieldLabel :hint="applyFilterHelp.writer">Уровень усилий (effort)</FieldLabel>
-          <Input
-            v-model="writingEffort"
-            list="writing-effort-options"
-            placeholder="по умолчанию харнеса"
-            class="h-8"
-            :disabled="busy"
-          />
-          <datalist id="writing-effort-options">
-            <option v-for="effort in effortSuggestions" :key="effort" :value="effort" />
-          </datalist>
+          <Button v-if="writerSet" variant="ghost" size="sm" class="h-7" :disabled="busy" @click="resetWriter">
+            Сбросить
+          </Button>
+          <span v-else class="text-xs text-muted-foreground">Агент, модель и effort по умолчанию харнеса.</span>
         </div>
       </div>
 

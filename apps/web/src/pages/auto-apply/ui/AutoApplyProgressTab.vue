@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, ref } from "vue"
-import { useQuery } from "@pinia/colada"
-import type { AutoApplyProgressItem, AutoApplyStage } from "@otbor/contract"
+import { useMutation, useQuery } from "@pinia/colada"
+import type { AutoApplyProgressItem, AutoApplyRetryResult, AutoApplyStage } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
-import { CircleAlert, Copy } from "@lucide/vue"
+import { CircleAlert, Copy, RotateCcw } from "@lucide/vue"
 import { autoApplyApi, autoApplyKeys, autoApplyStageMeta, autoApplyStages, autoRunLabel } from "@/entities/auto-apply"
 import { RefreshButton } from "@/features/refresh-button"
 import { applicationPath, describeError, formatAge, vacancyPath } from "@/shared/lib"
@@ -168,13 +168,58 @@ const columns: ColumnDef<AutoApplyProgressItem>[] = [
     enableSorting: false,
     header: "",
     cell: ({ row }) =>
-      h(
-        Button,
-        { size: "sm", variant: "ghost", onClick: () => (selected.value = row.original) },
-        () => "Подробнее"
-      )
+      h("div", { class: "flex items-center justify-end gap-1" }, [
+        row.original.retryable
+          ? h(
+              Button,
+              {
+                size: "sm",
+                variant: "outline",
+                disabled: retryBusy.value,
+                onClick: () => retryOne(row.original.applicationId)
+              },
+              () => "Повторить письмо"
+            )
+          : null,
+        h(Button, { size: "sm", variant: "ghost", onClick: () => (selected.value = row.original) }, () => "Подробнее")
+      ])
   }
 ]
+
+/* Retry of the cover letter: one application, or every retryable one. */
+const retryableCount = computed(() => items.value.filter((item) => item.retryable).length)
+const confirmAll = ref(false)
+const retryNote = ref<AutoApplyRetryResult | null>(null)
+const retryError = ref<string | null>(null)
+const retryMutation = useMutation({
+  mutation: (input: { applicationId?: string }) =>
+    autoApplyApi.retry({
+      ...(input.applicationId === undefined ? {} : { applicationId: input.applicationId }),
+      ...(props.accountId === "" ? {} : { hhAccountId: props.accountId })
+    }),
+  onSuccess: (result) => {
+    retryNote.value = result
+    retryError.value = null
+    confirmAll.value = false
+    selected.value = null
+    void query.refetch()
+  },
+  onError: (cause) => {
+    retryError.value = describeError(cause)
+    confirmAll.value = false
+  }
+})
+const retryBusy = computed(() => retryMutation.isLoading.value)
+const retryOne = (applicationId: string) => {
+  retryNote.value = null
+  retryMutation.mutate({ applicationId })
+}
+const retryAll = () => {
+  retryNote.value = null
+  retryMutation.mutate({})
+}
+const titleOf = (applicationId: string): string =>
+  items.value.find((item) => item.applicationId === applicationId)?.title ?? applicationId
 
 const error = computed(() => (query.error.value === null ? null : describeError(query.error.value)))
 </script>
@@ -209,8 +254,40 @@ const error = computed(() => (query.error.value === null ? null : describeError(
         Только активные
         <HelpHint :text="autoApplyHelp.active" label="только активные" />
       </label>
+      <Button
+        v-if="retryableCount > 0 && !confirmAll"
+        size="sm"
+        variant="outline"
+        :disabled="retryBusy"
+        @click="confirmAll = true"
+      >
+        <RotateCcw class="h-4 w-4" />
+        Повторить все остановленные ({{ retryableCount }})
+      </Button>
+      <HelpHint v-if="retryableCount > 0 || retryNote" :text="autoApplyHelp.retry" label="повтор письма" />
       <RefreshButton :loading="query.isLoading.value" @refresh="query.refetch()" />
     </div>
+    <div v-if="confirmAll" class="flex flex-wrap items-center gap-2 rounded-md border border-border p-3 text-sm">
+      <span>Письма будут поставлены на ближайшем запуске. Повторить: {{ retryableCount }}.</span>
+      <Button size="sm" :disabled="retryBusy" @click="retryAll">Подтвердить</Button>
+      <Button size="sm" variant="ghost" :disabled="retryBusy" @click="confirmAll = false">Отмена</Button>
+    </div>
+    <Alert v-if="retryError" variant="destructive">
+      <CircleAlert />
+      <AlertTitle>Не удалось повторить</AlertTitle>
+      <AlertDescription>{{ retryError }}</AlertDescription>
+    </Alert>
+    <Alert v-if="retryNote">
+      <AlertTitle>Повторено писем: {{ retryNote.retried }}. Они будут поставлены на ближайшем запуске.</AlertTitle>
+      <AlertDescription v-if="retryNote.skipped.length > 0">
+        Пропущено {{ retryNote.skipped.length }}:
+        <ul class="list-disc pl-5">
+          <li v-for="item in retryNote.skipped" :key="item.applicationId">
+            {{ titleOf(item.applicationId) }}: {{ item.reason }}
+          </li>
+        </ul>
+      </AlertDescription>
+    </Alert>
     <p class="text-xs text-muted-foreground">
       Счётчики за последние 3 дня.
       <template v-if="hasActive">Обновляется каждые 5 секунд, пока вкладка открыта.</template>
@@ -270,6 +347,13 @@ const error = computed(() => (query.error.value === null ? null : describeError(
                 class="max-h-[50vh] overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-muted/40 p-3 text-sm"
               >{{ selected.letter }}</pre>
               <p v-else class="text-xs text-muted-foreground">Письма пока нет.</p>
+            </div>
+            <div v-if="selected.retryable" class="flex items-center gap-2">
+              <Button size="sm" :disabled="retryBusy" @click="retryOne(selected.applicationId)">
+                <RotateCcw class="h-4 w-4" />
+                Повторить письмо
+              </Button>
+              <HelpHint :text="autoApplyHelp.retry" label="повтор письма" />
             </div>
             <div class="flex gap-3 text-xs">
               <a :href="applicationPath(selected.applicationId)" class="underline">Страница отклика</a>

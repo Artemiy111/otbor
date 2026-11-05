@@ -249,6 +249,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
       ApplyUsageGet: ({ hhAccountId }) => applications.dailyUsage(hhAccountId),
       AutoApplyPreview: (payload) => autoApplyView.preview(payload),
       AutoApplyProgress: (payload) => autoApplyView.progress(payload),
+      AutoApplyRetry: (payload) => autoApplyView.retry(payload),
 
       QueueStatsGet: ({ kind }) => queue.stats(kind),
       QueueJobsList: (payload) => queue.jobs(payload),

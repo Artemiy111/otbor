@@ -92,6 +92,7 @@ import {
   ApplyUsage,
   AutoApplyPreviewResult,
   AutoApplyProgressResult,
+  AutoApplyRetryResult,
   PresetFilter,
   PresetPreview,
   PresetRecord,
@@ -1244,6 +1245,21 @@ export const AutoApplyProgress = Rpc.make("AutoApplyProgress", {
   error: ApiError
 })
 
+/**
+ * Retries the cover letter of auto applications whose writing job died: frees
+ * the job's idempotency slot and puts the application back for the next runner
+ * tick. One application, or all retryable ones of the account (or of the user).
+ * Never touches manual applications or anything that may have been sent.
+ */
+export const AutoApplyRetry = Rpc.make("AutoApplyRetry", {
+  payload: Schema.Struct({
+    applicationId: Schema.optional(ApplicationId),
+    hhAccountId: Schema.optional(HhAccountId)
+  }),
+  success: AutoApplyRetryResult,
+  error: ApiError
+})
+
 /** Copies the preset's filter into the row for (account, resume); settings stay. */
 export const ApplyFilterFromPreset = Rpc.make("ApplyFilterFromPreset", {
   payload: Schema.Struct({
@@ -1641,6 +1657,7 @@ export const OtborRpcs = RpcGroup.make(
   ApplyUsageGet,
   AutoApplyPreview,
   AutoApplyProgress,
+  AutoApplyRetry,
   QueueStatsGet,
   QueueJobsList,
   HarnessRegister,
