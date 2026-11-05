@@ -86,7 +86,11 @@ const evaluate = Command.make(
     if (decision.reasons.length > 0) {
       yield* Console.log(
         `reasons: ${decision.reasons
-          .map((reason) => `${reason.code}${reason.weight === undefined ? "" : `(${reason.weight})`}`)
+          .map((reason) =>
+            `${reason.code}${reason.weight === undefined ? "" : `(${reason.weight})`}${
+              reason.code === "blocked_filter" && reason.detail ? `: ${reason.detail}` : ""
+            }`
+          )
           .join(", ")}`
       )
     }

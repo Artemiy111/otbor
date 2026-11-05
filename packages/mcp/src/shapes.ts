@@ -1,11 +1,13 @@
 import type {
   ApplicationRecord,
+  ApplyFilterView,
   DecisionRecord,
   EmployerSummary,
   HhAccountRecord,
   VacancyAnalysis,
   VacancySummary
 } from "@otbor/contract"
+import { describeGroup, describeRule } from "@otbor/domain"
 import { Schema } from "effect"
 
 /**
@@ -210,5 +212,53 @@ export const analysisBrief = (analysis: VacancyAnalysis) => {
     analysedAt: analysis.updatedAt,
     facts,
     unknown
+  }
+}
+
+/* ------------------------------- apply filter ------------------------------ */
+
+export const ApplyFilterBrief = Schema.Struct({
+  /** exact: row for this resume; account: the account-wide row; default: nothing stored, built-in template. */
+  source: Schema.Literals(["exact", "account", "default"]),
+  account: AccountRef,
+  resumeId: NullableString,
+  /** Readable hard rules, all ANDed. */
+  rules: Schema.Array(Schema.String),
+  /** Readable OR groups, each ANDed with the rules. */
+  groups: Schema.Array(Schema.String),
+  /** Other filter switches: text, keywords, archived/blacklisted handling. */
+  options: Schema.Array(Schema.String),
+  minFit: Schema.Int,
+  tests: Schema.String,
+  freshHalfLifeHours: Schema.Int,
+  templatePresetId: NullableString,
+  updatedAt: NullableString
+})
+export type ApplyFilterBrief = typeof ApplyFilterBrief.Type
+
+
+/** Readable apply filter: rules and groups as one-line labels, switches as `options`. */
+export const applyFilterBrief = (view: ApplyFilterView, directory: AccountDirectory): ApplyFilterBrief => {
+  const filter = view.filter
+  const options: Array<string> = []
+  if (filter.text !== undefined && filter.text !== "") options.push(`text: ${filter.text}`)
+  if (filter.gate !== undefined) options.push(`gate: ${filter.gate}`)
+  if (filter.keywordIds !== undefined && filter.keywordIds.length > 0) {
+    options.push(`${filter.keywordIds.length} keywords${filter.location === undefined ? "" : ` in ${filter.location}`}`)
+  }
+  if (filter.includeArchived === true) options.push("includes archived")
+  if (filter.includeBlacklisted === true) options.push("includes blacklisted employers")
+  return {
+    source: view.source,
+    account: accountRef(directory, view.hhAccountId),
+    resumeId: view.resumeId,
+    rules: (filter.rules ?? []).map(describeRule),
+    groups: (filter.groups ?? []).map(describeGroup),
+    options,
+    minFit: view.minFit,
+    tests: view.tests,
+    freshHalfLifeHours: view.freshHalfLifeHours,
+    templatePresetId: view.templatePresetId,
+    updatedAt: view.updatedAt
   }
 }

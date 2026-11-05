@@ -12,6 +12,7 @@ import { crawlCommand } from "./commands/crawl.ts"
 import { dbCommand } from "./commands/db.ts"
 import { decisionCommand } from "./commands/decision.ts"
 import { analysisCommand } from "./commands/analysis.ts"
+import { filterCommand } from "./commands/filter.ts"
 import { fitCommand } from "./commands/fit.ts"
 import { gateCommand } from "./commands/gate.ts"
 import { harnessCommand } from "./commands/harness.ts"
@@ -84,6 +85,7 @@ root
       lexiconCommand,
       decisionCommand,
       fitCommand,
+      filterCommand,
       analysisCommand,
       applyCommand,
       queueCommand,

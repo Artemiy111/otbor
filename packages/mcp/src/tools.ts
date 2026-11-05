@@ -3,7 +3,7 @@ import { Schema } from "effect"
 import { Tool, Toolkit } from "effect/ai"
 import { FormView } from "./apply.ts"
 import { ToolFailure } from "./errors.ts"
-import { AccountRef, ApplicationBrief, DecisionBrief, EmployerBrief, VacancyBrief } from "./shapes.ts"
+import { AccountRef, ApplicationBrief, ApplyFilterBrief, DecisionBrief, EmployerBrief, VacancyBrief } from "./shapes.ts"
 
 /**
  * Tool definitions. Handlers live in `handlers.ts`.
@@ -162,12 +162,12 @@ PARAMETERS
 - sort: priority (default, best first) | fit (highest fit first) | newest (newest published) | salary (highest, currencies are NOT converted) | random (a random sample, offset is not stable).
 
 RULE FIELDS, operators and value shapes
-- Text fields: title, description, employer (company name), area (city or region), salary_currency (RUR, USD, EUR), seniority, experience, employment_form, source. Operators: contains / not_contains (string, case-insensitive substring), eq / neq (string), in / not_in (string array).
+- Text fields: title, description, employer (company name), area (city or region), salary_currency (RUB, USD, EUR), seniority, experience, employment_form, source. Operators: contains / not_contains (string, case-insensitive substring), eq / neq (string), in / not_in (string array).
 - skills (hh key skills): contains / not_contains with a string, in / not_in with a string array (matches ANY, substring, case-insensitive).
 - keywords (lexicon terms detected in the vacancy): same operators as skills; filter.location says where the term must appear: title, body, skills, text_or_skills, any.
 - location: in / not_in with hh area ids as strings (country, region or city; a country covers all its cities, e.g. Россия 113, Беларусь 16, Казахстан 40, Москва 1, Санкт-Петербург 2). Vacancies without an area match only not_in.
 - work_format: in / not_in with a string array of remote, hybrid, onsite, field.
-- Salary: field "salary" with ops gt, gte, lt, lte, eq, neq and optional rule keys currency (RUR, USD, EUR, ...) and orMissing (true: vacancies without a salary pass too). It compares the vacancy's range: gt/gte look at its upper end, lt/lte at its lower end, eq means the number lies inside the range. A range is two rules. OR is a group: {"groups":[{"branches":[{"rules":[...]},{"rules":[...]}]}]} passes when all rules of any one branch hold, e.g. 300000+ RUR or 4000+ USD. Top-level rules are ANDed.
+- Salary: field "salary" with ops gt, gte, lt, lte, eq, neq and optional rule keys currency (RUB, USD, EUR, ...) and orMissing (true: vacancies without a salary pass too). It compares the vacancy's range: gt/gte look at its upper end, lt/lte at its lower end, eq means the number lies inside the range. A range is two rules. OR is a group: {"groups":[{"branches":[{"rules":[...]},{"rules":[...]}]}]} passes when all rules of any one branch hold, e.g. 300000+ RUB or 4000+ USD. Top-level rules are ANDed.
 - Number fields: salary_from, salary_to (in the vacancy's own currency; vacancies without a salary never match), published_days (published within N days: use lte), responses_total, description_length, skills_count, employer_vacancies, employer_rating, employer_reviews. Operators: gte, lte, gt, lt, eq, neq with a number. A null value (no rating, no reviews, no salary) never matches a number rule.
 - archived: is_true / is_false. gate: eq with match | unknown | reject. role_family: eq with a family name.
 - analysis_role, analysis_level (from the local vacancy analysis model, only where it was confident; otherwise empty, which matches nothing for eq/in): eq / neq / in / not_in. analysis_role: devops, sre, platform, sysadmin, security, backend, frontend, fullstack, mobile, qa, data, analyst, dba, support, manager, other. analysis_level (the level the text requires): intern, junior, middle, senior, staff, tech_lead, team_lead, head. Useful to see through an "unknown" seniority, e.g. {field:"analysis_level",op:"in",value:["middle","senior"]}.
@@ -178,7 +178,7 @@ COMPANY SIZE. There is no headcount column yet. Working proxies: employer_vacanc
 
 EXAMPLES (value of the filter argument)
 1. Around middle, Kubernetes, not a big company: {"rules":[{"field":"seniority","op":"in","value":["middle","unknown"]},{"field":"skills","op":"contains","value":"kubernetes"},{"field":"employer_vacancies","op":"lte","value":10}]}
-2. Remote, at least 250000 RUR, not senior: {"rules":[{"field":"work_format","op":"in","value":["remote"]},{"field":"salary_from","op":"gte","value":250000},{"field":"salary_currency","op":"eq","value":"RUR"},{"field":"seniority","op":"not_in","value":["senior","lead"]}]}
+2. Remote, at least 250000 RUB, not senior: {"rules":[{"field":"work_format","op":"in","value":["remote"]},{"field":"salary_from","op":"gte","value":250000},{"field":"salary_currency","op":"eq","value":"RUB"},{"field":"seniority","op":"not_in","value":["senior","lead"]}]}
 3. Go or Rust in the title or skills, published this week, in Moscow or Saint Petersburg: {"rules":[{"field":"keywords","op":"in","value":["go","rust"]},{"field":"published_days","op":"lte","value":7},{"field":"area","op":"in","value":["Москва","Санкт-Петербург"]}],"location":"text_or_skills"}
 4. Kubernetes in the description, decent employer rating, not a Yandex vacancy: {"rules":[{"field":"description","op":"contains","value":"kubernetes"},{"field":"employer_rating","op":"gte","value":3.5},{"field":"employer","op":"not_contains","value":"Яндекс"}]}`
 
@@ -351,6 +351,27 @@ export const PresetPreview = readTool("preset_preview", {
     companies: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String, count: Schema.Int })),
     vacancies: Schema.Array(VacancyBrief)
   })
+})
+
+/* ------------------------------ apply filter ------------------------------- */
+
+export const ApplyFilterGet = readTool("apply_filter_get", {
+  description:
+    "The apply filter that decides which vacancies may be applied to for one hh account and resume: hard rules " +
+    "(readable, ANDed), OR groups, and scoring settings (minFit, tests policy human/skip/allow, freshHalfLifeHours). " +
+    "A vacancy that fails a rule is a skip with reason blocked_filter whose detail lists the failed rules. " +
+    "`source` says where it came from: exact (row for this resume), account (account-wide row, used when the " +
+    "resume has none) or default (nothing stored, built-in template). Without `resume` the account-wide " +
+    "filter is shown. Rules are edited in the web UI; here you can only copy a preset or change settings.",
+  parameters: Schema.Struct({
+    account: Schema.optional(Schema.String).annotate({
+      description: "hh account: id, id prefix or name/label (see accounts_list). Default: the default/only account"
+    }),
+    resume: Schema.optional(Schema.String).annotate({
+      description: "Resume id or prefix (see resumes_list). Default: the account-wide filter"
+    })
+  }),
+  success: ApplyFilterBrief
 })
 
 /* -------------------------------- employers -------------------------------- */
@@ -674,6 +695,7 @@ export const OtborReadToolkit = Toolkit.make(
   FitGet,
   PresetsList,
   PresetPreview,
+  ApplyFilterGet,
   EmployersList,
   EmployerGet,
   ResumesList,
@@ -693,6 +715,7 @@ const READ_INSTRUCTIONS = `otbor is an hh.ru auto-apply control plane.
 
 Domain model, in pipeline order:
 - vacancy: a job posting crawled from hh.ru (title, employer, salary, description, skills).
+- apply filter: per (hh account, resume) hard rules (apply_filter_get) that a vacancy must pass; the title check is just rules on \`title\`. A vacancy that fails them is skipped with reason \`blocked_filter\`, whose detail lists the failed rules. The filter also holds minFit, the tests policy and the freshness half-life. Without a stored row the account-wide row, then a built-in default, applies. Rules are edited in the web UI.
 - gate: a deterministic title check (match / unknown / reject). Only "match" vacancies can be applied to.
 - decision: the policy result for a vacancy: verdict (apply / draft / skip), fit (0-100 against the resume), priority (ranking score) and reasons (why). Reasons starting with "blocked_" explain a skip. The "fit" reason says whether the number is "deterministic" (keyword rules, saturates near 95-100) or "llm" (a personal judgement, see fit_get).
 - application: created from an apply/draft decision; states draft, queued, submitting, submitted, skipped, needs_human, failed. Submit is at-most-once; "waiting" usually means draft or needs_human. Applications the operator made by hand on hh.ru are imported by the operator CLI command "otbor hh sync" as state submitted with origin "imported" (and hh's own status); they count as already applied (blocked_applied), cannot be approved or prepared again, and are not otbor submits. This server has no tool to run or change the sync.
@@ -712,6 +735,8 @@ Outputs are compact and long texts are trimmed (check the truncated flag; raise 
 export const READONLY_NOTE = "This server is running READ-ONLY (OTBOR_MCP_READONLY=1): there are no tools that change anything."
 
 const WRITE_INSTRUCTIONS = `
+
+Apply filter (write tools): apply_filter_from_preset copies a saved apply preset into the filter of an account and resume (replacing its rules, keeping its settings); apply_filter_set_settings changes minFit, the tests policy and freshHalfLifeHours and keeps the rules. Both make existing decisions stale; a vacancy that now fails the rules becomes a blocked_filter skip. Show the user what changes (apply_filter_get before and after) and do not change the filter unasked.
 
 Applying (write tools). application_approve SENDS A REAL APPLICATION on hh.ru, once and irreversibly. Everything before it is a draft and can be redone or dropped. Recommended workflow, one vacancy at a time (the tools are atomic; you orchestrate):
 1. vacancies_top for candidates. Optionally read vacancy_get + resume_get and, if the keyword fit looks wrong, record your own view with fit_save (it re-ranks).

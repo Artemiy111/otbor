@@ -73,6 +73,16 @@ const form = {
   fetchedAt: "2026-01-01T00:00:00Z"
 }
 
+const DEVOPS_FILTER = {
+  rules: [{ field: "salary", op: "gte", value: 250000, orMissing: true }],
+  groups: [{
+    branches: [
+      { rules: [{ field: "title", op: "contains", value: "devops" }] },
+      { rules: [{ field: "title", op: "contains", value: "sre" }] }
+    ]
+  }]
+}
+
 interface Calls {
   create: Array<unknown>
   manual: Array<{ vacancyId: string; hhAccountId: string; resumeId?: string }>
@@ -80,6 +90,8 @@ interface Calls {
   setKit: Array<{ answers: ReadonlyArray<{ questionId: string }>; formHash: string; letter?: string | null }>
   approve: Array<unknown>
   save: Array<unknown>
+  filterSet: Array<Record<string, unknown>>
+  filterPreset: Array<Record<string, unknown>>
 }
 
 const makeFake = (options: {
@@ -95,7 +107,7 @@ const makeFake = (options: {
   /** What ApplicationsCreateManual reports when the application already exists. */
   manualExisting?: ApplicationRecord
 }) => {
-  const calls: Calls = { create: [], manual: [], fetch: [], setKit: [], approve: [], save: [] }
+  const calls: Calls = { create: [], manual: [], fetch: [], setKit: [], approve: [], save: [], filterSet: [], filterPreset: [] }
   const applications = options.applications ?? []
   const rpc = {
     HhAccountsList: () =>
@@ -207,6 +219,52 @@ const makeFake = (options: {
         : Effect.fail(options.approveError)
     },
     ApplicationsSkip: () => Effect.succeed(record(1, { state: "skipped" })),
+    PresetsList: () =>
+      Effect.succeed([
+        { id: id(900), kind: "apply", title: "DevOps", system: true, filter: DEVOPS_FILTER },
+        { id: id(901), kind: "explore", title: "Backend", system: false, filter: {} }
+      ]),
+    ApplyFilterGet: (payload: { hhAccountId: string; resumeId?: string }) =>
+      Effect.succeed({
+        source: "default",
+        id: null,
+        hhAccountId: payload.hhAccountId,
+        resumeId: payload.resumeId ?? null,
+        filter: DEVOPS_FILTER,
+        minFit: 45,
+        tests: "human",
+        freshHalfLifeHours: 72,
+        templatePresetId: null,
+        updatedAt: null
+      }),
+    ApplyFilterSet: (payload: Record<string, unknown>) => {
+      calls.filterSet.push(payload)
+      return Effect.succeed({
+        id: id(950),
+        hhAccountId: payload.hhAccountId,
+        resumeId: payload.resumeId ?? null,
+        filter: payload.filter,
+        minFit: payload.minFit ?? 45,
+        tests: payload.tests ?? "human",
+        freshHalfLifeHours: payload.freshHalfLifeHours ?? 72,
+        templatePresetId: null,
+        updatedAt: "2026-11-05T00:00:00Z"
+      })
+    },
+    ApplyFilterFromPreset: (payload: Record<string, unknown>) => {
+      calls.filterPreset.push(payload)
+      return Effect.succeed({
+        id: id(951),
+        hhAccountId: payload.hhAccountId,
+        resumeId: payload.resumeId ?? null,
+        filter: DEVOPS_FILTER,
+        minFit: 45,
+        tests: "human",
+        freshHalfLifeHours: 72,
+        templatePresetId: payload.presetId,
+        updatedAt: "2026-11-05T00:00:00Z"
+      })
+    },
     FitJudgementSave: (payload: unknown) => {
       calls.save.push(payload)
       return Effect.succeed({
@@ -241,7 +299,7 @@ describe("write tools", () => {
   test("annotations: write tools are not read-only, only approve is destructive", async () => {
     const { layer } = makeFake({})
     const { tools } = await withClient(layer, (c) => c.listTools())
-    const write = ["fit_save", "application_prepare", "application_prepare_manual", "kit_set", "application_approve", "application_skip"]
+    const write = ["fit_save", "application_prepare", "application_prepare_manual", "kit_set", "application_approve", "application_skip", "apply_filter_from_preset", "apply_filter_set_settings"]
     for (const name of write) {
       const tool = tools.find((t) => t.name === name)
       expect(tool?.annotations?.readOnlyHint).toBe(false)
@@ -689,5 +747,88 @@ describe("manual mode", () => {
     const context = tools.find((t) => t.name === "cover_letter_context")
     expect(context?.annotations?.readOnlyHint).toBe(true)
     expect(tools.find((t) => t.name === "application_prepare_manual")).toBeUndefined()
+  })
+})
+
+describe("apply filter", () => {
+  test("apply_filter_get shows source, readable rules and settings; it is a read tool", async () => {
+    const { layer } = makeFake({})
+    const result = await call(layer, "apply_filter_get", {})
+    expect(result.isError).toBeFalsy()
+    const out = result.structuredContent as {
+      source: string
+      account: { id: string }
+      resumeId: string | null
+      rules: Array<string>
+      groups: Array<string>
+      minFit: number
+      tests: string
+    }
+    expect(out.source).toBe("default")
+    expect(out.account.id).toBe(ACCOUNT)
+    expect(out.resumeId).toBeNull()
+    expect(out.rules).toEqual(["salary >= 250000 (or missing)"])
+    expect(out.groups[0]).toContain("title contains devops | title contains sre")
+    expect(out.minFit).toBe(45)
+    expect(out.tests).toBe("human")
+
+    const { tools } = await withClient(layer, (c) => c.listTools(), registrationFor(true))
+    expect(tools.find((t) => t.name === "apply_filter_get")?.annotations?.readOnlyHint).toBe(true)
+    expect(tools.find((t) => t.name === "apply_filter_from_preset")).toBeUndefined()
+    expect(tools.find((t) => t.name === "apply_filter_set_settings")).toBeUndefined()
+  })
+
+  test("apply_filter_get with a resume asks for that pair", async () => {
+    const { layer } = makeFake({})
+    const result = await call(layer, "apply_filter_get", { resume: id(800) })
+    expect((result.structuredContent as { resumeId: string }).resumeId).toBe(id(800))
+    const bad = await call(layer, "apply_filter_get", { resume: id(999) })
+    expect(bad.isError).toBe(true)
+  })
+
+  test("apply_filter_from_preset resolves a preset by title and copies it", async () => {
+    const { layer, calls } = makeFake({})
+    const result = await call(layer, "apply_filter_from_preset", { presetId: "devops", resume: id(800) })
+    expect(result.isError).toBeFalsy()
+    expect(calls.filterPreset).toEqual([{ hhAccountId: ACCOUNT, resumeId: id(800), presetId: id(900) }])
+    const out = result.structuredContent as { source: string; templatePresetId: string }
+    expect(out.source).toBe("exact")
+    expect(out.templatePresetId).toBe(id(900))
+
+    const missing = await call(layer, "apply_filter_from_preset", { presetId: "nope" })
+    expect(missing.isError).toBe(true)
+    expect(calls.filterPreset).toHaveLength(1)
+  })
+
+  test("apply_filter_set_settings keeps the filter, validates and sends only given settings", async () => {
+    const { layer, calls } = makeFake({})
+    const refusedEmpty = await call(layer, "apply_filter_set_settings", {})
+    expect(refusedEmpty.isError).toBe(true)
+    const refusedRange = await call(layer, "apply_filter_set_settings", { minFit: 150 })
+    expect(refusedRange.isError).toBe(true)
+    expect(calls.filterSet).toHaveLength(0)
+
+    const result = await call(layer, "apply_filter_set_settings", { minFit: 60, tests: "skip" })
+    expect(result.isError).toBeFalsy()
+    expect(calls.filterSet).toEqual([{
+      hhAccountId: ACCOUNT,
+      filter: DEVOPS_FILTER,
+      minFit: 60,
+      tests: "skip"
+    }])
+    const out = result.structuredContent as { minFit: number; tests: string; rules: Array<string>; source: string }
+    expect(out.minFit).toBe(60)
+    expect(out.tests).toBe("skip")
+    expect(out.rules).toHaveLength(1)
+    expect(out.source).toBe("account")
+  })
+
+  test("server instructions mention the apply filter and blocked_filter", () => {
+    for (const readOnly of [true, false]) {
+      const text = serverInstructions(readOnly)
+      expect(text).toContain("apply_filter_get")
+      expect(text).toContain("blocked_filter")
+    }
+    expect(serverInstructions(false)).toContain("apply_filter_set_settings")
   })
 })

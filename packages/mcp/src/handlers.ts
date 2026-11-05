@@ -22,6 +22,7 @@ import {
   accountRef,
   analysisBrief,
   applicationBrief,
+  applyFilterBrief,
   clamp,
   decisionBrief,
   employerBrief,
@@ -428,6 +429,19 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
         companies: preview.companies,
         vacancies: preview.vacancies.slice(0, clamp(params.limit, 10, 50)).map(vacancyBrief)
       }
+    }),
+
+    apply_filter_get: Effect.fn("mcp.apply_filter_get")(function*(params) {
+      const accounts = yield* run(rpc.HhAccountsList())
+      const account = yield* pickAccount(accounts, params.account)
+      const resume = params.resume === undefined || params.resume.trim() === ""
+        ? undefined
+        : yield* run(pickResume(rpc, account.id, params.resume))
+      const view = yield* run(rpc.ApplyFilterGet({
+        hhAccountId: account.id,
+        ...(resume === undefined ? {} : { resumeId: resume.id })
+      }))
+      return applyFilterBrief(view, accountDirectory(accounts))
     }),
 
     employers_list: Effect.fn("mcp.employers_list")(function*(params) {

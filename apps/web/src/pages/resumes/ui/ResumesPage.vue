@@ -8,7 +8,7 @@ import { hhAccountApi, hhAccountKeys, useDefaultAccount } from "@/entities/hh-ac
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { AccountResumePicker } from "@/features/vacancy-apply"
 import { RefreshButton } from "@/features/refresh-button"
-import { describeError, formatDate } from "@/shared/lib"
+import { currencySymbol, describeError, formatDate } from "@/shared/lib"
 import {
   Alert,
   AlertDescription,
@@ -185,11 +185,11 @@ const aiSalaries = computed(() => {
   const parts = SALARY_CURRENCIES.flatMap((currency) => {
     const d = salaries.value[currency]
     const bits = [d.expectation && `ожидает ${d.expectation}`, d.min && `минимум ${d.min}`].filter(Boolean)
-    return bits.length ? [`${currency}: ${bits.join(", ")}`] : []
+    return bits.length ? [`${currencySymbol(currency)}: ${bits.join(", ")}`] : []
   })
   if (parts.length) return parts.join(" · ")
   const r = selectedResume.value
-  return r?.salaryAmount ? `в резюме ${r.salaryAmount} ${r.salaryCurrency ?? ""}` : "не указана"
+  return r?.salaryAmount ? `в резюме ${r.salaryAmount} ${currencySymbol(r.salaryCurrency ?? "")}` : "не указана"
 })
 
 const str = (value: unknown): string => (typeof value === "string" ? value : "")
@@ -257,6 +257,9 @@ const refresh = () => {
   <section>
     <PageHeader title="Резюме" description="Резюме hh.ru и локальные дополнения для сопроводительных писем.">
       <template #actions>
+        <Button v-if="selectedAccountId" variant="outline" as="a" :href="`/apply-filter?account=${selectedAccountId}${selectedResumeId ? `&resume=${selectedResumeId}` : ''}`">
+          Фильтр откликов
+        </Button>
         <Button variant="outline" :disabled="syncMutation.isLoading.value || !selectedAccountId" @click="syncMutation.mutate()">
           {{ syncMutation.isLoading.value ? "Загружаю…" : "Загрузить резюме с hh" }}
         </Button>
@@ -339,7 +342,7 @@ const refresh = () => {
               <span class="text-muted-foreground">Минимум</span>
               <span class="text-muted-foreground">Ожидаемая</span>
               <template v-for="currency in SALARY_CURRENCIES" :key="currency">
-                <Label :for="`min-${currency}`" class="font-medium">{{ currency }}</Label>
+                <Label :for="`min-${currency}`" class="font-medium">{{ currencySymbol(currency) }}</Label>
                 <Input :id="`min-${currency}`" v-model="salaries[currency].min" type="number" min="0" />
                 <Input v-model="salaries[currency].expectation" type="number" min="0" />
               </template>

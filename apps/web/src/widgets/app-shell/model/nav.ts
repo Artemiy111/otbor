@@ -6,6 +6,7 @@ import {
   Building,
   CalendarClock,
   Contact,
+  Filter,
   DatabaseZap,
   Gavel,
   HeartPulse,
@@ -86,6 +87,7 @@ export const navSections: ReadonlyArray<NavSection> = [
     items: [
       { id: "queue", label: "Очереди", href: "/queue", icon: ListChecks },
       { id: "inference", label: "Генерация", href: "/inference", icon: Sparkles },
+      { id: "apply-filter", label: "Фильтр откликов", href: "/apply-filter", icon: Filter },
       { id: "presets", label: "Пресеты", href: "/presets", icon: SlidersHorizontal }
     ]
   }

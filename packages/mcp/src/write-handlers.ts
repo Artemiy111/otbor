@@ -11,7 +11,7 @@ import { formatIssues, type KitIssue, prevalidateKit } from "./apply.ts"
 import { guard } from "./errors.ts"
 import { fail, pickResume, resolveOrFetchVacancy, resolveVacancyId } from "./handlers.ts"
 import { pickAccount } from "./accounts.ts"
-import { accountDirectory, applicationBrief } from "./shapes.ts"
+import { accountDirectory, applicationBrief, applyFilterBrief } from "./shapes.ts"
 import { OtborWriteToolkit } from "./write-tools.ts"
 
 const DECISION_PAGE = 200
@@ -79,6 +79,67 @@ export const OtborWriteHandlers = OtborWriteToolkit.toLayer(Effect.gen(function*
           gate: saved.decision.gate
         }
       }
+    }),
+
+    apply_filter_from_preset: Effect.fn("mcp.apply_filter_from_preset")(function*(params) {
+      const accounts = yield* run(rpc.HhAccountsList())
+      const account = yield* pickAccount(accounts, params.account)
+      const resume = params.resume === undefined || params.resume.trim() === ""
+        ? undefined
+        : yield* run(pickResume(rpc, account.id, params.resume))
+      const wanted = params.presetId.trim().toLowerCase()
+      const presets = yield* run(rpc.PresetsList({}))
+      const matches = presets.filter((p) => p.id.toLowerCase() === wanted || p.title.trim().toLowerCase() === wanted)
+      const candidates = matches.length > 0
+        ? matches
+        : wanted.length >= 4
+        ? presets.filter((p) => p.id.toLowerCase().startsWith(wanted))
+        : []
+      if (candidates.length === 0) return yield* fail(`preset not found: ${params.presetId}; see presets_list`)
+      if (candidates.length > 1) {
+        return yield* fail(
+          `"${params.presetId}" matches several presets; use the id: ${candidates.map((p) => `${p.id} (${p.kind}, ${p.title})`).join(", ")}`
+        )
+      }
+      const preset = candidates[0]!
+      const saved = yield* run(rpc.ApplyFilterFromPreset({
+        hhAccountId: account.id,
+        ...(resume === undefined ? {} : { resumeId: resume.id }),
+        presetId: preset.id
+      }))
+      return applyFilterBrief({ ...saved, source: resume === undefined ? "account" : "exact" }, accountDirectory(accounts))
+    }),
+
+    apply_filter_set_settings: Effect.fn("mcp.apply_filter_set_settings")(function*(params) {
+      if (params.minFit === undefined && params.tests === undefined && params.freshHalfLifeHours === undefined) {
+        return yield* fail("pass at least one of minFit, tests, freshHalfLifeHours")
+      }
+      if (params.minFit !== undefined && (params.minFit < 0 || params.minFit > 100)) {
+        return yield* fail("minFit must be an integer from 0 to 100")
+      }
+      if (params.freshHalfLifeHours !== undefined && params.freshHalfLifeHours < 1) {
+        return yield* fail("freshHalfLifeHours must be a positive integer")
+      }
+      const accounts = yield* run(rpc.HhAccountsList())
+      const account = yield* pickAccount(accounts, params.account)
+      const resume = params.resume === undefined || params.resume.trim() === ""
+        ? undefined
+        : yield* run(pickResume(rpc, account.id, params.resume))
+      const resumeId = resume?.id
+      // Keep the rules the pair uses today (the stored row, the account row or the default).
+      const current = yield* run(rpc.ApplyFilterGet({
+        hhAccountId: account.id,
+        ...(resumeId === undefined ? {} : { resumeId })
+      }))
+      const saved = yield* run(rpc.ApplyFilterSet({
+        hhAccountId: account.id,
+        ...(resumeId === undefined ? {} : { resumeId }),
+        filter: current.filter,
+        ...(params.minFit === undefined ? {} : { minFit: params.minFit }),
+        ...(params.tests === undefined ? {} : { tests: params.tests }),
+        ...(params.freshHalfLifeHours === undefined ? {} : { freshHalfLifeHours: params.freshHalfLifeHours })
+      }))
+      return applyFilterBrief({ ...saved, source: resumeId === undefined ? "account" : "exact" }, accountDirectory(accounts))
     }),
 
     application_prepare: Effect.fn("mcp.application_prepare")(function*(params) {

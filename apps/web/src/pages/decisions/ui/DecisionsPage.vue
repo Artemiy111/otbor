@@ -108,10 +108,11 @@ const columns: ColumnDef<DecisionRecord>[] = [
                     key: reason.code + (reason.detail ?? ""),
                     variant: "secondary",
                     class: "font-normal",
-                    title: reason.code
+                    title: reason.detail ? `${reason.code}: ${reason.detail}` : reason.code
                   },
                   () => [
                     decisionReasonLabel(reason.code),
+                    reason.detail ? `: ${reason.detail}` : null,
                     h("span", { class: "ml-1 font-mono text-[10px] opacity-60" }, reason.code)
                   ]
                 )

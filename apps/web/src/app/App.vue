@@ -2,6 +2,7 @@
 import { computed } from "vue"
 import { ApplicationDetailPage } from "@/pages/application-detail"
 import { ApplicationsPage } from "@/pages/applications"
+import { ApplyFilterPage } from "@/pages/apply-filter"
 import { BlacklistPage } from "@/pages/blacklist"
 import { CompaniesPage } from "@/pages/companies"
 import { CompanyDetailPage } from "@/pages/company-detail"
@@ -47,6 +48,7 @@ const applicationId = computed(() =>
     <QueuePage v-else-if="route.name === 'queue'" />
     <InferencePage v-else-if="route.name === 'inference'" />
     <PresetsPage v-else-if="route.name === 'presets'" />
+    <ApplyFilterPage v-else-if="route.name === 'apply-filter'" />
     <SearchPage v-else-if="route.name === 'search'" />
     <SchedulesPage v-else-if="route.name === 'schedules'" />
     <ContactsPage v-else-if="route.name === 'contacts'" />

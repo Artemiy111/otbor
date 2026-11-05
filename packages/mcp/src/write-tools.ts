@@ -1,7 +1,7 @@
 import { Schema } from "effect"
 import { Tool, Toolkit } from "effect/ai"
 import { ToolFailure } from "./errors.ts"
-import { ApplicationBrief } from "./shapes.ts"
+import { ApplicationBrief, ApplyFilterBrief } from "./shapes.ts"
 
 /**
  * Write tools: they change state in the otbor API. Kept in their own toolkit
@@ -210,8 +210,51 @@ export const ApplicationSkip = writeTool("application_skip", {
   idempotent: true
 })
 
+/* ------------------------------ apply filter ------------------------------- */
+
+const filterTarget = {
+  account: Schema.optional(Schema.String).annotate({
+    description: "hh account: id, id prefix or name/label (see accounts_list). Default: the default/only account"
+  }),
+  resume: Schema.optional(Schema.String).annotate({
+    description: "Resume id or prefix (see resumes_list). Default: the account-wide filter"
+  })
+}
+
+export const ApplyFilterFromPreset = writeTool("apply_filter_from_preset", {
+  description:
+    "Copy a saved preset's filter into the apply filter of one hh account and resume (without `resume`: the " +
+    "account-wide filter). REPLACES that filter's rules; its settings (minFit, tests, freshHalfLifeHours) stay. " +
+    "The copy is independent: later edits of the preset do not change it. Existing decisions become stale and " +
+    "are re-evaluated. Sends nothing to hh.ru. Rules cannot be edited here, only taken from a preset.",
+  parameters: Schema.Struct({
+    presetId: Schema.String.annotate({ description: "Preset id, id prefix or exact title (see presets_list)" }),
+    ...filterTarget
+  }),
+  success: ApplyFilterBrief,
+  idempotent: true
+})
+
+export const ApplyFilterSetSettings = writeTool("apply_filter_set_settings", {
+  description:
+    "Change the scoring settings of the apply filter for one hh account and resume (without `resume`: the " +
+    "account-wide filter): minFit (0-100), tests policy (human = needs the operator, skip, allow) and " +
+    "freshHalfLifeHours. Settings left out keep their value; the rules are kept as they are. If only the " +
+    "built-in default applied so far, it is stored as an explicit row. Sends nothing to hh.ru.",
+  parameters: Schema.Struct({
+    minFit: Schema.optional(Schema.Int).annotate({ description: "0-100: skip vacancies that score below this fit" }),
+    tests: Schema.optional(Schema.Literals(["human", "skip", "allow"])),
+    freshHalfLifeHours: Schema.optional(Schema.Int).annotate({ description: "Positive hours; how fast freshness decays" }),
+    ...filterTarget
+  }),
+  success: ApplyFilterBrief,
+  idempotent: true
+})
+
 export const OtborWriteToolkit = Toolkit.make(
   FitSave,
+  ApplyFilterFromPreset,
+  ApplyFilterSetSettings,
   ApplicationPrepare,
   ApplicationPrepareManual,
   KitSet,
