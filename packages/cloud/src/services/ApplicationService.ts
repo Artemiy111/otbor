@@ -8,7 +8,6 @@ import type {
   VacancyFormState
 } from "@otbor/contract"
 import { AnswersInvalid, Conflict, InvalidInput, LimitExceeded, NotFound } from "@otbor/contract"
-import { DEFAULT_DAILY_LIMIT } from "@otbor/domain"
 import { sql } from "drizzle-orm"
 import { Config, Context, Effect, Layer, Match } from "effect"
 import { Database, type Executor } from "../db/Database.ts"
@@ -19,6 +18,15 @@ import * as QueueRepository from "../repositories/QueueRepository.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
 import { CurrentUser } from "./CurrentUser.ts"
 import { checkKit, type KitProblem } from "./applyRules.ts"
+import {
+  claimSendSlot,
+  DAY_MS,
+  DEFAULT_DAILY_APPLY_LIMIT,
+  dailyLimitFor,
+  recentSubmits
+} from "./dailyLimit.ts"
+
+export { DEFAULT_DAILY_APPLY_LIMIT }
 import { nextSequence, reconcileJob, submitJob, targetFor } from "./jobs.ts"
 import * as VacancyFormRepository from "../repositories/VacancyFormRepository.ts"
 import { FORM_TTL_MS } from "../repositories/VacancyFormRepository.ts"
@@ -81,49 +89,6 @@ const accountExists = (tx: Executor, id: string) =>
   tx
     .execute(sql`select id from hh_account where id = ${id} limit 1`)
     .pipe(Effect.map((result) => result.rows.length > 0))
-
-/**
- * Daily submits per hh account when the account has no apply filter row and
- * `OTBOR_DAILY_APPLY_LIMIT` is not set (hh's own limit).
- */
-export const DEFAULT_DAILY_APPLY_LIMIT = DEFAULT_DAILY_LIMIT
-
-const DAY_MS = 24 * 60 * 60 * 1000
-
-/**
- * Applications of one account that were approved in the last 24 hours and
- * still stand (queued, submitting or submitted). `intent_at` is written by
- * approve; auto-mode rows without it fall back to `submitted_at`.
- * `oldest` is the timestamp that frees the first slot.
- */
-const recentSubmits = (tx: Executor, hhAccountId: string, excludeId: string | null = null) =>
-  tx
-    .execute(sql`
-      select count(*)::int as used, min(coalesce(intent_at, submitted_at)) as oldest
-      from application
-      where hh_account_id = ${hhAccountId}
-        and (${excludeId}::uuid is null or id <> ${excludeId}::uuid)
-        and origin = 'otbor'
-        and state in ('queued', 'submitting', 'submitted')
-        and coalesce(intent_at, submitted_at) > now() - interval '24 hours'
-    `)
-    .pipe(
-      Effect.map((result) => {
-        const row = result.rows[0] as unknown as { used: number; oldest: Date | string | null } | undefined
-        const oldest = row?.oldest == null ? null : new Date(row.oldest)
-        return { used: row?.used ?? 0, oldest }
-      })
-    )
-
-/**
- * The daily limit of one account: the `daily_limit` of its account-level apply
- * filter row (resume null) when there is one, else the service default (the
- * `OTBOR_DAILY_APPLY_LIMIT` env, else 200).
- */
-const dailyLimitFor = (tx: Executor, userId: string, hhAccountId: string, fallback: number) =>
-  ApplyFilterRepository.accountDailyLimit(tx, userId, hhAccountId).pipe(
-    Effect.map((stored) => stored ?? fallback)
-  )
 
 const vacancyFor = (tx: Executor, id: string) => VacancyRepository.findById(tx, id)
 
@@ -704,37 +669,14 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                   ) {
                     // The same daily cap as approve. Without a slot the kit stays
                     // stored and a human approves it when one frees up.
-                    const recent = yield* recentSubmits(tx, application.hhAccountId, application.id)
-                    const dailyLimit = yield* dailyLimitFor(
-                      tx,
-                      currentUser.userId,
-                      application.hhAccountId,
-                      options.dailyApplyLimit
-                    )
-                    if (recent.used >= dailyLimit) {
-                      const resetsAt = new Date((recent.oldest?.getTime() ?? Date.now()) + DAY_MS).toISOString()
-                      yield* ApplicationRepository.transition(
-                        tx,
-                        currentUser.userId,
-                        application.id,
-                        "needs_human",
-                        {
-                          from: ["queued"],
-                          patch: { lastError: `daily limit ${dailyLimit} reached; a slot frees at ${resetsAt}` }
-                        }
-                      )
-                      return ok(kit)
-                    }
                     const target = yield* targetFor(tx, application)
                     if (target !== null) {
-                      // Counts against the cap from now on, not only once hh confirms.
-                      yield* ApplicationRepository.transition(
-                        tx,
-                        currentUser.userId,
-                        application.id,
-                        "queued",
-                        { from: ["queued"], patch: { intentAt: new Date() } }
-                      )
+                      const claim = yield* claimSendSlot(tx, {
+                        userId: currentUser.userId,
+                        application,
+                        fallbackLimit: options.dailyApplyLimit
+                      })
+                      if (!claim.slot) return ok(kit)
                       yield* submitJob(tx, {
                         ...target,
                         kit,

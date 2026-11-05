@@ -12,7 +12,7 @@ import type {
 import { HarnessRejected, NotFound } from "@otbor/contract"
 import { parseResponseForm } from "@otbor/hh"
 import { sql } from "drizzle-orm"
-import { Context, Effect, Layer } from "effect"
+import { Config, Context, Effect, Layer } from "effect"
 import { generateHarnessToken, hashHarnessToken } from "../auth/harnessToken.ts"
 import { Database } from "../db/Database.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
@@ -39,6 +39,7 @@ import { importTopics } from "./NegotiationsSync.ts"
 import { importResumes } from "./ResumeSync.ts"
 import { negotiationsSyncJob, nextSequence, reconcileJob, submitJob, targetFor } from "./jobs.ts"
 import { toStorageError } from "./support.ts"
+import { claimSendSlot, DEFAULT_DAILY_APPLY_LIMIT } from "./dailyLimit.ts"
 
 /* -------------------------------------------------------------------------- */
 /* Outcomes                                                                   */
@@ -148,10 +149,24 @@ export interface QueueServiceShape {
   readonly revoke: (input: { readonly harnessId: string }) => Effect.Effect<RevokeResult, ApiError>
 }
 
+export interface QueueServiceOptions {
+  /** Daily sends per hh account when the account has no apply filter row. */
+  readonly dailyApplyLimit: number
+}
+
 export class QueueService extends Context.Service<QueueService, QueueServiceShape>()(
   "otbor/cloud/QueueService"
 ) {
-  static readonly layer = Layer.effect(
+  /** Production layer: the fallback daily limit is `OTBOR_DAILY_APPLY_LIMIT` (default 200). */
+  static readonly layer = Layer.unwrap(
+    Config.Int("OTBOR_DAILY_APPLY_LIMIT").pipe(
+      Config.withDefault(DEFAULT_DAILY_APPLY_LIMIT),
+      Effect.map((dailyApplyLimit) => QueueService.layerWith({ dailyApplyLimit }))
+    )
+  )
+
+  static readonly layerWith = (options: QueueServiceOptions) =>
+  Layer.effect(
     QueueService,
     Effect.gen(function*() {
       const database = yield* Database
@@ -501,6 +516,13 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                           }
                           const target = yield* targetFor(tx, application)
                           if (target !== null) {
+                            // The same daily cap and intent stamp as approve / setKit.
+                            const claim = yield* claimSendSlot(tx, {
+                              userId: ctx.userId,
+                              application,
+                              fallbackLimit: options.dailyApplyLimit
+                            })
+                            if (!claim.slot) continue
                             yield* submitJob(tx, {
                               ...target,
                               kit,

@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { type FormAnswer, LimitExceeded, type UserId } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
+import { parseResponseForm } from "@otbor/hh"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { Database } from "../../src/db/Database.ts"
@@ -243,6 +244,106 @@ if (!enabled || serverUrl === null) {
       // Raising the row frees the slot immediately.
       await support.applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter: {}, dailyLimit: 2 })
       expect((await approve(tenant.userId, b)).state).toBe("queued")
+    }, 60_000)
+
+    /** An auto-queued application with a stored kit for the fixture form, whose form is read now. */
+    const autoQueuedReread = async (tenant: support.Tenant, label: string) => {
+      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const vacancyId = await support.seedVacancy(label)
+      const externalId = await support.vacancyExternalId(vacancyId)
+      const applicationId = await support.seedApplication({
+        userId: tenant.userId,
+        accountId: tenant.accountId,
+        vacancyId,
+        state: "queued"
+      })
+      const form = parseResponseForm(
+        responseHtml,
+        `https://hh.ru/applicant/vacancy_response?vacancyId=${externalId}`
+      )
+      await support.applicationSetKit(tenant.userId, {
+        applicationId,
+        formHash: form.formHash,
+        letter: "Здравствуйте",
+        answers: fullAnswers()
+      })
+      await support.enqueuePrepareJob({
+        userId: tenant.userId,
+        accountId: tenant.accountId,
+        applicationId,
+        vacancyId,
+        externalId,
+        sequence: 1
+      })
+      const leased = await support.leaseNext(tenant.userId, harness.id, harness.token!, [tenant.accountId])
+      await support.completeJob(tenant.userId, {
+        harnessId: harness.id,
+        token: harness.token!,
+        jobId: leased.job!.id,
+        leaseId: leased.job!.leaseId!,
+        epoch: leased.job!.leaseEpoch,
+        exit: {
+          tag: "prepared",
+          artifacts: {
+            url: `https://hh.ru/applicant/vacancy_response?vacancyId=${externalId}`,
+            html: responseHtml
+          }
+        }
+      })
+      return applicationId
+    }
+
+    const intentAtOf = (applicationId: string) =>
+      support.runAs(
+        "owner",
+        Effect.gen(function*() {
+          const database = yield* Database
+          const result = yield* database.asOwner((tx) =>
+            tx.execute(sql`select intent_at, last_error from application where id = ${applicationId}`)
+          )
+          return result.rows[0] as unknown as { intent_at: Date | null; last_error: string | null }
+        })
+      )
+
+    /** An application of the account that already holds a slot (approved a moment ago). */
+    const occupySlot = async (tenant: support.Tenant, label: string) => {
+      const id = await support.seedApplication({
+        userId: tenant.userId,
+        accountId: tenant.accountId,
+        vacancyId: await support.seedVacancy(label),
+        state: "queued"
+      })
+      await support.runAs(
+        "owner",
+        Effect.gen(function*() {
+          const database = yield* Database
+          yield* database.asOwner((tx) => tx.execute(sql`update application set intent_at = now() where id = ${id}`))
+        })
+      )
+    }
+
+    test("an auto-queued application whose form is re-read at the cap goes to needs_human", async () => {
+      const tenant = await support.seedTenant("limit-auto-full")
+      await support.applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter: {}, dailyLimit: 1 })
+      await occupySlot(tenant, "auto-full-held")
+
+      const id = await autoQueuedReread(tenant, "auto-full")
+      expect((await support.findApplication(id))?.state).toBe("needs_human")
+      expect(await support.countJobs(id, "submit")).toBe(0)
+      const row = await intentAtOf(id)
+      expect(row.intent_at).toBeNull()
+      expect(row.last_error).toContain("daily limit 1 reached")
+    }, 60_000)
+
+    test("an auto-queued application whose form is re-read with a free slot submits and stamps intent_at", async () => {
+      const tenant = await support.seedTenant("limit-auto-free")
+      await support.applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter: {}, dailyLimit: 2 })
+      await occupySlot(tenant, "auto-free-held")
+
+      const id = await autoQueuedReread(tenant, "auto-free")
+      expect((await support.findApplication(id))?.state).toBe("queued")
+      expect(await support.countJobs(id, "submit")).toBe(1)
+      expect((await intentAtOf(id)).intent_at).not.toBeNull()
     }, 60_000)
 
     test("usage of an unknown account is NotFound", async () => {
