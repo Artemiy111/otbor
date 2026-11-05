@@ -6,6 +6,7 @@ import * as ScheduleRunRepository from "../repositories/ScheduleRunRepository.ts
 import type { StoredSchedule } from "../repositories/ScheduleRepository.ts"
 import { CrawlRunner, type CrawlRunnerResult } from "./CrawlRunner.ts"
 import { AnalysisRunner } from "./AnalysisRunner.ts"
+import { AutoApplyRunner } from "./AutoApplyRunner.ts"
 import { DEFAULT_BATCH, MAX_BATCH } from "./decisionEvaluation.ts"
 import { EmployerHydrator } from "./EmployerHydrator.ts"
 import { EvaluationRunner } from "./EvaluationRunner.ts"
@@ -120,6 +121,7 @@ export class ScheduleDispatcher extends Context.Service<
       const fit = yield* FitJudgeRunner
       const resumeSync = yield* ResumeSync
       const analysis = yield* AnalysisRunner
+      const autoApply = yield* AutoApplyRunner
 
       /**
        * Decides the vacancies a crawl or hydration pass just saved. It is a
@@ -346,6 +348,32 @@ export class ScheduleDispatcher extends Context.Service<
                   skipped: result.skipped,
                   failed: result.failed,
                   stoppedBy: result.stoppedBy,
+                  errors: result.errors
+                }
+              }
+            }
+
+            case "apply": {
+              // Auto-apply pass: creates applications for accounts whose apply
+              // filter is not `off`, writes their letters, stores kits. The
+              // target is an hh account id, or `default`/`global` for all of
+              // the user's accounts.
+              const target = schedule.targetId.trim()
+              const named = target !== "" && target !== "default" && target !== "global"
+              const result = yield* autoApply.run(schedule.userId, named ? { hhAccountId: target } : {})
+              const error = result.errors.length === 0 ? null : result.errors.join("; ")
+              return {
+                ok: error === null,
+                error,
+                detail: {
+                  accounts: result.accounts,
+                  selected: result.selected,
+                  created: result.created,
+                  writingEnqueued: result.writingEnqueued,
+                  kitsSet: result.kitsSet,
+                  submitQueued: result.submitQueued,
+                  needsHuman: result.needsHuman,
+                  waiting: result.waiting,
                   errors: result.errors
                 }
               }

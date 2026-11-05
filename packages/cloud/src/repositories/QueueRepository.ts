@@ -487,6 +487,19 @@ export const findById = (tx: Executor, id: string): RepoEffect<HarnessJob | null
       )
     )
 
+/** The job stored under an idempotency key, if any. */
+export const findByKey = (tx: Executor, idempotencyKey: string): RepoEffect<HarnessJob | null> =>
+  tx
+    .select()
+    .from(harnessJob)
+    .where(sql`${harnessJob.idempotencyKey} = ${idempotencyKey}`)
+    .limit(1)
+    .pipe(
+      Effect.map((rows) =>
+        rows[0] === undefined ? null : toJob(fromSelect(rows[0]))
+      )
+    )
+
 /** How many jobs of a stage an application has ever had, retries included. */
 export const countFor = (
   tx: Executor,

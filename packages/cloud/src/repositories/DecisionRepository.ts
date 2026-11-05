@@ -141,6 +141,27 @@ export interface DecisionListOptions {
   readonly vacancyFilter?: SQL
 }
 
+/**
+ * The ORDER BY of a decision list for one sort key. Shared with the auto-apply
+ * candidate query so "newest" and "salary" mean the same everywhere.
+ */
+export const decisionOrder = (sort: DecisionListOptions["sort"] | undefined): SQL => {
+  switch (sort) {
+    case "priority":
+      return sql`d.priority desc, d.fit desc, d.created_at desc, d.id desc`
+    case "fit":
+      return sql`d.fit desc, d.priority desc, d.created_at desc, d.id desc`
+    case "newest":
+      return sql`vacancy.published_at desc nulls last, d.priority desc, d.id desc`
+    case "salary":
+      return sql`coalesce(vacancy.salary_to, vacancy.salary_from) desc nulls last, d.priority desc, d.id desc`
+    case "random":
+      return sql`random()`
+    default:
+      return sql`d.created_at desc, d.id desc`
+  }
+}
+
 export const list = (
   tx: Executor,
   userId: string,
@@ -158,22 +179,7 @@ export const list = (
     : sql`decision d`
 
   const sort = options.sort ?? (options.orderBy === "priority" ? "priority" : undefined)
-  const order = (() => {
-    switch (sort) {
-      case "priority":
-        return sql`d.priority desc, d.fit desc, d.created_at desc, d.id desc`
-      case "fit":
-        return sql`d.fit desc, d.priority desc, d.created_at desc, d.id desc`
-      case "newest":
-        return sql`vacancy.published_at desc nulls last, d.priority desc, d.id desc`
-      case "salary":
-        return sql`coalesce(vacancy.salary_to, vacancy.salary_from) desc nulls last, d.priority desc, d.id desc`
-      case "random":
-        return sql`random()`
-      default:
-        return sql`d.created_at desc, d.id desc`
-    }
-  })()
+  const order = decisionOrder(sort)
 
   return tx
     .execute(sql`
@@ -283,5 +289,92 @@ export const countStaleVacancies = (
     .pipe(
       Effect.map((result) =>
         Number((result.rows[0] as { count?: number | string } | undefined)?.count ?? 0)
+      )
+    )
+
+
+/* -------------------------------------------------------------------------- */
+/* Auto-apply candidates                                                      */
+/* -------------------------------------------------------------------------- */
+
+export interface AutoApplyCandidateOptions {
+  readonly hhAccountId: string
+  /** The pair row's resume; null selects for the account-level row. */
+  readonly resumeId: string | null
+  /** Account-level row only: resumes that have their own row (the pair row wins there). */
+  readonly excludeResumeIds: ReadonlyArray<string>
+  readonly minPriority: number
+  readonly sort: "priority" | "fit" | "newest" | "salary"
+  readonly limit: number
+  readonly policyVersion: number
+  readonly analysisPromptVersion: string
+}
+
+/**
+ * Current `apply` decisions of one hh account that nothing has been applied to
+ * yet. "Current" is the SQL twin of `staleFrom`: the newest decision of its
+ * (vacancy, account, resume), made for the vacancy's present content and the
+ * present policy, not older than an edit of any apply filter or the vacancy's
+ * analysis. A live vacancy only. An application of the account to the vacancy
+ * (any state, any origin) removes the decision; an application with an unknown
+ * resume counts for every resume, like `ApplicationRepository.existsForVacancy`.
+ */
+export const autoApplyCandidates = (
+  tx: Executor,
+  userId: string,
+  options: AutoApplyCandidateOptions
+): RepoEffect<ReadonlyArray<DecisionRecord>> =>
+  tx
+    .execute(sql`
+      select d.*, vacancy.title as vacancy_title
+      from (
+        select distinct on (x.vacancy_id, x.resume_id) x.*
+        from decision x
+        where x.user_id = ${userId} and x.hh_account_id = ${options.hhAccountId}
+        order by x.vacancy_id, x.resume_id, x.created_at desc, x.id desc
+      ) d
+      join vacancy on vacancy.id = d.vacancy_id
+      where d.verdict = 'apply'
+        and d.priority >= ${options.minPriority}
+        and vacancy.archived = false
+        and d.policy_version = ${options.policyVersion}
+        and d.vacancy_content_hash is not distinct from vacancy.content_hash
+        and not exists (
+          select 1 from apply_filter f
+          where f.user_id = ${userId} and f.rules_changed_at > d.created_at
+        )
+        and not exists (
+          select 1 from vacancy_analysis a
+          where a.vacancy_id = vacancy.id
+            and a.prompt_version = ${options.analysisPromptVersion}
+            and a.updated_at > d.created_at
+        )
+        and not exists (
+          select 1 from decision newer
+          where newer.user_id = d.user_id
+            and newer.vacancy_id = d.vacancy_id
+            and newer.hh_account_id = d.hh_account_id
+            and newer.created_at > d.created_at
+        )
+        ${options.resumeId === null
+          ? options.excludeResumeIds.length === 0
+            ? sql``
+            : sql`and (d.resume_id is null or d.resume_id not in (${sql.join(
+                options.excludeResumeIds.map((id) => sql`${id}`),
+                sql`, `
+              )}))`
+          : sql`and d.resume_id = ${options.resumeId}`}
+        and not exists (
+          select 1 from application a
+          where a.hh_account_id = d.hh_account_id
+            and a.vacancy_id = d.vacancy_id
+            and (d.resume_id is null or a.resume_id = d.resume_id or a.resume_id is null)
+        )
+      order by ${decisionOrder(options.sort)}
+      limit ${Math.max(0, Math.trunc(options.limit))}
+    `)
+    .pipe(
+      Effect.map((result) =>
+        (result.rows as unknown as ReadonlyArray<DecisionRow>).map(toRecord)
       )
     )

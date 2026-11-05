@@ -64,6 +64,7 @@ import { CrawlRunner, type CrawlRunnerResult } from "../../src/services/CrawlRun
 import { CrawlService, type CrawlSavePageInput } from "../../src/services/CrawlService.ts"
 import { CurrentUser } from "../../src/services/CurrentUser.ts"
 import { AnalysisRunner } from "../../src/services/AnalysisRunner.ts"
+import { AutoApplyRunner } from "../../src/services/AutoApplyRunner.ts"
 import { SystemOneClient } from "../../src/services/SystemOneClient.ts"
 import { EmployerHydrator } from "../../src/services/EmployerHydrator.ts"
 import { LexiconService, type LexiconServiceShape } from "../../src/services/LexiconService.ts"
@@ -238,6 +239,7 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
   const evaluation = EvaluationRunner.layer.pipe(Layer.provide(shared))
   const fitRunner = FitJudgeRunner.layer.pipe(Layer.provide(shared))
   const resumeSyncService = ResumeSync.layer.pipe(Layer.provide(shared))
+  const autoApplyRunner = AutoApplyRunner.layer.pipe(Layer.provide(shared))
   const sourceStack = Layer.mergeAll(
     crawlStack,
     hydration,
@@ -246,6 +248,7 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
     evaluation,
     fitRunner,
     resumeSyncService,
+    autoApplyRunner,
     mailSync,
     telegramSync
   )
@@ -302,6 +305,7 @@ type Requirements =
   | HydrationRunner
   | EmployerHydrator
   | AnalysisRunner
+  | AutoApplyRunner
   | BlacklistService
   | DecisionService
   | EvaluationRunner

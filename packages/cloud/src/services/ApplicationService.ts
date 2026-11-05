@@ -136,6 +136,11 @@ export interface CreateFromDecisionInput {
   readonly hhAccountId: string
   readonly resumeId?: string
   readonly mode?: "drafts" | "auto"
+  /**
+   * Set by AutoApplyRunner only: records on a newly created row that the runner
+   * owns it. An application that already exists is never claimed.
+   */
+  readonly autoRun?: boolean
 }
 
 export interface CreateManualInput {
@@ -297,7 +302,8 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                   resumeId: input.resumeId ?? decision.resumeId ?? null,
                   streamId: null,
                   decisionId: decision.id,
-                  state
+                  state,
+                  ...(input.autoRun === true && input.mode !== undefined ? { autoRun: input.mode } : {})
                 })
 
                 if (created.created) {

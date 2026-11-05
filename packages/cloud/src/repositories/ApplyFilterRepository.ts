@@ -247,3 +247,22 @@ export const accountDailyLimit = (
     )
     .limit(1)
     .pipe(Effect.map((rows) => rows[0]?.dailyLimit ?? null))
+
+/**
+ * Every apply filter row of the user, optionally of one account. The auto-apply
+ * runner reads the modes from here: an account row (resume null) and pair rows.
+ */
+export const listForUser = (
+  tx: Executor,
+  userId: string,
+  hhAccountId: string | null = null
+): RepoEffect<ReadonlyArray<ApplyFilterRecord>> =>
+  tx
+    .select()
+    .from(applyFilter)
+    .where(
+      hhAccountId === null
+        ? sql`${applyFilter.userId} = ${userId}`
+        : sql`${applyFilter.userId} = ${userId} and ${applyFilter.hhAccountId} = ${hhAccountId}`
+    )
+    .pipe(Effect.map((rows) => rows.map(toRecord)))

@@ -66,6 +66,8 @@ export const create = (
     readonly streamId: string | null
     readonly decisionId: string | null
     readonly state: "draft" | "queued"
+    /** Only AutoApplyRunner sets this; it marks the row as the runner's to progress. */
+    readonly autoRun?: "drafts" | "auto"
   }
 ): RepoEffect<{ readonly record: ApplicationRecord; readonly created: boolean }> =>
   Effect.gen(function*() {
@@ -95,7 +97,8 @@ export const create = (
         resumeId: input.resumeId,
         streamId: input.streamId,
         decisionId: input.decisionId,
-        state: input.state
+        state: input.state,
+        autoRun: input.autoRun ?? null
       })
       .onConflictDoNothing({
         target: [application.hhAccountId, application.vacancyId, application.resumeId]

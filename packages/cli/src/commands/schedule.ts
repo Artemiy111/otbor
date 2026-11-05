@@ -15,7 +15,8 @@ const kinds: ReadonlyArray<SourceSyncKind> = [
   "evaluate",
   "fit",
   "resume_sync",
-  "analysis"
+  "analysis",
+  "apply"
 ]
 
 const list = Command.make(

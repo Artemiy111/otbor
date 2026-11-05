@@ -12,6 +12,7 @@ import { CrawlRunner } from "../services/CrawlRunner.ts"
 import { CrawlService } from "../services/CrawlService.ts"
 import { DecisionService } from "../services/DecisionService.ts"
 import { AnalysisRunner } from "../services/AnalysisRunner.ts"
+import { AutoApplyRunner } from "../services/AutoApplyRunner.ts"
 import { SystemOneClient } from "../services/SystemOneClient.ts"
 import { EmployerHydrator } from "../services/EmployerHydrator.ts"
 import { HydrationService } from "../services/HydrationService.ts"
@@ -287,6 +288,7 @@ const analysisRunner = AnalysisRunner.layer.pipe(Layer.provide(SystemOneClient.l
 const evaluation = EvaluationRunner.layer
 const fitRunner = FitJudgeRunner.layer
 const resumeSyncService = ResumeSync.layer
+const autoApplyRunner = AutoApplyRunner.layer
 
 const sourceStack = Layer.mergeAll(
   crawlStack,
@@ -298,6 +300,7 @@ const sourceStack = Layer.mergeAll(
   evaluation,
   fitRunner,
   resumeSyncService,
+  autoApplyRunner,
   mailSync,
   telegramSync
 )

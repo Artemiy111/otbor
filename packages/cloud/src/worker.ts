@@ -8,6 +8,7 @@ import { CrawlService } from "./services/CrawlService.ts"
 import { CorpusService } from "./services/CorpusService.ts"
 import { CurrentUser } from "./services/CurrentUser.ts"
 import { AnalysisRunner } from "./services/AnalysisRunner.ts"
+import { AutoApplyRunner } from "./services/AutoApplyRunner.ts"
 import { SystemOneClient } from "./services/SystemOneClient.ts"
 import { EmployerHydrator } from "./services/EmployerHydrator.ts"
 import { EvaluationRunner } from "./services/EvaluationRunner.ts"
@@ -79,6 +80,7 @@ const analysisRunner = AnalysisRunner.layer.pipe(
 const evaluation = EvaluationRunner.layer.pipe(Layer.provide(base))
 const fitRunner = FitJudgeRunner.layer.pipe(Layer.provide(base))
 const resumeSyncService = ResumeSync.layer.pipe(Layer.provide(base))
+const autoApplyRunner = AutoApplyRunner.layer.pipe(Layer.provide(base))
 
 const sourceStack = Layer.mergeAll(
   crawlStack,
@@ -88,6 +90,7 @@ const sourceStack = Layer.mergeAll(
   evaluation,
   fitRunner,
   resumeSyncService,
+  autoApplyRunner,
   mailSync,
   telegramSync
 )

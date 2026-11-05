@@ -292,6 +292,8 @@ export const application = pgTable(
     intentAt: timestamp("intent_at", { withTimezone: true }),
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
     lastError: text("last_error"),
+    /** Set only when AutoApplyRunner created the row: `drafts` or `auto`. Manual rows stay null. */
+    autoRun: text("auto_run"),
     createdAt: createdAt(),
     updatedAt: updatedAt()
   },
