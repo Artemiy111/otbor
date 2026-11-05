@@ -4,19 +4,21 @@ import type { SkillSalary } from "@otbor/contract"
 import { Scatter } from "@unovis/ts"
 import { VisAxis, VisScatter, VisXYContainer } from "@unovis/vue"
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/shared/ui"
-import { currencySymbol, money, thousands, tip } from "./tip"
+import { currencySymbol, money, thousands, tip, unwrap } from "./tip"
 
 const props = defineProps<{ skills: ReadonlyArray<SkillSalary> }>()
 const config: ChartConfig = { skill: { label: "Навык", color: "var(--chart-4)" } }
 const data = computed(() => [...props.skills])
 
 const triggers = {
-  [Scatter.selectors.point]: (d: SkillSalary) =>
-    tip(d.key, [
+  [Scatter.selectors.point]: (raw: unknown) => {
+    const d = unwrap<SkillSalary>(raw)
+    return tip(d.key, [
       { label: "Вакансий с навыком", value: String(d.count) },
       { label: "Из них с зарплатой", value: String(d.n) },
       { label: "Медиана", value: money(d.median), color: "var(--chart-4)" }
     ])
+  }
 }
 </script>
 

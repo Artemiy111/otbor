@@ -3,7 +3,7 @@ import { computed } from "vue"
 import { StackedBar } from "@unovis/ts"
 import { VisAxis, VisStackedBar, VisXYContainer } from "@unovis/vue"
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/shared/ui"
-import { tip } from "./tip"
+import { tip, unwrap } from "./tip"
 
 export interface BarRow {
   readonly label: string
@@ -30,11 +30,13 @@ const height = computed(() => Math.max(props.rows.length * 28 + 24, 120))
 const x = (_: BarRow, index: number) => index
 const y = (row: BarRow) => row.value
 const triggers = computed(() => ({
-  [StackedBar.selectors.bar]: (row: BarRow) =>
-    tip(row.label, [
+  [StackedBar.selectors.bar]: (raw: unknown) => {
+    const row = unwrap<BarRow>(raw)
+    return tip(row.label, [
       { label: props.valueLabel, value: props.format(row.value), color: props.color },
       ...(row.hint === undefined ? [] : [{ label: row.hint, value: "" }])
     ])
+  }
 }))
 const tickFormat = (index: number) => {
   return display.value[index]?.label ?? ""

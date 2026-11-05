@@ -8,6 +8,15 @@ export interface TipRow {
 const escape = (text: string): string =>
   text.replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char] ?? char)
 
+/**
+ * Unovis hands bar triggers `{ datum, ... }` (stacked and grouped bars) or
+ * `{ data }` (donut), and point triggers the datum itself.
+ */
+export const unwrap = <T extends object>(d: unknown): T => {
+  const wrapped = d as { datum?: T; data?: T }
+  return (wrapped.datum ?? wrapped.data ?? d) as T
+}
+
 export const tip = (title: string, rows: ReadonlyArray<TipRow>): string =>
   `<div class="grid min-w-32 gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl">
     <div class="font-medium">${escape(title)}</div>
