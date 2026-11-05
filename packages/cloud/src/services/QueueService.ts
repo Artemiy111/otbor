@@ -293,6 +293,11 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
             return yield* new HarnessRejected({ message: invalidToken })
           }
 
+          // Every poll is proof of life; the health page and the job queue read it.
+          yield* database
+            .asUser(currentUser.userId, (tx) => HarnessRepository.touch(tx, input.harnessId))
+            .pipe(Effect.mapError(toStorageError("harness.lease")))
+
           const registered = yield* database
             .asUser(currentUser.userId, (tx) =>
               HarnessRepository.accountsFor(tx, input.harnessId)
@@ -328,6 +333,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                 ) {
                   return null
                 }
+                yield* HarnessRepository.touch(tx, input.harnessId)
                 return yield* QueueRepository.heartbeat(tx, {
                   jobId: input.jobId,
                   leaseId: input.leaseId,

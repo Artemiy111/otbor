@@ -262,6 +262,12 @@ const refresh = () => {
 
     <p v-if="syncMessage" class="mb-4 text-sm text-muted-foreground">{{ syncMessage }}</p>
 
+    <Alert v-if="syncMutation.error.value" variant="destructive" class="mb-4">
+      <CircleAlert />
+      <AlertTitle>Не удалось загрузить резюме</AlertTitle>
+      <AlertDescription>{{ describeError(syncMutation.error.value) }}</AlertDescription>
+    </Alert>
+
     <Alert v-if="resumesQuery.error.value" variant="destructive" class="mb-4">
       <CircleAlert />
       <AlertTitle>Не удалось загрузить резюме</AlertTitle>

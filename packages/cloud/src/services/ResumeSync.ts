@@ -5,11 +5,12 @@ import type {
   ResumeSyncCounts,
   ResumeSyncStatus
 } from "@otbor/contract"
-import { NotFound, ResumeSyncCounts as ResumeSyncCountsSchema } from "@otbor/contract"
+import { Conflict, NotFound, ResumeSyncCounts as ResumeSyncCountsSchema } from "@otbor/contract"
 import { type ParsedResume, resumeExperienceKey } from "@otbor/hh"
 import { sql } from "drizzle-orm"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 import { Database, type Executor, type RepoEffect } from "../db/Database.ts"
+import * as HarnessRepository from "../repositories/HarnessRepository.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
 import * as ResumeRepository from "../repositories/ResumeRepository.ts"
 import { CurrentUser } from "./CurrentUser.ts"
@@ -262,10 +263,18 @@ export class ResumeSync extends Context.Service<ResumeSync, ResumeSyncShape>()(
           )
 
       /** Enqueues unless a sync is already waiting. `null` when the account is not the user's. */
-      const queueIn = (tx: Executor, userId: string, hhAccountId: string) =>
+      const queueIn = (tx: Executor, userId: string, hhAccountId: string, requireHarness = false) =>
         Effect.gen(function*() {
           const found = yield* account(tx, userId, hhAccountId)
           if (found === null) return null
+          // A manual sync with no running browser harness would wait forever; say so now.
+          // Scheduled syncs may queue anyway: the job waits for the harness.
+          if (requireHarness) {
+            const running = (yield* HarnessRepository.statusList(tx)).some(
+              (h) => h.online && h.kinds.includes("browser") && h.accounts.includes(hhAccountId)
+            )
+            if (!running) return "offline" as const
+          }
           const latest = yield* QueueRepository.latestForAccount(tx, hhAccountId, SYNC_STAGE)
           if (latest !== null && ACTIVE.includes(latest.job.status)) return "active" as const
           yield* resumeSyncJob(tx, {
@@ -281,17 +290,26 @@ export class ResumeSync extends Context.Service<ResumeSync, ResumeSyncShape>()(
         database
           .asUser(currentUser.userId, (tx) =>
             Effect.gen(function*() {
-              const queued = yield* queueIn(tx, currentUser.userId, hhAccountId)
+              const queued = yield* queueIn(tx, currentUser.userId, hhAccountId, true)
               if (queued === null) return null
+              if (queued === "offline") return "offline" as const
               return yield* statusIn(tx, hhAccountId)
             })
           )
           .pipe(
             Effect.mapError(toStorageError("resume.sync.run")),
             Effect.flatMap((status) =>
-              status === null
-                ? Effect.fail(new NotFound({ entity: "HhAccount", id: hhAccountId }))
-                : Effect.succeed(status)
+              Effect.gen(function*() {
+                if (status === null) return yield* new NotFound({ entity: "HhAccount", id: hhAccountId })
+                if (status === "offline") {
+                  return yield* new Conflict({
+                    entity: "harness",
+                    message:
+                      "Браузерный harness этого аккаунта не запущен. Запустите `otbor harness run` (или `otbor up --harness`) и повторите."
+                  })
+                }
+                return status
+              })
             )
           )
 

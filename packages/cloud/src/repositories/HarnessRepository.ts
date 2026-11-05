@@ -161,3 +161,31 @@ export const latestCatalog = (tx: Executor, userId: string): RepoEffect<AgentCat
         reportedAt: rows[0]?.catalogAt?.toISOString() ?? null
       }))
     )
+
+/** A harness that polled or heartbeated within this window counts as running. */
+export const ONLINE_WINDOW_MS = 120_000
+
+export interface HarnessStatusRow {
+  readonly id: string
+  readonly name: string
+  readonly kinds: ReadonlyArray<JobKind>
+  readonly accounts: ReadonlyArray<string>
+  readonly lastSeenAt: string | null
+  readonly online: boolean
+}
+
+/** Every harness of the user with the accounts it serves and whether it is polling now. */
+export const statusList = (tx: Executor): RepoEffect<ReadonlyArray<HarnessStatusRow>> =>
+  Effect.gen(function*() {
+    const rows = yield* tx.select().from(harness)
+    const links = yield* tx.select().from(harnessAccount)
+    const now = Date.now()
+    return rows.map((row): HarnessStatusRow => ({
+      id: row.id,
+      name: row.name,
+      kinds: row.kinds as ReadonlyArray<JobKind>,
+      accounts: links.filter((l) => l.harnessId === row.id).map((l) => l.hhAccountId),
+      lastSeenAt: row.lastSeenAt === null ? null : row.lastSeenAt.toISOString(),
+      online: row.tokenHash !== null && row.lastSeenAt !== null && now - row.lastSeenAt.getTime() < ONLINE_WINDOW_MS
+    }))
+  })

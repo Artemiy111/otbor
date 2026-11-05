@@ -2,6 +2,7 @@ import type { ApiError, Health } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "../db/Database.ts"
+import * as HarnessRepository from "../repositories/HarnessRepository.ts"
 import * as HhAccountRepository from "../repositories/HhAccountRepository.ts"
 import { CurrentUser } from "./CurrentUser.ts"
 import { toStorageError } from "./support.ts"
@@ -33,18 +34,23 @@ export class SystemService extends Context.Service<
           Effect.orElseSucceed(() => [])
         )
 
+      const harnesses = database
+        .asUser(currentUser.userId, (tx) => HarnessRepository.statusList(tx))
+        .pipe(Effect.orElseSucceed(() => []))
+
       const health: SystemService["Service"]["health"] = () =>
         database
           .asOwner((tx) => tx.execute(sql`select 1 as ok`))
           .pipe(
-            Effect.flatMap(() => accounts),
+            Effect.flatMap(() => Effect.all({ accounts, harnesses })),
             Effect.map(
-              (accounts): Health => ({
+              ({ accounts, harnesses }): Health => ({
                 status: "ok",
                 version: VERSION,
                 database: true,
                 now: new Date().toISOString(),
-                accounts
+                accounts,
+                harnesses: harnesses.map((h) => ({ ...h, accounts: h.accounts as never }))
               })
             ),
             Effect.mapError(toStorageError("system.health")),

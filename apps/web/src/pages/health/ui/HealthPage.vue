@@ -60,6 +60,39 @@ const query = useQuery({
       <StatCard label="Время сервера" :value="formatDate(query.data.value.now)" />
     </div>
 
+    <Card v-if="query.data.value" class="mt-4">
+      <CardHeader>
+        <CardTitle>Харнессы</CardTitle>
+        <CardDescription>
+          Браузерный harness выполняет задачи на hh.ru: загрузку резюме, формы, отправку. Онлайн, если опрашивал сервер за последние 2 минуты.
+        </CardDescription>
+      </CardHeader>
+      <CardContent class="space-y-2">
+        <Alert v-if="!(query.data.value.harnesses ?? []).some((h) => h.online && h.kinds.includes('browser'))" variant="destructive">
+          <CircleAlert />
+          <AlertTitle>Браузерный harness не запущен</AlertTitle>
+          <AlertDescription>
+            Загрузка резюме, формы откликов и отправка не работают. Запустите <code>otbor harness run</code>.
+          </AlertDescription>
+        </Alert>
+        <div
+          v-for="h in query.data.value.harnesses ?? []"
+          :key="h.id"
+          class="flex flex-wrap items-center gap-3 rounded-md border p-3 text-sm"
+        >
+          <StatusBadge :value="h.online ? 'ok' : 'down'" raw />
+          <span class="font-medium">{{ h.name }}</span>
+          <span class="text-muted-foreground">{{ h.kinds.join(", ") }}</span>
+          <span class="text-muted-foreground">
+            {{ h.lastSeenAt ? `последний опрос ${formatDate(h.lastSeenAt)}` : "ещё не опрашивал" }}
+          </span>
+        </div>
+        <p v-if="!(query.data.value.harnesses ?? []).length" class="text-sm text-muted-foreground">
+          Ни один harness не зарегистрирован.
+        </p>
+      </CardContent>
+    </Card>
+
     <Card class="mt-4">
       <CardHeader>
         <CardTitle>Подключение</CardTitle>
