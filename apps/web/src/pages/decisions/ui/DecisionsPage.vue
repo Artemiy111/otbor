@@ -32,6 +32,7 @@ import {
   sortableHeader
 } from "@/shared/ui"
 import { resumeApi, resumeKeys } from "@/entities/resume"
+import { decisionColumnHelp } from "../model/help"
 import { PageHeader } from "@/widgets/page-header"
 
 const verdict = ref("all")
@@ -132,12 +133,12 @@ const columns: ColumnDef<DecisionRecord>[] = [
   },
   {
     accessorKey: "fit",
-    header: sortableHeader<DecisionRecord>("Соответствие"),
+    header: sortableHeader<DecisionRecord>("Соответствие", "left", decisionColumnHelp.fit),
     cell: ({ row }) => h("span", { class: "tabular-nums" }, String(row.original.fit))
   },
   {
     accessorKey: "priority",
-    header: sortableHeader<DecisionRecord>("Приоритет"),
+    header: sortableHeader<DecisionRecord>("Приоритет", "left", decisionColumnHelp.priority),
     cell: ({ row }) =>
       h("span", { class: "font-mono tabular-nums" }, formatPriority(row.original.priority))
   },

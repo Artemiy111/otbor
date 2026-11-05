@@ -3,6 +3,29 @@ import { sql, type SQL } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
 import { decision } from "../db/tables.ts"
+import { DEFAULT_APPLY_SETTINGS } from "@otbor/domain"
+
+/**
+ * Live priority of the decision row aliased `d`, joined to `vacancy`:
+ * `fit x freshness` evaluated NOW, so age alone never leaves a stored
+ * priority stale. SQL twin of `computeFreshness` in `@otbor/domain`
+ * (`0.5 ^ (age / halfLife)` clamped to 0.05..1, 0.5 without `published_at`).
+ * The half-life is the decision's own apply filter: the (account, resume) row,
+ * else the account-level row, else the domain default. Only `apply` decisions
+ * have a priority; everything else keeps the stored 0.
+ */
+export const livePriorityExpr: SQL = sql`(case when d.verdict <> 'apply' then d.priority else round((d.fit * (
+  case when vacancy.published_at is null then 0.5 else greatest(0.05, least(1, power(0.5,
+    greatest(0, extract(epoch from (now() - vacancy.published_at)) / 3600.0)
+    / greatest(1, coalesce(
+      (select f.fresh_half_life_hours from apply_filter f
+        where f.user_id = d.user_id and f.hh_account_id = d.hh_account_id and f.resume_id = d.resume_id),
+      (select f.fresh_half_life_hours from apply_filter f
+        where f.user_id = d.user_id and f.hh_account_id = d.hh_account_id and f.resume_id is null),
+      ${DEFAULT_APPLY_SETTINGS.freshHalfLifeHours}::int
+    ))::float8
+  ))) end
+))::numeric, 2)::float8 end)`
 
 /* -------------------------------------------------------------------------- */
 /* Decisions                                                                  */
@@ -18,6 +41,8 @@ export interface DecisionRow {
   readonly verdict: string
   readonly fit: number
   readonly priority: number
+  /** Priority evaluated now (see `livePriorityExpr`); absent on raw rows. */
+  readonly live_priority?: number | string | null
   readonly reasons: ReadonlyArray<DecisionReason>
   readonly policy_version: number
   readonly created_at: Date
@@ -32,7 +57,9 @@ export const toRecord = (row: DecisionRow): DecisionRecord => ({
   vacancyTitle: row.vacancy_title ?? undefined,
   verdict: row.verdict as DecisionRecord["verdict"],
   fit: row.fit,
-  priority: row.priority,
+  priority: row.live_priority === undefined || row.live_priority === null
+    ? row.priority
+    : Number(row.live_priority),
   reasons: row.reasons,
   policyVersion: row.policy_version,
   createdAt: row.created_at.toISOString()
@@ -60,7 +87,7 @@ export interface PersistDecisionInput {
 }
 
 const selectDecision = sql`
-  select d.*, vacancy.title as vacancy_title
+  select d.*, vacancy.title as vacancy_title, ${livePriorityExpr} as live_priority
   from decision d
   join vacancy on vacancy.id = d.vacancy_id
 `
@@ -148,13 +175,13 @@ export interface DecisionListOptions {
 export const decisionOrder = (sort: DecisionListOptions["sort"] | undefined): SQL => {
   switch (sort) {
     case "priority":
-      return sql`d.priority desc, d.fit desc, d.created_at desc, d.id desc`
+      return sql`${livePriorityExpr} desc, d.fit desc, d.created_at desc, d.id desc`
     case "fit":
-      return sql`d.fit desc, d.priority desc, d.created_at desc, d.id desc`
+      return sql`d.fit desc, ${livePriorityExpr} desc, d.created_at desc, d.id desc`
     case "newest":
-      return sql`vacancy.published_at desc nulls last, d.priority desc, d.id desc`
+      return sql`vacancy.published_at desc nulls last, ${livePriorityExpr} desc, d.id desc`
     case "salary":
-      return sql`coalesce(vacancy.salary_to, vacancy.salary_from) desc nulls last, d.priority desc, d.id desc`
+      return sql`coalesce(vacancy.salary_to, vacancy.salary_from) desc nulls last, ${livePriorityExpr} desc, d.id desc`
     case "random":
       return sql`random()`
     default:
@@ -183,7 +210,7 @@ export const list = (
 
   return tx
     .execute(sql`
-      select d.*, vacancy.title as vacancy_title
+      select d.*, vacancy.title as vacancy_title, ${livePriorityExpr} as live_priority
       from ${source}
       join vacancy on vacancy.id = d.vacancy_id
       where d.user_id = ${userId}
@@ -326,7 +353,7 @@ export const autoApplyCandidates = (
 ): RepoEffect<ReadonlyArray<DecisionRecord>> =>
   tx
     .execute(sql`
-      select d.*, vacancy.title as vacancy_title
+      select d.*, vacancy.title as vacancy_title, ${livePriorityExpr} as live_priority
       from (
         select distinct on (x.vacancy_id, x.resume_id) x.*
         from decision x
@@ -335,7 +362,7 @@ export const autoApplyCandidates = (
       ) d
       join vacancy on vacancy.id = d.vacancy_id
       where d.verdict = 'apply'
-        and d.priority >= ${options.minPriority}
+        and ${livePriorityExpr} >= ${options.minPriority}
         and vacancy.archived = false
         and d.policy_version = ${options.policyVersion}
         and d.vacancy_content_hash is not distinct from vacancy.content_hash

@@ -16,9 +16,9 @@ export const valueUpdater = <T>(updater: Updater<T>, value: T): T =>
 
 /** A sortable header backed by the shared `DataTableColumnHeader`. */
 export const sortableHeader =
-  <TData extends RowData>(title: string, align: ColumnAlign = "left") =>
+  <TData extends RowData>(title: string, align: ColumnAlign = "left", hint?: string) =>
   (context: HeaderContext<TData, unknown>) =>
-    h(DataTableColumnHeader, { column: context.column, title, align })
+    h(DataTableColumnHeader, { column: context.column, title, align, hint })
 
 /** A header with a title (sortable when the column allows it) and a select filter below it. */
 export const filterableHeader =

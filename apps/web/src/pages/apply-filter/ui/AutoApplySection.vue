@@ -13,6 +13,7 @@ import { scheduleApi, scheduleKeys } from "@/entities/schedule"
 import { scheduleRunApi } from "@/entities/schedule-run"
 import { FieldPicker, RuleRow, buildRule, isComplete, newRule, toEditableRule } from "@/features/rule-builder"
 import type { EditableRule } from "@/features/rule-builder"
+import { applyFilterHelp } from "../model/help"
 import { describeError } from "@/shared/lib"
 import {
   Alert,
@@ -22,8 +23,8 @@ import {
   Button,
   Card,
   CardContent,
+  FieldLabel,
   Input,
-  Label,
   Select,
   SelectContent,
   SelectItem,
@@ -293,6 +294,7 @@ const modeBadge = (value: AutoMode) => (value === "off" ? "secondary" : value ==
 <template>
   <Card class="mb-4">
     <CardContent class="space-y-4 p-4">
+      <div>
       <div class="flex flex-wrap items-center gap-2">
         <h2 class="text-sm font-semibold">Автоотклики</h2>
         <Badge :variant="modeBadge(storedMode)">
@@ -302,6 +304,10 @@ const modeBadge = (value: AutoMode) => (value === "off" ? "secondary" : value ==
           <template v-if="usage">Сегодня отправлено {{ usage.used }} из {{ usage.limit }}</template>
           <template v-else-if="usageQuery.isLoading.value">Считаю отправленные…</template>
         </span>
+      </div>
+      <p class="mt-1 text-xs text-muted-foreground">
+        Система сама выбирает вакансии, создаёт отклики и по режиму отправляет их. Запуск каждые 15 минут.
+      </p>
       </div>
 
       <Alert v-if="notice" variant="info">
@@ -321,7 +327,7 @@ const modeBadge = (value: AutoMode) => (value === "off" ? "secondary" : value ==
       </Alert>
 
       <div class="space-y-2">
-        <Label class="text-xs">Режим</Label>
+        <FieldLabel :hint="applyFilterHelp.mode">Режим</FieldLabel>
         <div class="flex flex-wrap gap-1.5">
           <button
             v-for="option in autoModeOptions"
@@ -360,15 +366,15 @@ const modeBadge = (value: AutoMode) => (value === "off" ? "secondary" : value ==
 
       <div class="grid gap-3 sm:grid-cols-4">
         <div class="space-y-1">
-          <Label class="text-xs">Лимит в сутки (на аккаунт hh)</Label>
+          <FieldLabel :hint="applyFilterHelp.dailyLimit">Лимит в сутки (на аккаунт hh)</FieldLabel>
           <Input v-model.number="dailyLimit" type="number" min="0" class="h-8" :disabled="busy" />
         </div>
         <div class="space-y-1">
-          <Label class="text-xs">Размер партии (1-500)</Label>
+          <FieldLabel :hint="applyFilterHelp.batchSize">Размер партии (1-500)</FieldLabel>
           <Input v-model.number="batchSize" type="number" min="1" max="500" class="h-8" :disabled="busy" />
         </div>
         <div class="space-y-1">
-          <Label class="text-xs">Порядок</Label>
+          <FieldLabel :hint="applyFilterHelp.sort">Сортировка</FieldLabel>
           <Select v-model="sort" :disabled="busy">
             <SelectTrigger class="h-8 text-sm"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -379,13 +385,13 @@ const modeBadge = (value: AutoMode) => (value === "off" ? "secondary" : value ==
           </Select>
         </div>
         <div class="space-y-1">
-          <Label class="text-xs">Минимальный приоритет</Label>
+          <FieldLabel :hint="applyFilterHelp.minPriority">Минимальный приоритет</FieldLabel>
           <Input v-model.number="minPriority" type="number" min="0" class="h-8" :disabled="busy" />
         </div>
       </div>
 
       <div class="space-y-2 border-t border-border pt-3">
-        <Label class="text-xs">Бонусы к соответствию (вес от -50 до 50, прибавляется, когда правило выполнено)</Label>
+        <FieldLabel :hint="applyFilterHelp.boosts">Бонусы к соответствию (вес от -50 до 50, прибавляется, когда правило выполнено)</FieldLabel>
         <div v-for="boost in boosts" :key="boost.id" class="flex items-start gap-2">
           <div class="min-w-0 flex-1">
             <RuleRow :rule="boost.rule" :disabled="busy" @remove="removeBoost(boost.id)" />

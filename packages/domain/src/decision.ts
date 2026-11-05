@@ -54,6 +54,9 @@ export interface DecisionSettings {
  * Version of the decision logic. Bump it when `decide` changes, and when the
  * built-in template `DEVOPS_APPLY_FILTER` changes: a stored filter edit is
  * tracked by `apply_filter.rules_changed_at`, the built-in one only by this.
+ * Age is not a reason to bump it: `priority` is recomputed live on every read
+ * (`livePriorityExpr` in the cloud's DecisionRepository); the stored value is
+ * only a snapshot.
  */
 export const APPLY_POLICY_VERSION = 5
 
@@ -124,7 +127,8 @@ const computeFit = (
   return Math.max(0, Math.min(100, Math.round(fit)))
 }
 
-const computeFreshness = (
+/** Exported so the cloud's live SQL priority can be checked against it. */
+export const computeFreshness = (
   publishedAt: string | null,
   now: Date,
   halfLifeHours: number

@@ -3,6 +3,7 @@ import { computed } from "vue"
 import { ArrowDown, ArrowUp, ArrowUpDown } from "@lucide/vue"
 import { cn } from "@/shared/lib"
 import { Button } from "../button"
+import { HelpHint } from "../help-hint"
 
 /** The slice of a TanStack column this header needs, kept structural for reuse. */
 interface SortableColumn {
@@ -16,6 +17,7 @@ const props = withDefaults(
     column: SortableColumn
     title: string
     align?: "left" | "right"
+    hint?: string
   }>(),
   { align: "left" }
 )
@@ -46,6 +48,7 @@ const sorted = computed(() => props.column.getIsSorted())
     <span v-else class="text-xs font-medium normal-case text-muted-foreground">
       {{ props.title }}
     </span>
+    <HelpHint v-if="props.hint" :text="props.hint" :label="props.title" />
   </div>
   <slot name="filter" />
   </div>

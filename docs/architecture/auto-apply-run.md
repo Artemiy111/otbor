@@ -34,7 +34,12 @@
   `salary >= 250000 (RUB)` +8, `work_format in remote` +5,
   `seniority in middle,senior,lead,unknown` +4. Константы
   `FIT_SALARY_FLOOR` / `FIT_SENIORITY` в `decision.ts` удаляются.
-- Приоритет = fit x свежесть, как сейчас.
+- Приоритет = fit x свежесть. Он живой: `decision.priority` пишется при оценке,
+  но все чтения (сортировка, `min_priority`, списки, очередь fit-судьи) считают
+  `round(fit x свежесть, 2)` в SQL на момент запроса (`livePriorityExpr` в
+  `DecisionRepository`). Период полураспада берётся из `apply_filter` пары
+  (аккаунт, резюме), иначе из строки аккаунта, иначе 72 ч. Решение не
+  устаревает из-за возраста вакансии; не-`apply` решения сохраняют 0.
 
 ## Исполнитель `AutoApplyRunner`
 

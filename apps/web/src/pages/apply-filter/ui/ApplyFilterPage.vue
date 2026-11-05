@@ -9,6 +9,7 @@ import { presetApi, presetKeys } from "@/entities/preset"
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { RefreshButton } from "@/features/refresh-button"
 import { RuleBuilder, allRules, buildFilter, isComplete, toEditable } from "@/features/rule-builder"
+import { applyFilterHelp } from "../model/help"
 import { describeError, formatDate } from "@/shared/lib"
 import {
   Alert,
@@ -18,6 +19,8 @@ import {
   Button,
   Card,
   CardContent,
+  FieldLabel,
+  HelpHint,
   Input,
   Label,
   Select,
@@ -231,6 +234,7 @@ const sourceHint = computed(() => {
         <Badge :variant="view.source === 'exact' ? 'default' : 'secondary'">
           {{ applyFilterSourceLabel(view.source) }}
         </Badge>
+        <HelpHint :text="applyFilterHelp.source" label="источник фильтра" />
         <span v-if="view.updatedAt" class="text-xs text-muted-foreground">
           обновлён {{ formatDate(view.updatedAt) }}
         </span>
@@ -246,7 +250,8 @@ const sourceHint = computed(() => {
 
     <Card class="mb-4">
       <CardContent class="space-y-2 p-4">
-        <Label class="text-xs">Начать с пресета</Label>
+        <h2 class="text-sm font-semibold">Начать с пресета</h2>
+        <p class="text-xs text-muted-foreground">Готовый набор правил как отправная точка для фильтра.</p>
         <div class="flex flex-wrap items-center gap-2">
           <Select v-model="presetId" :disabled="busy">
             <SelectTrigger class="h-8 w-[280px] text-sm"><SelectValue placeholder="Выберите пресет" /></SelectTrigger>
@@ -288,15 +293,26 @@ const sourceHint = computed(() => {
           <AlertDescription>{{ saveError }}</AlertDescription>
         </Alert>
 
+        <div>
+          <div class="flex items-center gap-1">
+            <h2 class="text-sm font-semibold">Правила фильтра</h2>
+            <HelpHint :text="applyFilterHelp.rules" label="правила фильтра" />
+            <HelpHint :text="applyFilterHelp.listValues" label="списки значений" />
+          </div>
+          <p class="mt-1 text-xs text-muted-foreground">
+            Жёсткие условия: вакансия, не прошедшая их, отклика не получит.
+          </p>
+        </div>
+
         <RuleBuilder v-model="filter" :disabled="busy" />
 
         <div class="grid gap-3 border-t border-border pt-4 sm:grid-cols-3">
           <div class="space-y-1">
-            <Label class="text-xs">Минимальное соответствие (0-100)</Label>
+            <FieldLabel :hint="applyFilterHelp.minFit">Минимальный fit (0-100)</FieldLabel>
             <Input v-model.number="minFit" type="number" min="0" max="100" class="h-8" :disabled="busy" />
           </div>
           <div class="space-y-1">
-            <Label class="text-xs">Тесты hh</Label>
+            <FieldLabel :hint="applyFilterHelp.tests">Тестовые задания</FieldLabel>
             <Select v-model="tests" :disabled="busy">
               <SelectTrigger class="h-8 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -307,7 +323,7 @@ const sourceHint = computed(() => {
             </Select>
           </div>
           <div class="space-y-1">
-            <Label class="text-xs">Полураспад свежести, часов</Label>
+            <FieldLabel :hint="applyFilterHelp.halfLife">Период свежести, часов</FieldLabel>
             <Input v-model.number="halfLife" type="number" min="1" class="h-8" :disabled="busy" />
           </div>
         </div>

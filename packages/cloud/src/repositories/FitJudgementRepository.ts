@@ -8,6 +8,7 @@ import type {
 import { sql, type SQL } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
+import { livePriorityExpr } from "./DecisionRepository.ts"
 
 /** The key of one judgement: the inputs it was made from. */
 export interface FitKey {
@@ -256,7 +257,7 @@ export interface CandidateOptions {
  */
 const candidatesFrom = (options: CandidateOptions) => sql`
   from (
-    select distinct on (x.vacancy_id) x.vacancy_id, x.verdict, x.reasons, x.priority, x.fit
+    select distinct on (x.vacancy_id) x.vacancy_id, x.user_id, x.hh_account_id, x.resume_id, x.verdict, x.reasons, x.priority, x.fit
     from decision x
     where x.user_id = ${options.userId}
     order by x.vacancy_id, x.created_at desc, x.id desc
@@ -287,7 +288,7 @@ export const candidateVacancyIds = (
     .execute(sql`
       select vacancy.id::text as id
       ${candidatesFrom(options)}
-      order by d.priority desc, d.fit desc, vacancy.id
+      order by ${livePriorityExpr} desc, d.fit desc, vacancy.id
       limit ${options.limit}
     `)
     .pipe(
