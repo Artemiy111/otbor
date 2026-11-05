@@ -36,7 +36,7 @@ import * as VacancyFormRepository from "../repositories/VacancyFormRepository.ts
 import { hintsFor } from "./formHints.ts"
 import { importTopics } from "./NegotiationsSync.ts"
 import { importResumes } from "./ResumeSync.ts"
-import { nextSequence, reconcileJob, submitJob, targetFor } from "./jobs.ts"
+import { negotiationsSyncJob, nextSequence, reconcileJob, submitJob, targetFor } from "./jobs.ts"
 import { toStorageError } from "./support.ts"
 
 /* -------------------------------------------------------------------------- */
@@ -527,6 +527,25 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                         })
                       }
                       yield* parkWaiting("skipped", verdict.reason)
+                      if (exit.tag === "already_responded" && ctx.hhAccountId !== null) {
+                        // hh knows a response otbor does not: import it, so the
+                        // vacancy shows "responded" instead of a form error.
+                        const latest = yield* QueueRepository.latestForAccount(
+                          tx,
+                          ctx.hhAccountId,
+                          "negotiations_sync"
+                        )
+                        if (latest === null || !["pending", "leased", "running"].includes(latest.job.status)) {
+                          const profile = (job.payload as { sessionProfile?: unknown } | null)?.sessionProfile
+                          yield* negotiationsSyncJob(tx, {
+                            userId: ctx.userId,
+                            hhAccountId: ctx.hhAccountId,
+                            sessionProfile: typeof profile === "string" ? profile : null,
+                            sequence:
+                              (yield* QueueRepository.countForAccount(tx, ctx.hhAccountId, "negotiations_sync")) + 1
+                          })
+                        }
+                      }
                     } else if (verdict._tag === "human") {
                       status = "needs_human"
                       message = `form read needs a human: ${verdict.reason}`

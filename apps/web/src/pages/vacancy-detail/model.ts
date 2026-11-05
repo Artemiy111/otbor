@@ -101,6 +101,10 @@ export const useVacancyPage = (id: () => string) => {
         await vacancyQuery.refetch()
         void contactsQuery.refetch()
       }
+      if (force && accountId.value !== "") {
+        // Responses made by hand on hh.ru only show up after a negotiations sync.
+        void applicationApi.syncRun(accountId.value).catch(() => undefined)
+      }
     } catch {
       // Best effort: the stub stays visible and the operator can retry.
     } finally {
