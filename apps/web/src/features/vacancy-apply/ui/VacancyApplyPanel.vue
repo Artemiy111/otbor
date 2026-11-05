@@ -628,15 +628,15 @@ const NO_FORM = "no-form"
     </div>
 
     <!-- already sent -->
-    <Alert v-if="finished">
-      <CircleCheck />
-      <AlertTitle>{{ statusLabel(state ?? "") }}</AlertTitle>
-      <AlertDescription>
-        Этим аккаунтом с этим резюме на вакансию уже откликались
-        <template v-if="existing">({{ formatDate(existing.updatedAt) }})</template>.
-        Чтобы откликнуться другим резюме, выберите его выше.
-      </AlertDescription>
-    </Alert>
+    <div
+      v-if="finished"
+      class="flex items-center gap-2 text-sm"
+      title="Этим аккаунтом с этим резюме на вакансию уже откликались. Чтобы откликнуться другим резюме, выберите его выше."
+    >
+      <CircleCheck class="size-4 text-emerald-600" />
+      <span class="font-medium">{{ statusLabel(state ?? "") }}</span>
+      <span v-if="existing" class="text-xs text-muted-foreground">{{ formatDate(existing.updatedAt) }}</span>
+    </div>
 
     <LetterAttachBlock
       v-if="finished || sent.some((item) => item.accountId === accountId)"

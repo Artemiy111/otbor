@@ -8,7 +8,7 @@ import type { GeneratedDraft } from "@otbor/domain"
 import { applicationApi, applicationKeys } from "@/entities/application"
 import { describeError } from "@/shared/lib"
 import DraftGenerator from "./DraftGenerator.vue"
-import { Alert, AlertDescription, AlertTitle, Button, Textarea } from "@/shared/ui"
+import { Button, Textarea } from "@/shared/ui"
 
 const props = defineProps<{
   vacancyId: string
@@ -85,56 +85,54 @@ const send = async () => {
 </script>
 
 <template>
-  <div class="space-y-2 rounded-md border border-border p-3">
-    <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-      Сопроводительное к уже отправленному отклику
+  <div v-if="status?.status === 'sent'" class="flex items-center gap-2 text-sm">
+    <CircleCheck class="size-4 text-emerald-600" />
+    <span class="font-medium">Письмо отправлено</span>
+    <span class="text-xs text-muted-foreground">проверьте чат на hh</span>
+  </div>
+  <div v-else class="space-y-2">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Письмо к отправленному отклику
+      </span>
+      <DraftGenerator
+        :vacancy-id="vacancyId"
+        :account-id="accountId"
+        :resume-id="resumeId"
+        :questions="[]"
+        :disabled="busy || active"
+        @generated="generated"
+        @failed="(reason) => (errorText = reason)"
+      />
     </div>
-    <DraftGenerator
-      :vacancy-id="vacancyId"
-      :account-id="accountId"
-      :resume-id="resumeId"
-      :questions="[]"
-      :disabled="busy || active"
-      @generated="generated"
-      @failed="(reason) => (errorText = reason)"
-    />
     <Textarea
       v-model="letter"
-      class="min-h-32 leading-relaxed"
+      class="min-h-20 leading-relaxed"
       :maxlength="MAX_LETTER"
-      :disabled="busy || active || status?.status === 'sent'"
-      placeholder="Текст письма, которое hh добавит к вашему отклику"
+      :disabled="busy || active"
+      placeholder="Текст письма, который hh добавит к отклику"
       @update:model-value="touched = true"
     />
     <div class="flex flex-wrap items-center justify-between gap-2">
       <span class="text-xs text-muted-foreground">{{ letter.length }} / {{ MAX_LETTER }}</span>
       <Button
         size="sm"
-        :disabled="busy || active || accountId === '' || letter.trim() === '' || status?.status === 'sent' || status?.status === 'needs_human'"
+        :disabled="busy || active || accountId === '' || letter.trim() === '' || status?.status === 'needs_human'"
         @click="send"
       >
         <LoaderCircle v-if="busy || active" class="size-4 animate-spin" />
         <Send v-else class="size-4" />
-        Добавить письмо на hh
+        Добавить на hh
       </Button>
     </div>
-    <Alert v-if="status?.status === 'sent'">
-      <CircleCheck />
-      <AlertTitle>Письмо отправлено</AlertTitle>
-      <AlertDescription>hh закрыл окно письма после отправки. Проверьте чат на hh.</AlertDescription>
-    </Alert>
-    <Alert v-else-if="status?.status === 'needs_human'" variant="destructive">
-      <CircleAlert />
-      <AlertTitle>Неясно, дошло ли письмо</AlertTitle>
-      <AlertDescription>
-        {{ status.message }} Проверьте чат на hh: второй раз автоматически не отправляю.
-      </AlertDescription>
-    </Alert>
-    <Alert v-else-if="status?.status === 'failed'" variant="destructive">
-      <CircleAlert />
-      <AlertTitle>Письмо не отправлено</AlertTitle>
-      <AlertDescription>{{ status.message }}</AlertDescription>
-    </Alert>
+    <p v-if="status?.status === 'needs_human'" class="flex items-start gap-1.5 text-xs text-destructive">
+      <CircleAlert class="mt-0.5 size-3.5 shrink-0" />
+      Неясно, дошло ли письмо: {{ status.message }} Проверьте чат на hh, второй раз само не отправлю.
+    </p>
+    <p v-else-if="status?.status === 'failed'" class="flex items-start gap-1.5 text-xs text-destructive">
+      <CircleAlert class="mt-0.5 size-3.5 shrink-0" />
+      Не отправлено: {{ status.message }}
+    </p>
     <p v-if="errorText" class="text-xs text-destructive">{{ errorText }}</p>
   </div>
 </template>
