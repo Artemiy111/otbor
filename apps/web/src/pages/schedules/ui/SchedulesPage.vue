@@ -9,7 +9,7 @@ import { scheduleApi, scheduleKeys, type ScheduleUpsertInput } from "@/entities/
 import { scheduleRunApi, scheduleRunKeys } from "@/entities/schedule-run"
 import { telegramAccountApi, telegramAccountKeys } from "@/entities/telegram-account"
 import { RefreshButton } from "@/features/refresh-button"
-import { describeError, formatDate, scheduleKindLabel } from "@/shared/lib"
+import { describeError, formatDate, runSummary, scheduleKindLabel } from "@/shared/lib"
 import {
   Alert,
   AlertDescription,
@@ -499,9 +499,6 @@ const RUN_STATUS: Record<
   error: { label: "Ошибка", variant: "destructive" }
 }
 
-const formatDetailValue = (value: unknown): string =>
-  typeof value === "object" && value !== null ? JSON.stringify(value) : String(value)
-
 const runColumns: ColumnDef<ScheduleRun>[] = [
   {
     id: "schedule",
@@ -532,20 +529,14 @@ const runColumns: ColumnDef<ScheduleRun>[] = [
     accessorFn: (row) => JSON.stringify(row.detail ?? {}),
     header: "Результат",
     cell: ({ row }) => {
-      const detail = row.original.detail
-      if (detail === null || detail === undefined) return h("span", { class: "text-muted-foreground" }, "—")
-      const entries =
-        typeof detail === "object" && !Array.isArray(detail)
-          ? Object.entries(detail as Record<string, unknown>)
-          : [["", detail] as [string, unknown]]
-      if (entries.length === 0) return h("span", { class: "text-muted-foreground" }, "—")
+      const parts = runSummary(row.original.detail)
+      if (parts.length === 0) return h("span", { class: "text-muted-foreground" }, "—")
       return h(
-        "dl",
-        { class: "grid max-w-[320px] grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs", title: JSON.stringify(detail) },
-        entries.flatMap(([key, value]) => [
-          h("dt", { class: "text-muted-foreground" }, key),
-          h("dd", { class: "truncate tabular-nums" }, formatDetailValue(value))
-        ])
+        "div",
+        { class: "flex max-w-[320px] flex-wrap gap-1", title: JSON.stringify(row.original.detail) },
+        parts.map((part) =>
+          h("span", { class: "rounded bg-muted px-1.5 py-0.5 text-xs tabular-nums" }, part)
+        )
       )
     }
   },

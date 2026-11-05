@@ -234,3 +234,86 @@ export const counts = (tx: Executor, promptVersion: string): RepoEffect<Analysis
     )
     .where(eq(vacancy.hydrationStatus, "full"))
     .pipe(Effect.map((rows) => ({ total: rows[0]?.total ?? 0, analysed: rows[0]?.analysed ?? 0 })))
+
+
+const intOrNull = (value: unknown): number | null =>
+  value === null || value === undefined ? null : Math.round(Number(value))
+
+const latencyRow = (row: Record<string, unknown> | undefined) => ({
+  count: Number(row?.count ?? 0),
+  avgMs: intOrNull(row?.avg_ms),
+  p50Ms: intOrNull(row?.p50_ms),
+  p95Ms: intOrNull(row?.p95_ms),
+  maxMs: intOrNull(row?.max_ms)
+})
+
+const LATENCY_COLUMNS = sql`
+  count(latency_ms)::int as count,
+  avg(latency_ms) as avg_ms,
+  percentile_cont(0.5) within group (order by latency_ms) as p50_ms,
+  percentile_cont(0.95) within group (order by latency_ms) as p95_ms,
+  max(latency_ms) as max_ms`
+
+/** Speed and volume of the model over the last `days` days, for the insights page. */
+export const insights = (tx: Executor, promptVersion: string, days: number) =>
+  Effect.gen(function*() {
+    const since = sql`now() - (${days} * interval '1 day')`
+    const base = sql`from vacancy_analysis where prompt_version = ${promptVersion} and created_at > ${since}`
+
+    const overall = yield* tx.execute(sql`select ${LATENCY_COLUMNS} ${base}`)
+    const perDay = yield* tx.execute(sql`
+      select to_char(date_trunc('day', created_at), 'YYYY-MM-DD') as day,
+             count(*)::int as count, avg(latency_ms) as avg_ms
+      ${base} group by 1 order by 1`)
+    const perModel = yield* tx.execute(sql`
+      select model, ${LATENCY_COLUMNS} ${base} group by model order by count desc`)
+    const slowest = yield* tx.execute(sql`
+      select a.vacancy_id::text as vacancy_id, v.title, a.model, a.latency_ms, a.created_at
+      from vacancy_analysis a join vacancy v on v.id = a.vacancy_id
+      where a.prompt_version = ${promptVersion} and a.created_at > ${since} and a.latency_ms is not null
+      order by a.latency_ms desc limit 8`)
+    const runs = yield* tx.execute(sql`
+      select started_at, status,
+             greatest(extract(epoch from (coalesce(finished_at, now()) - started_at)), 0)::int as seconds,
+             coalesce((detail->>'analysed')::int, 0) as analysed,
+             coalesce((detail->>'skipped')::int, 0) as skipped,
+             coalesce((detail->>'failed')::int, 0) as failed,
+             detail->>'stoppedBy' as stopped_by
+      from schedule_run where kind = 'analysis' and started_at > ${since}
+      order by started_at desc limit 40`)
+
+    return {
+      latency: latencyRow(overall.rows[0] as Record<string, unknown> | undefined),
+      byDay: perDay.rows.map((r) => ({
+        day: String((r as Record<string, unknown>).day),
+        count: Number((r as Record<string, unknown>).count),
+        avgMs: intOrNull((r as Record<string, unknown>).avg_ms)
+      })),
+      byModel: perModel.rows.map((r) => ({
+        model: String((r as Record<string, unknown>).model),
+        ...latencyRow(r as Record<string, unknown>)
+      })),
+      slowest: slowest.rows.map((r) => {
+        const o = r as Record<string, unknown>
+        return {
+          vacancyId: String(o.vacancy_id),
+          title: String(o.title ?? ""),
+          model: String(o.model),
+          latencyMs: Math.round(Number(o.latency_ms)),
+          at: new Date(o.created_at as string | Date).toISOString()
+        }
+      }),
+      runs: runs.rows.map((r) => {
+        const o = r as Record<string, unknown>
+        return {
+          startedAt: new Date(o.started_at as string | Date).toISOString(),
+          seconds: Number(o.seconds),
+          analysed: Number(o.analysed),
+          skipped: Number(o.skipped),
+          failed: Number(o.failed),
+          status: String(o.status),
+          stoppedBy: o.stopped_by === null || o.stopped_by === undefined ? null : String(o.stopped_by)
+        }
+      })
+    }
+  })

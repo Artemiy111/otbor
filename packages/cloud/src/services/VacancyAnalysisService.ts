@@ -1,4 +1,4 @@
-import type { AnalysisStats, ApiError, VacancyAnalysis, VacancyId } from "@otbor/contract"
+import type { AnalysisInsights, AnalysisStats, ApiError, VacancyAnalysis, VacancyId } from "@otbor/contract"
 import { ANALYSIS_PROMPT_VERSION } from "@otbor/domain"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "../db/Database.ts"
@@ -11,6 +11,7 @@ export interface VacancyAnalysisServiceShape {
   readonly get: (vacancyId: VacancyId) => Effect.Effect<VacancyAnalysis | null, ApiError>
   /** How many fully hydrated vacancies carry an analysis under the current prompt version. */
   readonly stats: () => Effect.Effect<AnalysisStats, ApiError>
+  readonly insights: (days: number) => Effect.Effect<AnalysisInsights, ApiError>
 }
 
 export class VacancyAnalysisService extends Context.Service<
@@ -45,7 +46,28 @@ export class VacancyAnalysisService extends Context.Service<
         }
       )
 
-      return VacancyAnalysisService.of({ get, stats })
+      const insights: VacancyAnalysisServiceShape["insights"] = Effect.fn("VacancyAnalysisService.insights")(
+        function*(days) {
+          const window = Math.min(Math.max(Math.trunc(days), 1), 90)
+          const result = yield* database
+            .asUser(currentUser.userId, (tx) =>
+              Effect.gen(function*() {
+                const counts = yield* VacancyAnalysisRepository.counts(tx, ANALYSIS_PROMPT_VERSION)
+                const detail = yield* VacancyAnalysisRepository.insights(tx, ANALYSIS_PROMPT_VERSION, window)
+                return { counts, detail }
+              })
+            )
+            .pipe(Effect.mapError(toStorageError("vacancyAnalysis.insights")))
+          return {
+            promptVersion: ANALYSIS_PROMPT_VERSION,
+            days: window,
+            ...result.counts,
+            ...result.detail
+          } as unknown as AnalysisInsights
+        }
+      )
+
+      return VacancyAnalysisService.of({ get, stats, insights })
     })
   )
 }

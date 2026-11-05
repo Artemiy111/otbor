@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import { Rpc, type RpcClient, type RpcClientError, RpcGroup } from "effect/rpc"
-import { AnalysisRunInput, AnalysisRunResult, AnalysisStats, VacancyAnalysis } from "./analysis.ts"
+import { AnalysisInsights, AnalysisRunInput, AnalysisRunResult, AnalysisStats, VacancyAnalysis } from "./analysis.ts"
 import {
   BlacklistScope,
   EmployerBlacklistView,
@@ -179,6 +179,12 @@ export const AnalysisRun = Rpc.make("AnalysisRun", {
 
 export const AnalysisStatsGet = Rpc.make("AnalysisStatsGet", {
   success: AnalysisStats,
+  error: ApiError
+})
+
+export const AnalysisInsightsGet = Rpc.make("AnalysisInsightsGet", {
+  payload: Schema.Struct({ days: Schema.optional(Schema.Int) }),
+  success: AnalysisInsights,
   error: ApiError
 })
 
@@ -1372,6 +1378,7 @@ export const OtborRpcs = RpcGroup.make(
   VacancyAnalysisGet,
   AnalysisRun,
   AnalysisStatsGet,
+  AnalysisInsightsGet,
   EmployersList,
   EmployersGet,
   BlacklistList,

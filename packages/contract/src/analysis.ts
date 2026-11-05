@@ -154,3 +154,45 @@ export const AnalysisStats = Schema.Struct({
   analysed: Schema.Int
 })
 export type AnalysisStats = typeof AnalysisStats.Type
+
+const LatencySummary = Schema.Struct({
+  count: Schema.Int,
+  avgMs: Schema.NullOr(Schema.Int),
+  p50Ms: Schema.NullOr(Schema.Int),
+  p95Ms: Schema.NullOr(Schema.Int),
+  maxMs: Schema.NullOr(Schema.Int)
+})
+
+/** What the model's work looked like over a period: speed, volume, models, slow cases, recent passes. */
+export const AnalysisInsights = Schema.Struct({
+  promptVersion: Schema.String,
+  days: Schema.Int,
+  total: Schema.Int,
+  analysed: Schema.Int,
+  latency: LatencySummary,
+  byDay: Schema.Array(
+    Schema.Struct({ day: Schema.String, count: Schema.Int, avgMs: Schema.NullOr(Schema.Int) })
+  ),
+  byModel: Schema.Array(Schema.Struct({ model: Schema.String, ...LatencySummary.fields })),
+  slowest: Schema.Array(
+    Schema.Struct({
+      vacancyId: VacancyId,
+      title: Schema.String,
+      model: Schema.String,
+      latencyMs: Schema.Int,
+      at: Schema.String
+    })
+  ),
+  runs: Schema.Array(
+    Schema.Struct({
+      startedAt: Schema.String,
+      seconds: Schema.Int,
+      analysed: Schema.Int,
+      skipped: Schema.Int,
+      failed: Schema.Int,
+      status: Schema.String,
+      stoppedBy: Schema.NullOr(Schema.String)
+    })
+  )
+})
+export type AnalysisInsights = typeof AnalysisInsights.Type

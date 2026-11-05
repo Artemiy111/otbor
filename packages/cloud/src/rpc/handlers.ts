@@ -108,6 +108,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
           delayMs: Math.min(Math.max(delayMs ?? 0, 0), 60_000)
         }),
       AnalysisStatsGet: () => vacancyAnalysis.stats(),
+      AnalysisInsightsGet: ({ days }) => vacancyAnalysis.insights(days ?? 14),
       EmployersList: (payload) => corpus.employers(payload),
       EmployersGet: ({ id }) => corpus.employer(id),
       BlacklistList: (payload) => blacklist.list(payload),

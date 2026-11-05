@@ -5,7 +5,7 @@ import type { ScheduleRun } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert } from "@lucide/vue"
 import { scheduleRunApi, scheduleRunKeys } from "@/entities/schedule-run"
-import { describeError, formatDate, scheduleKindLabel } from "@/shared/lib"
+import { describeError, formatDate, runSummary, scheduleKindLabel } from "@/shared/lib"
 import { Alert, AlertDescription, AlertTitle, Badge, DataTable, StatusBadge, sortableHeader } from "@/shared/ui"
 
 const runsQuery = useQuery({
@@ -14,27 +14,7 @@ const runsQuery = useQuery({
 })
 const runs = computed<ReadonlyArray<ScheduleRun>>(() => runsQuery.data.value?.items ?? [])
 
-/** A short human line from the run's detail: progress while running, totals after. */
-const detailLine = (run: ScheduleRun): string => {
-  const d = (run.detail ?? {}) as Record<string, unknown>
-  const num = (key: string): number | null => (typeof d[key] === "number" ? (d[key] as number) : null)
-  const processed = num("processed")
-  const target = num("target")
-  const parts: string[] = []
-  if (processed !== null && target !== null) parts.push(`${processed} из ${target}`)
-  else if (processed !== null) parts.push(`обработано ${processed}`)
-  const pages = num("pagesDone")
-  if (pages !== null) parts.push(`страниц ${pages}`)
-  const found = num("found")
-  if (found !== null) parts.push(`найдено ${found}`)
-  const inserted = num("inserted")
-  if (inserted) parts.push(`новых ${inserted}`)
-  const updated = num("updated")
-  if (updated) parts.push(`обновлено ${updated}`)
-  const failed = num("failed")
-  if (failed) parts.push(`ошибок ${failed}`)
-  return parts.join(", ")
-}
+const detailLine = (run: ScheduleRun): string => runSummary(run.detail).join(", ")
 
 /** One lane per kind: what runs now, or how the last run ended. */
 const lanes = computed(() => {

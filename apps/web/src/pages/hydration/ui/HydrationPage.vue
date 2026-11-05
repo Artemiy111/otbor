@@ -46,6 +46,7 @@ import {
   TabsTrigger,
   sortableHeader
 } from "@/shared/ui"
+import AnalysisInsightsPanel from "./AnalysisInsightsPanel.vue"
 import { PageHeader } from "@/widgets/page-header"
 import { StatCard } from "@/widgets/stat-card"
 
@@ -700,6 +701,7 @@ onUnmounted(stopRunsPolling)
       <TabsList>
         <TabsTrigger value="vacancies">Вакансии</TabsTrigger>
         <TabsTrigger value="employers">Компании</TabsTrigger>
+        <TabsTrigger value="analysis">Анализ</TabsTrigger>
         <TabsTrigger value="automation">Автоматизация</TabsTrigger>
       </TabsList>
 
@@ -726,6 +728,10 @@ onUnmounted(stopRunsPolling)
             />
           </CardContent>
         </Card>
+      </TabsContent>
+
+      <TabsContent value="analysis">
+        <AnalysisInsightsPanel />
       </TabsContent>
 
       <TabsContent value="employers">
