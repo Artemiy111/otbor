@@ -1340,17 +1340,16 @@ export type ResumeSalary = typeof ResumeSalary.Type
  * final answer. A key outside this list is a custom question with its own text.
  */
 export const RESUME_FAQ_TOPICS = [
-  { key: "city", question: "В каком городе вы живёте?" },
-  { key: "relocation", question: "Готовы ли вы к переезду?" },
-  { key: "office", question: "Готовы ли вы работать в офисе или в гибридном формате?" },
-  { key: "business_trips", question: "Готовы ли вы к командировкам?" },
-  { key: "employment_type", question: "Какое оформление вам подходит (ТК, ИП, самозанятость)?" },
-  { key: "notice_period", question: "Когда вы готовы выйти на работу?" },
-  { key: "english_level", question: "Какой у вас уровень английского?" },
+  { key: "city", question: "В каком городе вы живёте?", short: true },
+  { key: "relocation", question: "Готовы ли вы к переезду?", short: true },
+  { key: "office", question: "Готовы ли вы работать в офисе или в гибридном формате?", short: true },
+  { key: "business_trips", question: "Готовы ли вы к командировкам?", short: true },
+  { key: "employment_type", question: "Какое оформление вам подходит (ТК, ИП, самозанятость)?", short: true },
+  { key: "notice_period", question: "Когда вы готовы выйти на работу?", short: true },
+  { key: "english_level", question: "Какой у вас уровень английского?", short: true },
   { key: "previous_work_format", question: "В каком формате вы работали на прошлом месте?" },
   { key: "leave_reason", question: "Почему вы уходите с текущего или ушли с прошлого места?" },
-  { key: "schedule", question: "Подходит ли вам график 2/2 или сменная работа?" },
-  { key: "it_accreditation", question: "Есть ли у вас аккредитация или отсрочка (IT)?" }
+  { key: "schedule", question: "Подходит ли вам график 2/2 или сменная работа?", short: true }
 ] as const
 
 export const ResumeFaqEntry = Schema.Struct({

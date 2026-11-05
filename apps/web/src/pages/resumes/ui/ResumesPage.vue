@@ -306,7 +306,8 @@ const refresh = () => {
             <p class="text-xs text-muted-foreground">Как отвечать на вопросы, которые встречаются в анкетах. Это подсказка агенту, а не готовый текст.</p>
             <div v-for="topic in RESUME_FAQ_TOPICS" :key="topic.key" class="space-y-1.5">
               <Label>{{ topic.question }}</Label>
-              <Textarea v-model="faqAnswers[topic.key]" rows="2" />
+              <Input v-if="'short' in topic" v-model="faqAnswers[topic.key]" />
+              <Textarea v-else v-model="faqAnswers[topic.key]" rows="2" />
             </div>
             <div v-for="entry in customFaq" :key="entry.id" class="space-y-1.5 rounded-md border p-3">
               <Input v-model="entry.question" placeholder="Вопрос" />
