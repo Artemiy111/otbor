@@ -34,6 +34,12 @@ export interface PresetFieldMeta {
   readonly ops: ReadonlyArray<PresetOperator>
   readonly options?: ReadonlyArray<PresetFieldOption>
   readonly hint?: string
+  /** Operator a fresh rule starts with; defaults to the first one. */
+  readonly defaultOp?: PresetOperator
+  /** Older field kept so stored rules still read; not offered for new rules. */
+  readonly legacy?: boolean
+  /** The rule also carries a currency and "or no salary" (the salary field). */
+  readonly salary?: boolean
 }
 
 export interface PresetFieldGroupMeta {
@@ -50,7 +56,7 @@ const TEXT_OPS: ReadonlyArray<PresetOperator> = [
   "not_in"
 ]
 
-const NUMBER_OPS: ReadonlyArray<PresetOperator> = ["eq", "neq", "gte", "lte"]
+const NUMBER_OPS: ReadonlyArray<PresetOperator> = ["lt", "lte", "eq", "gt", "gte", "neq"]
 
 const BOOLEAN_OPS: ReadonlyArray<PresetOperator> = ["is_true", "is_false"]
 
@@ -244,25 +250,37 @@ export const PRESET_FIELDS: ReadonlyArray<PresetFieldMeta> = [
     hint: "Требуемый уровень по тексту вакансии. Пусто, если модель не уверена."
   },
   {
-    field: "salary_from",
-    label: "Зарплата от",
+    field: "salary",
+    label: "Зарплата",
     group: "Зарплата и метрики",
     kind: "number",
-    ops: NUMBER_OPS
+    ops: NUMBER_OPS,
+    defaultOp: "gte",
+    salary: true,
+    hint: "Вилка вакансии: > и >= смотрят на её верх, < и <= на низ, = значит «число внутри вилки»."
+  },
+  {
+    field: "salary_from",
+    label: "Зарплата от (старое)",
+    group: "Зарплата и метрики",
+    kind: "number",
+    ops: NUMBER_OPS,
+    legacy: true
   },
   {
     field: "salary_to",
-    label: "Зарплата до",
+    label: "Зарплата до (старое)",
     group: "Зарплата и метрики",
     kind: "number",
-    ops: NUMBER_OPS
+    ops: NUMBER_OPS,
+    legacy: true
   },
   {
     field: "published_days",
     label: "Опубликована за, дней",
     group: "Зарплата и метрики",
     kind: "number",
-    ops: NUMBER_OPS,
+    ops: ["lte"],
     hint: "Сколько дней назад вакансия появилась на hh."
   },
   {
@@ -329,7 +347,7 @@ export const presetFieldMeta = (field: PresetField): PresetFieldMeta =>
 export const PRESET_FIELD_GROUPS: ReadonlyArray<PresetFieldGroupMeta> =
   PRESET_FIELD_GROUP_ORDER.map((group) => ({
     group,
-    fields: PRESET_FIELDS.filter((meta) => meta.group === group)
+    fields: PRESET_FIELDS.filter((meta) => meta.group === group && meta.legacy !== true)
   })).filter((group) => group.fields.length > 0)
 
 export const PRESET_OPERATOR_LABELS: Record<PresetOperator, string> = {
@@ -339,14 +357,32 @@ export const PRESET_OPERATOR_LABELS: Record<PresetOperator, string> = {
   neq: "не равно",
   in: "входит в",
   not_in: "не входит в",
-  gte: "не меньше",
-  lte: "не больше",
+  gte: ">=",
+  lte: "<=",
+  gt: ">",
+  lt: "<",
   is_true: "да",
   is_false: "нет"
 }
 
-export const presetOperatorLabel = (op: PresetOperator): string =>
-  PRESET_OPERATOR_LABELS[op]
+/** Number fields read as math: `>=`, `=`, `!=`; text fields keep words. */
+const NUMBER_OPERATOR_LABELS: Partial<Record<PresetOperator, string>> = {
+  eq: "=",
+  neq: "!="
+}
+
+export const presetOperatorLabel = (op: PresetOperator, field?: PresetField): string =>
+  field !== undefined && presetFieldMeta(field).kind === "number"
+    ? (NUMBER_OPERATOR_LABELS[op] ?? PRESET_OPERATOR_LABELS[op])
+    : PRESET_OPERATOR_LABELS[op]
+
+export const SALARY_CURRENCIES: ReadonlyArray<PresetFieldOption> = [
+  { value: "RUR", label: "₽ RUR" },
+  { value: "USD", label: "$ USD" },
+  { value: "EUR", label: "€ EUR" },
+  { value: "KZT", label: "KZT" },
+  { value: "BYN", label: "BYN" }
+]
 
 export const isMultiValueOperator = (op: PresetOperator): boolean =>
   op === "in" || op === "not_in"
@@ -389,8 +425,12 @@ export const ruleValueLabel = (rule: PresetRule): string => {
 
 /** "Заголовок: содержит backend" — one line per rule in the detail card. */
 export const describePresetRule = (rule: PresetRule): string => {
-  const label = presetFieldMeta(rule.field).label
-  const op = presetOperatorLabel(rule.op)
+  const meta = presetFieldMeta(rule.field)
+  const label = meta.label
+  const op = presetOperatorLabel(rule.op, rule.field)
   const value = ruleValueLabel(rule)
-  return value === "" ? `${label}: ${op}` : `${label}: ${op} ${value}`
+  const base = value === "" ? `${label}: ${op}` : `${label}: ${op} ${value}`
+  if (!meta.salary) return base
+  const currency = rule.currency === undefined || rule.currency === "" ? "" : ` ${rule.currency}`
+  return `${base}${currency}${rule.orMissing === true ? " (или не указана)" : ""}`
 }

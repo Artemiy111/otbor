@@ -155,6 +155,35 @@ const ruleClause = (rule: PresetRule, filter: PresetFilter): SQL => {
     )`
   }
 
+  if (rule.field === "salary") {
+    const amount = numberValue(value)
+    const low = sql`coalesce(vacancy.salary_from, vacancy.salary_to)`
+    const high = sql`coalesce(vacancy.salary_to, vacancy.salary_from)`
+    const compare = (() => {
+      switch (op) {
+        case "gt":
+          return sql`${high} > ${amount}`
+        case "gte":
+          return sql`${high} >= ${amount}`
+        case "lt":
+          return sql`${low} < ${amount}`
+        case "lte":
+          return sql`${low} <= ${amount}`
+        case "neq":
+          return sql`not (${low} <= ${amount} and ${high} >= ${amount})`
+        default:
+          return sql`(${low} <= ${amount} and ${high} >= ${amount})`
+      }
+    })()
+    const currency = rule.currency?.trim() ?? ""
+    const stated = currency === ""
+      ? compare
+      : sql`(${compare} and vacancy.salary_currency = ${currency})`
+    return rule.orMissing === true
+      ? sql`(${stated} or (vacancy.salary_from is null and vacancy.salary_to is null))`
+      : stated
+  }
+
   if (rule.field === "published_days") {
     return sql`vacancy.published_at >= now() - make_interval(days => ${numberValue(value)})`
   }
@@ -243,6 +272,8 @@ const ruleClause = (rule: PresetRule, filter: PresetFilter): SQL => {
   if (numberField !== null) {
     const numeric = numberValue(value)
     if (op === "gte") return sql`${numberField} >= ${numeric}`
+    if (op === "gt") return sql`${numberField} > ${numeric}`
+    if (op === "lt") return sql`${numberField} < ${numeric}`
     if (op === "lte") return sql`${numberField} <= ${numeric}`
     return op === "neq" ? sql`${numberField} <> ${numeric}` : sql`${numberField} = ${numeric}`
   }
@@ -266,7 +297,10 @@ export const vacancyFilterSql = (
 ): SQL => {
   const clauses: Array<SQL> = [sql`true`]
 
-  const hasArchivedRule = (filter.rules ?? []).some((rule) => rule.field === "archived")
+  const hasArchivedRule = [
+    ...(filter.rules ?? []),
+    ...(filter.groups ?? []).flatMap((group) => group.branches.flatMap((branch) => branch.rules))
+  ].some((rule) => rule.field === "archived")
   if (filter.includeArchived !== true && !hasArchivedRule) {
     clauses.push(sql`not vacancy.archived`)
   }
@@ -296,6 +330,13 @@ export const vacancyFilterSql = (
 
   for (const rule of filter.rules ?? []) {
     clauses.push(ruleClause(rule, filter))
+  }
+
+  for (const group of filter.groups ?? []) {
+    const branches = group.branches
+      .filter((branch) => branch.rules.length > 0)
+      .map((branch) => sql`(${sql.join(branch.rules.map((rule) => ruleClause(rule, filter)), sql` and `)})`)
+    if (branches.length > 0) clauses.push(sql`(${sql.join(branches, sql` or `)})`)
   }
 
   return sql.join(clauses, sql` and `)

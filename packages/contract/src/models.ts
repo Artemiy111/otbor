@@ -1136,6 +1136,12 @@ export type HeartbeatResult = typeof HeartbeatResult.Type
  */
 export const PresetField = Schema.Literals([
   "title",
+  /**
+   * The salary the vacancy states, compared as a range: `>`/`>=` look at its
+   * upper end, `<`/`<=` at its lower end, `=` means the number lies inside it.
+   * A rule may pin a `currency` and may accept vacancies without a salary.
+   */
+  "salary",
   "description",
   "skills",
   "keywords",
@@ -1179,6 +1185,8 @@ export const PresetOperator = Schema.Literals([
   "not_in",
   "gte",
   "lte",
+  "gt",
+  "lt",
   "is_true",
   "is_false"
 ])
@@ -1197,14 +1205,31 @@ export type PresetRuleValue = typeof PresetRuleValue.Type
 export const PresetRule = Schema.Struct({
   field: PresetField,
   op: PresetOperator,
-  value: Schema.optional(PresetRuleValue)
+  value: Schema.optional(PresetRuleValue),
+  /** `salary` only: the rule applies to this currency code (hh: RUR, USD, EUR, ...). */
+  currency: Schema.optional(Schema.String),
+  /** `salary` only: a vacancy without any salary passes the rule too. */
+  orMissing: Schema.optional(Schema.Boolean)
 })
 
 export type PresetRule = typeof PresetRule.Type
 
+/**
+ * "Any of": a vacancy passes when it satisfies every rule of at least one
+ * branch. Rules of a filter are ANDed; a group is how to say OR, e.g. rubles
+ * from 200k, or dollars from 3k.
+ */
+export const PresetGroup = Schema.Struct({
+  branches: Schema.Array(Schema.Struct({ rules: Schema.Array(PresetRule) }))
+})
+
+export type PresetGroup = typeof PresetGroup.Type
+
 export const PresetFilter = Schema.Struct({
   /** Additional AND rules over vacancy fields. */
   rules: Schema.optional(Schema.Array(PresetRule)),
+  /** Additional AND clauses, each an OR over branches of rules. */
+  groups: Schema.optional(Schema.Array(PresetGroup)),
   text: Schema.optional(Schema.String),
   gate: Schema.optional(GateVerdict),
   keywordIds: Schema.optional(Schema.Array(KeywordId)),
@@ -1233,14 +1258,23 @@ export const parsePresetFilter = (input: unknown): PresetFilter => {
   const keywordIds = decoded.keywordIds === undefined
     ? []
     : [...new Set(decoded.keywordIds)]
-  const rules = (decoded.rules ?? []).filter((rule) => {
+  const complete = (rule: PresetRule): boolean => {
     if (rule.op === "is_true" || rule.op === "is_false") return true
     if (rule.value === undefined || rule.value === "") return false
     return !Array.isArray(rule.value) || rule.value.length > 0
-  })
+  }
+  const rules = (decoded.rules ?? []).filter(complete)
+  const groups = (decoded.groups ?? [])
+    .map((group) => ({
+      branches: group.branches
+        .map((branch) => ({ rules: branch.rules.filter(complete) }))
+        .filter((branch) => branch.rules.length > 0)
+    }))
+    .filter((group) => group.branches.length > 0)
 
   return {
     ...(rules.length === 0 ? {} : { rules }),
+    ...(groups.length === 0 ? {} : { groups }),
     ...(text === "" ? {} : { text }),
     ...(decoded.gate === undefined ? {} : { gate: decoded.gate }),
     ...(keywordIds.length === 0 ? {} : { keywordIds }),

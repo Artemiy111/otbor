@@ -171,4 +171,48 @@ if (!enabled || serverUrl === null) {
       expect((await ids(undefined)).length).toBe(2)
     }, 60_000)
   })
+
+    test("salary compares the vacancy range, pins a currency, accepts missing salaries and ORs currencies", async () => {
+      const tenant = await support.seedTenant("salary-filter")
+      const employer = await support.seedEmployerStats("e-salary", "Salary Co")
+      const mk = (label: string, extra: { salaryFrom?: number; salaryTo?: number; salaryCurrency?: string }) =>
+        support.seedSearchVacancy({ label, title: label, employerId: employer, ...extra })
+
+      const rub150300 = await mk("s1", { salaryFrom: 150_000, salaryTo: 300_000, salaryCurrency: "RUR" })
+      const rub400 = await mk("s2", { salaryFrom: 400_000, salaryCurrency: "RUR" })
+      const usd4k = await mk("s3", { salaryFrom: 4_000, salaryTo: 5_000, salaryCurrency: "USD" })
+      const none = await mk("s4", {})
+
+      const ids = async (filter: PresetFilter) =>
+        (await support.runAs(
+          tenant.userId,
+          Effect.gen(function*() {
+            const corpus = yield* CorpusService
+            return yield* corpus.list({ limit: 50, filter })
+          })
+        )).items.map((row): string => row.id).sort()
+      const sorted = (...list: Array<string>) => [...list].sort()
+
+      // range: >= 200k and <= 350k in rubles overlaps the first vacancy only
+      expect(await ids({ rules: [
+        { field: "salary", op: "gte", value: 200_000, currency: "RUR" },
+        { field: "salary", op: "lte", value: 350_000, currency: "RUR" }
+      ] })).toEqual([rub150300])
+
+      // "= 250k" means the number lies inside the vacancy range
+      expect(await ids({ rules: [{ field: "salary", op: "eq", value: 250_000 }] })).toEqual([rub150300])
+
+      // a currency pin excludes the other currency; without a pin only the number counts
+      expect(await ids({ rules: [{ field: "salary", op: "gt", value: 3_000, currency: "USD" }] })).toEqual([usd4k])
+
+      // vacancies without a salary pass only with orMissing
+      expect(await ids({ rules: [{ field: "salary", op: "gte", value: 350_000, currency: "RUR", orMissing: true }] }))
+        .toEqual(sorted(rub400, none))
+
+      // OR across currencies: 350k+ rubles, or 3k+ dollars
+      expect(await ids({ groups: [{ branches: [
+        { rules: [{ field: "salary", op: "gte", value: 350_000, currency: "RUR" }] },
+        { rules: [{ field: "salary", op: "gte", value: 3_000, currency: "USD" }] }
+      ] }] })).toEqual(sorted(rub400, usd4k))
+    }, 60_000)
 }

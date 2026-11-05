@@ -52,3 +52,19 @@ describe("preset filter parsing", () => {
     expect(Schema.decodeUnknownSync(PresetFilter)(filter)).toEqual(filter)
   })
 })
+
+test("parsePresetFilter drops empty group rules and empty branches", () => {
+  const filter = parsePresetFilter({
+    groups: [
+      { branches: [{ rules: [{ field: "salary", op: "gte", value: "" }] }, { rules: [] }] },
+      {
+        branches: [
+          { rules: [{ field: "salary", op: "gte", value: 3000, currency: "USD" }, { field: "title", op: "contains", value: " " }] }
+        ]
+      }
+    ]
+  })
+  expect(filter.groups).toEqual([
+    { branches: [{ rules: [{ field: "salary", op: "gte", value: 3000, currency: "USD" }, { field: "title", op: "contains", value: " " }] }] }
+  ])
+})

@@ -2144,6 +2144,7 @@ export const seedSearchVacancy = async (input: {
   readonly seniority?: string
   readonly experienceCode?: string
   readonly salaryFrom?: number
+  readonly salaryTo?: number
   readonly salaryCurrency?: string
   readonly publishedDaysAgo?: number
   readonly archived?: boolean
@@ -2165,6 +2166,7 @@ export const seedSearchVacancy = async (input: {
             seniority: input.seniority ?? "unknown",
             experienceCode: input.experienceCode ?? null,
             salaryFrom: input.salaryFrom ?? null,
+            salaryTo: input.salaryTo ?? null,
             salaryCurrency: input.salaryCurrency ?? null,
             publishedAt: new Date(Date.now() - (input.publishedDaysAgo ?? 30) * 86_400_000),
             archived: input.archived ?? false,

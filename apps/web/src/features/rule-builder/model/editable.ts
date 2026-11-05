@@ -21,10 +21,26 @@ export interface EditableRule {
   op: PresetOperator
   text: string
   values: Array<string>
+  /** Salary rules: currency code, "" for any. */
+  currency: string
+  /** Salary rules: a vacancy without a salary passes too. */
+  orMissing: boolean
+}
+
+export interface EditableBranch {
+  readonly id: number
+  rules: Array<EditableRule>
+}
+
+/** "Any of": passes when every rule of at least one branch holds. */
+export interface EditableGroup {
+  readonly id: number
+  branches: Array<EditableBranch>
 }
 
 export interface EditableFilter {
   rules: Array<EditableRule>
+  groups: Array<EditableGroup>
   includeArchived: boolean
   includeBlacklisted: boolean
   location: KeywordMatchLocation
@@ -36,15 +52,38 @@ let sequence = 0
 
 export const newRule = (field: PresetField = "title"): EditableRule => {
   const meta = presetFieldMeta(field)
-  return { id: sequence++, field, op: meta.ops[0] ?? "eq", text: "", values: [] }
+  return {
+    id: sequence++,
+    field,
+    op: meta.defaultOp ?? meta.ops[0] ?? "eq",
+    text: "",
+    values: [],
+    currency: "",
+    orMissing: false
+  }
 }
+
+export const newBranch = (field?: PresetField): EditableBranch => ({
+  id: sequence++,
+  rules: [newRule(field)]
+})
+
+export const newGroup = (field: PresetField = "salary"): EditableGroup => ({
+  id: sequence++,
+  branches: [newBranch(field), newBranch(field)]
+})
 
 /** Fields whose multi-value operators edit a list instead of comma-separated text. */
 export const usesList = (field: PresetField): boolean =>
   field === "keywords" || presetFieldMeta(field).kind === "select"
 
 export const toEditableRule = (rule: PresetRule): EditableRule => {
-  const base: EditableRule = { ...newRule(rule.field), op: rule.op }
+  const base: EditableRule = {
+    ...newRule(rule.field),
+    op: rule.op,
+    currency: rule.currency ?? "",
+    orMissing: rule.orMissing === true
+  }
   const meta = presetFieldMeta(rule.field)
   if (meta.kind === "boolean") return base
   if (Array.isArray(rule.value)) {
@@ -57,6 +96,7 @@ export const toEditableRule = (rule: PresetRule): EditableRule => {
 
 export const emptyEditable = (): EditableFilter => ({
   rules: [],
+  groups: [],
   includeArchived: false,
   includeBlacklisted: false,
   location: "any",
@@ -68,6 +108,13 @@ export const toEditable = (filter: PresetFilter | undefined): EditableFilter =>
     ? emptyEditable()
     : {
         rules: presetRules(filter).map(toEditableRule),
+        groups: (filter.groups ?? []).map((group) => ({
+          id: sequence++,
+          branches: group.branches.map((branch) => ({
+            id: sequence++,
+            rules: branch.rules.map(toEditableRule)
+          }))
+        })),
         includeArchived: filter.includeArchived === true,
         includeBlacklisted: filter.includeBlacklisted === true,
         location: filter.location ?? "any",
@@ -75,7 +122,7 @@ export const toEditable = (filter: PresetFilter | undefined): EditableFilter =>
       }
 
 /** The stored rule for an editable one, or null while its value is still empty. */
-export const buildRule = (rule: EditableRule): PresetRule | null => {
+const buildBase = (rule: EditableRule): PresetRule | null => {
   const meta = presetFieldMeta(rule.field)
   if (meta.kind === "boolean") return { field: rule.field, op: rule.op }
   if (meta.kind === "number") {
@@ -93,7 +140,22 @@ export const buildRule = (rule: EditableRule): PresetRule | null => {
   return value === "" ? null : { field: rule.field, op: rule.op, value }
 }
 
+export const buildRule = (rule: EditableRule): PresetRule | null => {
+  const base = buildBase(rule)
+  if (base === null || !presetFieldMeta(rule.field).salary) return base
+  return {
+    ...base,
+    ...(rule.currency === "" ? {} : { currency: rule.currency }),
+    ...(rule.orMissing ? { orMissing: true } : {})
+  }
+}
+
 export const isComplete = (rule: EditableRule): boolean => buildRule(rule) !== null
+
+export const allRules = (state: EditableFilter): ReadonlyArray<EditableRule> => [
+  ...state.rules,
+  ...state.groups.flatMap((group) => group.branches.flatMap((branch) => branch.rules))
+]
 
 /** Switches a rule's operator, moving the value between the scalar and list controls. */
 export const changeOperator = (rule: EditableRule, op: PresetOperator): void => {
@@ -112,15 +174,25 @@ export const changeOperator = (rule: EditableRule, op: PresetOperator): void => 
 
 export const changeField = (rule: EditableRule, field: PresetField): void => {
   rule.field = field
-  rule.op = presetFieldMeta(field).ops[0] ?? "eq"
+  const meta = presetFieldMeta(field)
+  rule.op = meta.defaultOp ?? meta.ops[0] ?? "eq"
   rule.text = ""
   rule.values = []
+  if (!presetFieldMeta(field).salary) {
+    rule.currency = ""
+    rule.orMissing = false
+  }
 }
 
 /** Only complete rules reach the filter, so a half-typed row never empties a list. */
 export const buildFilter = (state: EditableFilter): PresetFilter =>
   parsePresetFilter({
     rules: state.rules.map(buildRule).filter((rule): rule is PresetRule => rule !== null),
+    groups: state.groups.map((group) => ({
+      branches: group.branches.map((branch) => ({
+        rules: branch.rules.map(buildRule).filter((rule): rule is PresetRule => rule !== null)
+      }))
+    })),
     ...(state.includeArchived ? { includeArchived: true } : {}),
     ...(state.includeBlacklisted ? { includeBlacklisted: true } : {}),
     ...(state.location === "any" ? {} : { location: state.location }),

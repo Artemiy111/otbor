@@ -4,7 +4,7 @@ import { useDebounceFn } from "@vueuse/core"
 import type { PresetFilter, PresetKind, PresetPreview, PresetRecord } from "@otbor/contract"
 import { CircleAlert, Save } from "@lucide/vue"
 import { presetApi } from "@/entities/preset"
-import { RuleBuilder, buildFilter, isComplete, toEditable } from "@/features/rule-builder"
+import { RuleBuilder, allRules, buildFilter, isComplete, toEditable } from "@/features/rule-builder"
 import { describeError } from "@/shared/lib"
 import {
   Alert,
@@ -37,7 +37,7 @@ const kind: PresetKind = props.preset?.kind ?? "explore"
 const filter = ref(reactive(toEditable(props.preset?.filter)))
 const formError = ref<string | null>(null)
 
-const incomplete = computed(() => filter.value.rules.some((rule) => !isComplete(rule)))
+const incomplete = computed(() => allRules(filter.value).some((rule) => !isComplete(rule)))
 
 const preview = ref<PresetPreview | null>(null)
 const previewError = ref<string | null>(null)

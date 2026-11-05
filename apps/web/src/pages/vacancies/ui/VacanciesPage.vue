@@ -62,7 +62,7 @@ const rulesOpen = ref(false)
 const rules = reactive(emptyEditable())
 const ruleFilter = computed(() => {
   const built = buildFilter(rules)
-  if (built.rules === undefined) return undefined
+  if (built.rules === undefined && built.groups === undefined) return undefined
   // The header toggles own archive and blacklist visibility.
   return {
     ...built,
@@ -70,7 +70,7 @@ const ruleFilter = computed(() => {
     ...(includeBlacklisted.value ? { includeBlacklisted: true } : {})
   }
 })
-const ruleCount = computed(() => ruleFilter.value?.rules?.length ?? 0)
+const ruleCount = computed(() => (ruleFilter.value?.rules?.length ?? 0) + (ruleFilter.value?.groups?.length ?? 0))
 watch(
   () => JSON.stringify(ruleFilter.value ?? null),
   () => {
