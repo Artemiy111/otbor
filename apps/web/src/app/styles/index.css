@@ -31,9 +31,11 @@
   --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
   --sidebar-border: oklch(0.92 0.004 286.32);
   --sidebar-ring: oklch(0.705 0.015 286.067);
+  --glow: oklch(0.93 0.02 278 / 70%);
 }
 
 .dark {
+  --glow: oklch(0.26 0.02 278 / 55%);
   --background: oklch(0.141 0.005 285.823);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.21 0.006 285.885);
@@ -107,17 +109,17 @@
   }
 
   html {
+    color-scheme: light;
+  }
+
+  html.dark {
     color-scheme: dark;
   }
 
   body {
     @apply bg-background text-foreground antialiased;
     min-height: 100vh;
-    background-image: radial-gradient(
-      1100px 720px at 88% -12%,
-      oklch(0.26 0.02 278 / 55%),
-      transparent 62%
-    );
+    background-image: radial-gradient(1100px 720px at 88% -12%, var(--glow), transparent 62%);
     background-attachment: fixed;
   }
 

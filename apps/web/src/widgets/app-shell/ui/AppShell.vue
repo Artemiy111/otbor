@@ -5,6 +5,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/shared/ui/sideb
 import { navLabel } from "../model/nav"
 import AccountSwitcher from "./AccountSwitcher.vue"
 import AppSidebar from "./AppSidebar.vue"
+import ThemeSwitcher from "./ThemeSwitcher.vue"
 
 const props = defineProps<{ active: string }>()
 
@@ -28,6 +29,7 @@ const sectionLabel = computed(() => navLabel(props.active))
           </span>
         </div>
         <div class="flex-1" />
+        <ThemeSwitcher />
         <AccountSwitcher />
         <code class="hidden truncate font-mono text-[11px] text-muted-foreground md:block">
           {{ apiEndpoint }}
