@@ -369,7 +369,7 @@ const columns: ColumnDef<CrawlSchedule>[] = [
                 href: schedule.targetId,
                 target: "_blank",
                 rel: "noreferrer",
-                class: "break-all text-sm text-sky-300 underline-offset-4 hover:underline"
+                class: "break-all text-sm text-sky-700 dark:text-sky-300 underline-offset-4 hover:underline"
               },
               label
             )
@@ -431,7 +431,7 @@ const columns: ColumnDef<CrawlSchedule>[] = [
       return h(
         "span",
         {
-          class: "block max-w-[260px] truncate text-xs text-red-300",
+          class: "block max-w-[260px] truncate text-xs text-red-700 dark:text-red-300",
           title: error
         },
         error
@@ -684,7 +684,7 @@ const runColumns: ColumnDef<ScheduleRun>[] = [
               </Select>
               <div
                 v-else
-                class="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100"
+                class="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100"
               >
                 Нет доступных аккаунтов.
                 <a

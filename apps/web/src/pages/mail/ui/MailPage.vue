@@ -281,7 +281,7 @@ const columns: ColumnDef<MailAccountRecord>[] = [
       }
       return h(
         "span",
-        { class: "block max-w-[240px] truncate text-xs text-red-300", title: error },
+        { class: "block max-w-[240px] truncate text-xs text-red-700 dark:text-red-300", title: error },
         error
       )
     }

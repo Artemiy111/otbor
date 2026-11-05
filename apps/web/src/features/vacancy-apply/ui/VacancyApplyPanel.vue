@@ -667,7 +667,7 @@ const NO_FORM = "no-form"
         <AlertTitle>Форму не удалось обновить</AlertTitle>
         <AlertDescription>{{ formState.lastError }}</AlertDescription>
       </Alert>
-      <p v-if="kitIsOld" class="text-xs text-amber-300">
+      <p v-if="kitIsOld" class="text-xs text-amber-700 dark:text-amber-300">
         Вопросы на hh изменились после сохранения черновика. Проверьте ответы перед отправкой.
       </p>
       <Alert v-if="state === 'needs_human' || state === 'failed'" variant="destructive">
@@ -696,7 +696,7 @@ const NO_FORM = "no-form"
               v-if="generatedInfo.durationMs !== null"
             >, {{ (generatedInfo.durationMs / 1000).toFixed(1) }} с</template>. Ничего не сохранено и не отправлено.
           </p>
-          <ul v-if="generatedInfo.problems.length > 0" class="list-disc space-y-0.5 pl-5 text-amber-300">
+          <ul v-if="generatedInfo.problems.length > 0" class="list-disc space-y-0.5 pl-5 text-amber-700 dark:text-amber-300">
             <li v-for="problem in generatedInfo.problems" :key="problem">{{ problem }}</li>
           </ul>
         </div>
@@ -732,7 +732,7 @@ const NO_FORM = "no-form"
             Черновик для этого резюме сохранён {{ formatDate(savedKit.createdAt) }}.
           </span>
           <span v-else>Для этого резюме черновика нет.</span>
-          <span v-if="dirty" class="text-amber-300">Есть несохранённые изменения.</span>
+          <span v-if="dirty" class="text-amber-700 dark:text-amber-300">Есть несохранённые изменения.</span>
           <Button v-if="dirty && savedKit" variant="ghost" size="sm" :disabled="busy !== null" @click="revertToSaved">
             Вернуть сохранённое
           </Button>
@@ -748,7 +748,7 @@ const NO_FORM = "no-form"
           <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Тест работодателя ({{ questions.length }})
           </span>
-          <span v-if="needsOwnAnswer > 0" class="text-xs text-amber-300">
+          <span v-if="needsOwnAnswer > 0" class="text-xs text-amber-700 dark:text-amber-300">
             есть задание с кодом: ответьте сами
           </span>
         </div>
@@ -759,7 +759,7 @@ const NO_FORM = "no-form"
         >
           <legend class="px-1 text-sm font-medium">
             {{ index + 1 }}. {{ question.text }}
-            <span v-if="question.required" class="text-red-300">*</span>
+            <span v-if="question.required" class="text-red-700 dark:text-red-300">*</span>
           </legend>
           <p v-if="hintFor(question.id)?.note" class="text-xs text-muted-foreground">
             Подсказка: {{ hintFor(question.id)?.note }}
@@ -800,8 +800,8 @@ const NO_FORM = "no-form"
         <AlertTitle>Не получилось</AlertTitle>
         <AlertDescription>{{ errorText }}</AlertDescription>
       </Alert>
-      <p v-if="notice" class="text-xs text-emerald-300">{{ notice }}</p>
-      <p v-if="missing.length > 0" class="text-xs text-amber-300">
+      <p v-if="notice" class="text-xs text-emerald-700 dark:text-emerald-300">{{ notice }}</p>
+      <p v-if="missing.length > 0" class="text-xs text-amber-700 dark:text-amber-300">
         Не заполнено: {{ missing.join(", ") }}.
       </p>
 

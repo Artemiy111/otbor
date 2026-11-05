@@ -76,7 +76,7 @@ const errorText = computed(() =>
           <a
             v-if="conversation.vacancyId"
             :href="vacancyPath(conversation.vacancyId)"
-            class="text-sky-300 underline-offset-4 hover:underline"
+            class="text-sky-700 dark:text-sky-300 underline-offset-4 hover:underline"
           >
             Вакансия
           </a>
@@ -85,7 +85,7 @@ const errorText = computed(() =>
             :href="conversation.url"
             target="_blank"
             rel="noreferrer"
-            class="text-sky-300 underline-offset-4 hover:underline"
+            class="text-sky-700 dark:text-sky-300 underline-offset-4 hover:underline"
           >
             Открыть в источнике
           </a>

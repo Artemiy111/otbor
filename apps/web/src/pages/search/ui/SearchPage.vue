@@ -251,7 +251,7 @@ const columns: ColumnDef<CrawlSchedule>[] = [
             href: target,
             target: "_blank",
             rel: "noreferrer",
-            class: "break-all text-sm text-sky-300 underline-offset-4 hover:underline"
+            class: "break-all text-sm text-sky-700 dark:text-sky-300 underline-offset-4 hover:underline"
           },
           target
         ),
@@ -463,7 +463,7 @@ const runColumns: ColumnDef<CrawlRun>[] = [
                 :href="formatSearchUrl(run.normalizedUrl)"
                 target="_blank"
                 rel="noreferrer"
-                class="break-all text-sm font-medium text-sky-300 underline-offset-4 hover:underline"
+                class="break-all text-sm font-medium text-sky-700 dark:text-sky-300 underline-offset-4 hover:underline"
               >
                 {{ formatSearchUrl(run.normalizedUrl) }}
               </a>

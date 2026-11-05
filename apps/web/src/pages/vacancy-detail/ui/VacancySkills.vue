@@ -27,7 +27,7 @@ const found = computed(() => items.value.filter((item) => item.inResume === true
           item.inResume === null
             ? 'border-border bg-muted/40'
             : item.inResume
-              ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+              ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
               : 'border-border text-muted-foreground'
         "
       >
@@ -36,7 +36,7 @@ const found = computed(() => items.value.filter((item) => item.inResume === true
       </Hint>
     </div>
     <p v-if="resume" class="text-xs text-muted-foreground">
-      <span class="text-emerald-300">Зелёные</span> есть в резюме «{{ resume.title }}»: {{ found }} из {{ items.length }}.
+      <span class="text-emerald-700 dark:text-emerald-300">Зелёные</span> есть в резюме «{{ resume.title }}»: {{ found }} из {{ items.length }}.
     </p>
   </div>
   <p v-else class="text-sm text-muted-foreground">Навыки в вакансии не указаны.</p>

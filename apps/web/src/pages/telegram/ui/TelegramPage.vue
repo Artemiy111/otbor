@@ -308,7 +308,7 @@ const columns: ColumnDef<TelegramAccountRecord>[] = [
       }
       return h(
         "span",
-        { class: "block max-w-[240px] truncate text-xs text-red-300", title: error },
+        { class: "block max-w-[240px] truncate text-xs text-red-700 dark:text-red-300", title: error },
         error
       )
     }
@@ -434,13 +434,13 @@ const columns: ColumnDef<TelegramAccountRecord>[] = [
         />
         <div
           v-else-if="loginStatus === 'authorized'"
-          class="flex h-[220px] w-[220px] items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-center text-sm text-emerald-200"
+          class="flex h-[220px] w-[220px] items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-center text-sm text-emerald-800 dark:text-emerald-200"
         >
           Аккаунт подключён
         </div>
         <div
           v-else-if="loginStatus === 'error'"
-          class="flex h-[220px] w-[220px] items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 px-4 text-center text-sm text-red-200"
+          class="flex h-[220px] w-[220px] items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 px-4 text-center text-sm text-red-800 dark:text-red-200"
         >
           Не удалось получить QR
         </div>
@@ -451,7 +451,7 @@ const columns: ColumnDef<TelegramAccountRecord>[] = [
         <div class="max-w-md space-y-1 text-center text-xs text-muted-foreground">
           <p v-if="qrUrl">
             Ссылка для Telegram Desktop:
-            <a :href="qrUrl" class="break-all text-sky-300 underline-offset-4 hover:underline">
+            <a :href="qrUrl" class="break-all text-sky-700 dark:text-sky-300 underline-offset-4 hover:underline">
               {{ qrUrl }}
             </a>
           </p>
@@ -461,7 +461,7 @@ const columns: ColumnDef<TelegramAccountRecord>[] = [
 
         <StatusBadge :value="loginStatus" />
 
-        <p v-if="loginError" class="text-sm text-red-300">{{ loginError }}</p>
+        <p v-if="loginError" class="text-sm text-red-700 dark:text-red-300">{{ loginError }}</p>
 
         <Button variant="outline" size="sm" @click="closeQr">
           <QrCode />

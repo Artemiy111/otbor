@@ -75,7 +75,7 @@ const tip = (row: ReconRow, note: string | null) =>
     <Hint v-for="chip in chips" :key="chip.row.key" :text="tip(chip.row, chip.note)">
       <span
         class="inline-flex items-center gap-1.5 rounded-md border py-1 pl-2 pr-1.5 text-xs"
-        :class="chip.row.conflict ? 'border-amber-500/60 bg-amber-500/10 text-amber-100' : 'border-border bg-card'"
+        :class="chip.row.conflict ? 'border-amber-500/60 bg-amber-500/10 text-amber-900 dark:text-amber-100' : 'border-border bg-card'"
       >
         {{ chip.text }}
         <span v-if="chip.note" class="text-muted-foreground">({{ chip.note }})</span>

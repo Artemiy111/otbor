@@ -315,7 +315,7 @@ const run = async () => {
         <p v-if="promptLoading" class="flex items-center gap-2 text-sm text-muted-foreground">
           <LoaderCircle class="size-4 animate-spin" /> Собираю промпт…
         </p>
-        <p v-else-if="promptError" class="text-sm text-amber-300">{{ promptError }}</p>
+        <p v-else-if="promptError" class="text-sm text-amber-700 dark:text-amber-300">{{ promptError }}</p>
         <template v-else-if="promptText">
           <section class="space-y-1.5">
             <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Системный промпт</h3>
@@ -331,8 +331,8 @@ const run = async () => {
       </SheetContent>
     </Sheet>
     <p v-if="catalogQuery.isLoading.value" class="text-xs text-muted-foreground">Загружаю список моделей…</p>
-    <p v-else-if="catalogError" class="text-xs text-amber-300">{{ catalogError }}</p>
-    <p v-else-if="catalog !== null && (catalog.harnesses.length === 0 || catalogEmpty)" class="text-xs text-amber-300">
+    <p v-else-if="catalogError" class="text-xs text-amber-700 dark:text-amber-300">{{ catalogError }}</p>
+    <p v-else-if="catalog !== null && (catalog.harnesses.length === 0 || catalogEmpty)" class="text-xs text-amber-700 dark:text-amber-300">
       Ни один харнес пока не сообщил свои модели. Запустите `otbor harness run`.
     </p>
     <p v-else-if="accountId === ''" class="text-xs text-muted-foreground">Выберите аккаунт, чтобы сгенерировать.</p>

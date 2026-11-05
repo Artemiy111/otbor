@@ -55,7 +55,7 @@ const tooltip = (group: (typeof groups.value)[number]) =>
           group.inResume === null
             ? 'border-border bg-muted/40'
             : group.inResume
-              ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+              ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
               : 'border-border text-muted-foreground'
         "
       >
@@ -65,7 +65,7 @@ const tooltip = (group: (typeof groups.value)[number]) =>
       </Hint>
     </div>
     <p v-if="resume" class="text-xs text-muted-foreground">
-      <span class="text-emerald-300">Зелёные</span> есть в резюме «{{ resume.title }}»: {{ found }} из
+      <span class="text-emerald-700 dark:text-emerald-300">Зелёные</span> есть в резюме «{{ resume.title }}»: {{ found }} из
       {{ groups.length }}. Число — сколько раз слово встречается в вакансии.
       <template v-if="missingNames.length > 0">
         Нет в резюме, но есть в заголовке: <b class="text-foreground">{{ missingNames.join(", ") }}</b>.

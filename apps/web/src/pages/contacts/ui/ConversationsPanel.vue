@@ -142,7 +142,7 @@ const columns: ColumnDef<ConversationSummary>[] = [
         "a",
         {
           href: vacancyPath(vacancyId),
-          class: "text-sm text-sky-300 underline-offset-4 hover:underline"
+          class: "text-sm text-sky-700 dark:text-sky-300 underline-offset-4 hover:underline"
         },
         "Открыть"
       )

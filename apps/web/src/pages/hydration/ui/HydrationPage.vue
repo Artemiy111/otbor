@@ -441,7 +441,7 @@ const vacancyColumns: ColumnDef<HydrationTarget>[] = [
     cell: ({ row }) =>
       h("a", {
         href: `/vacancies/${row.original.id}`,
-        class: "line-clamp-2 max-w-[320px] text-sm font-medium text-sky-300 underline-offset-4 hover:underline"
+        class: "line-clamp-2 max-w-[320px] text-sm font-medium text-sky-700 dark:text-sky-300 underline-offset-4 hover:underline"
       }, row.original.title)
   },
   {
@@ -490,7 +490,7 @@ const employerColumns: ColumnDef<EmployerHydrationTarget>[] = [
     cell: ({ row }) =>
       h("a", {
         href: `/companies/${row.original.id}`,
-        class: "block max-w-[260px] truncate text-sm font-medium text-sky-300 underline-offset-4 hover:underline"
+        class: "block max-w-[260px] truncate text-sm font-medium text-sky-700 dark:text-sky-300 underline-offset-4 hover:underline"
       }, row.original.name)
   },
   {

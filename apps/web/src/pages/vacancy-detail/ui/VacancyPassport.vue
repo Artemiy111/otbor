@@ -69,11 +69,11 @@ const tip = (row: ReconRow): string =>
     .join("\n")
 
 const chipClass = (row: ReconRow): string => {
-  if (row.conflict) return "border-amber-500/60 bg-amber-500/10 text-amber-100"
-  if (row.group === "risk") return "border-red-500/40 bg-red-500/10 text-red-200"
-  if (row.group === "perk") return "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+  if (row.conflict) return "border-amber-500/60 bg-amber-500/10 text-amber-900 dark:text-amber-100"
+  if (row.group === "risk") return "border-red-500/40 bg-red-500/10 text-red-800 dark:text-red-200"
+  if (row.group === "perk") return "border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200"
   if (row.group === "apply" && Object.values(row.cells).some((c) => c.text === "обязательно")) {
-    return "border-amber-500/40 bg-amber-500/5 text-amber-200"
+    return "border-amber-500/40 bg-amber-500/5 text-amber-800 dark:text-amber-200"
   }
   return "border-border bg-card"
 }
@@ -98,11 +98,11 @@ const cap = "text-[10px] font-semibold uppercase tracking-wide text-muted-foregr
         hh · текст · ИИ
       </span>
       <span v-if="all.length > 0">
-        совпало <b class="text-emerald-300">{{ agreed.length }}</b>
-        <template v-if="conflicts.length > 0">, расходятся <b class="text-amber-300">{{ conflicts.length }}</b></template>
+        совпало <b class="text-emerald-700 dark:text-emerald-300">{{ agreed.length }}</b>
+        <template v-if="conflicts.length > 0">, расходятся <b class="text-amber-700 dark:text-amber-300">{{ conflicts.length }}</b></template>
         <template v-if="single.length > 0">, один источник {{ single.length }}</template>
       </span>
-      <span v-if="!page.analysis.value && !page.analysisPending.value" class="text-amber-300">модель вакансию не разбирала</span>
+      <span v-if="!page.analysis.value && !page.analysisPending.value" class="text-amber-700 dark:text-amber-300">модель вакансию не разбирала</span>
     </div>
 
     <p v-if="all.length === 0" class="text-xs text-muted-foreground">Особых требований к отклику, рисков и плюсов не найдено.</p>
@@ -141,7 +141,7 @@ const cap = "text-[10px] font-semibold uppercase tracking-wide text-muted-foregr
             :href="contactHref(contact) ?? undefined"
             :target="isHttp(contactHref(contact)) ? '_blank' : undefined"
             rel="noreferrer"
-            class="break-all text-sky-300 underline-offset-4 hover:underline"
+            class="break-all text-sky-700 dark:text-sky-300 underline-offset-4 hover:underline"
           >{{ contact.value }}</a>
         </Hint>
         <span v-else class="break-all">{{ contact.value }}</span>

@@ -155,7 +155,7 @@ const columns: ColumnDef<ContactRecord>[] = [
                 target: external ? "_blank" : undefined,
                 rel: external ? "noreferrer" : undefined,
                 class:
-                  "break-all text-sm text-sky-300 underline-offset-4 hover:underline"
+                  "break-all text-sm text-sky-700 dark:text-sky-300 underline-offset-4 hover:underline"
               },
               contact.value
             ),
@@ -206,7 +206,7 @@ const columns: ColumnDef<ContactRecord>[] = [
         "a",
         {
           href: vacancyPath(vacancyId),
-          class: "text-sm text-sky-300 underline-offset-4 hover:underline"
+          class: "text-sm text-sky-700 dark:text-sky-300 underline-offset-4 hover:underline"
         },
         "Открыть"
       )
