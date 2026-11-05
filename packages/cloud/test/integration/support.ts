@@ -430,6 +430,8 @@ export const seedVacancyTitled = async (
   options: {
     readonly archived?: boolean
     readonly salaryFrom?: number
+    readonly salaryCurrency?: string
+    readonly seniority?: string
     readonly descriptionText?: string
     readonly workFormats?: ReadonlyArray<string>
   } = {}
@@ -448,6 +450,8 @@ export const seedVacancyTitled = async (
             title,
             archived: options.archived ?? false,
             salaryFrom: options.salaryFrom ?? null,
+            ...(options.salaryCurrency === undefined ? {} : { salaryCurrency: options.salaryCurrency }),
+            ...(options.seniority === undefined ? {} : { seniority: options.seniority }),
             descriptionText: options.descriptionText ?? null,
             workFormats: options.workFormats ?? [],
             contentHash: randomUUID()

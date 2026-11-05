@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { DEFAULT_APPLY_SETTINGS } from "../src/applyFilter.ts"
+import { DEFAULT_APPLY_SETTINGS, DEFAULT_BOOSTS } from "../src/applyFilter.ts"
 import { decide } from "../src/decision.ts"
 import type { DecisionSettings, FilterOutcome, VacancySignal } from "../src/decision.ts"
 import { matchLexicon } from "../src/lexicon.ts"
@@ -49,6 +49,7 @@ const run = (
     filter?: FilterOutcome
     settings?: Partial<DecisionSettings>
     fitOverride?: number
+    boostWeight?: number
     blockOverrides?: Partial<typeof blocks>
     now?: Date
   } = {}
@@ -60,10 +61,48 @@ const run = (
     settings: { ...settings, ...options.settings },
     keywords: keywords(v),
     blocks: { ...blocks, ...options.blockOverrides },
+    boostWeight: options.boostWeight ?? 0,
     fitOverride: options.fitOverride,
     now: options.now ?? now
   })
 }
+
+const sumOf = (weights: ReadonlyArray<{ readonly weight: number }>) =>
+  weights.reduce((total, boost) => total + boost.weight, 0)
+
+describe("boosts", () => {
+  test("the default boosts add up to the former constants (8 + 5 + 4)", () => {
+    expect(DEFAULT_BOOSTS.map((boost) => boost.weight)).toEqual([8, 5, 4])
+    expect(sumOf(DEFAULT_BOOSTS)).toBe(17)
+    expect(DEFAULT_APPLY_SETTINGS.boosts).toBe(DEFAULT_BOOSTS)
+  })
+
+  test("fit is 45 + keyword bonuses + boostWeight, as before with the defaults", () => {
+    // title hit (DevOps is not in this lexicon) -> 0; body: kubernetes, terraform, linux -> 3 * 5;
+    // skills: kubernetes, terraform -> 2 * 6. Old: 45 + 15 + 12 + 8 + 5 + 4 = 89.
+    const withDefaults = run({}, { boostWeight: sumOf(DEFAULT_BOOSTS) })
+    const bare = run({}, { boostWeight: 0 })
+    expect(withDefaults.fit).toBe(89)
+    expect(bare.fit).toBe(72)
+  })
+
+  test("a negative total lowers fit, and fit is clamped to 0..100", () => {
+    expect(run({}, { boostWeight: -10 }).fit).toBe(62)
+    expect(run({}, { boostWeight: 500 }).fit).toBe(100)
+    expect(run({}, { boostWeight: -500 }).verdict).toBe("skip")
+    expect(run({}, { boostWeight: -500 }).fit).toBe(0)
+  })
+
+  test("boosts can push a vacancy below the min fit", () => {
+    const result = run({}, { boostWeight: -40 })
+    expect(result.verdict).toBe("skip")
+    expect(result.reasons[0]!.code).toBe("blocked_low_fit")
+  })
+
+  test("an LLM fit ignores the boosts", () => {
+    expect(run({}, { fitOverride: 66, boostWeight: 30 }).fit).toBe(66)
+  })
+})
 
 describe("decide", () => {
   test("applies to a vacancy that passes the filter", () => {
@@ -72,8 +111,6 @@ describe("decide", () => {
     expect(result.fit).toBeGreaterThanOrEqual(DEFAULT_APPLY_SETTINGS.minFit)
     expect(result.priority).toBeGreaterThan(0)
     expect(result.reasons.map((r) => r.code)).toContain("skill_match")
-    expect(result.reasons.map((r) => r.code)).toContain("salary")
-    expect(result.reasons.map((r) => r.code)).toContain("remote")
   })
 
   test("a failing filter is a skip that names the failed rules", () => {

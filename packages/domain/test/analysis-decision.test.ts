@@ -34,6 +34,7 @@ const run = (a: DecisionAnalysis | null, options: { seniority?: Seniority } = {}
     filter: { passed: true, failed: [] },
     settings: DEFAULT_APPLY_SETTINGS,
     keywords: [],
+    boostWeight: 0,
     blocks: { applied: false, hasTest: false, testRequired: false },
     analysis: a,
     now: new Date("2026-11-01T12:00:00.000Z")

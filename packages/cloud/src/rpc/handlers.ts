@@ -243,6 +243,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
       ApplyFilterGet: (payload) => applyFilters.get(payload),
       ApplyFilterSet: (payload) => applyFilters.set(payload),
       ApplyFilterFromPreset: (payload) => applyFilters.fromPreset(payload),
+      ApplyUsageGet: ({ hhAccountId }) => applications.dailyUsage(hhAccountId),
 
       QueueStatsGet: ({ kind }) => queue.stats(kind),
       QueueJobsList: (payload) => queue.jobs(payload),

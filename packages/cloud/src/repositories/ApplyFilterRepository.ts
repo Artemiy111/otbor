@@ -1,5 +1,5 @@
 import type { ApplyFilterRecord, ApplyFilterSettings, ApplyFilterSource, PresetFilter } from "@otbor/contract"
-import { parsePresetFilter } from "@otbor/contract"
+import { parseBoosts, parsePresetFilter } from "@otbor/contract"
 import { DEFAULT_APPLY_FILTER } from "@otbor/domain"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
@@ -15,6 +15,12 @@ export const toRecord = (row: typeof applyFilter.$inferSelect): ApplyFilterRecor
   minFit: row.minFit,
   tests: row.tests as ApplyFilterRecord["tests"],
   freshHalfLifeHours: row.freshHalfLifeHours,
+  autoMode: row.autoMode as ApplyFilterRecord["autoMode"],
+  dailyLimit: row.dailyLimit,
+  batchSize: row.batchSize,
+  sort: row.sort as ApplyFilterRecord["sort"],
+  minPriority: Number(row.minPriority),
+  boosts: parseBoosts(row.boosts),
   templatePresetId: row.templatePresetId as ApplyFilterRecord["templatePresetId"],
   updatedAt: row.updatedAt.toISOString()
 })
@@ -71,6 +77,12 @@ export const resolve = (
       minFit: DEFAULT_APPLY_FILTER.minFit,
       tests: DEFAULT_APPLY_FILTER.tests,
       freshHalfLifeHours: DEFAULT_APPLY_FILTER.freshHalfLifeHours,
+      autoMode: DEFAULT_APPLY_FILTER.autoMode,
+      dailyLimit: DEFAULT_APPLY_FILTER.dailyLimit,
+      batchSize: DEFAULT_APPLY_FILTER.batchSize,
+      sort: DEFAULT_APPLY_FILTER.sort,
+      minPriority: DEFAULT_APPLY_FILTER.minPriority,
+      boosts: DEFAULT_APPLY_FILTER.boosts,
       templatePresetId: null,
       updatedAt: null
     }
@@ -97,6 +109,12 @@ const fromRecord = (record: ApplyFilterRecord, source: ApplyFilterSource): Resol
   minFit: record.minFit,
   tests: record.tests,
   freshHalfLifeHours: record.freshHalfLifeHours,
+  autoMode: record.autoMode,
+  dailyLimit: record.dailyLimit,
+  batchSize: record.batchSize,
+  sort: record.sort,
+  minPriority: record.minPriority,
+  boosts: record.boosts,
   templatePresetId: record.templatePresetId,
   updatedAt: record.updatedAt
 })
@@ -110,6 +128,12 @@ export interface UpsertApplyFilterInput {
   readonly minFit?: number
   readonly tests?: ApplyFilterSettings["tests"]
   readonly freshHalfLifeHours?: number
+  readonly autoMode?: ApplyFilterSettings["autoMode"]
+  readonly dailyLimit?: number
+  readonly batchSize?: number
+  readonly sort?: ApplyFilterSettings["sort"]
+  readonly minPriority?: number
+  readonly boosts?: ApplyFilterSettings["boosts"]
   /** `undefined` keeps the stored value; `null` clears it. */
   readonly templatePresetId?: string | null
 }
@@ -127,18 +151,34 @@ export const upsert = (
         filter,
         minFit: input.minFit ?? existing.minFit,
         tests: input.tests ?? existing.tests,
-        freshHalfLifeHours: input.freshHalfLifeHours ?? existing.freshHalfLifeHours
+        freshHalfLifeHours: input.freshHalfLifeHours ?? existing.freshHalfLifeHours,
+        autoMode: input.autoMode ?? existing.autoMode,
+        dailyLimit: input.dailyLimit ?? existing.dailyLimit,
+        batchSize: input.batchSize ?? existing.batchSize,
+        sort: input.sort ?? existing.sort,
+        minPriority: input.minPriority ?? existing.minPriority,
+        boosts: input.boosts ?? existing.boosts
       }
-      // Only a real change of the rules makes decisions stale; a repeated save
-      // would otherwise leave them stale for ever (their input hash is the same).
+      // Only a real change of what decide() reads makes decisions stale; a
+      // repeated save would otherwise leave them stale for ever (their input
+      // hash is the same). auto_mode, daily_limit, batch_size, sort and
+      // min_priority steer the runner and the cap, not the verdict or fit.
+      const scoring = (value: {
+        readonly filter: PresetFilter
+        readonly minFit: number
+        readonly tests: string
+        readonly freshHalfLifeHours: number
+        readonly boosts: ApplyFilterSettings["boosts"]
+      }) => ({
+        filter: value.filter,
+        minFit: value.minFit,
+        tests: value.tests,
+        freshHalfLifeHours: value.freshHalfLifeHours,
+        boosts: value.boosts
+      })
       const changed =
-        stableHash({ ...next, filter: parsePresetFilter(next.filter) }) !==
-        stableHash({
-          filter: existing.filter,
-          minFit: existing.minFit,
-          tests: existing.tests,
-          freshHalfLifeHours: existing.freshHalfLifeHours
-        })
+        stableHash(scoring({ ...next, filter: parsePresetFilter(next.filter) })) !==
+        stableHash(scoring(existing))
       const [row] = yield* tx
         .update(applyFilter)
         .set({
@@ -163,6 +203,12 @@ export const upsert = (
         minFit: input.minFit ?? DEFAULT_APPLY_FILTER.minFit,
         tests: input.tests ?? DEFAULT_APPLY_FILTER.tests,
         freshHalfLifeHours: input.freshHalfLifeHours ?? DEFAULT_APPLY_FILTER.freshHalfLifeHours,
+        autoMode: input.autoMode ?? DEFAULT_APPLY_FILTER.autoMode,
+        dailyLimit: input.dailyLimit ?? DEFAULT_APPLY_FILTER.dailyLimit,
+        batchSize: input.batchSize ?? DEFAULT_APPLY_FILTER.batchSize,
+        sort: input.sort ?? DEFAULT_APPLY_FILTER.sort,
+        minPriority: input.minPriority ?? DEFAULT_APPLY_FILTER.minPriority,
+        boosts: [...(input.boosts ?? DEFAULT_APPLY_FILTER.boosts)],
         templatePresetId: input.templatePresetId ?? null
       })
       .returning()
@@ -183,3 +229,21 @@ export const targetExists = (
     )
     return { account: account.rows.length > 0, resume: resume.rows.length > 0 }
   })
+
+/**
+ * The daily response limit stored on the account-level row (resume null), or
+ * null when the account has none; the caller then falls back to the env/default.
+ */
+export const accountDailyLimit = (
+  tx: Executor,
+  userId: string,
+  hhAccountId: string
+): RepoEffect<number | null> =>
+  tx
+    .select({ dailyLimit: applyFilter.dailyLimit })
+    .from(applyFilter)
+    .where(
+      sql`${applyFilter.userId} = ${userId} and ${applyFilter.hhAccountId} = ${hhAccountId} and ${applyFilter.resumeId} is null`
+    )
+    .limit(1)
+    .pipe(Effect.map((rows) => rows[0]?.dailyLimit ?? null))

@@ -6,7 +6,7 @@
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import type { PresetFilter, VacancyId } from "@otbor/contract"
-import { DEVOPS_APPLY_FILTER, DEVOPS_PRESET_TITLE } from "@otbor/domain"
+import { DEFAULT_BOOSTS, DEVOPS_APPLY_FILTER, DEVOPS_PRESET_TITLE } from "@otbor/domain"
 import { Effect } from "effect"
 import { ensureSystemPresets } from "../../src/services/bootstrap.ts"
 import { PresetService } from "../../src/services/PresetService.ts"
@@ -395,6 +395,183 @@ if (!enabled || serverUrl === null) {
       expect(copied.templatePresetId).toBe(devops[0]!.id)
       const good = await devops_("af-system-good")
       expect((await evaluate(tenant.userId, { vacancyId: good })).verdict).toBe("apply")
+    })
+    describe("boosts and auto-apply parameters", () => {
+      const salaryBoost = { rule: { field: "salary", op: "gte", value: 250_000, currency: "RUB" }, weight: 8 } as const
+      const remoteBoost = { rule: { field: "work_format", op: "in", value: ["remote"] }, weight: 5 } as const
+      const seniorityBoost = {
+        rule: { field: "seniority", op: "in", value: ["middle", "senior", "lead", "unknown"] },
+        weight: 4
+      } as const
+
+      const rich = (label: string) =>
+        support.seedVacancyTitled(label, `DevOps engineer ${label}`, {
+          salaryFrom: 400_000,
+          salaryCurrency: "RUB",
+          workFormats: ["remote"],
+          seniority: "senior",
+          descriptionText: "no keywords here"
+        })
+      const poor = (label: string) =>
+        support.seedVacancyTitled(label, `DevOps engineer ${label}`, {
+          salaryFrom: 100_000,
+          salaryCurrency: "RUB",
+          workFormats: ["office"],
+          seniority: "senior",
+          descriptionText: "no keywords here"
+        })
+
+      const noFit = (userId: string, vacancyId: string) =>
+        support.evaluateVacancy(userId, { vacancyId } as never)
+
+      test("defaults: the view carries the new parameters and DEFAULT_BOOSTS", async () => {
+        const tenant = await support.seedTenant("af-params-default")
+        const view = await support.applyFilterGet(tenant.userId, { hhAccountId: tenant.accountId })
+        expect(view).toMatchObject({
+          source: "default",
+          autoMode: "off",
+          dailyLimit: 200,
+          batchSize: 20,
+          sort: "priority",
+          minPriority: 0
+        })
+        expect(view.boosts).toEqual(DEFAULT_BOOSTS)
+
+        // First save without the new fields stores the defaults.
+        const saved = await support.applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter: {} })
+        expect(saved).toMatchObject({ autoMode: "off", dailyLimit: 200, batchSize: 20, sort: "priority", minPriority: 0 })
+        expect(saved.boosts).toEqual(DEFAULT_BOOSTS)
+      })
+
+      test("the default boosts reproduce the old deterministic fit (45 + 8 + 5 + 4)", async () => {
+        const tenant = await support.seedTenant("af-boost-default")
+        const all = await rich("af-boost-d1")
+        const none = await poor("af-boost-d2")
+        // No stored row: the built-in filter (title rules) and DEFAULT_BOOSTS.
+        expect((await noFit(tenant.userId, all)).fit).toBe(62)
+        // Only the seniority boost holds: 45 + 4.
+        expect((await noFit(tenant.userId, none)).fit).toBe(49)
+      })
+
+      test("boosts change fit, and editing them makes decisions stale", async () => {
+        const tenant = await support.seedTenant("af-boost-stale")
+        const v = await rich("af-boost-s1")
+        await support.applyFilterSet(tenant.userId, {
+          hhAccountId: tenant.accountId,
+          filter: {},
+          boosts: [salaryBoost]
+        })
+        expect((await sweep(tenant.userId, [v])).evaluated).toBe(1)
+        expect((await sweep(tenant.userId, [v])).evaluated).toBe(0)
+        expect((await noFit(tenant.userId, v)).fit).toBe(53)
+
+        // The same boosts again: not a change.
+        await support.applyFilterSet(tenant.userId, {
+          hhAccountId: tenant.accountId,
+          filter: {},
+          boosts: [salaryBoost]
+        })
+        expect((await sweep(tenant.userId, [v])).evaluated).toBe(0)
+
+        // A different weight is.
+        await support.applyFilterSet(tenant.userId, {
+          hhAccountId: tenant.accountId,
+          filter: {},
+          boosts: [{ ...salaryBoost, weight: 20 }, remoteBoost, seniorityBoost]
+        })
+        expect((await sweep(tenant.userId, [v])).evaluated).toBe(1)
+        expect((await noFit(tenant.userId, v)).fit).toBe(45 + 20 + 5 + 4)
+
+        // A negative boost and the clamp at the floor: the min-fit floor skips.
+        await support.applyFilterSet(tenant.userId, {
+          hhAccountId: tenant.accountId,
+          filter: {},
+          boosts: [{ rule: { field: "title", op: "contains", value: "devops" }, weight: -50 }]
+        })
+        const low = await noFit(tenant.userId, v)
+        expect(low.reasons[0]).toMatchObject({ code: "blocked_low_fit" })
+        expect(low.fit).toBe(0)
+      })
+
+      test("an omitted boosts keeps the stored ones; an empty list removes them", async () => {
+        const tenant = await support.seedTenant("af-boost-keep")
+        await support.applyFilterSet(tenant.userId, {
+          hhAccountId: tenant.accountId,
+          filter: {},
+          boosts: [salaryBoost]
+        })
+        const kept = await support.applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter: {}, minFit: 40 })
+        expect(kept.boosts).toEqual([salaryBoost])
+        const cleared = await support.applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter: {}, boosts: [] })
+        expect(cleared.boosts).toEqual([])
+        // Incomplete rules are dropped on save.
+        const dropped = await support.applyFilterSet(tenant.userId, {
+          hhAccountId: tenant.accountId,
+          filter: {},
+          boosts: [{ rule: { field: "title", op: "contains", value: "" }, weight: 3 }, remoteBoost]
+        })
+        expect(dropped.boosts).toEqual([remoteBoost])
+      })
+
+      test("runner parameters never make decisions stale and never change a verdict", async () => {
+        const tenant = await support.seedTenant("af-params-stale")
+        const v = await rich("af-params-s1")
+        await support.openApplyFilter(tenant)
+        expect((await sweep(tenant.userId, [v])).evaluated).toBe(1)
+        const before = await noFit(tenant.userId, v)
+
+        const changed = await support.applyFilterSet(tenant.userId, {
+          hhAccountId: tenant.accountId,
+          filter: {},
+          autoMode: "drafts",
+          dailyLimit: 50,
+          batchSize: 7,
+          sort: "salary",
+          minPriority: 999
+        })
+        expect(changed).toMatchObject({ autoMode: "drafts", dailyLimit: 50, batchSize: 7, sort: "salary", minPriority: 999 })
+        expect((await sweep(tenant.userId, [v])).evaluated).toBe(0)
+        const after = await noFit(tenant.userId, v)
+        expect(after.verdict).toBe(before.verdict)
+        expect(after.fit).toBe(before.fit)
+        expect(after.id).toBe(before.id)
+      })
+
+      test("out-of-range parameters are InvalidInput", async () => {
+        const tenant = await support.seedTenant("af-params-invalid")
+        const bad = (extra: Record<string, unknown>) =>
+          support.runAsFailure(
+            tenant.userId,
+            Effect.gen(function*() {
+              return yield* (yield* ApplyFilterService).set({
+                hhAccountId: tenant.accountId,
+                filter: {},
+                ...extra
+              } as never)
+            })
+          )
+        for (const extra of [
+          { dailyLimit: -1 },
+          { batchSize: 0 },
+          { batchSize: 501 },
+          { minPriority: -1 },
+          { boosts: [{ rule: remoteBoost.rule, weight: 51 }] },
+          { boosts: [{ rule: remoteBoost.rule, weight: -51 }] }
+        ]) {
+          expect(await bad(extra)).toMatchObject({ _tag: "InvalidInput" })
+        }
+        // Nothing was stored by the failed saves.
+        expect((await support.applyFilterGet(tenant.userId, { hhAccountId: tenant.accountId })).source).toBe("default")
+        // Edges are accepted.
+        const edge = await support.applyFilterSet(tenant.userId, {
+          hhAccountId: tenant.accountId,
+          filter: {},
+          dailyLimit: 0,
+          batchSize: 500,
+          boosts: [{ rule: remoteBoost.rule, weight: 50 }, { rule: remoteBoost.rule, weight: -50 }]
+        })
+        expect(edge).toMatchObject({ dailyLimit: 0, batchSize: 500 })
+      })
     })
   })
 }

@@ -152,6 +152,13 @@ export const evaluateInTx = (
       userId,
       includeBlacklisted: input.includeBlacklisted === true
     })
+    // Boosts are scored by the same rule SQL; their summed weight is the only
+    // thing `decide` sees of them.
+    const boostHits = yield* LexiconRepository.evaluateBoosts(tx, resolved.boosts, row.id, { userId })
+    const boostWeight = resolved.boosts.reduce(
+      (total, boost, index) => total + (boostHits[index] === true ? boost.weight : 0),
+      0
+    )
     const settings = {
       minFit: resolved.minFit,
       tests: resolved.tests,
@@ -166,7 +173,8 @@ export const evaluateInTx = (
     const inputHash = stableHash({
       contentHash: row.contentHash,
       // A new filter or settings must produce a new decision row.
-      filter: stableHash({ filter: resolved.filter, ...settings }),
+      filter: stableHash({ filter: resolved.filter, ...settings, boosts: resolved.boosts }),
+      boostWeight,
       includeBlacklisted: input.includeBlacklisted === true,
       applied,
       fit,
@@ -182,6 +190,7 @@ export const evaluateInTx = (
       filter: outcome,
       settings,
       keywords,
+      boostWeight,
       blocks,
       analysis: analysisSignal,
       fitOverride: fit ?? undefined,

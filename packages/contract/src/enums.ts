@@ -95,6 +95,16 @@ export const TestsPolicy = Schema.Literals(["human", "skip", "allow"])
 
 export type TestsPolicy = typeof TestsPolicy.Type
 
+/** What the auto-apply runner does for a filter: nothing, prepare drafts, or send. */
+export const AutoMode = Schema.Literals(["off", "drafts", "auto"])
+
+export type AutoMode = typeof AutoMode.Type
+
+/** In which order the runner takes decisions. */
+export const ApplySort = Schema.Literals(["priority", "fit", "newest", "salary"])
+
+export type ApplySort = typeof ApplySort.Type
+
 export const StreamMode = Schema.Literals(["drafts", "auto"])
 
 export type StreamMode = typeof StreamMode.Type

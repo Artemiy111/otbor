@@ -12,7 +12,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { Database } from "../../src/db/Database.ts"
 import { CurrentUser } from "../../src/services/CurrentUser.ts"
-import { ApplicationService } from "../../src/services/ApplicationService.ts"
+import { ApplicationService, DEFAULT_DAILY_APPLY_LIMIT } from "../../src/services/ApplicationService.ts"
 import * as support from "./support.ts"
 
 const enabled = support.integrationEnabled
@@ -192,6 +192,68 @@ if (!enabled || serverUrl === null) {
         expect(refused).toBeInstanceOf(LimitExceeded)
         expect((refused as LimitExceeded).used).toBe(2)
       }
+    }, 60_000)
+
+    test("the default limit is 200 and usage reports used, remaining and oldest", async () => {
+      const tenant = await support.seedTenant("limit-usage")
+      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const accounts = [tenant.accountId]
+      const layer = ApplicationService.layerWith({ dailyApplyLimit: DEFAULT_DAILY_APPLY_LIMIT })
+      const usage = () =>
+        support.runAs(
+          tenant.userId,
+          Effect.gen(function*() {
+            return yield* (yield* ApplicationService).dailyUsage(tenant.accountId)
+          }).pipe(Effect.provide(layer), Effect.provideService(CurrentUser, { userId: tenant.userId as UserId }))
+        )
+
+      expect(DEFAULT_DAILY_APPLY_LIMIT).toBe(200)
+      expect(await usage()).toMatchObject({ used: 0, limit: 200, remaining: 200, oldest: null })
+
+      const a = await ready(tenant, tenant.accountId, harness, accounts, "usage-1")
+      await approve(tenant.userId, a)
+      const after = await usage()
+      expect(after).toMatchObject({ used: 1, limit: 200, remaining: 199 })
+      expect(after.oldest).not.toBeNull()
+    }, 60_000)
+
+    test("the account-level apply filter row sets the limit; a resume row does not", async () => {
+      const tenant = await support.seedTenant("limit-override")
+      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const accounts = [tenant.accountId]
+      const a = await ready(tenant, tenant.accountId, harness, accounts, "override-1")
+      const b = await ready(tenant, tenant.accountId, harness, accounts, "override-2")
+
+      // The pinned layer says 2, the row says 1: the row wins.
+      await support.applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter: {}, dailyLimit: 1 })
+      const usage = await support.runAs(
+        tenant.userId,
+        Effect.gen(function*() {
+          return yield* (yield* ApplicationService).dailyUsage(tenant.accountId)
+        }).pipe(Effect.provide(limited), Effect.provideService(CurrentUser, { userId: tenant.userId as UserId }))
+      )
+      expect(usage).toMatchObject({ used: 0, limit: 1, remaining: 1 })
+
+      expect((await approve(tenant.userId, a)).state).toBe("queued")
+      const refused = await approveFailure(tenant.userId, b)
+      expect(refused).toBeInstanceOf(LimitExceeded)
+      expect((refused as LimitExceeded).limit).toBe(1)
+      expect((refused as LimitExceeded).used).toBe(1)
+
+      // Raising the row frees the slot immediately.
+      await support.applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter: {}, dailyLimit: 2 })
+      expect((await approve(tenant.userId, b)).state).toBe("queued")
+    }, 60_000)
+
+    test("usage of an unknown account is NotFound", async () => {
+      const tenant = await support.seedTenant("limit-usage-404")
+      const failure = await support.runAsFailure(
+        tenant.userId,
+        Effect.gen(function*() {
+          return yield* (yield* ApplicationService).dailyUsage("01a1acd9-0000-7000-8000-000000000000")
+        }).pipe(Effect.provide(limited), Effect.provideService(CurrentUser, { userId: tenant.userId as UserId }))
+      )
+      expect(failure).toMatchObject({ _tag: "NotFound" })
     }, 60_000)
   })
 }

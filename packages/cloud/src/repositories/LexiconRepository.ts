@@ -1,4 +1,4 @@
-import type { LexiconKeyword, PresetFilter, PresetRule } from "@otbor/contract"
+import type { ApplyBoost, LexiconKeyword, PresetFilter, PresetRule } from "@otbor/contract"
 import { expandAreaIds } from "@otbor/contract/areas"
 import type { LexiconEntryInput, LexiconMatch } from "@otbor/domain"
 import {
@@ -433,6 +433,32 @@ export const evaluateFilter = (
         : [part.label]
     })
     return { passed: failed.length === 0, failed }
+  })
+
+/**
+ * Which boosts hold for one vacancy: one query, one boolean per boost, built
+ * from the very `ruleClause` search and the filter use. The result lines up
+ * with `boosts`; a missing vacancy holds none.
+ */
+export const evaluateBoosts = (
+  tx: Executor,
+  boosts: ReadonlyArray<ApplyBoost>,
+  vacancyId: string,
+  context: VacancyFilterContext = {}
+): RepoEffect<ReadonlyArray<boolean>> =>
+  Effect.gen(function*() {
+    if (boosts.length === 0) return []
+    const columns = sql.join(
+      boosts.map((boost, index) =>
+        sql`coalesce(${ruleClause(boost.rule, {}, context)}, false) as ${sql.raw(`b${index}`)}`
+      ),
+      sql`, `
+    )
+    const result = yield* tx.execute(sql`
+      select ${columns} from vacancy where vacancy.id = ${vacancyId}
+    `)
+    const row = result.rows[0] as Record<string, unknown> | undefined
+    return boosts.map((_, index) => row?.[`b${index}`] === true)
   })
 
 const vacancyCountSql = (

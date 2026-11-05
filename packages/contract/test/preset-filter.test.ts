@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { type KeywordId, parsePresetFilter, PresetFilter } from "@otbor/contract"
+import { type KeywordId, parseBoosts, parsePresetFilter, PresetFilter } from "@otbor/contract"
 import { Schema } from "effect"
 
 const firstKeyword = "0190f0aa-0000-7000-8000-000000000001" as KeywordId
@@ -96,4 +96,27 @@ test("a location rule keeps its area ids and an empty one is dropped", () => {
   const rule = { field: "location", op: "in", value: ["113", "160"] } as const
   expect(parsePresetFilter({ rules: [rule] })).toEqual({ rules: [rule] })
   expect(parsePresetFilter({ rules: [{ field: "location", op: "in", value: [] }] })).toEqual({})
+})
+
+describe("apply boosts parsing", () => {
+  test("incomplete boost rules are dropped, complete ones kept", () => {
+    expect(parseBoosts(undefined)).toEqual([])
+    expect(
+      parseBoosts([
+        { rule: { field: "salary", op: "gte", value: 250000, currency: "RUB" }, weight: 8 },
+        { rule: { field: "work_format", op: "in", value: [] }, weight: 5 },
+        { rule: { field: "title", op: "contains", value: "" }, weight: 5 },
+        { rule: { field: "archived", op: "is_false" }, weight: -3 }
+      ])
+    ).toEqual([
+      { rule: { field: "salary", op: "gte", value: 250000, currency: "RUB" }, weight: 8 },
+      { rule: { field: "archived", op: "is_false" }, weight: -3 }
+    ])
+  })
+
+  test("a malformed boost fails to decode (non-integer weight)", () => {
+    expect(() =>
+      parseBoosts([{ rule: { field: "salary", op: "gte", value: 1 }, weight: 1.5 }])
+    ).toThrow()
+  })
 })

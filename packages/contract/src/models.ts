@@ -29,7 +29,9 @@ import {
   SourceSyncKind,
   Seniority,
   StreamMode,
-  TestsPolicy
+  TestsPolicy,
+  AutoMode,
+  ApplySort
 } from "./enums.ts"
 import {
   ApplicationId,
@@ -1285,6 +1287,13 @@ export const stripLegacyGate = (input: unknown): unknown => {
   }
 }
 
+/** A rule that constrains something: a flag operator, or a non-empty value. */
+export const isCompleteRule = (rule: PresetRule): boolean => {
+  if (rule.op === "is_true" || rule.op === "is_false") return true
+  if (rule.value === undefined || rule.value === "") return false
+  return !Array.isArray(rule.value) || rule.value.length > 0
+}
+
 /**
  * Parses a stored or submitted filter and drops values that mean "no
  * constraint": blank text, an empty keyword list and `includeArchived: false`.
@@ -1296,11 +1305,7 @@ export const parsePresetFilter = (input: unknown): PresetFilter => {
   const keywordIds = decoded.keywordIds === undefined
     ? []
     : [...new Set(decoded.keywordIds)]
-  const complete = (rule: PresetRule): boolean => {
-    if (rule.op === "is_true" || rule.op === "is_false") return true
-    if (rule.value === undefined || rule.value === "") return false
-    return !Array.isArray(rule.value) || rule.value.length > 0
-  }
+  const complete = isCompleteRule
   const rules = (decoded.rules ?? []).filter(complete)
   const groups = (decoded.groups ?? [])
     .map((group) => ({
@@ -1341,11 +1346,43 @@ export type PresetRecord = typeof PresetRecord.Type
  * {@link PresetFilter} plus the scoring settings kept next to it. `resumeId`
  * null is the account-wide row, the fallback for resumes without their own.
  */
+export const ApplyBoost = Schema.Struct({
+  rule: PresetRule,
+  /** Added to the deterministic fit when the rule holds; -50..50 (checked on save). */
+  weight: Schema.Int
+})
+
+export type ApplyBoost = typeof ApplyBoost.Type
+
+export const APPLY_BOOST_WEIGHT_MIN = -50
+export const APPLY_BOOST_WEIGHT_MAX = 50
+
+/**
+ * Parses stored or submitted boosts: malformed entries fail, boosts whose rule
+ * is incomplete (empty value) are dropped like in {@link parsePresetFilter}.
+ * The weight range is not checked here; `ApplyFilterSet` answers `InvalidInput`.
+ */
+export const parseBoosts = (input: unknown): ReadonlyArray<ApplyBoost> =>
+  Schema.decodeUnknownSync(Schema.Array(ApplyBoost))(input ?? []).filter((boost) =>
+    isCompleteRule(boost.rule)
+  )
+
 export const ApplyFilterSettings = Schema.Struct({
   /** A vacancy that passes the filter but scores below this fit is skipped. */
   minFit: Schema.Int,
   tests: TestsPolicy,
-  freshHalfLifeHours: Schema.Int
+  freshHalfLifeHours: Schema.Int,
+  /** What the auto-apply runner does with this filter; default `off`. */
+  autoMode: AutoMode,
+  /** Responses per rolling 24 hours per hh account (read from the account row). */
+  dailyLimit: Schema.Int,
+  /** Vacancies the runner takes per run. */
+  batchSize: Schema.Int,
+  sort: ApplySort,
+  /** The runner skips decisions below this priority. Never changes a verdict. */
+  minPriority: Schema.Number,
+  /** Scoring rules added to the deterministic fit. */
+  boosts: Schema.Array(ApplyBoost)
 })
 
 export type ApplyFilterSettings = typeof ApplyFilterSettings.Type
@@ -1358,6 +1395,12 @@ export const ApplyFilterRecord = Schema.Struct({
   minFit: Schema.Int,
   tests: TestsPolicy,
   freshHalfLifeHours: Schema.Int,
+  autoMode: AutoMode,
+  dailyLimit: Schema.Int,
+  batchSize: Schema.Int,
+  sort: ApplySort,
+  minPriority: Schema.Number,
+  boosts: Schema.Array(ApplyBoost),
   /** The preset this filter was last copied from; informational, the copy is independent. */
   templatePresetId: Schema.NullOr(PresetId),
   updatedAt: Schema.String
@@ -1385,11 +1428,30 @@ export const ApplyFilterView = Schema.Struct({
   minFit: Schema.Int,
   tests: TestsPolicy,
   freshHalfLifeHours: Schema.Int,
+  autoMode: AutoMode,
+  dailyLimit: Schema.Int,
+  batchSize: Schema.Int,
+  sort: ApplySort,
+  minPriority: Schema.Number,
+  boosts: Schema.Array(ApplyBoost),
   templatePresetId: Schema.NullOr(PresetId),
   updatedAt: Schema.NullOr(Schema.String)
 })
 
 export type ApplyFilterView = typeof ApplyFilterView.Type
+
+/** The rolling 24-hour response budget of one hh account. */
+export const ApplyUsage = Schema.Struct({
+  hhAccountId: HhAccountId,
+  used: Schema.Int,
+  limit: Schema.Int,
+  /** `max(0, limit - used)`. */
+  remaining: Schema.Int,
+  /** Timestamp of the oldest counted response (it frees the first slot 24h later); null when none. */
+  oldest: Schema.NullOr(Schema.String)
+})
+
+export type ApplyUsage = typeof ApplyUsage.Type
 
 export const PresetFacet = Schema.Struct({
   term: Schema.String,

@@ -1,16 +1,19 @@
 import type {
   ApiError,
   ApplicationDetail,
+  ApplyUsage,
   ApplicationRecord,
   KitAnswer,
   KitRecord,
   VacancyFormState
 } from "@otbor/contract"
 import { AnswersInvalid, Conflict, InvalidInput, LimitExceeded, NotFound } from "@otbor/contract"
+import { DEFAULT_DAILY_LIMIT } from "@otbor/domain"
 import { sql } from "drizzle-orm"
 import { Config, Context, Effect, Layer, Match } from "effect"
 import { Database, type Executor } from "../db/Database.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
+import * as ApplyFilterRepository from "../repositories/ApplyFilterRepository.ts"
 import * as DecisionRepository from "../repositories/DecisionRepository.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
@@ -79,8 +82,11 @@ const accountExists = (tx: Executor, id: string) =>
     .execute(sql`select id from hh_account where id = ${id} limit 1`)
     .pipe(Effect.map((result) => result.rows.length > 0))
 
-/** Daily submits per hh account when `OTBOR_DAILY_APPLY_LIMIT` is not set. */
-export const DEFAULT_DAILY_APPLY_LIMIT = 30
+/**
+ * Daily submits per hh account when the account has no apply filter row and
+ * `OTBOR_DAILY_APPLY_LIMIT` is not set (hh's own limit).
+ */
+export const DEFAULT_DAILY_APPLY_LIMIT = DEFAULT_DAILY_LIMIT
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -90,13 +96,13 @@ const DAY_MS = 24 * 60 * 60 * 1000
  * approve; auto-mode rows without it fall back to `submitted_at`.
  * `oldest` is the timestamp that frees the first slot.
  */
-const recentSubmits = (tx: Executor, hhAccountId: string, excludeId: string) =>
+const recentSubmits = (tx: Executor, hhAccountId: string, excludeId: string | null = null) =>
   tx
     .execute(sql`
       select count(*)::int as used, min(coalesce(intent_at, submitted_at)) as oldest
       from application
       where hh_account_id = ${hhAccountId}
-        and id <> ${excludeId}
+        and (${excludeId}::uuid is null or id <> ${excludeId}::uuid)
         and origin = 'otbor'
         and state in ('queued', 'submitting', 'submitted')
         and coalesce(intent_at, submitted_at) > now() - interval '24 hours'
@@ -108,6 +114,16 @@ const recentSubmits = (tx: Executor, hhAccountId: string, excludeId: string) =>
         return { used: row?.used ?? 0, oldest }
       })
     )
+
+/**
+ * The daily limit of one account: the `daily_limit` of its account-level apply
+ * filter row (resume null) when there is one, else the service default (the
+ * `OTBOR_DAILY_APPLY_LIMIT` env, else 200).
+ */
+const dailyLimitFor = (tx: Executor, userId: string, hhAccountId: string, fallback: number) =>
+  ApplyFilterRepository.accountDailyLimit(tx, userId, hhAccountId).pipe(
+    Effect.map((stored) => stored ?? fallback)
+  )
 
 const vacancyFor = (tx: Executor, id: string) => VacancyRepository.findById(tx, id)
 
@@ -166,6 +182,8 @@ export interface ApplicationServiceShape {
   >
   readonly retry: (id: string) => Effect.Effect<ApplicationRecord, ApiError>
   readonly setKit: (input: SetKitInput) => Effect.Effect<KitRecord, ApiError>
+  /** Responses used and left in the rolling 24 hours of one hh account. */
+  readonly dailyUsage: (hhAccountId: string) => Effect.Effect<ApplyUsage, ApiError>
   /** The response form of a vacancy as last read. Never opens hh. */
   readonly formGet: (vacancyId: string) => Effect.Effect<VacancyFormState, ApiError>
   /** Queues a form read when the stored form is stale (or with `force`). Creates no application. */
@@ -177,14 +195,17 @@ export interface ApplicationServiceShape {
 }
 
 export interface ApplicationServiceOptions {
-  /** Approvals allowed per hh account in any 24 hours. */
+  /**
+   * Approvals allowed per hh account in any 24 hours when the account has no
+   * apply filter row; a stored `apply_filter.daily_limit` (resume null) wins.
+   */
   readonly dailyApplyLimit: number
 }
 
 export class ApplicationService extends Context.Service<ApplicationService, ApplicationServiceShape>()(
   "otbor/cloud/ApplicationService"
 ) {
-  /** Production layer: the daily limit comes from `OTBOR_DAILY_APPLY_LIMIT` (default 30). */
+  /** Production layer: the default daily limit is `OTBOR_DAILY_APPLY_LIMIT` (default 200). */
   static readonly layer = Layer.unwrap(
     Config.Int("OTBOR_DAILY_APPLY_LIMIT").pipe(
       Config.withDefault(DEFAULT_DAILY_APPLY_LIMIT),
@@ -438,10 +459,16 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                   })
                 }
                 const recent = yield* recentSubmits(tx, application.hhAccountId, id)
-                if (recent.used >= options.dailyApplyLimit) {
+                const dailyLimit = yield* dailyLimitFor(
+                  tx,
+                  currentUser.userId,
+                  application.hhAccountId,
+                  options.dailyApplyLimit
+                )
+                if (recent.used >= dailyLimit) {
                   return fail({
                     _tag: "limit",
-                    limit: options.dailyApplyLimit,
+                    limit: dailyLimit,
                     used: recent.used,
                     resetsAt: new Date((recent.oldest?.getTime() ?? Date.now()) + DAY_MS).toISOString()
                   })
@@ -669,8 +696,39 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                     stored.form.formHash === kit.formHash &&
                     checkKit({ form: stored.form, hints: stored.hints, kit }).length === 0
                   ) {
+                    // The same daily cap as approve. Without a slot the kit stays
+                    // stored and a human approves it when one frees up.
+                    const recent = yield* recentSubmits(tx, application.hhAccountId, application.id)
+                    const dailyLimit = yield* dailyLimitFor(
+                      tx,
+                      currentUser.userId,
+                      application.hhAccountId,
+                      options.dailyApplyLimit
+                    )
+                    if (recent.used >= dailyLimit) {
+                      const resetsAt = new Date((recent.oldest?.getTime() ?? Date.now()) + DAY_MS).toISOString()
+                      yield* ApplicationRepository.transition(
+                        tx,
+                        currentUser.userId,
+                        application.id,
+                        "needs_human",
+                        {
+                          from: ["queued"],
+                          patch: { lastError: `daily limit ${dailyLimit} reached; a slot frees at ${resetsAt}` }
+                        }
+                      )
+                      return ok(kit)
+                    }
                     const target = yield* targetFor(tx, application)
                     if (target !== null) {
+                      // Counts against the cap from now on, not only once hh confirms.
+                      yield* ApplicationRepository.transition(
+                        tx,
+                        currentUser.userId,
+                        application.id,
+                        "queued",
+                        { from: ["queued"], patch: { intentAt: new Date() } }
+                      )
                       yield* submitJob(tx, {
                         ...target,
                         kit,
@@ -684,6 +742,30 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
               })
             )
             .pipe(Effect.mapError(toStorageError("application.setKit")))
+
+          return yield* unwrap(outcome)
+        })
+
+      const dailyUsage: ApplicationServiceShape["dailyUsage"] = (hhAccountId) =>
+        Effect.gen(function*() {
+          const outcome = yield* database
+            .asUser(currentUser.userId, (tx) =>
+              Effect.gen(function*() {
+                if (!(yield* accountExists(tx, hhAccountId))) {
+                  return fail({ _tag: "not_found", entity: "HhAccount", id: hhAccountId })
+                }
+                const recent = yield* recentSubmits(tx, hhAccountId)
+                const limit = yield* dailyLimitFor(tx, currentUser.userId, hhAccountId, options.dailyApplyLimit)
+                return ok({
+                  hhAccountId: hhAccountId as ApplyUsage["hhAccountId"],
+                  used: recent.used,
+                  limit,
+                  remaining: Math.max(0, limit - recent.used),
+                  oldest: recent.oldest === null ? null : recent.oldest.toISOString()
+                } satisfies ApplyUsage)
+              })
+            )
+            .pipe(Effect.mapError(toStorageError("application.dailyUsage")))
 
           return yield* unwrap(outcome)
         })
@@ -728,7 +810,8 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
         approve,
         skip,
         retry,
-        setKit
+        setKit,
+        dailyUsage
       })
     })
   )

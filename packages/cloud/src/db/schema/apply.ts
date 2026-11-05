@@ -8,6 +8,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
   text,
@@ -91,6 +92,13 @@ export const applyFilter = pgTable(
     minFit: integer("min_fit").notNull().default(45),
     tests: text("tests").notNull().default("human"),
     freshHalfLifeHours: integer("fresh_half_life_hours").notNull().default(72),
+    // Auto-apply parameters (migration 0038). Only `boosts` affects fit.
+    autoMode: text("auto_mode").notNull().default("off"),
+    dailyLimit: integer("daily_limit").notNull().default(200),
+    batchSize: integer("batch_size").notNull().default(20),
+    sort: text("sort").notNull().default("priority"),
+    minPriority: numeric("min_priority", { mode: "number" }).notNull().default(0),
+    boosts: jsonb("boosts").$type<ReadonlyArray<unknown>>().notNull().default([]),
     templatePresetId: uuid("template_preset_id").references(() => preset.id, {
       onDelete: "set null"
     }),

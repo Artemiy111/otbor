@@ -3,6 +3,8 @@ import { Rpc, type RpcClient, type RpcClientError, RpcGroup } from "effect/rpc"
 import { AnalysisInsights, AnalysisRunInput, AnalysisRunResult, AnalysisStats, VacancyAnalysis } from "./analysis.ts"
 import { MarketAnalytics } from "./market.ts"
 import {
+  ApplySort,
+  AutoMode,
   BlacklistScope,
   EmployerBlacklistView,
   BlacklistTarget,
@@ -83,8 +85,10 @@ import {
   HhAccountRecord,
   HhSessionState,
   MailAccountRecord,
+  ApplyBoost,
   ApplyFilterRecord,
   ApplyFilterView,
+  ApplyUsage,
   PresetFilter,
   PresetPreview,
   PresetRecord,
@@ -1183,9 +1187,22 @@ export const ApplyFilterSet = Rpc.make("ApplyFilterSet", {
     minFit: Schema.optional(Schema.Int),
     tests: Schema.optional(TestsPolicy),
     freshHalfLifeHours: Schema.optional(Schema.Int),
+    autoMode: Schema.optional(AutoMode),
+    dailyLimit: Schema.optional(Schema.Int),
+    batchSize: Schema.optional(Schema.Int),
+    sort: Schema.optional(ApplySort),
+    minPriority: Schema.optional(Schema.Number),
+    boosts: Schema.optional(Schema.Array(ApplyBoost)),
     templatePresetId: Schema.optional(Schema.NullOr(PresetId))
   }),
   success: ApplyFilterRecord,
+  error: ApiError
+})
+
+/** Responses used and left in the rolling 24 hours of one hh account. */
+export const ApplyUsageGet = Rpc.make("ApplyUsageGet", {
+  payload: Schema.Struct({ hhAccountId: HhAccountId }),
+  success: ApplyUsage,
   error: ApiError
 })
 
@@ -1583,6 +1600,7 @@ export const OtborRpcs = RpcGroup.make(
   ApplyFilterGet,
   ApplyFilterSet,
   ApplyFilterFromPreset,
+  ApplyUsageGet,
   QueueStatsGet,
   QueueJobsList,
   HarnessRegister,

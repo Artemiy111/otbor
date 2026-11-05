@@ -1,4 +1,4 @@
-import type { ApplyFilterSettings, PresetFilter, PresetRule } from "@otbor/contract"
+import type { ApplyBoost, ApplyFilterSettings, PresetFilter, PresetRule } from "@otbor/contract"
 
 /**
  * The built-in apply filter: used when neither an (account, resume) row nor an
@@ -101,10 +101,28 @@ export const DEVOPS_APPLY_FILTER: PresetFilter = {
   ]
 }
 
+/**
+ * The fit bonuses that used to be constants in `decide`. `work_format in`
+ * means "has all of them", so `[remote]` is "offers remote".
+ */
+export const DEFAULT_BOOSTS: ReadonlyArray<ApplyBoost> = [
+  { rule: { field: "salary", op: "gte", value: 250_000, currency: "RUB" }, weight: 8 },
+  { rule: { field: "work_format", op: "in", value: ["remote"] }, weight: 5 },
+  { rule: { field: "seniority", op: "in", value: ["middle", "senior", "lead", "unknown"] }, weight: 4 }
+]
+
+export const DEFAULT_DAILY_LIMIT = 200
+
 export const DEFAULT_APPLY_SETTINGS: ApplyFilterSettings = {
   minFit: 45,
   tests: "human",
-  freshHalfLifeHours: 72
+  freshHalfLifeHours: 72,
+  autoMode: "off",
+  dailyLimit: DEFAULT_DAILY_LIMIT,
+  batchSize: 20,
+  sort: "priority",
+  minPriority: 0,
+  boosts: DEFAULT_BOOSTS
 }
 
 /** A filter plus the scoring settings stored next to it. */

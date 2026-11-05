@@ -55,14 +55,7 @@ export interface DecisionSettings {
  * built-in template `DEVOPS_APPLY_FILTER` changes: a stored filter edit is
  * tracked by `apply_filter.rules_changed_at`, the built-in one only by this.
  */
-export const APPLY_POLICY_VERSION = 4
-
-/**
- * Scoring constants. They only rank; they never block. They are the former
- * default policy's numbers, kept so a fit does not move when the filter does.
- */
-const FIT_SALARY_FLOOR = 250_000
-const FIT_SENIORITY: ReadonlyArray<Seniority> = ["middle", "senior", "lead", "unknown"]
+export const APPLY_POLICY_VERSION = 5
 
 export interface DecideInput {
   readonly vacancy: VacancySignal
@@ -70,6 +63,12 @@ export interface DecideInput {
   readonly settings: DecisionSettings
   readonly keywords: ReadonlyArray<LexiconMatch>
   readonly blocks: HardBlockInput
+  /**
+   * Sum of the weights of the apply filter's boosts that hold for this
+   * vacancy; the cloud evaluates them with the filter SQL. Added to the
+   * deterministic fit. Ignored when an LLM fit overrides.
+   */
+  readonly boostWeight: number
   /**
    * The stored vacancy analysis, when there is one for the current prompt
    * version. It only fills an `unknown` seniority for scoring.
@@ -98,15 +97,6 @@ const reason = (
   ...(weight === undefined ? {} : { weight })
 })
 
-const salaryMeets = (vacancy: VacancySignal, threshold: number | null): boolean => {
-  if (threshold === null) return false
-  if (vacancy.salaryCurrency !== null && vacancy.salaryCurrency !== "RUB") return false
-  return (
-    (vacancy.salaryFrom !== null && vacancy.salaryFrom >= threshold) ||
-    (vacancy.salaryTo !== null && vacancy.salaryTo >= threshold)
-  )
-}
-
 const testsPass = (blocks: HardBlockInput, policy: TestsPolicy): boolean => {
   if (!blocks.hasTest) return true
   if (policy === "allow") return true
@@ -116,7 +106,6 @@ const testsPass = (blocks: HardBlockInput, policy: TestsPolicy): boolean => {
 
 const computeFit = (
   input: DecideInput,
-  seniority: Seniority,
   titleHits: ReadonlyArray<string>,
   bodyHits: ReadonlyArray<string>
 ): number => {
@@ -125,16 +114,12 @@ const computeFit = (
   }
 
   const skillHits = matchedTerms(input.keywords, "skills")
-  const salary = salaryMeets(input.vacancy, FIT_SALARY_FLOOR)
-  const remote = input.vacancy.workFormats.includes("remote")
 
   let fit = 45
   fit += Math.min(3, titleHits.length) * 7
   fit += Math.min(3, bodyHits.length) * 5
   fit += Math.min(2, skillHits.length) * 6
-  if (salary) fit += 8
-  if (remote) fit += 5
-  if (FIT_SENIORITY.includes(seniority)) fit += 4
+  fit += input.boostWeight
 
   return Math.max(0, Math.min(100, Math.round(fit)))
 }
@@ -196,7 +181,7 @@ export const decide = (input: DecideInput): DecisionResult => {
   const titleHits = matchedTerms(input.keywords, "title")
   const bodyHits = matchedTerms(input.keywords, "body")
 
-  const fit = computeFit(input, vacancy.seniority, titleHits, bodyHits)
+  const fit = computeFit(input, titleHits, bodyHits)
   if (fit < settings.minFit) {
     return skip(reason("blocked_low_fit", `fit ${fit} < ${settings.minFit}`), fit)
   }
@@ -216,12 +201,6 @@ export const decide = (input: DecideInput): DecisionResult => {
   }
   if (bodyHits.length > 0) {
     reasons.push(reason("skill_match", `body: ${bodyHits.join(", ")}`, bodyHits.length))
-  }
-  if (salaryMeets(vacancy, FIT_SALARY_FLOOR)) {
-    reasons.push(reason("salary", `${FIT_SALARY_FLOOR}+`, 1))
-  }
-  if (vacancy.workFormats.includes("remote")) {
-    reasons.push(reason("remote", "remote", 1))
   }
   if (levelDetail !== null) reasons.push(reason("seniority", levelDetail, 1))
   reasons.push(
