@@ -16,7 +16,6 @@ import {
   CHAT_INPUT_SELECTOR,
   CHAT_LETTER_BUTTON_SELECTOR,
   CHAT_LETTER_PREVIEW_SELECTOR,
-  CHAT_SEND_SELECTOR,
   chatUrl,
   LETTER_ATTACH_SELECTOR,
   LETTER_SELECTOR,
@@ -237,7 +236,9 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
             return letterUnclicked(lastUrl, "transport", "lease lost before the click")
           }
           clicked = true
-          yield* attempt(() => page.locator(CHAT_SEND_SELECTOR).first().click({ timeout: 5_000 }))
+          // Enter sends in the chat field ("Enter — отправить сообщение"). A click on
+          // the button can land on hh's cookie banner instead and send nothing.
+          yield* attempt(() => input.press("Enter", { timeout: 5_000 }))
           // Sent when the letter mode is gone and the field is empty again.
           const closed = yield* attempt(() => preview.waitFor({ state: "hidden", timeout: 10_000 })).pipe(
             Effect.as(true),
