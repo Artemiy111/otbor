@@ -76,6 +76,8 @@ export const vacancyKeyword = pgTable(
       columns: [table.vacancyId, table.keywordId, table.matchedForm]
     }),
     index("vacancy_keyword_title_idx").on(table.keywordId),
-    index("vacancy_keyword_body_idx").on(table.keywordId)
+    index("vacancy_keyword_body_idx").on(table.keywordId),
+    index("vacancy_keyword_keyword_vacancy_idx").on(table.keywordId, table.vacancyId),
+    index("vacancy_keyword_skills_idx").on(table.keywordId, table.vacancyId)
   ]
 )
