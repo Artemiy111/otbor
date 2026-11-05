@@ -260,6 +260,14 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                   })
                 }
 
+                if (vacancy.archived) {
+                  return fail({
+                    _tag: "conflict",
+                    entity: "Application",
+                    message: "the vacancy is archived; hh takes no responses"
+                  })
+                }
+
                 const state = input.mode === "auto" ? "queued" : "draft"
                 const created = yield* ApplicationRepository.create(tx, {
                   userId: currentUser.userId,
@@ -299,6 +307,14 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                 const vacancy = yield* vacancyFor(tx, input.vacancyId)
                 if (vacancy === null) {
                   return fail({ _tag: "not_found", entity: "Vacancy", id: input.vacancyId })
+                }
+
+                if (vacancy.archived) {
+                  return fail({
+                    _tag: "conflict",
+                    entity: "Application",
+                    message: "the vacancy is archived; hh takes no responses"
+                  })
                 }
 
                 const created = yield* ApplicationRepository.create(tx, {

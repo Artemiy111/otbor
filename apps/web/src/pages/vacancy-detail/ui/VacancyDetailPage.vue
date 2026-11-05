@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import { useStorage } from "@vueuse/core"
-import { Archive, CircleAlert, ExternalLink, RefreshCw } from "@lucide/vue"
+import { CircleAlert, ExternalLink, RefreshCw } from "@lucide/vue"
 import { RefreshButton } from "@/features/refresh-button"
 import { Alert, AlertDescription, AlertTitle, Button, Hint, Skeleton } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
@@ -25,7 +25,7 @@ const data = page.data
 </script>
 
 <template>
-  <section>
+  <section :class="data?.vacancy.archived ? 'vacancy-archived' : ''">
     <PageHeader :title="data?.vacancy.title ?? 'Вакансия'" back-to="/vacancies" back-label="Вакансии">
       <template #actions>
         <Hint v-if="data" text="Заново скачать страницу вакансии с hh">
@@ -62,13 +62,13 @@ const data = page.data
     </div>
 
     <template v-else-if="data">
-      <Alert v-if="data.vacancy.archived" class="mb-3">
-        <Archive />
-        <AlertTitle>Вакансия в архиве</AlertTitle>
-        <AlertDescription>
-          hh больше не принимает отклики на неё. Черновик можно сохранить, но отправить его не получится.
-        </AlertDescription>
-      </Alert>
+      <div
+        v-if="data.vacancy.archived"
+        aria-label="Вакансия в архиве"
+        class="pointer-events-none fixed right-10 top-24 z-20 -rotate-12 select-none rounded-md border-4 border-double border-red-600/70 px-4 py-1 text-3xl font-black uppercase tracking-[0.3em] text-red-600/70 dark:border-red-400/70 dark:text-red-400/70"
+      >
+        Архив
+      </div>
       <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0 flex-1 space-y-2.5">
           <VacancyMetaLine :data="data" />
@@ -78,8 +78,18 @@ const data = page.data
           <VacancyLayoutSwitch v-model="layout" />
         </div>
       </div>
-      <VacancyLayoutDesk v-if="layout === 'desk'" :page="page" />
-      <VacancyLayoutFocus v-else :page="page" />
+      <div :class="data.vacancy.archived ? 'opacity-60 grayscale' : ''">
+        <VacancyLayoutDesk v-if="layout === 'desk'" :page="page" />
+        <VacancyLayoutFocus v-else :page="page" />
+      </div>
     </template>
   </section>
 </template>
+
+<style scoped>
+.vacancy-archived :deep(h1) {
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+  opacity: 0.55;
+}
+</style>
