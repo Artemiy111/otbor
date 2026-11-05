@@ -21,6 +21,10 @@ export interface StoredResume {
   readonly salary_amount: number | null
   readonly salary_currency: string | null
   readonly status: string | null
+  readonly area_name: string | null
+  readonly relocation: string | null
+  readonly business_trip_readiness: string | null
+  readonly travel_time: string | null
   readonly is_active: boolean
   readonly last_seen_at: Date | string
   readonly created_at: Date | string
@@ -51,6 +55,10 @@ export const toRecord = (row: StoredResume): ResumeRecord => ({
   salaryAmount: row.salary_amount,
   salaryCurrency: row.salary_currency,
   status: row.status,
+  areaName: row.area_name,
+  relocation: row.relocation,
+  businessTripReadiness: row.business_trip_readiness,
+  travelTime: row.travel_time,
   isActive: row.is_active,
   lastSeenAt: iso(row.last_seen_at),
   createdAt: iso(row.created_at),
@@ -60,7 +68,8 @@ export const toRecord = (row: StoredResume): ResumeRecord => ({
 const selection = sql`
   select id, user_id, hh_account_id, source, external_id, hash, content_hash,
          title, text, about, skills, experience, education, work_formats,
-         salary_amount, salary_currency, status, is_active, last_seen_at,
+         salary_amount, salary_currency, status, area_name, relocation,
+         business_trip_readiness, travel_time, is_active, last_seen_at,
          created_at, updated_at
   from resume
 `
@@ -128,6 +137,10 @@ export interface UpsertResumeInput {
   readonly salaryAmount?: number | null
   readonly salaryCurrency?: string | null
   readonly status?: string | null
+  readonly areaName?: string | null
+  readonly relocation?: string | null
+  readonly businessTripReadiness?: string | null
+  readonly travelTime?: string | null
   readonly isActive?: boolean
   readonly lastSeenAt?: Date | string | null
   readonly now?: Date
@@ -167,6 +180,10 @@ export const upsert = (
           salary_amount = ${input.salaryAmount === undefined ? existing.salary_amount : input.salaryAmount},
           salary_currency = ${input.salaryCurrency === undefined ? existing.salary_currency : input.salaryCurrency},
           status = ${input.status === undefined ? existing.status : input.status},
+          area_name = ${input.areaName === undefined ? existing.area_name : input.areaName},
+          relocation = ${input.relocation === undefined ? existing.relocation : input.relocation},
+          business_trip_readiness = ${input.businessTripReadiness === undefined ? existing.business_trip_readiness : input.businessTripReadiness},
+          travel_time = ${input.travelTime === undefined ? existing.travel_time : input.travelTime},
           is_active = ${isActive},
           last_seen_at = ${lastSeenAt},
           updated_at = ${now}
@@ -180,7 +197,8 @@ export const upsert = (
       insert into resume (
         user_id, hh_account_id, source, external_id, hash, content_hash,
         title, text, about, skills, experience, education, work_formats,
-        salary_amount, salary_currency, status, is_active, last_seen_at
+        salary_amount, salary_currency, status, area_name, relocation,
+        business_trip_readiness, travel_time, is_active, last_seen_at
       ) values (
         ${input.userId}, ${input.hhAccountId}::uuid, ${source}, ${input.externalId},
         ${""}, ${null},
@@ -192,6 +210,10 @@ export const upsert = (
         ${input.salaryAmount ?? null},
         ${input.salaryCurrency ?? null},
         ${input.status ?? null},
+        ${input.areaName ?? null},
+        ${input.relocation ?? null},
+        ${input.businessTripReadiness ?? null},
+        ${input.travelTime ?? null},
         ${isActive},
         ${lastSeenAt}
       )

@@ -1393,6 +1393,11 @@ export const ResumeRecord = Schema.Struct({
   salaryAmount: Schema.optional(Schema.NullOr(Schema.Int)),
   salaryCurrency: Schema.optional(Schema.NullOr(Schema.String)),
   status: Schema.optional(Schema.NullOr(Schema.String)),
+  /** The city, relocation, business trips and commute as hh states them in the resume. */
+  areaName: Schema.optional(Schema.NullOr(Schema.String)),
+  relocation: Schema.optional(Schema.NullOr(Schema.String)),
+  businessTripReadiness: Schema.optional(Schema.NullOr(Schema.String)),
+  travelTime: Schema.optional(Schema.NullOr(Schema.String)),
   isActive: Schema.Boolean,
   lastSeenAt: Schema.String,
   createdAt: Schema.String,
@@ -1415,6 +1420,10 @@ export const ResumeDraft = Schema.Struct({
   salaryAmount: Schema.optional(Schema.NullOr(Schema.Int)),
   salaryCurrency: Schema.optional(Schema.NullOr(Schema.String)),
   status: Schema.optional(Schema.NullOr(Schema.String)),
+  areaName: Schema.optional(Schema.NullOr(Schema.String)),
+  relocation: Schema.optional(Schema.NullOr(Schema.String)),
+  businessTripReadiness: Schema.optional(Schema.NullOr(Schema.String)),
+  travelTime: Schema.optional(Schema.NullOr(Schema.String)),
   isActive: Schema.optional(Schema.Boolean),
   lastSeenAt: Schema.optional(Schema.String)
 })

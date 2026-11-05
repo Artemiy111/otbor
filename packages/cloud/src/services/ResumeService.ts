@@ -30,6 +30,10 @@ export interface ResumeUpsertInput {
   readonly salaryAmount?: number | null
   readonly salaryCurrency?: string | null
   readonly status?: string | null
+  readonly areaName?: string | null
+  readonly relocation?: string | null
+  readonly businessTripReadiness?: string | null
+  readonly travelTime?: string | null
   readonly isActive?: boolean
   readonly lastSeenAt?: string
 }
@@ -110,6 +114,10 @@ export class ResumeService extends Context.Service<ResumeService, ResumeServiceS
               salaryAmount: input.salaryAmount,
               salaryCurrency: input.salaryCurrency,
               status: input.status,
+              areaName: input.areaName,
+              relocation: input.relocation,
+              businessTripReadiness: input.businessTripReadiness,
+              travelTime: input.travelTime,
               isActive: input.isActive,
               lastSeenAt: input.lastSeenAt ?? null
             })

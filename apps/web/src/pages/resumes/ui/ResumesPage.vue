@@ -104,11 +104,22 @@ watch(enrichmentQuery.data, (data) => {
  * Only topics the imported resume really carries: work formats and an English mention.
  */
 const FORMAT_LABELS: Record<string, string> = { remote: "удалённо", hybrid: "гибрид", office: "офис", on_site: "офис" }
+const RELOCATION_LABELS: Record<string, string> = {
+  no_relocation: "не готов",
+  relocation_possible: "возможен",
+  relocation_desirable: "желателен"
+}
+const TRIP_LABELS: Record<string, string> = { never: "не готов", sometimes: "иногда", ready: "готов" }
 const resumeHint = (key: string): string | null => {
   const r = selectedResume.value
   if (!r) return null
   if (key === "office" && r.workFormats.length) {
     return `формат работы: ${r.workFormats.map((f) => FORMAT_LABELS[f.toLowerCase()] ?? f).join(", ")}`
+  }
+  if (key === "city" && r.areaName) return `город в резюме: ${r.areaName}`
+  if (key === "relocation" && r.relocation) return `переезд в резюме: ${RELOCATION_LABELS[r.relocation] ?? r.relocation}`
+  if (key === "business_trips" && r.businessTripReadiness) {
+    return `командировки в резюме: ${TRIP_LABELS[r.businessTripReadiness] ?? r.businessTripReadiness}`
   }
   if (key === "english_level") {
     const mention = [...r.skills, ...r.text.split(/\n+/)].find((line) => /англий|english/i.test(line))

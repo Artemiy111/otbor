@@ -89,6 +89,10 @@ export const importResumes = (
           salaryAmount: parsed.salaryAmount === null ? null : Math.trunc(parsed.salaryAmount),
           salaryCurrency: parsed.salaryCurrency,
           status: parsed.status,
+          areaName: parsed.areaName,
+          relocation: parsed.relocation,
+          businessTripReadiness: parsed.businessTripReadiness,
+          travelTime: parsed.travelTime,
           isActive: active.rows.length === 0,
           lastSeenAt: now,
           now
@@ -103,6 +107,10 @@ export const importResumes = (
         existing.text !== parsed.text ||
         existing.about !== parsed.about ||
         existing.status !== parsed.status ||
+        existing.area_name !== parsed.areaName ||
+        existing.relocation !== parsed.relocation ||
+        existing.business_trip_readiness !== parsed.businessTripReadiness ||
+        existing.travel_time !== parsed.travelTime ||
         existing.salary_amount !== (parsed.salaryAmount === null ? null : Math.trunc(parsed.salaryAmount)) ||
         existing.salary_currency !== parsed.salaryCurrency ||
         !sameJson(existing.skills, parsed.skills) ||
@@ -131,6 +139,10 @@ export const importResumes = (
         salaryAmount: parsed.salaryAmount === null ? null : Math.trunc(parsed.salaryAmount),
         salaryCurrency: parsed.salaryCurrency,
         status: parsed.status,
+        areaName: parsed.areaName,
+        relocation: parsed.relocation,
+        businessTripReadiness: parsed.businessTripReadiness,
+        travelTime: parsed.travelTime,
         // The operator's choice of the active resume is not the sync's to change.
         isActive: existing.is_active,
         lastSeenAt: now,

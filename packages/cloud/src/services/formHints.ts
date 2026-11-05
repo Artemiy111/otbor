@@ -53,6 +53,17 @@ export const hintsFor = (
     const faq = (key: string): string | null =>
       enrichment?.faq.find((e) => e.key === key)?.answer.trim() || null
 
+    // hh codes: no_relocation / relocation_possible / relocation_desirable.
+    const relocationCode = (resume?.relocation ?? "").toLowerCase()
+    const relocation =
+      relocationCode === ""
+        ? null
+        : relocationCode.includes("no_relocation") || relocationCode === "no"
+          ? false
+          : relocationCode.includes("possible") || relocationCode.includes("maybe")
+            ? ("negotiable" as const)
+            : true
+
     return answerHints({
       questions: form.questions,
       vacancy: {
@@ -64,7 +75,7 @@ export const hintsFor = (
       },
       salary,
       resumeWorkFormats: resume?.workFormats ?? [],
-      profile: { city: faq("city"), english: faq("english_level"), startDate: faq("notice_period") }
+      profile: { city: faq("city") ?? resume?.areaName ?? null, relocation, english: faq("english_level"), startDate: faq("notice_period") }
     }).map(
       (hint): StoredHint => ({
         questionId: hint.questionId,

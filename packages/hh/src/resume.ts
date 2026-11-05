@@ -51,6 +51,10 @@ export interface ParsedResume {
   readonly salaryCurrency: string | null
   readonly status: string | null
   readonly areaName: string | null
+  /** hh codes as stated in the resume, e.g. `no_relocation`, `sometimes`. */
+  readonly relocation: string | null
+  readonly businessTripReadiness: string | null
+  readonly travelTime: string | null
   readonly professionalRole: string | null
   readonly updatedAt: string | null
 }
@@ -315,6 +319,9 @@ export const parseResumePage = (html: string): ParsedResume | null => {
     salaryCurrency: salary === null ? null : readString(salary.currency) ?? readString(salary.currencyCode),
     status: readString(attributes.status),
     areaName: readString(area?.name),
+    relocation: readStrings(resume.relocation)[0] ?? null,
+    businessTripReadiness: readStrings(resume.businessTripReadiness)[0] ?? null,
+    travelTime: readStrings(resume.travelTime)[0] ?? null,
     professionalRole: readString(role?.text) ?? readString(role?.string),
     updatedAt: toIso(attributes.updated)
   }

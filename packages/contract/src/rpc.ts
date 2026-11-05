@@ -1319,6 +1319,10 @@ export const ResumeUpsert = Rpc.make("ResumeUpsert", {
     salaryAmount: Schema.optional(Schema.NullOr(Schema.Int)),
     salaryCurrency: Schema.optional(Schema.NullOr(Schema.String)),
     status: Schema.optional(Schema.NullOr(Schema.String)),
+    areaName: Schema.optional(Schema.NullOr(Schema.String)),
+    relocation: Schema.optional(Schema.NullOr(Schema.String)),
+    businessTripReadiness: Schema.optional(Schema.NullOr(Schema.String)),
+    travelTime: Schema.optional(Schema.NullOr(Schema.String)),
     isActive: Schema.optional(Schema.Boolean),
     lastSeenAt: Schema.optional(Schema.String)
   }),
