@@ -48,6 +48,11 @@ export const hintsFor = (
             currency: slot?.currency ?? resume?.salaryCurrency ?? null
           }
 
+    // The operator's FAQ answers are facts about the candidate: city, english and
+    // start date become soft hints; the rest is left to the agent via the enrichment.
+    const faq = (key: string): string | null =>
+      enrichment?.faq.find((e) => e.key === key)?.answer.trim() || null
+
     return answerHints({
       questions: form.questions,
       vacancy: {
@@ -58,7 +63,8 @@ export const hintsFor = (
         workFormats: vacancy.workFormats
       },
       salary,
-      resumeWorkFormats: resume?.workFormats ?? []
+      resumeWorkFormats: resume?.workFormats ?? [],
+      profile: { city: faq("city"), english: faq("english_level"), startDate: faq("notice_period") }
     }).map(
       (hint): StoredHint => ({
         questionId: hint.questionId,
