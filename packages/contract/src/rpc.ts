@@ -1030,6 +1030,8 @@ export const VacancyLetterAttach = Rpc.make("VacancyLetterAttach", {
   payload: Schema.Struct({
     vacancyId: VacancyId,
     hhAccountId: HhAccountId,
+    /** Which response (hh keeps one per resume); required when the account has several. */
+    resumeId: Schema.optional(Schema.NullOr(ResumeId)),
     letter: Schema.String
   }),
   success: LetterAttachStatus,
@@ -1037,7 +1039,11 @@ export const VacancyLetterAttach = Rpc.make("VacancyLetterAttach", {
 })
 
 export const VacancyLetterAttachStatusGet = Rpc.make("VacancyLetterAttachStatus", {
-  payload: Schema.Struct({ vacancyId: VacancyId, hhAccountId: HhAccountId }),
+  payload: Schema.Struct({
+    vacancyId: VacancyId,
+    hhAccountId: HhAccountId,
+    resumeId: Schema.optional(Schema.NullOr(ResumeId))
+  }),
   success: LetterAttachStatus,
   error: ApiError
 })

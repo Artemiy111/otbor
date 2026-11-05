@@ -13,6 +13,11 @@ import { Effect, Layer, Schema } from "effect"
 import { existsSync } from "node:fs"
 import { chromium, type Page } from "playwright"
 import {
+  CHAT_INPUT_SELECTOR,
+  CHAT_LETTER_BUTTON_SELECTOR,
+  CHAT_LETTER_PREVIEW_SELECTOR,
+  CHAT_SEND_SELECTOR,
+  chatUrl,
   LETTER_ATTACH_SELECTOR,
   LETTER_SELECTOR,
   LETTER_SUBMIT_SELECTOR,
@@ -190,13 +195,60 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
 
   const attachLetter = ({ payload, beforeClick }: LetterAttachRequest): Effect.Effect<HarnessExit> => {
     let clicked = false
-    let lastUrl = vacancyUrl(baseUrl, payload.externalId)
+    const inChat = typeof payload.chatId === "string" && payload.chatId !== ""
+    let lastUrl = inChat ? chatUrl(baseUrl, payload.chatId as string) : vacancyUrl(baseUrl, payload.externalId)
 
     const run = withPage(payload.sessionProfile, (page) =>
       Effect.gen(function*() {
         yield* attempt(() =>
           page.goto(lastUrl, { waitUntil: "domcontentloaded", timeout: config.navigationTimeoutMs })
         )
+        if (inChat) {
+          yield* sleep(config.settleMs)
+          lastUrl = page.url()
+          if (/\/account\/login|\/login/.test(lastUrl)) {
+            return letterUnclicked(lastUrl, "session_expired", "hh redirected to the login page")
+          }
+          if (!lastUrl.includes(`/chat/${payload.chatId}`)) {
+            return letterUnclicked(lastUrl, "blocked", "hh did not open the chat of this response")
+          }
+          const button = page.locator(CHAT_LETTER_BUTTON_SELECTOR).first()
+          yield* attempt(() => button.waitFor({ state: "visible", timeout: 10_000 })).pipe(
+            Effect.orElseSucceed(() => undefined)
+          )
+          if ((yield* attempt(() => button.count())) === 0) {
+            return letterUnclicked(
+              lastUrl,
+              "blocked",
+              "the cover letter button is not in the chat (a letter may already be attached)"
+            )
+          }
+          yield* attempt(() => button.click({ timeout: 5_000 }))
+          const preview = page.locator(CHAT_LETTER_PREVIEW_SELECTOR).first()
+          yield* attempt(() => preview.waitFor({ state: "visible", timeout: 8_000 }))
+          const input = page.locator(CHAT_INPUT_SELECTOR).first()
+          yield* attempt(() => input.fill(payload.letter, { timeout: 5_000 }))
+          const written = yield* attempt(() => input.inputValue())
+          if (written.trim() !== payload.letter.trim()) {
+            return letterUnclicked(lastUrl, "blocked", "the letter did not land in the chat field")
+          }
+          // The last look before the only click: is this lease still ours?
+          if (!(yield* beforeClick)) {
+            return letterUnclicked(lastUrl, "transport", "lease lost before the click")
+          }
+          clicked = true
+          yield* attempt(() => page.locator(CHAT_SEND_SELECTOR).first().click({ timeout: 5_000 }))
+          // Sent when the letter mode is gone and the field is empty again.
+          const closed = yield* attempt(() => preview.waitFor({ state: "hidden", timeout: 10_000 })).pipe(
+            Effect.as(true),
+            Effect.orElseSucceed(() => false)
+          )
+          return {
+            tag: closed ? "submitted" : "ambiguous",
+            message: closed ? "letter sent in the chat" : "the chat still shows the letter field after the click",
+            artifacts: { clicked: true, closed, url: page.url() }
+          } satisfies HarnessExit
+        }
         yield* sleep(config.settleMs)
         lastUrl = page.url()
         const html = (yield* content(page)) ?? ""

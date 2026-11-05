@@ -5,10 +5,11 @@ import { Button, Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle 
 import { useLetterStatus } from "../model"
 
 /** "Письмо" with the text of the cover letter that went to hh. Renders nothing until one was sent. */
-const props = defineProps<{ vacancyId: string; accountId: string; label?: boolean }>()
+const props = defineProps<{ vacancyId: string; accountId: string; resumeId?: string | null; label?: boolean }>()
 const { status, sent } = useLetterStatus(
   () => props.vacancyId,
-  () => props.accountId
+  () => props.accountId,
+  () => props.resumeId ?? null
 )
 const open = ref(false)
 </script>

@@ -122,12 +122,14 @@ export const applicationApi = {
   letterAttach: (input: {
     readonly vacancyId: string
     readonly hhAccountId: string
+    readonly resumeId?: string | null
     readonly letter: string
   }): Promise<LetterAttachStatus> =>
     call((client) =>
       client.VacancyLetterAttach({
         vacancyId: input.vacancyId as VacancyId,
         hhAccountId: input.hhAccountId as HhAccountId,
+        resumeId: (input.resumeId || null) as ResumeId | null,
         letter: input.letter
       })
     ),
@@ -160,11 +162,13 @@ export const applicationApi = {
   letterAttachStatus: (input: {
     readonly vacancyId: string
     readonly hhAccountId: string
+    readonly resumeId?: string | null
   }): Promise<LetterAttachStatus> =>
     call((client) =>
       client.VacancyLetterAttachStatus({
         vacancyId: input.vacancyId as VacancyId,
-        hhAccountId: input.hhAccountId as HhAccountId
+        hhAccountId: input.hhAccountId as HhAccountId,
+        resumeId: (input.resumeId || null) as ResumeId | null
       })
     ),
   syncRun: (hhAccountId: string): Promise<NegotiationsSyncStatus> =>

@@ -45,7 +45,13 @@ export const LetterAttachJobPayload = Schema.Struct({
   externalId: Schema.String,
   canonicalUrl: Schema.String,
   sessionProfile: Schema.optional(Schema.NullOr(Schema.String)),
-  letter: Schema.String
+  letter: Schema.String,
+  /**
+   * The hh chat of the response (`/chat/<id>`). hh keeps a response and a chat
+   * per resume; with it the letter is added in that chat, without it on the
+   * vacancy page (only safe while the account has a single response).
+   */
+  chatId: Schema.optional(Schema.NullOr(Schema.String))
 })
 
 export type LetterAttachJobPayload = typeof LetterAttachJobPayload.Type

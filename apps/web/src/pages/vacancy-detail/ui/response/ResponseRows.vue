@@ -32,7 +32,7 @@ const { rows } = useResponseRows(props)
       </component>
       <span class="w-32 text-right text-xs text-muted-foreground">{{ row.when }}</span>
       <span class="w-8">
-        <SentLetterButton v-if="row.selected && row.application" :vacancy-id="vacancyId" :account-id="row.accountId" />
+        <SentLetterButton v-if="row.selected && row.application" :vacancy-id="vacancyId" :account-id="row.accountId" :resume-id="row.resumeId" />
       </span>
     </div>
   </div>

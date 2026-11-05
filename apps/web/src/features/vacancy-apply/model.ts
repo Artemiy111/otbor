@@ -4,10 +4,15 @@ import { useIntervalFn } from "@vueuse/core"
 import { applicationApi, applicationKeys } from "@/entities/application"
 
 /** The cover letter job of a vacancy for an account; polled while one is in flight. */
-export const useLetterStatus = (vacancyId: () => string, accountId: () => string) => {
+export const useLetterStatus = (
+  vacancyId: () => string,
+  accountId: () => string,
+  resumeId: () => string | null = () => null
+) => {
   const query = useQuery({
-    key: () => applicationKeys.letterAttach(vacancyId(), accountId()),
-    query: () => applicationApi.letterAttachStatus({ vacancyId: vacancyId(), hhAccountId: accountId() }),
+    key: () => applicationKeys.letterAttach(vacancyId(), accountId(), resumeId() ?? ""),
+    query: () =>
+      applicationApi.letterAttachStatus({ vacancyId: vacancyId(), hhAccountId: accountId(), resumeId: resumeId() }),
     enabled: () => accountId() !== ""
   })
   useIntervalFn(() => void query.refetch(), 3000, { immediate: true, immediateCallback: false })

@@ -79,21 +79,6 @@ const persist = async () => {
 }
 watchDebounced(letter, () => void persist(), { debounce: 800 })
 
-/** hh keeps a separate response and chat per resume; the letter job does not name one yet. */
-const respondedResumes = computed(
-  () =>
-    new Set(
-      props.applications
-        .filter(
-          (application) =>
-            application.hhAccountId === props.accountId &&
-            ["submitted", "submitting", "queued"].includes(application.state)
-        )
-        .map((application) => application.resumeId ?? "")
-    )
-)
-const ambiguous = computed(() => respondedResumes.value.size > 1)
-
 const generated = (draft: GeneratedDraft) => {
   if (draft.letter !== null) {
     letter.value = draft.letter.slice(0, MAX_LETTER)
@@ -103,7 +88,8 @@ const generated = (draft: GeneratedDraft) => {
 
 const { query: statusQuery, status } = useLetterStatus(
   () => props.vacancyId,
-  () => props.accountId
+  () => props.accountId,
+  () => props.resumeId || null
 )
 const active = computed(() => status.value?.status === "pending" || status.value?.status === "running")
 
@@ -111,13 +97,14 @@ const busy = ref(false)
 const errorText = ref<string | null>(null)
 
 const send = async () => {
-  if (ambiguous.value || busy.value || active.value || letter.value.trim() === "" || props.accountId === "") return
+  if (busy.value || active.value || letter.value.trim() === "" || props.accountId === "") return
   busy.value = true
   errorText.value = null
   try {
     await applicationApi.letterAttach({
       vacancyId: props.vacancyId,
       hhAccountId: props.accountId,
+      resumeId: props.resumeId || null,
       letter: letter.value.trim()
     })
     await statusQuery.refetch()
@@ -161,7 +148,7 @@ const send = async () => {
       </span>
       <Button
         size="sm"
-        :disabled="ambiguous || busy || active || accountId === '' || letter.trim() === '' || status?.status === 'needs_human'"
+        :disabled="busy || active || accountId === '' || letter.trim() === '' || status?.status === 'needs_human'"
         @click="send"
       >
         <LoaderCircle v-if="busy || active" class="size-4 animate-spin" />
@@ -169,10 +156,6 @@ const send = async () => {
         Добавить на hh
       </Button>
     </div>
-    <p v-if="ambiguous" class="flex items-start gap-1.5 text-xs text-destructive">
-      <CircleAlert class="mt-0.5 size-3.5 shrink-0" />
-      На эту вакансию с аккаунта откликов несколько (по разным резюме), у каждого свой чат на hh. Отправка письма пока не умеет выбирать нужный, поэтому она отключена. Черновик сохраняется.
-    </p>
     <p v-if="status?.status === 'needs_human'" class="flex items-start gap-1.5 text-xs text-destructive">
       <CircleAlert class="mt-0.5 size-3.5 shrink-0" />
       Неясно, дошло ли письмо: {{ status.message }} Проверьте чат на hh, второй раз само не отправлю.

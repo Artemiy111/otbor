@@ -5,8 +5,8 @@ export const applicationKeys = {
   detail: (id: string) => ["applications", "detail", id] as const,
   agentCatalog: ["agent-catalog"] as const,
   inference: (id: string) => ["inference", id] as const,
-  letterAttach: (vacancyId: string, accountId: string) =>
-    ["applications", "letter-attach", vacancyId, accountId] as const,
+  letterAttach: (vacancyId: string, accountId: string, resumeId = "") =>
+    ["applications", "letter-attach", vacancyId, accountId, resumeId] as const,
   letterDraft: (vacancyId: string, accountId: string, resumeId: string) =>
     ["applications", "letter-draft", vacancyId, accountId, resumeId] as const,
   vacancyForm: (vacancyId: string) => ["applications", "vacancy-form", vacancyId] as const

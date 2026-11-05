@@ -116,6 +116,20 @@ export const LETTER_ATTACH_SELECTOR = '[data-qa="responded-success-attach-cover-
 /** "Отправить" in the cover letter dialog; the letter is not saved without it. */
 export const LETTER_SUBMIT_SELECTOR = '[data-qa="vacancy-response-letter-submit"]'
 
+/**
+ * The same letter, added inside the response's own chat (`/chat/<id>`). Seen
+ * on a live chat: the response message carries "Добавить сопроводительное",
+ * which turns the message field into a letter field (a preview row above it),
+ * and the send button appears once the field holds text.
+ */
+export const CHAT_LETTER_BUTTON_SELECTOR = '[data-qa="chatik-chat-message-applicant-action"]'
+export const CHAT_LETTER_PREVIEW_SELECTOR = '[data-qa="chat-input-preview"]'
+export const CHAT_INPUT_SELECTOR = '[data-qa="text-input"]'
+export const CHAT_SEND_SELECTOR = '[data-qa="chatik-do-send-message"]'
+
+export const chatUrl = (baseUrl: string, chatId: string): string =>
+  `${baseUrl.replace(/\/+$/, "")}/chat/${encodeURIComponent(chatId)}`
+
 /** Evidence of a `letter_attach` that never clicked the send button. */
 export const letterUnclicked = (url: string, tag: HarnessExit["tag"], message: string): HarnessExit => ({
   tag,

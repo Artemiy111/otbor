@@ -39,6 +39,12 @@ const statusOf = (status: JobStatus): LetterAttachStatus["status"] => {
   }
 }
 
+/** Domain errors raised inside a transaction pass through; a driver failure becomes a storage error. */
+const keepApiError =
+  (operation: string) =>
+  (error: unknown): ApiError =>
+    error instanceof Conflict || error instanceof NotFound ? error : toStorageError(operation)(error)
+
 const NIL_RESUME = "00000000-0000-0000-0000-000000000000"
 
 export interface LetterDraftKey {
@@ -47,17 +53,71 @@ export interface LetterDraftKey {
   readonly resumeId: string | null
 }
 
+/**
+ * Which response a letter goes to. hh keeps one response, and one chat, per
+ * resume, so with several responses the resume must name one and its chat must
+ * be known (`otbor hh sync` records it). A single response may still use the
+ * vacancy page when no chat is known yet.
+ */
+const targetIn = Effect.fnUntraced(function*(
+  tx: Executor,
+  hhAccountId: string,
+  vacancyId: string,
+  resumeId: string | null
+) {
+  const result = yield* tx.execute(sql`
+    select resume_id::text as resume_id, hh_chat_id, hh_status from application
+    where hh_account_id = ${hhAccountId} and vacancy_id = ${vacancyId}
+      and state in ('submitted', 'submitting', 'queued')`)
+  const rows = result.rows as ReadonlyArray<{
+    resume_id: string | null
+    hh_chat_id: string | null
+    hh_status: string | null
+  }>
+  if (rows.length === 0) return null
+  const row =
+    resumeId !== null
+      ? (rows.find((item) => item.resume_id === resumeId) ?? (rows.length === 1 ? rows[0] : undefined))
+      : rows.length === 1
+        ? rows[0]
+        : undefined
+  if (row === undefined) {
+    return yield* new Conflict({
+      entity: "LetterAttach",
+      message:
+        resumeId === null
+          ? "several responses (resumes) exist for this vacancy; name the resume to choose the chat"
+          : "there is no response to this vacancy with that resume"
+    })
+  }
+  if (row.hh_status === "DISCARD") {
+    return yield* new Conflict({
+      entity: "LetterAttach",
+      message: "the employer declined this response; its chat takes no cover letter"
+    })
+  }
+  if (row.hh_chat_id === null && rows.length > 1) {
+    return yield* new Conflict({
+      entity: "LetterAttach",
+      message: "the chat of this response is not known yet; run `otbor hh sync` first"
+    })
+  }
+  return row.hh_chat_id
+})
+
 export interface LetterAttachShape {
   readonly draftGet: (key: LetterDraftKey) => Effect.Effect<LetterDraft, ApiError>
   readonly draftSave: (key: LetterDraftKey & { readonly letter: string }) => Effect.Effect<LetterDraft, ApiError>
   readonly attach: (input: {
     readonly vacancyId: string
     readonly hhAccountId: string
+    readonly resumeId?: string | null
     readonly letter: string
   }) => Effect.Effect<LetterAttachStatus, ApiError>
   readonly status: (input: {
     readonly vacancyId: string
     readonly hhAccountId: string
+    readonly resumeId?: string | null
   }) => Effect.Effect<LetterAttachStatus, ApiError>
 }
 
@@ -70,9 +130,9 @@ export class LetterAttach extends Context.Service<LetterAttach, LetterAttachShap
       const database = yield* Database
       const currentUser = yield* CurrentUser
 
-      const statusIn = (tx: Executor, hhAccountId: string, vacancyId: string) =>
+      const statusIn = (tx: Executor, hhAccountId: string, vacancyId: string, chatId: string | null) =>
         Effect.gen(function*() {
-          const latest = yield* QueueRepository.latestForVacancy(tx, hhAccountId, vacancyId, STAGE)
+          const latest = yield* QueueRepository.latestForVacancy(tx, hhAccountId, vacancyId, STAGE, chatId)
           if (latest === null) return { status: "none", message: null, updatedAt: null, letter: null } as LetterAttachStatus
           return {
             status: statusOf(latest.job.status),
@@ -95,24 +155,17 @@ export class LetterAttach extends Context.Service<LetterAttach, LetterAttachShap
                 const account = yield* tx.execute(
                   sql`select session_profile from hh_account where id = ${input.hhAccountId} limit 1`
                 )
-                if (vacancy === null) return { _tag: "missing", entity: "Vacancy", id: input.vacancyId } as const
+                if (vacancy === null) return yield* new NotFound({ entity: "Vacancy", id: input.vacancyId })
                 if (account.rows[0] === undefined) {
-                  return { _tag: "missing", entity: "HhAccount", id: input.hhAccountId } as const
+                  return yield* new NotFound({ entity: "HhAccount", id: input.hhAccountId })
                 }
-                // hh keeps one response and one chat per resume; this job names
-                // none, so with several responses it could land in the wrong chat.
-                const responses = yield* tx.execute(sql`
-                  select count(distinct coalesce(resume_id::text, '')) as n from application
-                  where hh_account_id = ${input.hhAccountId} and vacancy_id = ${vacancy.id}
-                    and state in ('submitted', 'submitting', 'queued')`)
-                if (Number((responses.rows[0] as { n: number | string } | undefined)?.n ?? 0) > 1) {
-                  return { _tag: "ambiguous" } as const
-                }
+                const chatId = yield* targetIn(tx, input.hhAccountId, vacancy.id, input.resumeId ?? null)
                 const latest = yield* QueueRepository.latestForVacancy(
                   tx,
                   input.hhAccountId,
                   vacancy.id,
-                  STAGE
+                  STAGE,
+                  chatId
                 )
                 const sameLetter =
                   latest !== null &&
@@ -134,30 +187,35 @@ export class LetterAttach extends Context.Service<LetterAttach, LetterAttachShap
                     sessionProfile: (account.rows[0].session_profile as string | null) ?? null,
                     letter,
                     letterHash: hashOf(letter),
+                    chatId,
                     sequence:
-                      (yield* QueueRepository.countForVacancy(tx, input.hhAccountId, vacancy.id, STAGE)) + 1
+                      (yield* QueueRepository.countForVacancy(
+                        tx,
+                        input.hhAccountId,
+                        vacancy.id,
+                        STAGE,
+                        chatId
+                      )) + 1
                   })
                 }
-                return { _tag: "ok", status: yield* statusIn(tx, input.hhAccountId, vacancy.id) } as const
+                return yield* statusIn(tx, input.hhAccountId, vacancy.id, chatId)
               })
             )
-            .pipe(Effect.mapError(toStorageError("letter.attach")))
-          if (result._tag === "ambiguous") {
-            return yield* Effect.fail(
-              new Conflict({
-                entity: "LetterAttach",
-                message: "several responses (resumes) exist for this vacancy; the letter cannot pick the right chat yet"
-              })
-            )
-          }
-          return result._tag === "missing"
-            ? yield* Effect.fail(new NotFound({ entity: result.entity, id: result.id }))
-            : result.status
+            .pipe(Effect.mapError(keepApiError("letter.attach")))
+          return result
         })
 
       const status: LetterAttachShape["status"] = (input) =>
         database
-          .asUser(currentUser.userId, (tx) => statusIn(tx, input.hhAccountId, input.vacancyId))
+          .asUser(currentUser.userId, (tx) =>
+            Effect.gen(function*() {
+              // A conflict has nothing to report: no job can exist for an unnamed response.
+              const chatId = yield* targetIn(tx, input.hhAccountId, input.vacancyId, input.resumeId ?? null).pipe(
+                Effect.catchTag("Conflict", () => Effect.succeed(null))
+              )
+              return yield* statusIn(tx, input.hhAccountId, input.vacancyId, chatId)
+            })
+          )
           .pipe(Effect.mapError(toStorageError("letter.status")))
 
       const draftGet: LetterAttachShape["draftGet"] = (key) =>

@@ -14,7 +14,8 @@ import {
   submitPreflight,
   vacancyUrl,
   wantsMoreNegotiations,
-  wantsMoreSyncPages
+  wantsMoreSyncPages,
+  chatUrl
 } from "../src/browser/core.ts"
 import { hhProfileDir, safeProfileName } from "../src/browser/profile.ts"
 
@@ -275,5 +276,11 @@ describe("negotiations sync", () => {
       { url: "https://hh.ru/account/login", html: "<html><body>login</body></html>" }
     ])
     expect(exit.tag).toBe("session_expired")
+  })
+})
+
+describe("chatUrl", () => {
+  test("opens the chat of one response", () => {
+    expect(chatUrl("https://hh.ru/", "5770068788")).toBe("https://hh.ru/chat/5770068788")
   })
 })

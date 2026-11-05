@@ -287,6 +287,8 @@ export const letterAttachJob = (
     readonly sessionProfile: string | null
     readonly letter: string
     readonly letterHash: string
+    /** The hh chat of the response, when it is known. */
+    readonly chatId: string | null
     /** Grows with every earlier job of this vacancy and account, so a failed try can be redone. */
     readonly sequence: number
   }
@@ -304,7 +306,8 @@ export const letterAttachJob = (
       externalId: input.externalId,
       canonicalUrl: input.canonicalUrl,
       sessionProfile: input.sessionProfile,
-      letter: input.letter
+      letter: input.letter,
+      chatId: input.chatId
     },
-    idempotencyKey: `vacancy:${input.vacancyId}:account:${input.hhAccountId}:letter_attach:${input.letterHash}:${input.sequence}`
+    idempotencyKey: `vacancy:${input.vacancyId}:account:${input.hhAccountId}:chat:${input.chatId ?? "none"}:letter_attach:${input.letterHash}:${input.sequence}`
   })

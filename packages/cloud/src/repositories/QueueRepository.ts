@@ -609,7 +609,8 @@ export const latestForVacancy = (
   tx: Executor,
   hhAccountId: string,
   vacancyId: string,
-  stage: JobStage
+  stage: JobStage,
+  chatId: string | null = null
 ): RepoEffect<{
   readonly job: HarnessJob
   readonly lastError: string | null
@@ -622,6 +623,7 @@ export const latestForVacancy = (
       sql`${harnessJob.hhAccountId} = ${hhAccountId}
         and ${harnessJob.stage} = ${stage}
         and ${harnessJob.payload}->>'vacancyId' = ${vacancyId}
+        and (${chatId}::text is null or ${harnessJob.payload}->>'chatId' = ${chatId})
         and ${harnessJob.status} <> 'cancelled'`
     )
     .orderBy(sql`${harnessJob.createdAt} desc`)
@@ -643,11 +645,13 @@ export const countForVacancy = (
   tx: Executor,
   hhAccountId: string,
   vacancyId: string,
-  stage: JobStage
+  stage: JobStage,
+  chatId: string | null = null
 ): RepoEffect<number> =>
   tx
     .execute(
       sql`select count(*)::int as n from harness_jobs
-          where hh_account_id = ${hhAccountId} and stage = ${stage} and payload->>'vacancyId' = ${vacancyId}`
+          where hh_account_id = ${hhAccountId} and stage = ${stage} and payload->>'vacancyId' = ${vacancyId}
+            and (${chatId}::text is null or payload->>'chatId' = ${chatId})`
     )
     .pipe(Effect.map((result) => Number((result.rows[0] as { n?: number } | undefined)?.n ?? 0)))
