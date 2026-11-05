@@ -40,6 +40,8 @@ if (!enabled || serverUrl === null) {
   describe("ad-hoc vacancy search (DecisionService.list)", () => {
     test("combines seniority, skills, company-size proxies, preset, fit bounds and sort", async () => {
       const tenant = await support.seedTenant("search")
+      // These vacancies are not all DevOps by title; the filter is not under test here.
+      await support.openApplyFilter(tenant)
 
       const small = await support.seedEmployerStats("e-small", "Small Co", { rating: 4.2, reviewsCount: 12 })
       const big = await support.seedEmployerStats("e-big", "Big Corp", { rating: 3.9, reviewsCount: 5000 })
@@ -72,11 +74,6 @@ if (!enabled || serverUrl === null) {
       const unratedMiddle = await support.seedSearchVacancy({
         label: "unrated1", title: "Support", employerId: unrated, seniority: "middle"
       })
-
-      // A title that is not gated "match" is skipped with fit 0, so gate them.
-      for (const title of ["Platform Engineer", "SRE", "DevOps Engineer", "Infra Engineer", "Lead DevOps", "Support"]) {
-        await support.seedTitleVerdict(title, "match")
-      }
 
       const fits: Record<string, number> = {
         [bigMiddle]: 80, [bigSenior]: 20, [smallMiddle]: 55, [smallUnknown]: 65, [smallSenior]: 50,

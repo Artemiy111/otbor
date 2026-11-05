@@ -39,6 +39,7 @@ import {
   BlacklistId,
   ContactId,
   ConversationId,
+  ApplyFilterId,
   DecisionId,
   EmployerId,
   HarnessId,
@@ -1315,6 +1316,61 @@ export const PresetRecord = Schema.Struct({
 })
 
 export type PresetRecord = typeof PresetRecord.Type
+
+/**
+ * The hard blocks of vacancy selection for one (hh account, resume): a
+ * {@link PresetFilter} plus the scoring settings kept next to it. `resumeId`
+ * null is the account-wide row, the fallback for resumes without their own.
+ */
+export const ApplyFilterSettings = Schema.Struct({
+  /** A vacancy that passes the filter but scores below this fit is skipped. */
+  minFit: Schema.Int,
+  tests: TestsPolicy,
+  freshHalfLifeHours: Schema.Int
+})
+
+export type ApplyFilterSettings = typeof ApplyFilterSettings.Type
+
+export const ApplyFilterRecord = Schema.Struct({
+  id: ApplyFilterId,
+  hhAccountId: HhAccountId,
+  resumeId: Schema.NullOr(ResumeId),
+  filter: PresetFilter,
+  minFit: Schema.Int,
+  tests: TestsPolicy,
+  freshHalfLifeHours: Schema.Int,
+  /** The preset this filter was last copied from; informational, the copy is independent. */
+  templatePresetId: Schema.NullOr(PresetId),
+  updatedAt: Schema.String
+})
+
+export type ApplyFilterRecord = typeof ApplyFilterRecord.Type
+
+/** Which row `ApplyFilterGet` answered from. */
+export const ApplyFilterSource = Schema.Literals(["exact", "account", "default"])
+
+export type ApplyFilterSource = typeof ApplyFilterSource.Type
+
+/**
+ * What `ApplyFilterGet` returns: the filter that applies to the pair, and
+ * where it came from. For `source: "default"` nothing is stored: `id` and
+ * `updatedAt` are null and `filter` is the built-in template.
+ */
+export const ApplyFilterView = Schema.Struct({
+  source: ApplyFilterSource,
+  id: Schema.NullOr(ApplyFilterId),
+  hhAccountId: HhAccountId,
+  /** The resume asked for (not the row's); null for an account-level query. */
+  resumeId: Schema.NullOr(ResumeId),
+  filter: PresetFilter,
+  minFit: Schema.Int,
+  tests: TestsPolicy,
+  freshHalfLifeHours: Schema.Int,
+  templatePresetId: Schema.NullOr(PresetId),
+  updatedAt: Schema.NullOr(Schema.String)
+})
+
+export type ApplyFilterView = typeof ApplyFilterView.Type
 
 export const PresetFacet = Schema.Struct({
   term: Schema.String,

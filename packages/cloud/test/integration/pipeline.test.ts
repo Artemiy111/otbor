@@ -102,7 +102,8 @@ if (!enabled || serverUrl === null) {
       expect(first.apply + first.draft + first.skip).toBe(3)
       expect(first.remaining).toBe(0)
       expect(Object.values(first.byReason).reduce((sum, n) => sum + n, 0)).toBe(3)
-      expect(first.byReason.blocked_archived).toBe(1)
+      // The archived and the Frontend vacancy both fail the apply filter.
+      expect(first.byReason.blocked_filter).toBe(2)
 
       const again = await evaluateIds(tenant.userId, [a, b, c])
       expect(again).toMatchObject({ evaluated: 0, remaining: 0 })

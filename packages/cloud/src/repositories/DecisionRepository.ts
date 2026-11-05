@@ -333,7 +333,8 @@ export interface StaleVacanciesOptions {
 /**
  * The SQL twin of `isDecisionStale` in `@otbor/domain`: no decision, other
  * content, other policy version, or older (non-user) gate rules. Compared
- * against the newest decision of the user for the vacancy.
+ * against the newest decision of the user for the vacancy. Also stale: the
+ * decision predates an edit of any of the user's apply filters.
  */
 const staleFrom = (options: StaleVacanciesOptions) => sql`
   from vacancy
@@ -355,6 +356,11 @@ const staleFrom = (options: StaleVacanciesOptions) => sql`
       or d.vacancy_content_hash is distinct from vacancy.content_hash
       or d.policy_version <> ${options.policyVersion}
       or (d.rules_version <> 0 and d.rules_version < ${options.rulesVersion})
+      -- Editing an apply filter re-decides everything decided before the edit.
+      or exists (
+        select 1 from apply_filter f
+        where f.user_id = ${options.userId} and f.rules_changed_at > d.created_at
+      )
       ${options.analysisPromptVersion === undefined
         ? sql``
         : sql`or exists (

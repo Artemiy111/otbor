@@ -76,6 +76,7 @@ import {
 import { MailGatewayProvider } from "../../src/services/MailGatewayProvider.ts"
 import { MailService, type MailAccountUpsertInput } from "../../src/services/MailService.ts"
 import { MailSync } from "../../src/services/MailSync.ts"
+import { ApplyFilterService, type ApplyFilterServiceShape } from "../../src/services/ApplyFilterService.ts"
 import { PresetService } from "../../src/services/PresetService.ts"
 import { ResumeService } from "../../src/services/ResumeService.ts"
 import { formReadJob, inferenceJob, submitJob } from "../../src/services/jobs.ts"
@@ -273,6 +274,7 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
     InferenceService.layer.pipe(Layer.provide(shared)),
     GateService.layer.pipe(Layer.provide(shared)),
     PresetService.layer.pipe(Layer.provide(shared)),
+    ApplyFilterService.layer.pipe(Layer.provide(shared)),
     ScheduleService.layer.pipe(Layer.provide(Layer.merge(shared, dispatcher)))
   )
 }
@@ -287,6 +289,7 @@ type Requirements =
   | CrawlService
   | GateService
   | PresetService
+  | ApplyFilterService
   | CorpusService
   | CrawlRunner
   | ScheduleService
@@ -1006,6 +1009,50 @@ export const lexiconListFailure = async (userId: string, options: LexiconListInp
       return yield* gate.lexiconList(options)
     })
   )
+
+export const applyFilterGet = (
+  userId: string,
+  input: { readonly hhAccountId: string; readonly resumeId?: string }
+) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const filters = yield* ApplyFilterService
+      return yield* filters.get(input)
+    })
+  )
+
+export const applyFilterSet = (
+  userId: string,
+  input: Parameters<ApplyFilterServiceShape["set"]>[0]
+) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const filters = yield* ApplyFilterService
+      return yield* filters.set(input)
+    })
+  )
+
+export const applyFilterFromPreset = (
+  userId: string,
+  input: Parameters<ApplyFilterServiceShape["fromPreset"]>[0]
+) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const filters = yield* ApplyFilterService
+      return yield* filters.fromPreset(input)
+    })
+  )
+
+/**
+ * Makes the tenant's account filter permissive (no rules; the implicit
+ * archived and blacklist clauses stay), so a test about something else is not
+ * decided by the built-in DevOps filter.
+ */
+export const openApplyFilter = (tenant: Tenant, filter: PresetFilter = {}) =>
+  applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter })
 
 export const removePreset = async (userId: string, id: string) =>
   runAs(

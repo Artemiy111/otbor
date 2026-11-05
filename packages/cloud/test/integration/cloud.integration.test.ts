@@ -2567,7 +2567,7 @@ if (!integrationEnabled || serverUrl === null) {
       expect(row.blacklistLayers).toEqual(["app"])
     })
 
-    test("evaluate blocks with blocked_blacklist by default and proceeds when included", async () => {
+    test("evaluate blocks the app blacklist (through the filter) by default and proceeds when included", async () => {
       const tenant = await seedTenant("blacklist-evaluate")
       const suffix = tag()
 
@@ -2590,8 +2590,8 @@ if (!integrationEnabled || serverUrl === null) {
         fit: 80
       })
       expect(blocked.verdict).toBe("skip")
-      expect(blocked.reasons[0]!.code).toBe("blocked_blacklist")
-      expect(blocked.reasons[0]!.detail).toBe("employer:app")
+      expect(blocked.reasons[0]!.code).toBe("blocked_filter")
+      expect(blocked.reasons[0]!.detail).toBe("not blacklisted")
 
       const included = await evaluateVacancy(tenant.userId, {
         vacancyId: target.vacancyId,
@@ -2599,7 +2599,7 @@ if (!integrationEnabled || serverUrl === null) {
         includeBlacklisted: true
       })
       expect(included.verdict).not.toBe("skip")
-      expect(included.reasons.map((reason) => reason.code)).not.toContain("blocked_blacklist")
+      expect(included.reasons.map((reason) => reason.code)).not.toContain("blocked_filter")
     })
 
     test("RLS keeps one user's blacklist invisible to another", async () => {

@@ -75,6 +75,43 @@ export const preset = pgTable(
   (table) => [index("preset_user_kind_idx").on(table.userId, table.kind)]
 )
 
+/**
+ * The hard blocks of vacancy selection for one (hh account, resume); a null
+ * resume is the account-wide fallback row. `filter` is a `PresetFilter`.
+ */
+export const applyFilter = pgTable(
+  "apply_filter",
+  {
+    id: uuidPk(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    hhAccountId: uuid("hh_account_id")
+      .notNull()
+      .references(() => hhAccount.id, { onDelete: "cascade" }),
+    resumeId: uuid("resume_id").references(() => resume.id, { onDelete: "cascade" }),
+    filter: jsonb("filter").$type<Record<string, unknown>>().notNull().default({}),
+    minFit: integer("min_fit").notNull().default(45),
+    tests: text("tests").notNull().default("human"),
+    freshHalfLifeHours: integer("fresh_half_life_hours").notNull().default(72),
+    templatePresetId: uuid("template_preset_id").references(() => preset.id, {
+      onDelete: "set null"
+    }),
+    /** Last change of the filter or settings; decisions older than this are stale. */
+    rulesChangedAt: timestamp("rules_changed_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt()
+  },
+  (table) => [
+    // Created `nulls not distinct` in migration 0034 (drizzle cannot express it on an index).
+    uniqueIndex("apply_filter_account_resume_idx").on(
+      table.userId,
+      table.hhAccountId,
+      table.resumeId
+    )
+  ]
+)
+
 export const searchQuery = pgTable("search_query", {
   id: uuidPk(),
   url: text("url").notNull(),

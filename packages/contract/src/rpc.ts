@@ -13,6 +13,7 @@ import {
   KeywordMatchLocation,
   ProxyMode,
   SourceSyncKind,
+  TestsPolicy,
   WritingLanguage
 } from "./enums.ts"
 import {
@@ -81,6 +82,8 @@ import {
   HhAccountRecord,
   HhSessionState,
   MailAccountRecord,
+  ApplyFilterRecord,
+  ApplyFilterView,
   PresetFilter,
   PresetPreview,
   PresetRecord,
@@ -1161,6 +1164,52 @@ export const PresetsPreview = Rpc.make("PresetsPreview", {
 })
 
 /* -------------------------------------------------------------------------- */
+/* Apply filter                                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The filter that applies to (account, resume): the exact row, else the
+ * account row (resume null), else the built-in default. `source` says which.
+ */
+export const ApplyFilterGet = Rpc.make("ApplyFilterGet", {
+  payload: Schema.Struct({
+    hhAccountId: HhAccountId,
+    resumeId: Schema.optional(ResumeId)
+  }),
+  success: ApplyFilterView,
+  error: ApiError
+})
+
+/**
+ * Upserts the row for exactly (account, resume). Settings left out keep their
+ * stored value (defaults on first save). `templatePresetId` is kept unless given.
+ */
+export const ApplyFilterSet = Rpc.make("ApplyFilterSet", {
+  payload: Schema.Struct({
+    hhAccountId: HhAccountId,
+    resumeId: Schema.optional(ResumeId),
+    filter: PresetFilter,
+    minFit: Schema.optional(Schema.Int),
+    tests: Schema.optional(TestsPolicy),
+    freshHalfLifeHours: Schema.optional(Schema.Int),
+    templatePresetId: Schema.optional(Schema.NullOr(PresetId))
+  }),
+  success: ApplyFilterRecord,
+  error: ApiError
+})
+
+/** Copies the preset's filter into the row for (account, resume); settings stay. */
+export const ApplyFilterFromPreset = Rpc.make("ApplyFilterFromPreset", {
+  payload: Schema.Struct({
+    hhAccountId: HhAccountId,
+    resumeId: Schema.optional(ResumeId),
+    presetId: PresetId
+  }),
+  success: ApplyFilterRecord,
+  error: ApiError
+})
+
+/* -------------------------------------------------------------------------- */
 /* Queue                                                                      */
 /* -------------------------------------------------------------------------- */
 
@@ -1541,6 +1590,9 @@ export const OtborRpcs = RpcGroup.make(
   PresetsUpsert,
   PresetsRemove,
   PresetsPreview,
+  ApplyFilterGet,
+  ApplyFilterSet,
+  ApplyFilterFromPreset,
   QueueStatsGet,
   QueueJobsList,
   HarnessRegister,

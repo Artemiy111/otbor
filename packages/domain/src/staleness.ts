@@ -1,4 +1,4 @@
-import { DEFAULT_APPLY_POLICY } from "./decision.ts"
+import { APPLY_POLICY_VERSION } from "./decision.ts"
 import { DEVOPS_GATE_POLICY } from "./gate.ts"
 
 /** What a stored decision remembers about the inputs it was made from. */
@@ -18,7 +18,7 @@ export interface CurrentFingerprint {
 }
 
 export const currentVersions = {
-  policyVersion: DEFAULT_APPLY_POLICY.version,
+  policyVersion: APPLY_POLICY_VERSION,
   rulesVersion: DEVOPS_GATE_POLICY.version
 } as const
 

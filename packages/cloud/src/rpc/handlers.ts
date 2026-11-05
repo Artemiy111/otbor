@@ -1,6 +1,7 @@
 import { OtborRpcs, type ProxyMode, type VacancyId } from "@otbor/contract"
 import { Effect, Layer } from "effect"
 import { ProxyService } from "../services/ProxyService.ts"
+import { ApplyFilterService } from "../services/ApplyFilterService.ts"
 import { ApplicationService } from "../services/ApplicationService.ts"
 import { BlacklistService } from "../services/BlacklistService.ts"
 import { ContactService } from "../services/ContactService.ts"
@@ -65,6 +66,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const gate = yield* GateService
     const applications = yield* ApplicationService
     const presets = yield* PresetService
+    const applyFilters = yield* ApplyFilterService
     const queue = yield* QueueService
     const schedules = yield* ScheduleService
     const contacts = yield* ContactService
@@ -238,6 +240,10 @@ export const OtborHandlers = OtborRpcs.toLayer(
         presets.remove(id).pipe(Effect.map((deleted) => ({ id, deleted }))),
       PresetsPreview: ({ filter }) => presets.preview(filter),
 
+      ApplyFilterGet: (payload) => applyFilters.get(payload),
+      ApplyFilterSet: (payload) => applyFilters.set(payload),
+      ApplyFilterFromPreset: (payload) => applyFilters.fromPreset(payload),
+
       QueueStatsGet: ({ kind }) => queue.stats(kind),
       QueueJobsList: (payload) => queue.jobs(payload),
 
@@ -322,6 +328,7 @@ export const OtborServices = Layer.mergeAll(
   GateService.layer,
   ApplicationService.layer,
   PresetService.layer,
+  ApplyFilterService.layer,
   NegotiationsSync.layer,
   LetterAttach.layer,
   QueueService.layer

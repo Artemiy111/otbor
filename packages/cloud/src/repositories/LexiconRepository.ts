@@ -1,7 +1,13 @@
 import type { LexiconKeyword, PresetFilter, PresetRule } from "@otbor/contract"
 import { expandAreaIds } from "@otbor/contract/areas"
 import type { LexiconEntryInput, LexiconMatch } from "@otbor/domain"
-import { ANALYSIS_PROMPT_VERSION, matchLexicon, normalizeTerm } from "@otbor/domain"
+import {
+  ANALYSIS_PROMPT_VERSION,
+  describeGroup,
+  describeRule,
+  matchLexicon,
+  normalizeTerm
+} from "@otbor/domain"
 import { sql, type SQL } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
@@ -314,56 +320,120 @@ export interface VacancyFilterContext {
   readonly userId?: string
 }
 
-export const vacancyFilterSql = (
+/** One AND clause of a filter with a readable name, as `vacancyFilterSql` joins them. */
+interface FilterPart {
+  readonly label: string
+  readonly clause: SQL
+}
+
+/**
+ * The clauses of a filter in evaluation order: the implicit ones
+ * (archived, app blacklist, legacy `text`/`gate`), every rule, every OR group.
+ * `vacancyFilterSql` ANDs them; `evaluateFilter` reports each separately.
+ */
+const filterParts = (
   filter: PresetFilter,
-  context: VacancyFilterContext = {}
-): SQL => {
-  const clauses: Array<SQL> = [sql`true`]
+  context: VacancyFilterContext
+): ReadonlyArray<FilterPart> => {
+  const parts: Array<FilterPart> = []
 
   const hasArchivedRule = [
     ...(filter.rules ?? []),
     ...(filter.groups ?? []).flatMap((group) => group.branches.flatMap((branch) => branch.rules))
   ].some((rule) => rule.field === "archived")
   if (filter.includeArchived !== true && !hasArchivedRule) {
-    clauses.push(sql`not vacancy.archived`)
+    parts.push({ label: "not archived", clause: sql`not vacancy.archived` })
   }
 
   // A preset hides app-level blacklisted companies unless it opts in. Account
   // and hh-native layers stay out of a shared preset preview.
   if (filter.includeBlacklisted !== true && context.userId !== undefined) {
-    clauses.push(sql`not ${BlacklistRepository.appBlacklistExistsSql({
-      userId: context.userId,
-      employerExternalId: sql`(select e_bl.external_id from employer e_bl where e_bl.id = vacancy.employer_id)`,
-      vacancyExternalId: sql`vacancy.external_id`
-    })}`)
+    parts.push({
+      label: "not blacklisted",
+      clause: sql`not ${BlacklistRepository.appBlacklistExistsSql({
+        userId: context.userId,
+        employerExternalId: sql`(select e_bl.external_id from employer e_bl where e_bl.id = vacancy.employer_id)`,
+        vacancyExternalId: sql`vacancy.external_id`
+      })}`
+    })
   }
 
   const text = filter.text?.trim()
   if (text !== undefined && text !== "") {
-    clauses.push(sql`vacancy.title ilike ${likePattern(text)}`)
+    parts.push({
+      label: `title contains ${text}`,
+      clause: sql`vacancy.title ilike ${likePattern(text)}`
+    })
   }
 
   if (filter.gate !== undefined) {
-    clauses.push(sql`exists (
+    parts.push({
+      label: `gate = ${filter.gate}`,
+      clause: sql`exists (
       select 1 from title_verdict
       where title_verdict.normalized_title = regexp_replace(lower(btrim(vacancy.title)), '\\s+', ' ', 'g')
         and title_verdict.verdict = ${filter.gate}
-    )`)
+    )`
+    })
   }
 
   for (const rule of filter.rules ?? []) {
-    clauses.push(ruleClause(rule, filter, context))
+    parts.push({ label: describeRule(rule), clause: ruleClause(rule, filter, context) })
   }
 
   for (const group of filter.groups ?? []) {
     const branches = group.branches
       .filter((branch) => branch.rules.length > 0)
       .map((branch) => sql`(${sql.join(branch.rules.map((rule) => ruleClause(rule, filter, context)), sql` and `)})`)
-    if (branches.length > 0) clauses.push(sql`(${sql.join(branches, sql` or `)})`)
+    if (branches.length > 0) {
+      parts.push({ label: describeGroup(group), clause: sql`(${sql.join(branches, sql` or `)})` })
+    }
   }
 
-  return sql.join(clauses, sql` and `)
+  return parts
 }
+
+export const vacancyFilterSql = (
+  filter: PresetFilter,
+  context: VacancyFilterContext = {}
+): SQL =>
+  sql.join([sql`true`, ...filterParts(filter, context).map((part) => part.clause)], sql` and `)
+
+/**
+ * Evaluates a filter against one vacancy with the very SQL search uses: one
+ * query, one boolean per clause. `failed` names every clause that did not
+ * hold, so a skip can say which rules cost the vacancy. A missing vacancy
+ * fails. `includeBlacklisted` lifts the app blacklist exclusion like the
+ * filter's own flag does.
+ */
+export const evaluateFilter = (
+  tx: Executor,
+  filter: PresetFilter,
+  vacancyId: string,
+  context: VacancyFilterContext & { readonly includeBlacklisted?: boolean } = {}
+): RepoEffect<{ readonly passed: boolean; readonly failed: ReadonlyArray<string> }> =>
+  Effect.gen(function*() {
+    const effective: PresetFilter = context.includeBlacklisted === true
+      ? { ...filter, includeBlacklisted: true }
+      : filter
+    const parts = filterParts(effective, context)
+    if (parts.length === 0) return { passed: true, failed: [] }
+
+    const columns = sql.join(
+      parts.map((part, index) => sql`coalesce(${part.clause}, false) as ${sql.raw(`c${index}`)}`),
+      sql`, `
+    )
+    const result = yield* tx.execute(sql`
+      select ${columns} from vacancy where vacancy.id = ${vacancyId}
+    `)
+    const row = result.rows[0] as Record<string, unknown> | undefined
+    if (row === undefined) return { passed: false, failed: ["vacancy not found"] }
+
+    const failed = parts
+      .filter((_, index) => row[`c${index}`] !== true)
+      .map((part) => part.label)
+    return { passed: failed.length === 0, failed }
+  })
 
 const vacancyCountSql = (
   filter: PresetFilter,

@@ -1,5 +1,7 @@
+import { DEVOPS_APPLY_FILTER, DEVOPS_PRESET_TITLE } from "@otbor/domain"
 import { Config, Effect } from "effect"
 import { Database } from "../db/Database.ts"
+import * as PresetRepository from "../repositories/PresetRepository.ts"
 import { users } from "../db/tables.ts"
 
 /**
@@ -20,5 +22,21 @@ export const ensureBootstrapUser = Effect.gen(function*() {
       .insert(users)
       .values({ id: userId, name: "Local user", email })
       .onConflictDoNothing({ target: users.id })
+  )
+})
+
+/**
+ * System presets: templates every user can copy into an apply filter. The
+ * "DevOps" one holds the same filter as the built-in default. Idempotent; the
+ * stored filter follows the one in code.
+ */
+export const ensureSystemPresets = Effect.gen(function*() {
+  const database = yield* Database
+  yield* database.asOwner((tx) =>
+    PresetRepository.ensureSystem(tx, {
+      kind: "apply",
+      title: DEVOPS_PRESET_TITLE,
+      filter: DEVOPS_APPLY_FILTER
+    })
   )
 })

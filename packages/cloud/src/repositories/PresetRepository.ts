@@ -177,3 +177,34 @@ export const upsert = (
 
     return toRecord(row!)
   })
+
+/**
+ * Creates or refreshes a system preset (`user_id` null, everyone reads it,
+ * only the owner writes). Keyed by kind and title, so a restart converges to
+ * the filter in code instead of piling up copies.
+ */
+export const ensureSystem = (
+  tx: Executor,
+  input: {
+    readonly kind: "explore" | "apply"
+    readonly title: string
+    readonly filter: PresetFilter
+  }
+): RepoEffect<PresetRecord> =>
+  Effect.gen(function*() {
+    const filter = input.filter as Record<string, unknown>
+    const [updated] = yield* tx
+      .update(preset)
+      .set({ filter, updatedAt: new Date() })
+      .where(
+        sql`${preset.userId} is null and ${preset.system} and ${preset.kind} = ${input.kind} and ${preset.title} = ${input.title}`
+      )
+      .returning()
+    if (updated !== undefined) return toRecord(updated)
+
+    const [row] = yield* tx
+      .insert(preset)
+      .values({ userId: null, kind: input.kind, title: input.title, filter, system: true })
+      .returning()
+    return toRecord(row!)
+  })

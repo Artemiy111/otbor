@@ -111,9 +111,6 @@ if (!enabled || serverUrl === null) {
       const after = await latest(tenant.userId, id)
       expect(after?.verdict).toBe("apply")
       expect(after?.gate).toBe("match")
-      expect(after?.reasons.find((reason) => reason.code === "role_match")?.detail).toBe(
-        "analysis (devops 0.97)"
-      )
       expect(after?.reasons.find((reason) => reason.code === "seniority")?.detail).toBe(
         "analysis: senior -> senior (0.90)"
       )
@@ -127,14 +124,15 @@ if (!enabled || serverUrl === null) {
       expect((await latest(tenant.userId, id))?.verdict).toBe("skip")
     })
 
-    test("a title reject is final even with a confident analysis", async () => {
+    test("a title reject rule is final even with a confident analysis", async () => {
       const tenant = await support.seedTenant("analysis-reject")
       const id = await seed("an-reject", "Менеджер по продажам DevOps-услуг")
       await store(id, answers)
       await batch(tenant.userId, [id])
       const decision = await latest(tenant.userId, id)
       expect(decision?.verdict).toBe("skip")
-      expect(decision?.gate).toBe("reject")
+      expect(decision?.reasons[0]?.code).toBe("blocked_filter")
+      expect(decision?.reasons[0]?.detail).toContain("title not_contains продаж")
     })
 
     test("a confident unpaid test task in the analysis blocks the vacancy", async () => {

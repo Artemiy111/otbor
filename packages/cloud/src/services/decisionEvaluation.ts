@@ -2,22 +2,19 @@ import type {
   ApiError,
   DecisionRecord,
   EvaluateBatchResult,
-  GateVerdict,
-  RoleFamily,
   WorkFormat
 } from "@otbor/contract"
 import { InvalidInput, NotFound } from "@otbor/contract"
 import {
   ANALYSIS_PROMPT_VERSION,
+  APPLY_POLICY_VERSION,
   currentVersions,
-  DEFAULT_APPLY_POLICY,
   decide,
   detectVacancyTextFacts,
   gateTitle,
   mergeTextFacts,
   titleCacheKey,
   toDecisionAnalysis,
-  type ApplyPolicy,
   type LexiconMatch,
   type RoleGateOutput,
   type VacancySignal
@@ -26,7 +23,7 @@ import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import { Database, type Executor, type RepoEffect } from "../db/Database.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
-import * as BlacklistRepository from "../repositories/BlacklistRepository.ts"
+import * as ApplyFilterRepository from "../repositories/ApplyFilterRepository.ts"
 import * as DecisionRepository from "../repositories/DecisionRepository.ts"
 import * as LexiconRepository from "../repositories/LexiconRepository.ts"
 import * as VacancyAnalysisRepository from "../repositories/VacancyAnalysisRepository.ts"
@@ -143,45 +140,15 @@ export const evaluateInTx = (
     const stored = yield* LexiconRepository.matchesFor(tx, input.vacancyId)
     const keywords = stored.map(toLexiconMatch)
 
-    // A user verdict outranks the rules; otherwise evaluate the current rules
-    // and cache the result for the next vacancy with the same normalized
-    // title. A cached rules verdict from older rules is not trusted: it would
-    // pin the decision to a stale rulesVersion and the sweep would redo it.
+    // The title gate no longer decides anything (the apply filter has title
+    // rules). Its rules verdict is still cached for the `gate` search rule and
+    // the title preview until stage 2 removes them.
     const gateRules = gateTitle(row.title)
     const found = yield* DecisionRepository.findVerdict(tx, titleCacheKey(row.title))
     const cached = found !== null &&
         (found.source === "user" || found.rulesVersion >= gateRules.rulesVersion)
       ? found
       : null
-
-    const gate = cached === null
-      ? {
-          verdict: gateRules.verdict,
-          roleFamily: gateRules.role as RoleFamily,
-          rejectedBy: gateRules.rejectedBy,
-          rulesVersion: gateRules.rulesVersion,
-          weak: gateRules.weak
-        }
-      : {
-          verdict: cached.verdict as GateVerdict,
-          roleFamily: cached.roleFamily as RoleFamily | null,
-          rejectedBy: cached.rejectedBy ?? null,
-          rulesVersion: cached.rulesVersion,
-          weak: [] as ReadonlyArray<string>
-        }
-
-    // The blacklist is a soft filter: the layers are computed even when
-    // included, and only a caller that did not ask for them turns the match
-    // into a block.
-    const layers = yield* BlacklistRepository.layersFor(tx, {
-      userId,
-      hhAccountId,
-      employerExternalId: row.employerExternalId,
-      vacancyExternalId: row.externalId
-    })
-    const blacklist = input.includeBlacklisted === true
-      ? null
-      : BlacklistRepository.primaryMatch(layers)
 
     // An explicit fit wins. Otherwise a current personal judgement (LLM or
     // external agent) replaces the deterministic fit; a stale one is ignored,
@@ -197,26 +164,34 @@ export const evaluateInTx = (
       ? false
       : yield* ApplicationRepository.existsForVacancy(tx, hhAccountId, row.id, resumeId)
 
-    const policy: ApplyPolicy = DEFAULT_APPLY_POLICY
+    // The hard blocks: the (account, resume) apply filter, evaluated by the
+    // same SQL as search. The blacklist is part of it; an explicit
+    // `includeBlacklisted` still lifts it.
+    const resolved = yield* ApplyFilterRepository.resolve(tx, userId, hhAccountId, resumeId)
+    const outcome = yield* LexiconRepository.evaluateFilter(tx, resolved.filter, row.id, {
+      userId,
+      includeBlacklisted: input.includeBlacklisted === true
+    })
+    const settings = {
+      minFit: resolved.minFit,
+      tests: resolved.tests,
+      freshHalfLifeHours: resolved.freshHalfLifeHours
+    }
     const blocks = {
-      hidden: false,
-      blacklist,
       applied,
-      employerCooldown: false,
       hasTest: unpaidTest,
       testRequired: unpaidTest
     }
 
     const inputHash = stableHash({
       contentHash: row.contentHash,
-      gate: gate.verdict,
-      rulesVersion: gate.rulesVersion,
-      hidden: false,
-      blacklist: blacklist === null ? null : `${blacklist.target}:${blacklist.scope}`,
+      // A new filter or settings must produce a new decision row.
+      filter: stableHash({ filter: resolved.filter, ...settings }),
+      includeBlacklisted: input.includeBlacklisted === true,
       applied,
       fit,
       fitJudgement: llm?.id,
-      policy: policy.version,
+      policy: APPLY_POLICY_VERSION,
       // Only what the cascade reads from the analysis, so an unrelated fact does not
       // re-decide. Absent keys keep the hashes of vacancies without an analysis stable.
       ...(analysisSignal === null && !unpaidTest ? {} : { analysis: analysisSignal, unpaidTest })
@@ -224,10 +199,10 @@ export const evaluateInTx = (
 
     const decision = decide({
       vacancy: signalFrom(row),
-      gate,
+      filter: outcome,
+      settings,
       keywords,
       blocks,
-      policy,
       analysis: analysisSignal,
       fitOverride: fit ?? undefined,
       now: new Date()

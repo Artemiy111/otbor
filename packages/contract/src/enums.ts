@@ -149,6 +149,8 @@ export const DecisionReasonCode = Schema.Literals([
   "blocked_low_fit",
   "blocked_keywords",
   "blocked_seniority",
+  /** Hard blocks of the apply filter; `detail` lists the failed rules. */
+  "blocked_filter",
   "manual"
 ])
 
