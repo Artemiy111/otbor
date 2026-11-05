@@ -118,6 +118,23 @@ export const importTopics = (
             )
         `)
       }
+      // hh holds a response, so an otbor draft (or a stuck attempt) for it is
+      // wrong: hh is the authority. The row keeps its origin and its kit.
+      const settled = yield* tx.execute(sql`
+        update application
+        set state = 'submitted', hh_status = ${topic.state}, hh_responded_at = ${respondedAt},
+            submitted_at = coalesce(submitted_at, ${respondedAt}, now()), last_error = null, updated_at = now()
+        where hh_account_id = ${input.hhAccountId}
+          and vacancy_id = ${vacancyId}
+          and origin = 'otbor'
+          and state in ('draft', 'needs_human', 'failed')
+          and (resume_id is null or ${resumeId}::uuid is null or resume_id = ${resumeId}::uuid)
+        returning id
+      `)
+      if (settled.rows.length > 0) {
+        updated += 1
+        continue
+      }
       const result = yield* tx.execute(sql`
         insert into application (user_id, hh_account_id, vacancy_id, resume_id, state, origin, hh_status, hh_responded_at)
         select ${input.userId}, ${input.hhAccountId}, ${vacancyId}, ${resumeId}, 'submitted', 'imported',
