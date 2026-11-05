@@ -37,7 +37,10 @@ withDefaults(
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
-      <h1 class="text-2xl font-semibold tracking-tight">{{ title }}</h1>
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <h1 class="text-2xl font-semibold tracking-tight">{{ title }}</h1>
+        <slot name="title-aside" />
+      </div>
       <p v-if="description" class="max-w-3xl text-sm text-muted-foreground">{{ description }}</p>
     </div>
     <div v-if="$slots.actions" class="flex shrink-0 flex-wrap items-center gap-2">

@@ -34,7 +34,6 @@ const validUntil = computed(() => props.data.facts?.hh?.validUntil ?? null)
       <span aria-hidden="true">·</span>
       <span>актуальна до {{ formatDate(validUntil) }}</span>
     </template>
-    <Badge v-if="vacancy.archived" variant="neutral">в архиве</Badge>
     <Badge v-if="vacancy.blacklisted" variant="destructive">в чёрном списке</Badge>
     <StatusBadge
       v-if="data.titleVerdict"

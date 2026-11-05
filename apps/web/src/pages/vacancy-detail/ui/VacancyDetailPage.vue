@@ -27,6 +27,13 @@ const data = page.data
 <template>
   <section :class="data?.vacancy.archived ? 'vacancy-archived' : ''">
     <PageHeader :title="data?.vacancy.title ?? 'Вакансия'" back-to="/vacancies" back-label="Вакансии">
+      <template v-if="data?.vacancy.archived" #title-aside>
+        <span
+          class="-rotate-6 select-none rounded-md border-2 border-double border-red-600/70 px-2.5 py-0.5 text-sm font-black uppercase tracking-[0.25em] text-red-600/70 dark:border-red-400/70 dark:text-red-400/70"
+        >
+          Архив
+        </span>
+      </template>
       <template #actions>
         <Hint v-if="data" text="Заново скачать страницу вакансии с hh">
         <Button
@@ -62,13 +69,6 @@ const data = page.data
     </div>
 
     <template v-else-if="data">
-      <div
-        v-if="data.vacancy.archived"
-        aria-label="Вакансия в архиве"
-        class="pointer-events-none fixed right-10 top-24 z-20 -rotate-12 select-none rounded-md border-4 border-double border-red-600/70 px-4 py-1 text-3xl font-black uppercase tracking-[0.3em] text-red-600/70 dark:border-red-400/70 dark:text-red-400/70"
-      >
-        Архив
-      </div>
       <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0 flex-1 space-y-2.5">
           <VacancyMetaLine :data="data" />
@@ -78,7 +78,7 @@ const data = page.data
           <VacancyLayoutSwitch v-model="layout" />
         </div>
       </div>
-      <div :class="data.vacancy.archived ? 'opacity-60 grayscale' : ''">
+      <div :class="data.vacancy.archived ? 'opacity-75 saturate-50' : ''">
         <VacancyLayoutDesk v-if="layout === 'desk'" :page="page" />
         <VacancyLayoutFocus v-else :page="page" />
       </div>
