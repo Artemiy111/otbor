@@ -259,7 +259,7 @@ export class NegotiationsSync extends Context.Service<NegotiationsSync, Negotiat
           .asUser(currentUser.userId, (tx) => statusIn(tx, hhAccountId))
           .pipe(Effect.mapError(toStorageError("negotiations.status")))
 
-      return { run, status }
+      return NegotiationsSync.of({ run, status })
     })
   )
 }

@@ -35,7 +35,7 @@ export class TelegramGatewayProvider extends Context.Service<
   TelegramGatewayProvider,
   TelegramGatewayProviderShape
 >()("otbor/cloud/TelegramGatewayProvider") {
-  static readonly layer = Layer.succeed(TelegramGatewayProvider, {
+  static readonly layer = Layer.succeed(TelegramGatewayProvider, TelegramGatewayProvider.of({
     open: (account, options = {}) =>
       Effect.gen(function*() {
         const app = yield* Effect.tryPromise({
@@ -74,9 +74,9 @@ export class TelegramGatewayProvider extends Context.Service<
           proxy: config?.proxy ?? null
         })
       })
-  })
+  }))
 
   /** Test double: one gateway for every account, no MTProto and no disk. */
   static readonly fixed = (gateway: TelegramGateway): Layer.Layer<TelegramGatewayProvider> =>
-    Layer.succeed(TelegramGatewayProvider, { open: () => Effect.succeed(gateway) })
+    Layer.succeed(TelegramGatewayProvider, TelegramGatewayProvider.of({ open: () => Effect.succeed(gateway) }))
 }

@@ -34,6 +34,7 @@
     "@types/node": "^24.0.0",
     "effect": "4.1.0",
     "oxlint": "^1.91.0",
+    "oxlint-plugin-effect": "^0.32.1",
     "typescript": "6.0.3"
   }
 }

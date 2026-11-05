@@ -23,7 +23,7 @@ export class MailGatewayProvider extends Context.Service<
   MailGatewayProvider,
   MailGatewayProviderShape
 >()("otbor/cloud/MailGatewayProvider") {
-  static readonly layer = Layer.succeed(MailGatewayProvider, {
+  static readonly layer = Layer.succeed(MailGatewayProvider, MailGatewayProvider.of({
     open: (account) =>
       Effect.gen(function*() {
         const secret = yield* Effect.tryPromise({
@@ -50,9 +50,9 @@ export class MailGatewayProvider extends Context.Service<
           password: secret.password
         })
       })
-  })
+  }))
 
   /** Test double: one gateway for every account. */
   static readonly fixed = (gateway: MailGateway): Layer.Layer<MailGatewayProvider> =>
-    Layer.succeed(MailGatewayProvider, { open: () => Effect.succeed(gateway) })
+    Layer.succeed(MailGatewayProvider, MailGatewayProvider.of({ open: () => Effect.succeed(gateway) }))
 }

@@ -215,7 +215,7 @@ const makeFake = (options: {
       })
     }
   } as unknown as OtborApi
-  return { calls, layer: Layer.succeed(Api, { rpc, url: "http://fake/rpc" }) }
+  return { calls, layer: Layer.succeed(Api, Api.of({ rpc, url: "http://fake/rpc" })) }
 }
 
 const withClient = <A>(

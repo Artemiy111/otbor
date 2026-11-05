@@ -378,30 +378,29 @@ const storeMessage = (
           : threadKey
 
     let conversationTouched = 0
-    const conversationId =
-      parentConversation ??
-      (yield* Effect.gen(function*() {
-        const existing =
-          (yield* ConversationRepository.findByExternal(tx, {
-            userId,
-            channel: "mail",
-            accountId,
-            externalId: threadKey
-          })) ??
-          (externalKey === threadKey
-            ? null
-            : yield* ConversationRepository.findByExternal(tx, {
-                userId,
-                channel: "mail",
-                accountId,
-                externalId: externalKey
-              }))
+    let conversationId = parentConversation
+    if (conversationId === null || conversationId === undefined) {
+      const existing =
+        (yield* ConversationRepository.findByExternal(tx, {
+          userId,
+          channel: "mail",
+          accountId,
+          externalId: threadKey
+        })) ??
+        (externalKey === threadKey
+          ? null
+          : yield* ConversationRepository.findByExternal(tx, {
+              userId,
+              channel: "mail",
+              accountId,
+              externalId: externalKey
+            }))
 
-        if (existing !== null) {
-          conversationTouched = 1
-          return existing
-        }
-        const created = yield* ConversationRepository.upsert(tx, {
+      if (existing !== null) {
+        conversationTouched = 1
+        conversationId = existing
+      } else {
+        conversationId = yield* ConversationRepository.upsert(tx, {
           userId,
           channel: "mail",
           accountId,
@@ -412,8 +411,8 @@ const storeMessage = (
           raw: { threadKey, subjectKey }
         })
         conversationTouched = 1
-        return created
-      }))
+      }
+    }
 
     const direction: "in" | "out" = role === "sent" ? "out" : "in"
     yield* ConversationRepository.appendMessages(tx, userId, conversationId, [

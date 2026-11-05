@@ -1543,14 +1543,14 @@ if (!integrationEnabled || serverUrl === null) {
       await setScheduleNextRun(good.id, new Date(now.getTime() - 60_000))
 
       const targets: Array<string> = []
-      const runner = Layer.succeed(CrawlRunner, {
+      const runner = Layer.succeed(CrawlRunner, CrawlRunner.of({
         run: (input) => {
           targets.push(input.url)
           return input.url === bad.targetId
             ? Effect.fail(new InvalidInput({ message: "hh is blocked" }))
             : Effect.succeed(cleanResult())
         }
-      })
+      }))
 
       const outcomes = await runDueSchedulesAs(tenant.userId, runner, { now, limit: 10 })
 
@@ -1580,14 +1580,14 @@ if (!integrationEnabled || serverUrl === null) {
 
       const called = Deferred.makeUnsafe<void>()
       const targets: Array<string> = []
-      const runner = Layer.succeed(CrawlRunner, {
+      const runner = Layer.succeed(CrawlRunner, CrawlRunner.of({
         run: (input) =>
           Effect.gen(function*() {
             targets.push(input.url)
             yield* Deferred.succeed(called, undefined)
             return cleanResult()
           })
-      })
+      }))
 
       const accepted = await runAsWithRunner(
         tenant.userId,
@@ -2138,7 +2138,7 @@ if (!integrationEnabled || serverUrl === null) {
         proxyMode?: string
         onProgress?: (progress: Record<string, unknown>) => unknown
       }> = []
-      const hydrationLayer = Layer.succeed(HydrationRunner, {
+      const hydrationLayer = Layer.succeed(HydrationRunner, HydrationRunner.of({
         run: (_userId: string, options: { limit?: number; delayMs?: number; proxyMode?: string } = {}) =>
           Effect.sync(() => {
             hydrationCalls.push(options)
@@ -2161,7 +2161,7 @@ if (!integrationEnabled || serverUrl === null) {
         hydrateOne: (_userId: string, _id: string) => Effect.succeed(true),
         fetchByReference: (_userId: string, _reference: string) =>
           Effect.die("fetchByReference is not used by schedules")
-      })
+      }))
       const hydrationSchedule = await scheduleUpsert(tenant.userId, {
         kind: "vacancy_hydration",
         targetId: "global",

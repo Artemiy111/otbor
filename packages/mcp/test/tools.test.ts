@@ -188,7 +188,7 @@ const fake = {
   SystemHealth: () => Effect.succeed({ status: "ok", version: "t", database: true, now: "now" })
 } as unknown as OtborApi
 
-const FakeApi = Layer.succeed(Api, { rpc: fake, url: "http://fake/rpc" })
+const FakeApi = Layer.succeed(Api, Api.of({ rpc: fake, url: "http://fake/rpc" }))
 
 const withClient = <A, E>(
   layer: Layer.Layer<Api>,

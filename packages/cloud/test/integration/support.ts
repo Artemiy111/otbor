@@ -200,7 +200,7 @@ export interface LayerOptions {
 export const layerFor = (userId: string, options: LayerOptions = {}) => {
   const shared = Layer.merge(
     Database.layer,
-    Layer.succeed(CurrentUser, { userId: userId as UserId })
+    Layer.succeed(CurrentUser, CurrentUser.of({ userId: userId as UserId }))
   )
   const crawlServices = Layer.merge(CrawlService.layer, CorpusService.layer).pipe(
     Layer.provide(shared)
@@ -1631,7 +1631,7 @@ export const telegramAccountRowsFor = async (userId: string) =>
 
 /** A fake runner that records every target and returns a clean result. */
 export const recordingRunner = (targets: Array<string>) => {
-  const layer = Layer.succeed(CrawlRunner, {
+  const layer = Layer.succeed(CrawlRunner, CrawlRunner.of({
     run: (input) =>
       Effect.sync(() => {
         targets.push(input.url)
@@ -1648,7 +1648,7 @@ export const recordingRunner = (targets: Array<string>) => {
           errors: 0
         } satisfies CrawlRunnerResult
       })
-  })
+  }))
   return layer
 }
 

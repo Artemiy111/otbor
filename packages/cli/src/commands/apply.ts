@@ -194,11 +194,11 @@ const kit = Command.make(
     const api = yield* Api
     const applicationId = yield* resolveApplicationId(api, id)
 
-    const letterText = yield* Effect.gen(function*() {
-      if (Option.isNone(letter)) return null
+    let letterText: string | null = null
+    if (Option.isSome(letter)) {
       const raw = letter.value
-      return raw.startsWith("@") ? yield* fs.readFileString(raw.slice(1)) : raw
-    })
+      letterText = raw.startsWith("@") ? yield* fs.readFileString(raw.slice(1)) : raw
+    }
 
     const parsed: Array<Answer> = answers.map((pair) => {
       const at = pair.indexOf("=")

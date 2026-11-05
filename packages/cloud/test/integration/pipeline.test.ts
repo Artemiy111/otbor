@@ -262,9 +262,9 @@ if (!enabled || serverUrl === null) {
     })
 
     const runnerReturning = (result: CrawlRunnerResult, seen: Array<unknown> = []) =>
-      Layer.succeed(CrawlRunner, {
+      Layer.succeed(CrawlRunner, CrawlRunner.of({
         run: (input) => Effect.sync(() => (seen.push(input), result))
-      })
+      }))
 
     const runOnce = (userId: string, runner: ReturnType<typeof runnerReturning>) =>
       support.runAsWithRunner(

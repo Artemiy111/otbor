@@ -8,7 +8,7 @@ import type {
 } from "@otbor/contract"
 import { AnswersInvalid, Conflict, InvalidInput, LimitExceeded, NotFound } from "@otbor/contract"
 import { sql } from "drizzle-orm"
-import { Config, Context, Effect, Layer } from "effect"
+import { Config, Context, Effect, Layer, Match } from "effect"
 import { Database, type Executor } from "../db/Database.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
 import * as DecisionRepository from "../repositories/DecisionRepository.ts"
@@ -52,24 +52,20 @@ type Outcome<A> = { readonly ok: true; readonly value: A } | { readonly ok: fals
 const ok = <A>(value: A): Outcome<A> => ({ ok: true, value })
 const fail = (failure: Failure): Outcome<never> => ({ ok: false, failure })
 
-const raise = (failure: Failure): ApiError => {
-  switch (failure._tag) {
-    case "not_found":
-      return new NotFound({ entity: failure.entity, id: failure.id })
-    case "conflict":
-      return new Conflict({ entity: failure.entity, message: failure.message })
-    case "invalid":
-      return new InvalidInput({ message: failure.message })
-    case "answers":
-      return new AnswersInvalid({
+const raise: (failure: Failure) => ApiError = Match.type<Failure>().pipe(
+  Match.tagsExhaustive({
+    not_found: (failure) => new NotFound({ entity: failure.entity, id: failure.id }),
+    conflict: (failure) => new Conflict({ entity: failure.entity, message: failure.message }),
+    invalid: (failure) => new InvalidInput({ message: failure.message }),
+    answers: (failure) =>
+      new AnswersInvalid({
         applicationId: failure.applicationId,
         message: `the kit cannot be approved: ${failure.problems.map((problem) => problem.code).join(", ")}`,
         problems: failure.problems
-      })
-    case "limit":
-      return new LimitExceeded({ limit: failure.limit, used: failure.used, resetsAt: failure.resetsAt })
-  }
-}
+      }),
+    limit: (failure) => new LimitExceeded({ limit: failure.limit, used: failure.used, resetsAt: failure.resetsAt })
+  })
+)
 
 const unwrap = <A>(outcome: Outcome<A>): Effect.Effect<A, ApiError> =>
   outcome.ok ? Effect.succeed(outcome.value) : Effect.fail(raise(outcome.failure))

@@ -16,7 +16,7 @@ export class CurrentUser extends Context.Service<CurrentUser, { readonly userId:
       const userId = yield* Config.String("BOOTSTRAP_USER_ID").pipe(
         Config.withDefault("local-user")
       )
-      return Layer.succeed(CurrentUser, { userId: userId as UserId })
+      return Layer.succeed(CurrentUser, CurrentUser.of({ userId: userId as UserId }))
     })
   )
 }

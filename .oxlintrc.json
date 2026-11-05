@@ -1,9 +1,31 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "oxc"],
+  "plugins": [
+    "typescript",
+    "oxc",
+    "vue"
+  ],
+  "jsPlugins": [
+    "oxlint-plugin-effect/plugin"
+  ],
   "categories": {
     "correctness": "error"
   },
-  "env": { "builtin": true, "es2024": true },
-  "ignorePatterns": ["node_modules", "dist", "coverage", "drizzle", "logs", "**/*.d.ts"]
+  "rules": {
+    "effect/noNestedEffectGen": "error",
+    "effect/preferServiceOf": "error",
+    "effect/preferMatchTagsExhaustive": "error"
+  },
+  "env": {
+    "builtin": true,
+    "es2024": true
+  },
+  "ignorePatterns": [
+    "node_modules",
+    "dist",
+    "coverage",
+    "drizzle",
+    "logs",
+    "**/*.d.ts"
+  ]
 }

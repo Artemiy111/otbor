@@ -552,9 +552,9 @@ if (!enabled || serverUrl === null) {
       })
       expect(created.kind).toBe("fit")
 
-      const idleRunner = Layer.succeed(CrawlRunner, {
+      const idleRunner = Layer.succeed(CrawlRunner, CrawlRunner.of({
         run: () => Effect.die("a fit schedule must not crawl")
-      })
+      }))
       const { outcomes, runs } = await support.runAsWithRunner(
         tenant.userId,
         idleRunner,
