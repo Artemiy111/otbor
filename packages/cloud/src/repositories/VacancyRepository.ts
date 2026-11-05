@@ -27,6 +27,7 @@ export interface VacancyRow {
   readonly employerExternalId: string | null
   readonly employerName: string | null
   readonly employerRating: number | null
+  readonly employerLogoUrl?: string | null
   readonly areaName: string | null
   readonly salaryFrom: number | null
   readonly salaryTo: number | null
@@ -71,6 +72,7 @@ export const toSummary = (row: VacancyRow): VacancySummary => {
     employerId: row.employerId as VacancySummary["employerId"],
     employerName: row.employerName,
     employerRating: row.employerRating,
+    employerLogoUrl: row.employerLogoUrl ?? null,
     areaName: row.areaName,
     salaryFrom: row.salaryFrom,
     salaryTo: row.salaryTo,
@@ -392,6 +394,7 @@ export const rowSelection = {
   employerExternalId: employer.externalId,
   employerName: employer.name,
   employerRating: employer.rating,
+  employerLogoUrl: employer.logoUrl,
   areaName: vacancy.areaName,
   salaryFrom: vacancy.salaryFrom,
   salaryTo: vacancy.salaryTo,

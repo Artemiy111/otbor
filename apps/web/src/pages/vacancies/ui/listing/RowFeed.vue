@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, ref } from "vue"
 import { Eye, Users } from "@lucide/vue"
 import type { RowProps } from "./model"
 import { employerAvatar, rowClass } from "./model"
@@ -22,6 +22,7 @@ import {
 
 const props = defineProps<RowProps>()
 const role = computed(() => (props.vacancy.analysisRole ? (ANALYSIS_ROLE_LABELS[props.vacancy.analysisRole] ?? props.vacancy.analysisRole) : null))
+const logoFailed = ref(false)
 const avatar = computed(() => employerAvatar(props.vacancy.employerName))
 const facts = computed(() =>
   [
@@ -51,7 +52,16 @@ const seenAgo = computed(() => formatAge(Math.max(0, (Date.now() - Date.parse(pr
 <template>
   <article :class="cn('flex gap-4 px-3 py-5', rowClass(vacancy))">
     <div :class="cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-lg font-semibold', avatar.tone)" aria-hidden="true">
-      {{ avatar.letter }}
+      <img
+        v-if="vacancy.employerLogoUrl && !logoFailed"
+        :src="vacancy.employerLogoUrl"
+        alt=""
+        loading="lazy"
+        referrerpolicy="no-referrer"
+        class="h-full w-full rounded-lg bg-white object-contain"
+        @error="logoFailed = true"
+      />
+      <template v-else>{{ avatar.letter }}</template>
     </div>
     <div class="min-w-0 flex-1 space-y-2">
       <div class="flex items-start justify-between gap-6">

@@ -151,6 +151,7 @@ export const VacancySummary = Schema.Struct({
   employerId: Schema.optional(Schema.NullOr(EmployerId)),
   employerName: Schema.optional(Schema.NullOr(Schema.String)),
   employerRating: Schema.optional(Schema.NullOr(Schema.Number)),
+  employerLogoUrl: Schema.optional(Schema.NullOr(Schema.String)),
   areaName: Schema.optional(Schema.NullOr(Schema.String)),
   salaryFrom: Schema.optional(Schema.NullOr(Schema.Int)),
   salaryTo: Schema.optional(Schema.NullOr(Schema.Int)),
