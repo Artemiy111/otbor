@@ -1518,7 +1518,9 @@ export type Health = typeof Health.Type
 export const LetterAttachStatus = Schema.Struct({
   status: Schema.Literals(["none", "pending", "running", "sent", "failed", "needs_human"]),
   message: Schema.NullOr(Schema.String),
-  updatedAt: Schema.NullOr(Schema.String)
+  updatedAt: Schema.NullOr(Schema.String),
+  /** The text of the newest job, so the operator can read what was sent. */
+  letter: Schema.NullOr(Schema.String)
 })
 
 export type LetterAttachStatus = typeof LetterAttachStatus.Type

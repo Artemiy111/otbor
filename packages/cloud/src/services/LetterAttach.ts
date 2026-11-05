@@ -63,11 +63,12 @@ export class LetterAttach extends Context.Service<LetterAttach, LetterAttachShap
       const statusIn = (tx: Executor, hhAccountId: string, vacancyId: string) =>
         Effect.gen(function*() {
           const latest = yield* QueueRepository.latestForVacancy(tx, hhAccountId, vacancyId, STAGE)
-          if (latest === null) return { status: "none", message: null, updatedAt: null } as LetterAttachStatus
+          if (latest === null) return { status: "none", message: null, updatedAt: null, letter: null } as LetterAttachStatus
           return {
             status: statusOf(latest.job.status),
             message: latest.lastError,
-            updatedAt: latest.updatedAt.toISOString()
+            updatedAt: latest.updatedAt.toISOString(),
+            letter: ((latest.job.payload as { letter?: unknown } | null)?.letter as string | undefined) ?? null
           } as LetterAttachStatus
         })
 
