@@ -1,22 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue"
 import { useQuery } from "@pinia/colada"
-import { useIntervalFn } from "@vueuse/core"
-import { CircleAlert, CircleCheck, FileText, LoaderCircle, Send } from "@lucide/vue"
+import { CircleAlert, LoaderCircle, Send } from "@lucide/vue"
 import type { ApplicationRecord } from "@otbor/contract"
 import type { GeneratedDraft } from "@otbor/domain"
 import { applicationApi, applicationKeys } from "@/entities/application"
+import { useLetterStatus } from "../model"
 import { describeError } from "@/shared/lib"
 import DraftGenerator from "./DraftGenerator.vue"
-import {
-  Button,
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  Textarea
-} from "@/shared/ui"
+import { Button, Textarea } from "@/shared/ui"
 
 const props = defineProps<{
   vacancyId: string
@@ -61,16 +53,12 @@ const generated = (draft: GeneratedDraft) => {
   }
 }
 
-const statusQuery = useQuery({
-  key: () => applicationKeys.letterAttach(props.vacancyId, props.accountId),
-  query: () => applicationApi.letterAttachStatus({ vacancyId: props.vacancyId, hhAccountId: props.accountId }),
-  enabled: () => props.accountId !== ""
-})
-const status = computed(() => statusQuery.data.value ?? null)
+const { query: statusQuery, status } = useLetterStatus(
+  () => props.vacancyId,
+  () => props.accountId
+)
 const active = computed(() => status.value?.status === "pending" || status.value?.status === "running")
-useIntervalFn(() => void statusQuery.refetch(), 3000, { immediate: true, immediateCallback: false })
 
-const viewing = ref(false)
 const busy = ref(false)
 const errorText = ref<string | null>(null)
 
@@ -94,25 +82,7 @@ const send = async () => {
 </script>
 
 <template>
-  <div v-if="status?.status === 'sent'" class="flex items-center gap-2 text-sm">
-    <CircleCheck class="size-4 text-emerald-600" />
-    <span class="font-medium">Письмо отправлено</span>
-    <span class="text-xs text-muted-foreground">проверьте чат на hh</span>
-    <Button variant="ghost" size="sm" class="ml-auto" @click="viewing = true">
-      <FileText class="size-4" />
-      Показать
-    </Button>
-    <Sheet v-model:open="viewing">
-      <SheetContent side="right" class="w-full overflow-y-auto p-4 sm:max-w-2xl">
-        <SheetHeader>
-          <SheetTitle>Отправленное письмо</SheetTitle>
-          <SheetDescription>Текст, который ушёл на hh вместе с откликом.</SheetDescription>
-        </SheetHeader>
-        <p class="mt-4 whitespace-pre-wrap text-sm leading-relaxed">{{ status.letter ?? letter }}</p>
-      </SheetContent>
-    </Sheet>
-  </div>
-  <div v-else class="space-y-2">
+  <div v-if="status?.status !== 'sent'" class="space-y-2">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         Письмо к отправленному отклику

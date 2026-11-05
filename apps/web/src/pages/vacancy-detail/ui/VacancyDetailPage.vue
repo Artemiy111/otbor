@@ -12,7 +12,9 @@ import VacancyLayoutFocus from "./VacancyLayoutFocus.vue"
 import VacancyLayoutSwitch from "./VacancyLayoutSwitch.vue"
 import VacancyMetaLine from "./VacancyMetaLine.vue"
 import VacancyProfileChips from "./VacancyProfileChips.vue"
-import VacancyStatusBar from "./VacancyStatusBar.vue"
+import ResponseSummary from "./response/ResponseSummary.vue"
+import ResponseVariantSwitch from "./response/ResponseVariantSwitch.vue"
+import { RESPONSE_VARIANTS, type ResponseVariant } from "./response/variants"
 
 const props = defineProps<{ id: string }>()
 const page = useVacancyPage(() => props.id)
@@ -21,6 +23,11 @@ const stored = useStorage<LayoutId>("otbor.vacancy-layout", "desk")
 const layout = computed<LayoutId>({
   get: () => (LAYOUTS.some((item) => item.id === stored.value) ? stored.value : "desk"),
   set: (value) => (stored.value = value)
+})
+const storedVariant = useStorage<ResponseVariant>("otbor.response-variant", "chips")
+const responseVariant = computed<ResponseVariant>({
+  get: () => (RESPONSE_VARIANTS.some((item) => item.id === storedVariant.value) ? storedVariant.value : "chips"),
+  set: (value) => (storedVariant.value = value)
 })
 const data = page.data
 </script>
@@ -72,14 +79,17 @@ const data = page.data
           <VacancyLayoutSwitch v-model="layout" />
         </div>
       </div>
-      <div class="mb-6">
-        <VacancyStatusBar
+      <div class="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <ResponseSummary
+          :variant="responseVariant"
+          :vacancy-id="props.id"
           :applications="page.applications.value"
           :accounts="page.accounts.value"
           :resumes="page.resumes.value"
           :account-id="page.accountId.value"
           :resume-id="page.resumeId.value"
         />
+        <ResponseVariantSwitch v-model="responseVariant" />
       </div>
       <VacancyLayoutDesk v-if="layout === 'desk'" :page="page" />
       <VacancyLayoutFocus v-else :page="page" />

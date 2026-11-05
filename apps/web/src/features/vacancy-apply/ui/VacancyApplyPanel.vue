@@ -607,7 +607,7 @@ const NO_FORM = "no-form"
   <section class="space-y-4 rounded-lg border border-border bg-card p-4 text-sm">
     <div class="flex items-center justify-between gap-2">
       <h2 class="text-base font-semibold">Отклик</h2>
-      <StatusBadge v-if="state" :value="state" />
+      <StatusBadge v-if="state && !finished" :value="state" />
     </div>
 
     <!-- who responds: one click opens, hover an account, click a resume -->
@@ -625,17 +625,6 @@ const NO_FORM = "no-form"
       <Badge v-if="data.facts?.hh?.test.hasTest" variant="warning">
         {{ data.facts.hh.test.required === false ? "тест необязательный" : "есть тест" }}
       </Badge>
-    </div>
-
-    <!-- already sent -->
-    <div
-      v-if="finished"
-      class="flex items-center gap-2 text-sm"
-      title="Этим аккаунтом с этим резюме на вакансию уже откликались. Чтобы откликнуться другим резюме, выберите его выше."
-    >
-      <CircleCheck class="size-4 text-emerald-600" />
-      <span class="font-medium">{{ statusLabel(state ?? "") }}</span>
-      <span v-if="existing" class="text-xs text-muted-foreground">{{ formatDate(existing.updatedAt) }}</span>
     </div>
 
     <LetterAttachBlock
