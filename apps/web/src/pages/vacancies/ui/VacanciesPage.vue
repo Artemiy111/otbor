@@ -13,7 +13,8 @@ import { vacancyApi, vacancyKeys } from "@/entities/vacancy"
 import { blacklistVisibilityOptions } from "@/features/blacklist-filter"
 import { vacancyAnalysedOptions, vacancyArchiveOptions, vacancyGateOptions } from "@/features/vacancy-filter"
 import { RefreshButton } from "@/features/refresh-button"
-import { RuleBuilder, buildFilter, emptyEditable } from "@/features/rule-builder"
+import { presetApi, presetKeys } from "@/entities/preset"
+import { RuleBuilder, buildFilter, emptyEditable, toEditable } from "@/features/rule-builder"
 import {
   companyPath,
   describeError,
@@ -29,6 +30,11 @@ import {
   Badge,
   Button,
   DataTable,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   StatusBadge,
   filterableHeader,
   sortableHeader
@@ -70,6 +76,32 @@ const ruleFilter = computed(() => {
     ...(includeBlacklisted.value ? { includeBlacklisted: true } : {})
   }
 })
+
+const presetsQuery = useQuery({ key: () => presetKeys.list("all"), query: () => presetApi.list({}) })
+const presets = computed(() => presetsQuery.data.value ?? [])
+
+/** Copies the preset's rules into the builder; the preset itself is never changed. */
+const applyPreset = (id: unknown) => {
+  const preset = presets.value.find((item) => item.id === id)
+  if (preset === undefined) return
+  const next = toEditable(preset.filter)
+  rules.rules = next.rules
+  rules.groups = next.groups
+  rules.location = next.location
+  rules.keywordIds = next.keywordIds
+  archived.value = next.includeArchived ? "all" : "active"
+  includeBlacklisted.value = next.includeBlacklisted
+  rulesOpen.value = true
+}
+
+const clearRules = () => {
+  const empty = emptyEditable()
+  rules.rules = empty.rules
+  rules.groups = empty.groups
+  rules.location = empty.location
+  rules.keywordIds = undefined
+}
+
 const ruleCount = computed(() => (ruleFilter.value?.rules?.length ?? 0) + (ruleFilter.value?.groups?.length ?? 0))
 watch(
   () => JSON.stringify(ruleFilter.value ?? null),
@@ -350,6 +382,7 @@ const refresh = () => {
     </Alert>
 
     <div class="mb-3 space-y-2">
+      <div class="flex flex-wrap items-center gap-1.5">
       <button
         type="button"
         class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs hover:bg-accent"
@@ -359,6 +392,25 @@ const refresh = () => {
         Правила
         <Badge v-if="ruleCount > 0" variant="neutral" class="text-[10px]">{{ ruleCount }}</Badge>
       </button>
+      <Select v-if="presets.length > 0" model-value="" @update:model-value="applyPreset">
+        <SelectTrigger class="inline-flex h-8 w-[190px] text-xs">
+          <SelectValue placeholder="Применить пресет…" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem v-for="preset in presets" :key="preset.id" :value="preset.id">
+            {{ preset.title }}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+      <button
+        v-if="ruleCount > 0"
+        type="button"
+        class="h-8 rounded-md px-2.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+        @click="clearRules"
+      >
+        Сбросить
+      </button>
+      </div>
       <div v-show="rulesOpen || ruleCount > 0">
         <RuleBuilder v-model="rules" :flags="false" />
       </div>
