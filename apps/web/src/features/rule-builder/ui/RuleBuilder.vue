@@ -67,7 +67,7 @@ const onLocation = (value: unknown) => {
   const next = value as KeywordMatchLocation
   state.value.location = PRESET_LOCATION_OPTIONS.some((option) => option.value === next) ? next : "any"
 }
-const toggleFlag = (key: "includeArchived" | "includeBlacklisted") => {
+const toggleFlag = (key: "includeArchived") => {
   state.value[key] = !state.value[key]
 }
 const flagClass = (on: boolean) =>
@@ -185,15 +185,6 @@ const flagClass = (on: boolean) =>
           @click="toggleFlag('includeArchived')"
         >
           Архивные
-        </button>
-        <button
-          type="button"
-          class="inline-flex h-7 items-center rounded-full border px-2.5 text-xs transition-colors disabled:opacity-50"
-          :class="flagClass(state.includeBlacklisted)"
-          :disabled="props.disabled"
-          @click="toggleFlag('includeBlacklisted')"
-        >
-          Заблокированные
         </button>
 
         <Select v-if="hasKeywordRule" :model-value="state.location" :disabled="props.disabled" @update:model-value="onLocation">

@@ -5,6 +5,7 @@ import { useQuery } from "@pinia/colada"
 import type { PresetField, PresetOperator } from "@otbor/contract"
 import { ChevronDown, X } from "@lucide/vue"
 import { keywordApi, keywordKeys } from "@/entities/keyword"
+import { hhAccountApi, hhAccountKeys, hhAccountName } from "@/entities/hh-account"
 import {
   Input,
   Popover,
@@ -19,6 +20,7 @@ import {
 import {
   PRESET_FIELD_GROUPS,
   SALARY_CURRENCIES,
+  hiddenAccountOptions,
   isMultiValueOperator,
   presetFieldMeta,
   presetOperatorLabel
@@ -41,8 +43,21 @@ const lexiconQuery = useQuery({
 })
 const lexicon = computed(() => lexiconQuery.data.value ?? [])
 
+const accountsQuery = useQuery({
+  key: () => hhAccountKeys.list(),
+  query: () => hhAccountApi.list(),
+  enabled: () => props.rule.field === "hidden"
+})
+
 const options = computed(() => {
   const base = [...(meta.value.options ?? [])]
+  if (props.rule.field === "hidden") {
+    base.push(
+      ...hiddenAccountOptions(
+        (accountsQuery.data.value ?? []).map((account) => ({ id: account.id, name: hhAccountName(account) }))
+      )
+    )
+  }
   const known = new Set(base.map((option) => option.value))
   for (const value of [props.rule.text, ...props.rule.values]) {
     if (value !== "" && !known.has(value)) {

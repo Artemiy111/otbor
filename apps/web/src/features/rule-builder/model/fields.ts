@@ -117,6 +117,23 @@ const ROLE_FAMILY_OPTIONS = OPTIONS(
   ["other", roleFamilyLabel("other")]
 )
 
+/** Static selectors of the `hidden` rule; per-account ones are added from the account list. */
+export const HIDDEN_OPTIONS = OPTIONS(
+  ["any", "Где угодно (приложение, аккаунты, hh)"],
+  ["app", "Глобально в приложении"],
+  ["accounts", "У любого из моих аккаунтов (список или hh)"],
+  ["hh", "На hh у любого аккаунта"]
+)
+
+/** Selectors for one account: its lists plus hh, and hh alone. */
+export const hiddenAccountOptions = (
+  accounts: ReadonlyArray<{ readonly id: string; readonly name: string }>
+): ReadonlyArray<PresetFieldOption> =>
+  accounts.flatMap((account) => [
+    { value: `account:${account.id}`, label: `У аккаунта ${account.name} (список или hh)` },
+    { value: `hh:${account.id}`, label: `На hh у аккаунта ${account.name}` }
+  ])
+
 export const PRESET_FIELDS: ReadonlyArray<PresetFieldMeta> = [
   {
     field: "title",
@@ -334,6 +351,15 @@ export const PRESET_FIELDS: ReadonlyArray<PresetFieldMeta> = [
     group: "Зарплата и метрики",
     kind: "number",
     ops: NUMBER_OPS
+  },
+  {
+    field: "hidden",
+    label: "Скрыта",
+    group: "Прочее",
+    kind: "select",
+    ops: ["in", "not_in"],
+    options: HIDDEN_OPTIONS,
+    hint: "Вакансия или её компания в чёрном списке: в приложении, у аккаунта или на hh."
   },
   {
     field: "archived",

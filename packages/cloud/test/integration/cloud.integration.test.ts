@@ -2417,6 +2417,68 @@ if (!integrationEnabled || serverUrl === null) {
       expect(listing.total).toBe(1)
     })
 
+    test("the hidden rule picks the layer and the account that hid a company", async () => {
+      const tenant = await seedTenant("blacklist-hidden-rule")
+      const second = await addAccount(tenant.userId, "blacklist-hidden-rule-second")
+      const suffix = tag()
+      const make = (name: string) =>
+        seedVacancyForEmployer({
+          label: `${name}-${suffix}`,
+          title: `Hiddenrule ${name} ${suffix}`,
+          employerExternalId: `hr-${name}-${suffix}`,
+          employerName: `Hiddenrule ${name} Co ${suffix}`
+        })
+      const byApp = await make("app")
+      const byList = await make("list")
+      const byHh = await make("hh")
+      const bySecond = await make("second")
+      const clean = await make("clean")
+
+      await blacklistUpsert(tenant.userId, {
+        scope: "app",
+        targetType: "employer",
+        externalId: `hr-app-${suffix}`
+      })
+      await blacklistUpsert(tenant.userId, {
+        scope: "hh_account",
+        hhAccountId: tenant.accountId,
+        targetType: "employer",
+        externalId: `hr-list-${suffix}`
+      })
+      await blacklistImportHh(tenant.userId, {
+        hhAccountId: tenant.accountId,
+        entries: [{ targetType: "employer", externalId: `hr-hh-${suffix}` }]
+      })
+      await blacklistUpsert(tenant.userId, {
+        scope: "hh_account",
+        hhAccountId: second,
+        targetType: "employer",
+        externalId: `hr-second-${suffix}`
+      })
+
+      const matching = async (op: "in" | "not_in", value: ReadonlyArray<string>) => {
+        const preview = await presetPreview(tenant.userId, {
+          includeBlacklisted: true,
+          rules: [
+            { field: "title", op: "contains", value: `Hiddenrule` },
+            { field: "title", op: "contains", value: suffix },
+            { field: "hidden", op, value }
+          ]
+        })
+        return preview.vacancies.map((item) => String(item.id)).sort()
+      }
+      const ids = (...rows: ReadonlyArray<{ readonly vacancyId: string }>) =>
+        rows.map((row) => String(row.vacancyId)).sort()
+
+      expect(await matching("in", ["app"])).toEqual(ids(byApp))
+      expect(await matching("in", ["accounts"])).toEqual(ids(byList, byHh, bySecond))
+      expect(await matching("in", ["hh"])).toEqual(ids(byHh))
+      expect(await matching("in", [`account:${tenant.accountId}`])).toEqual(ids(byList, byHh))
+      expect(await matching("in", [`hh:${second}`])).toEqual([])
+      expect(await matching("in", ["any"])).toEqual(ids(byApp, byList, byHh, bySecond))
+      expect(await matching("not_in", ["accounts"])).toEqual(ids(byApp, clean))
+    })
+
     test("hh-native import is idempotent, updates names and never deletes absent entries", async () => {
       const tenant = await seedTenant("blacklist-native")
       const suffix = tag()

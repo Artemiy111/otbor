@@ -1175,7 +1175,13 @@ export const PresetField = Schema.Literals([
   /** Role from the vacancy analysis (devops, sre, backend, ...); unknown when the model was not confident. */
   "analysis_role",
   /** Required level from the vacancy analysis (junior, middle, senior, tech_lead, ...); unknown when not confident. */
-  "analysis_level"
+  "analysis_level",
+  /**
+   * Whether the vacancy (or its employer) is hidden. Values are selectors:
+   * `any`, `app`, `accounts`, `hh`, `account:<hh account id>`, `hh:<hh account id>`.
+   * `in` matches when at least one selector hides it, `not_in` when none does.
+   */
+  "hidden"
 ])
 
 export type PresetField = typeof PresetField.Type

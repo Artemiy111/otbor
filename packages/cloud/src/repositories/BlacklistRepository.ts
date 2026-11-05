@@ -418,3 +418,55 @@ export const layersFor = (
         )
       )
     )
+
+/**
+ * Rule selectors of the `hidden` preset field, one per way of being hidden:
+ * `any` (every layer), `app` (the global list), `accounts` (an hh account list
+ * or hh itself, any account), `hh` (hidden on hh, any account),
+ * `account:<id>` and `hh:<id>` (the same for one account).
+ * Unknown selectors match nothing, so a stale id never hides a vacancy.
+ */
+export const hiddenSelectorSql = (selector: string): SQL | null => {
+  const [kind, id] = selector.split(":", 2) as [string, string | undefined]
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  switch (kind) {
+    case "any":
+      return sql`true`
+    case "app":
+      return sql`ht.scope = 'app'`
+    case "accounts":
+      return sql`ht.scope in ('hh_account', 'hh_native')`
+    case "hh":
+      return id === undefined
+        ? sql`ht.scope = 'hh_native'`
+        : uuid.test(id)
+        ? sql`(ht.scope = 'hh_native' and ht.hh_account_id = ${id}::uuid)`
+        : null
+    case "account":
+      return id !== undefined && uuid.test(id)
+        ? sql`(ht.scope in ('hh_account', 'hh_native') and ht.hh_account_id = ${id}::uuid)`
+        : null
+    default:
+      return null
+  }
+}
+
+/** `true` when any of the selectors hides the vacancy or its employer for this user. */
+export const hiddenBySelectorsSql = (input: {
+  readonly userId: string | undefined
+  readonly selectors: ReadonlyArray<string>
+  readonly employerExternalId: SQL
+  readonly vacancyExternalId: SQL
+}): SQL => {
+  const layers = input.selectors.flatMap((selector) => {
+    const clause = hiddenSelectorSql(selector)
+    return clause === null ? [] : [clause]
+  })
+  if (input.userId === undefined || layers.length === 0) return sql`false`
+  return sql`exists (
+    select 1 from hidden_target ht
+    where ht.user_id = ${input.userId}
+      and ${targetClause(input)}
+      and (${sql.join(layers, sql` or `)})
+  )`
+}

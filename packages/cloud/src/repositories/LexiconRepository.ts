@@ -130,12 +130,22 @@ const numberFieldSql = (field: PresetRule["field"]): SQL | null => {
   }
 }
 
-const ruleClause = (rule: PresetRule, filter: PresetFilter): SQL => {
+const ruleClause = (rule: PresetRule, filter: PresetFilter, context: VacancyFilterContext = {}): SQL => {
   const op = rule.op
   const value = rule.value
 
   if (rule.field === "archived") {
     return op === "is_true" ? sql`vacancy.archived` : sql`not vacancy.archived`
+  }
+
+  if (rule.field === "hidden") {
+    const hidden = BlacklistRepository.hiddenBySelectorsSql({
+      userId: context.userId,
+      selectors: stringList(value),
+      employerExternalId: sql`(select e_h.external_id from employer e_h where e_h.id = vacancy.employer_id)`,
+      vacancyExternalId: sql`vacancy.external_id`
+    })
+    return op === "not_in" || op === "neq" ? sql`not (${hidden})` : hidden
   }
 
   if (rule.field === "gate") {
@@ -342,13 +352,13 @@ export const vacancyFilterSql = (
   }
 
   for (const rule of filter.rules ?? []) {
-    clauses.push(ruleClause(rule, filter))
+    clauses.push(ruleClause(rule, filter, context))
   }
 
   for (const group of filter.groups ?? []) {
     const branches = group.branches
       .filter((branch) => branch.rules.length > 0)
-      .map((branch) => sql`(${sql.join(branch.rules.map((rule) => ruleClause(rule, filter)), sql` and `)})`)
+      .map((branch) => sql`(${sql.join(branch.rules.map((rule) => ruleClause(rule, filter, context)), sql` and `)})`)
     if (branches.length > 0) clauses.push(sql`(${sql.join(branches, sql` or `)})`)
   }
 

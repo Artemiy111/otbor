@@ -5,6 +5,7 @@ import { CircleAlert, ExternalLink } from "@lucide/vue"
 import { applicationApi, respondedByVacancy } from "@/entities/application"
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { AccountChip, useDefaultAccount } from "@/entities/hh-account"
+import { blacklistApi, blacklistKeys } from "@/entities/blacklist"
 import { companyApi, companyKeys } from "@/entities/company"
 import { hydrationApi } from "@/entities/hydration"
 import { RefreshButton } from "@/features/refresh-button"
@@ -102,7 +103,51 @@ const profileFacts = computed(() => {
   return facts
 })
 
+const hhUrl = computed(() =>
+  employer.value === undefined ? null : `https://hh.ru/employer/${employer.value.externalId}`
+)
+
 const { accounts } = useDefaultAccount()
+
+/** `query` is a substring match on the id, so the exact employer is picked client-side. */
+const blacklistQuery = useQuery({
+  key: () =>
+    blacklistKeys.list({
+      scope: "all",
+      hhAccountId: "",
+      targetType: "employer",
+      query: employer.value?.externalId ?? "",
+      offset: 0
+    }),
+  query: () =>
+    blacklistApi.list({
+      targetType: "employer",
+      query: employer.value?.externalId,
+      limit: 200
+    }),
+  enabled: () => employer.value !== undefined
+})
+const blacklistRecords = computed(() =>
+  (blacklistQuery.data.value?.items ?? []).filter(
+    (item) => item.externalId === employer.value?.externalId
+  )
+)
+const appBlock = computed(() => blacklistRecords.value.find((item) => item.scope === "app") ?? null)
+const accountBlockIds = computed(() => [
+  ...new Set(
+    blacklistRecords.value.flatMap((item) =>
+      item.scope === "hh_account" && item.hhAccountId != null ? [item.hhAccountId] : []
+    )
+  )
+])
+const nativeHideIds = computed(() => [
+  ...new Set(
+    blacklistRecords.value.flatMap((item) =>
+      item.scope === "hh_native" && item.hhAccountId != null ? [item.hhAccountId] : []
+    )
+  )
+])
+const isBlacklisted = computed(() => blacklistRecords.value.length > 0)
 
 const applicationsQuery = useQuery({
   key: () => ["applications", "by-vacancy"],
@@ -134,6 +179,12 @@ const errorText = computed(() =>
       back-label="Компании"
     >
       <template #actions>
+        <Button v-if="hhUrl" as-child variant="outline" size="sm">
+          <a :href="hhUrl" target="_blank" rel="noreferrer">
+            Открыть на hh.ru
+            <ExternalLink class="h-4 w-4" />
+          </a>
+        </Button>
         <Button v-if="employer?.siteUrl" as-child variant="outline" size="sm">
           <a :href="employer.siteUrl" target="_blank" rel="noreferrer">
             Сайт компании
@@ -206,6 +257,51 @@ const errorText = computed(() =>
               <span>external_id: <code class="font-mono">{{ employer.externalId }}</code></span>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card class="mt-4">
+        <CardHeader>
+          <CardTitle>Чёрный список</CardTitle>
+          <CardDescription>Кто и где скрыл эту компанию.</CardDescription>
+        </CardHeader>
+        <CardContent class="space-y-3 text-sm">
+          <p v-if="blacklistQuery.isPending.value" class="text-muted-foreground">Загрузка…</p>
+          <p v-else-if="!isBlacklisted" class="text-muted-foreground">
+            Компания не в чёрных списках.
+          </p>
+          <template v-else>
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="w-48 text-muted-foreground">Глобально в приложении</span>
+              <Badge v-if="appBlock" variant="destructive">В чёрном списке</Badge>
+              <Badge v-else variant="outline">Нет</Badge>
+              <span v-if="appBlock?.reason" class="text-xs text-muted-foreground">
+                {{ appBlock.reason }}
+              </span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="w-48 text-muted-foreground">Заблокировали аккаунты</span>
+              <AccountChip
+                v-for="accountId in accountBlockIds"
+                :key="accountId"
+                :account-id="accountId"
+                :accounts="accounts"
+                show-name
+              />
+              <span v-if="accountBlockIds.length === 0" class="text-muted-foreground">—</span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="w-48 text-muted-foreground">Скрыта на hh</span>
+              <AccountChip
+                v-for="accountId in nativeHideIds"
+                :key="accountId"
+                :account-id="accountId"
+                :accounts="accounts"
+                show-name
+              />
+              <span v-if="nativeHideIds.length === 0" class="text-muted-foreground">—</span>
+            </div>
+          </template>
         </CardContent>
       </Card>
 
