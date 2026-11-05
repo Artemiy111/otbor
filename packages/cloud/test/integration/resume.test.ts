@@ -80,9 +80,11 @@ if (!enabled || serverUrl === null) {
           const resumes = yield* ResumeService
           return yield* resumes.enrichmentSave(r1.id, {
             comment: "good",
-            salaryMin: 100000,
-            salaryExpectation: 150000,
-            currency: "RUB",
+            salaries: [
+              { currency: "RUB", min: 100000, expectation: 150000 },
+              { currency: "USD", min: null, expectation: 3000 }
+            ],
+            faq: [{ key: "city", answer: "Москва" }, { key: "x", question: "Свой?", answer: " да " }],
             experience: [{ key: "exp1", employmentType: "full", comment: "c", leaveReason: "r" }]
           })
         })
@@ -98,6 +100,9 @@ if (!enabled || serverUrl === null) {
         })
       )
       expect(enr.salaryMin).toBe(100000)
+      expect(enr.salaries.length).toBe(2)
+      expect(enr.salaries[1]?.currency).toBe("USD")
+      expect(enr.faq.map((e) => e.answer)).toEqual(["Москва", "да"])
 
       const r2 = await support.runAs(
         t1.userId,

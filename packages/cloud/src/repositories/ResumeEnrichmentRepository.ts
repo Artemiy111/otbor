@@ -1,4 +1,5 @@
-import type { ResumeEnrichment, ResumeId } from "@otbor/contract"
+import { SALARY_CURRENCIES } from "@otbor/contract"
+import type { ResumeEnrichment, ResumeFaqEntry, ResumeSalary, SalaryCurrency } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
@@ -13,18 +14,56 @@ export interface StoredResumeEnrichment {
 const iso = (value: Date | string): string =>
   value instanceof Date ? value.toISOString() : new Date(value).toISOString()
 
+const CURRENCIES: ReadonlyArray<string> = SALARY_CURRENCIES
+
+const amountOf = (value: unknown): number | null =>
+  typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null
+
+/** Stored salary slots; rows written before per-currency slots carry salaryMin/salaryExpectation/currency. */
+const readSalaries = (data: Record<string, unknown>): ReadonlyArray<ResumeSalary> => {
+  if (Array.isArray(data.salaries)) {
+    return data.salaries.flatMap((raw): ReadonlyArray<ResumeSalary> => {
+      const o = (raw ?? {}) as Record<string, unknown>
+      const currency = String(o.currency ?? "")
+      if (!CURRENCIES.includes(currency)) return []
+      const min = amountOf(o.min)
+      const expectation = amountOf(o.expectation)
+      return min === null && expectation === null
+        ? []
+        : [{ currency: currency as SalaryCurrency, min, expectation }]
+    })
+  }
+  const min = amountOf(data.salaryMin)
+  const expectation = amountOf(data.salaryExpectation)
+  if (min === null && expectation === null) return []
+  const raw = typeof data.currency === "string" ? data.currency.toUpperCase() : "RUB"
+  const currency = raw === "RUR" ? "RUB" : raw
+  return CURRENCIES.includes(currency)
+    ? [{ currency: currency as SalaryCurrency, min, expectation }]
+    : []
+}
+
 const toEnrichment = (row: StoredResumeEnrichment): ResumeEnrichment => {
   const data = (row.data ?? {}) as Record<string, unknown>
   const exp = Array.isArray(data.experience) ? data.experience : []
+  const faq = Array.isArray(data.faq) ? data.faq : []
+  const salaries = readSalaries(data)
+  const primary = salaries[0] ?? null
   return {
     resumeId: row.resume_id as ResumeEnrichment["resumeId"],
     comment: typeof data.comment === "string" ? data.comment : "",
-    salaryMin: typeof data.salaryMin === "number" ? data.salaryMin : (data.salaryMin as number | null | undefined) ?? null,
-    salaryExpectation:
-      typeof data.salaryExpectation === "number"
-        ? data.salaryExpectation
-        : (data.salaryExpectation as number | null | undefined) ?? null,
-    currency: typeof data.currency === "string" ? data.currency : (data.currency as string | null | undefined) ?? null,
+    salaries,
+    salaryMin: primary?.min ?? null,
+    salaryExpectation: primary?.expectation ?? null,
+    currency: primary?.currency ?? null,
+    faq: faq.map((e) => {
+      const o = (e ?? {}) as Record<string, unknown>
+      return {
+        key: String(o.key ?? ""),
+        question: typeof o.question === "string" ? o.question : null,
+        answer: String(o.answer ?? "")
+      }
+    }),
     experience: exp.map((e) => {
       const o = (e ?? {}) as Record<string, unknown>
       return {
@@ -62,9 +101,8 @@ export interface SaveEnrichmentInput {
   readonly resumeId: string
   readonly data: {
     readonly comment?: string
-    readonly salaryMin?: number | null
-    readonly salaryExpectation?: number | null
-    readonly currency?: string | null
+    readonly salaries?: ReadonlyArray<ResumeSalary>
+    readonly faq?: ReadonlyArray<ResumeFaqEntry>
     readonly experience?: ReadonlyArray<{
       readonly key: string
       readonly employmentType?: string | null
@@ -83,9 +121,14 @@ export const save = (
     const now = input.now ?? new Date()
     const payload = {
       comment: input.data.comment ?? "",
-      salaryMin: input.data.salaryMin ?? null,
-      salaryExpectation: input.data.salaryExpectation ?? null,
-      currency: input.data.currency ?? null,
+      salaries: readSalaries({ salaries: input.data.salaries ?? [] }),
+      faq: (input.data.faq ?? [])
+        .map((e) => ({
+          key: e.key,
+          question: e.question ?? null,
+          answer: e.answer.trim()
+        }))
+        .filter((e) => e.key !== "" && e.answer !== ""),
       experience: (input.data.experience ?? []).map((e) => ({
         key: e.key,
         employmentType: e.employmentType ?? null,

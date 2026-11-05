@@ -11,7 +11,7 @@ import type {
   ResumeId,
   VacancyId
 } from "@otbor/contract"
-import { describeKitAnswer } from "@otbor/contract"
+import { describeKitAnswer, RESUME_FAQ_TOPICS } from "@otbor/contract"
 import { Effect } from "effect"
 import { accountsFor, pickAccount } from "./accounts.ts"
 import { Api } from "./api.ts"
@@ -167,6 +167,12 @@ export const loadResume = (rpc: OtborApi, id: ResumeId, maxChars: number) =>
           salaryMin: enrichment.salaryMin ?? null,
           salaryExpectation: enrichment.salaryExpectation ?? null,
           currency: enrichment.currency ?? null,
+          salaries: enrichment.salaries.map((s) => ({ currency: s.currency, min: s.min, expectation: s.expectation })),
+          faq: enrichment.faq.map((e) => ({
+            key: e.key,
+            question: e.question ?? RESUME_FAQ_TOPICS.find((t) => t.key === e.key)?.question ?? e.key,
+            answer: e.answer
+          })),
           experience: enrichment.experience.map((e) => ({
             key: e.key,
             employmentType: e.employmentType ?? null,

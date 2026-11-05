@@ -413,7 +413,7 @@ export const ResumesList = readTool("resumes_list", {
 
 export const ResumeGet = readTool("resume_get", {
   description:
-    "One resume with the operator's enrichment (comment, salary expectation, per-job notes) merged in. " +
+    "One resume with the operator's enrichment (comment, salary per currency, FAQ answers on how to reply to common form questions, per-job notes) merged in. " +
     "Text is trimmed to maxChars; `truncated` says if cut.",
   parameters: Schema.Struct({
     id: Schema.String.annotate({ description: "Resume id (UUID)" }),
@@ -437,6 +437,12 @@ export const ResumeGet = readTool("resume_get", {
       salaryMin: Schema.NullOr(Schema.Int),
       salaryExpectation: Schema.NullOr(Schema.Int),
       currency: NullableString,
+      salaries: Schema.Array(Schema.Struct({
+        currency: Schema.String,
+        min: Schema.NullOr(Schema.Int),
+        expectation: Schema.NullOr(Schema.Int)
+      })),
+      faq: Schema.Array(Schema.Struct({ key: Schema.String, question: Schema.String, answer: Schema.String })),
       experience: Schema.Array(Schema.Struct({
         key: Schema.String,
         employmentType: NullableString,
@@ -556,6 +562,12 @@ export const CoverLetterContext = readTool("cover_letter_context", {
         salaryMin: Schema.NullOr(Schema.Int),
         salaryExpectation: Schema.NullOr(Schema.Int),
         currency: NullableString,
+        salaries: Schema.Array(Schema.Struct({
+          currency: Schema.String,
+          min: Schema.NullOr(Schema.Int),
+          expectation: Schema.NullOr(Schema.Int)
+        })),
+        faq: Schema.Array(Schema.Struct({ key: Schema.String, question: Schema.String, answer: Schema.String })),
         experience: Schema.Array(Schema.Struct({
           key: Schema.String,
           employmentType: NullableString,

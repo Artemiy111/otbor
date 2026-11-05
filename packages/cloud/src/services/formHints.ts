@@ -32,15 +32,20 @@ export const hintsFor = (
         ? null
         : yield* ResumeEnrichmentRepository.get(tx, application.userId, resume.id)
 
-    const expectation = enrichment?.salaryExpectation ?? resume?.salaryAmount ?? null
-    const minimum = enrichment?.salaryMin ?? null
+    // The slot in the vacancy's currency wins; otherwise the primary one, which
+    // the salary rule reports as a currency mismatch instead of converting.
+    const vacancyCurrency = vacancy.salaryCurrency === "RUR" ? "RUB" : vacancy.salaryCurrency
+    const slot =
+      enrichment?.salaries.find((s) => s.currency === vacancyCurrency) ?? enrichment?.salaries[0] ?? null
+    const expectation = slot?.expectation ?? (slot === null ? (resume?.salaryAmount ?? null) : null)
+    const minimum = slot?.min ?? null
     const salary =
       expectation === null && minimum === null
         ? null
         : {
             expectation,
             minimum,
-            currency: enrichment?.currency ?? resume?.salaryCurrency ?? null
+            currency: slot?.currency ?? resume?.salaryCurrency ?? null
           }
 
     return answerHints({

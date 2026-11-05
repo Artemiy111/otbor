@@ -1,4 +1,4 @@
-import type { ResumeId, ResumeRecord, ResumeEnrichment, ResumeSyncStatus } from "@otbor/contract"
+import type { ResumeId, ResumeRecord, ResumeEnrichment, ResumeSyncStatus, SalaryCurrency } from "@otbor/contract"
 import { call } from "@/shared/api"
 
 export interface ResumeUpsertInput {
@@ -52,9 +52,8 @@ export const resumeApi = {
     call((client) => client.ResumeEnrichmentGet({ resumeId: resumeId as ResumeId })),
   enrichmentSave: (resumeId: string, data: {
     comment?: string
-    salaryMin?: number | null
-    salaryExpectation?: number | null
-    currency?: string | null
+    salaries?: Array<{ currency: SalaryCurrency; min: number | null; expectation: number | null }>
+    faq?: Array<{ key: string; question?: string | null; answer: string }>
     experience?: Array<{ key: string; employmentType?: string | null; comment?: string | null; leaveReason?: string | null }>
   }): Promise<ResumeEnrichment> =>
     call((client) => client.ResumeEnrichmentSave({ resumeId: resumeId as ResumeId, data }))

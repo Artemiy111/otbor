@@ -1318,12 +1318,61 @@ export const ResumeExperienceEnrichment = Schema.Struct({
 
 export type ResumeExperienceEnrichment = typeof ResumeExperienceEnrichment.Type
 
+/** Currencies the operator can state a salary in. One slot per currency, never free text. */
+export const SALARY_CURRENCIES = ["RUB", "USD", "EUR", "KZT", "BYN"] as const
+
+export const SalaryCurrency = Schema.Literals(SALARY_CURRENCIES)
+
+export type SalaryCurrency = typeof SalaryCurrency.Type
+
+/** The minimum and the expected salary in one currency; a missing amount is null. */
+export const ResumeSalary = Schema.Struct({
+  currency: SalaryCurrency,
+  min: Schema.NullOr(Schema.Int),
+  expectation: Schema.NullOr(Schema.Int)
+})
+
+export type ResumeSalary = typeof ResumeSalary.Type
+
+/**
+ * Questions that come up in hh response forms again and again. The operator
+ * writes how to answer each one; the text is a hint for the agent, not a
+ * final answer. A key outside this list is a custom question with its own text.
+ */
+export const RESUME_FAQ_TOPICS = [
+  { key: "city", question: "В каком городе вы живёте?" },
+  { key: "relocation", question: "Готовы ли вы к переезду?" },
+  { key: "office", question: "Готовы ли вы работать в офисе или в гибридном формате?" },
+  { key: "business_trips", question: "Готовы ли вы к командировкам?" },
+  { key: "employment_type", question: "Какое оформление вам подходит (ТК, ИП, самозанятость)?" },
+  { key: "notice_period", question: "Когда вы готовы выйти на работу?" },
+  { key: "english_level", question: "Какой у вас уровень английского?" },
+  { key: "previous_work_format", question: "В каком формате вы работали на прошлом месте?" },
+  { key: "leave_reason", question: "Почему вы уходите с текущего или ушли с прошлого места?" },
+  { key: "schedule", question: "Подходит ли вам график 2/2 или сменная работа?" },
+  { key: "it_accreditation", question: "Есть ли у вас аккредитация или отсрочка (IT)?" }
+] as const
+
+export const ResumeFaqEntry = Schema.Struct({
+  key: Schema.String,
+  /** Only for custom entries; a known topic takes its question from RESUME_FAQ_TOPICS. */
+  question: Schema.optional(Schema.NullOr(Schema.String)),
+  answer: Schema.String
+})
+
+export type ResumeFaqEntry = typeof ResumeFaqEntry.Type
+
 export const ResumeEnrichment = Schema.Struct({
   resumeId: ResumeId,
+  /** Notes for the agent about the whole resume. */
   comment: Schema.String,
+  /** Filled currencies only. The first one is the primary salary. */
+  salaries: Schema.Array(ResumeSalary),
+  /** The primary salary, derived from `salaries`; kept for readers that want one number. */
   salaryMin: Schema.optional(Schema.NullOr(Schema.Int)),
   salaryExpectation: Schema.optional(Schema.NullOr(Schema.Int)),
   currency: Schema.optional(Schema.NullOr(Schema.String)),
+  faq: Schema.Array(ResumeFaqEntry),
   experience: Schema.Array(ResumeExperienceEnrichment),
   updatedAt: Schema.optional(Schema.NullOr(Schema.String))
 })

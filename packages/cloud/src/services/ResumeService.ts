@@ -2,6 +2,8 @@ import type {
   ApiError,
   HhAccountId,
   ResumeEnrichment,
+  ResumeFaqEntry,
+  ResumeSalary,
   ResumeId,
   ResumeRecord
 } from "@otbor/contract"
@@ -42,9 +44,8 @@ export interface ResumeServiceShape {
     resumeId: ResumeId,
     data: {
       readonly comment?: string
-      readonly salaryMin?: number | null
-      readonly salaryExpectation?: number | null
-      readonly currency?: string | null
+      readonly salaries?: ReadonlyArray<ResumeSalary>
+      readonly faq?: ReadonlyArray<ResumeFaqEntry>
       readonly experience?: ReadonlyArray<{
         readonly key: string
         readonly employmentType?: string | null
@@ -137,6 +138,8 @@ export class ResumeService extends Context.Service<ResumeService, ResumeServiceS
           return {
             resumeId,
             comment: "",
+            salaries: [],
+            faq: [],
             experience: [],
             updatedAt: null
           } as ResumeEnrichment

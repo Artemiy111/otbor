@@ -86,6 +86,8 @@ import {
   QueueStats,
   ResumeDraft,
   ResumeEnrichment,
+  ResumeFaqEntry,
+  ResumeSalary,
   ResumeRecord,
   SyncResult,
   TelegramAccountRecord,
@@ -1335,9 +1337,8 @@ export const ResumeEnrichmentSave = Rpc.make("ResumeEnrichmentSave", {
     resumeId: ResumeId,
     data: Schema.Struct({
       comment: Schema.optional(Schema.String),
-      salaryMin: Schema.optional(Schema.NullOr(Schema.Int)),
-      salaryExpectation: Schema.optional(Schema.NullOr(Schema.Int)),
-      currency: Schema.optional(Schema.NullOr(Schema.String)),
+      salaries: Schema.optional(Schema.Array(ResumeSalary)),
+      faq: Schema.optional(Schema.Array(ResumeFaqEntry)),
       experience: Schema.optional(
         Schema.Array(
           Schema.Struct({

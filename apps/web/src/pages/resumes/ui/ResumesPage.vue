@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue"
 import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
-import type { HhAccountRecord, ResumeEnrichment, ResumeRecord } from "@otbor/contract"
+import { RESUME_FAQ_TOPICS, SALARY_CURRENCIES } from "@otbor/contract"
+import type { HhAccountRecord, ResumeEnrichment, ResumeRecord, SalaryCurrency } from "@otbor/contract"
 import { CircleAlert } from "@lucide/vue"
 import { hhAccountApi, hhAccountKeys, useDefaultAccount } from "@/entities/hh-account"
 import { resumeApi, resumeKeys } from "@/entities/resume"
@@ -58,32 +59,86 @@ const selectedResume = computed(() => resumes.value.find((r) => r.id === selecte
 
 const enrichmentQuery = useQuery({
   key: () => resumeKeys.enrichment(selectedResumeId.value),
-  query: () => (selectedResumeId.value ? resumeApi.enrichmentGet(selectedResumeId.value) : Promise.resolve(null as any)),
+  query: () => (selectedResumeId.value ? resumeApi.enrichmentGet(selectedResumeId.value) : Promise.resolve(null as unknown as ResumeEnrichment)),
   enabled: () => selectedResumeId.value !== ""
 })
 
 const comment = ref("")
-const salaryMin = ref("")
-const salaryExpectation = ref("")
-const currency = ref("RUB")
 
-watch(enrichmentQuery.data, (data: ResumeEnrichment | null) => {
+interface SalaryDraft { min: string; expectation: string }
+const emptySalaries = (): Record<SalaryCurrency, SalaryDraft> =>
+  Object.fromEntries(SALARY_CURRENCIES.map((c) => [c, { min: "", expectation: "" }])) as Record<SalaryCurrency, SalaryDraft>
+const salaries = ref<Record<SalaryCurrency, SalaryDraft>>(emptySalaries())
+
+const faqAnswers = ref<Record<string, string>>({})
+interface CustomFaq { id: number; question: string; answer: string }
+const customFaq = ref<CustomFaq[]>([])
+let customFaqId = 0
+const addCustomFaq = () => customFaq.value.push({ id: ++customFaqId, question: "", answer: "" })
+const removeCustomFaq = (id: number) => { customFaq.value = customFaq.value.filter((e) => e.id !== id) }
+
+const jobNotes = ref<Record<string, string>>({})
+
+const topicKeys: ReadonlyArray<string> = RESUME_FAQ_TOPICS.map((t) => t.key)
+const amountText = (value: number | null | undefined): string => (value === null || value === undefined ? "" : String(value))
+
+watch(enrichmentQuery.data, (data) => {
   if (!data) return
   comment.value = data.comment ?? ""
-  salaryMin.value = data.salaryMin === null || data.salaryMin === undefined ? "" : String(data.salaryMin)
-  salaryExpectation.value = data.salaryExpectation === null || data.salaryExpectation === undefined ? "" : String(data.salaryExpectation)
-  currency.value = data.currency ?? "RUB"
+  const next = emptySalaries()
+  for (const slot of data.salaries ?? []) {
+    next[slot.currency] = { min: amountText(slot.min), expectation: amountText(slot.expectation) }
+  }
+  salaries.value = next
+  faqAnswers.value = Object.fromEntries((data.faq ?? []).filter((e) => topicKeys.includes(e.key)).map((e) => [e.key, e.answer]))
+  customFaq.value = (data.faq ?? [])
+    .filter((e) => !topicKeys.includes(e.key))
+    .map((e) => ({ id: ++customFaqId, question: e.question ?? "", answer: e.answer }))
+  jobNotes.value = Object.fromEntries(
+    (data.experience ?? []).filter((e) => e.key !== "").map((e) => [e.key, e.comment ?? ""])
+  )
 }, { immediate: true })
+
+const toAmount = (value: string): number | null => {
+  const n = Number(value.replace(/\s+/g, ""))
+  return value.trim() !== "" && Number.isInteger(n) && n > 0 ? n : null
+}
 
 const queryCache = useQueryCache()
 const saveMutation = useMutation({
-  mutation: () =>
-    resumeApi.enrichmentSave(selectedResumeId.value, {
+  mutation: () => {
+    const saved = enrichmentQuery.data.value?.experience ?? []
+    const shownKeys = new Set(experienceItems.value.map((i) => i.key))
+    const experience = [
+      // Notes for jobs that are no longer in the imported resume stay as they were.
+      ...saved.filter((e) => !shownKeys.has(e.key) && !experienceItems.value.some((i) => i.matches(e.key))),
+      ...experienceItems.value.flatMap((item) => {
+        const old = saved.find((e) => e.key === item.key || item.matches(e.key))
+        const note = (jobNotes.value[item.key] ?? "").trim()
+        if (note === "" && !old?.employmentType && !old?.leaveReason) return []
+        return [{
+          key: item.key,
+          employmentType: old?.employmentType ?? null,
+          comment: note === "" ? null : note,
+          leaveReason: old?.leaveReason ?? null
+        }]
+      })
+    ]
+    return resumeApi.enrichmentSave(selectedResumeId.value, {
       comment: comment.value,
-      salaryMin: salaryMin.value === "" ? null : Number(salaryMin.value),
-      salaryExpectation: salaryExpectation.value === "" ? null : Number(salaryExpectation.value),
-      currency: currency.value
-    }),
+      salaries: SALARY_CURRENCIES.flatMap((currency) => {
+        const draft = salaries.value[currency]
+        const min = toAmount(draft.min)
+        const expectation = toAmount(draft.expectation)
+        return min === null && expectation === null ? [] : [{ currency, min, expectation }]
+      }),
+      faq: [
+        ...RESUME_FAQ_TOPICS.map((t) => ({ key: t.key, answer: faqAnswers.value[t.key] ?? "" })),
+        ...customFaq.value.map((e) => ({ key: `custom:${e.id}`, question: e.question.trim(), answer: e.answer }))
+      ].filter((e) => e.answer.trim() !== ""),
+      experience
+    })
+  },
   onSuccess() {
     void queryCache.invalidateQueries({ key: resumeKeys.enrichment(selectedResumeId.value) })
   }
@@ -91,14 +146,15 @@ const saveMutation = useMutation({
 
 const save = () => saveMutation.mutate()
 
-const aiSalary = computed(() => {
+const aiSalaries = computed(() => {
+  const parts = SALARY_CURRENCIES.flatMap((currency) => {
+    const d = salaries.value[currency]
+    const bits = [d.expectation && `ожидает ${d.expectation}`, d.min && `минимум ${d.min}`].filter(Boolean)
+    return bits.length ? [`${currency}: ${bits.join(", ")}`] : []
+  })
+  if (parts.length) return parts.join(" · ")
   const r = selectedResume.value
-  const cur = currency.value || r?.salaryCurrency || ""
-  const parts: string[] = []
-  if (salaryExpectation.value) parts.push(`ожидает ${salaryExpectation.value} ${cur}`)
-  else if (r?.salaryAmount) parts.push(`в резюме ${r.salaryAmount} ${r.salaryCurrency ?? ""}`)
-  if (salaryMin.value) parts.push(`минимум ${salaryMin.value} ${cur}`)
-  return parts.length ? parts.join(", ") : "не указана"
+  return r?.salaryAmount ? `в резюме ${r.salaryAmount} ${r.salaryCurrency ?? ""}` : "не указана"
 })
 
 const str = (value: unknown): string => (typeof value === "string" ? value : "")
@@ -110,20 +166,25 @@ const experienceItems = computed(() =>
     const start = str(e.startDate)
     const end = str(e.endDate)
     const key = [company, position].filter(Boolean).join(" ").toLowerCase()
-    const extra = (enrichmentQuery.data.value?.experience ?? []).find(
-      (x: { key: string }) => x.key !== "" && key.includes(x.key.toLowerCase())
-    )
-    const comment = [extra?.employmentType, extra?.comment, extra?.leaveReason ? `причина ухода: ${extra.leaveReason}` : ""]
-      .filter(Boolean)
-      .join(" · ")
     return {
+      key,
+      // Notes saved before the key was exact matched by substring; keep reading them.
+      matches: (stored: string) => stored !== "" && stored !== key && key.includes(stored.toLowerCase()),
       title: [position, company].filter(Boolean).join(" — ") || "Место работы",
       period: start || end ? `${start || "?"} — ${end || "по настоящее время"}` : "",
-      description: str(e.description),
-      comment
+      description: str(e.description)
     }
   })
 )
+
+// Show a note saved under an older, shorter key in the field of the job it belongs to.
+watch([experienceItems, enrichmentQuery.data], () => {
+  for (const item of experienceItems.value) {
+    if (item.key in jobNotes.value) continue
+    const old = enrichmentQuery.data.value?.experience.find((x) => item.matches(x.key))
+    if (old?.comment) jobNotes.value = { ...jobNotes.value, [item.key]: old.comment }
+  }
+})
 
 const syncMessage = ref("")
 const syncMutation = useMutation({
@@ -193,8 +254,8 @@ const refresh = () => {
           <div class="space-y-4 rounded-md border p-4">
             <h3 class="text-sm font-semibold">Что видит ИИ</h3>
             <dl class="grid gap-3 text-sm sm:grid-cols-[160px_1fr]">
-              <dt class="text-muted-foreground">Желаемая зарплата</dt>
-              <dd>{{ aiSalary }}</dd>
+              <dt class="text-muted-foreground">Зарплата</dt>
+              <dd>{{ aiSalaries }}</dd>
               <dt class="text-muted-foreground">Формат работы</dt>
               <dd>{{ selectedResume.workFormats.length ? selectedResume.workFormats.join(", ") : "не указан" }}</dd>
               <dt class="text-muted-foreground">Навыки</dt>
@@ -215,30 +276,47 @@ const refresh = () => {
           <div v-if="experienceItems.length" class="space-y-2">
             <h3 class="text-sm font-semibold">Опыт работы</h3>
             <ul class="space-y-3">
-              <li v-for="(item, index) in experienceItems" :key="index" class="rounded-md border p-3 text-sm">
+              <li v-for="item in experienceItems" :key="item.key" class="rounded-md border p-3 text-sm">
                 <div class="font-medium">{{ item.title }}</div>
                 <div v-if="item.period" class="text-muted-foreground">{{ item.period }}</div>
                 <p v-if="item.description" class="mt-1 whitespace-pre-wrap">{{ item.description }}</p>
-                <p v-if="item.comment" class="mt-1 text-muted-foreground">Заметка: {{ item.comment }}</p>
+                <div class="mt-2 space-y-1.5">
+                  <Label>Заметка для агента</Label>
+                  <Textarea v-model="jobNotes[item.key]" rows="2" placeholder="Формат работы, причина ухода, что подчеркнуть" />
+                </div>
               </li>
             </ul>
           </div>
-          <div class="grid gap-3 sm:grid-cols-2">
-            <div class="space-y-1.5">
-              <Label>Минимальная зарплата</Label>
-              <Input v-model="salaryMin" type="number" />
-            </div>
-            <div class="space-y-1.5">
-              <Label>Ожидаемая зарплата</Label>
-              <Input v-model="salaryExpectation" type="number" />
-            </div>
-            <div class="space-y-1.5">
-              <Label>Валюта</Label>
-              <Input v-model="currency" />
+          <div class="space-y-2">
+            <h3 class="text-sm font-semibold">Зарплата</h3>
+            <p class="text-xs text-muted-foreground">Оставьте валюту пустой, если не рассматриваете её. Агент берёт сумму в валюте вакансии и не пересчитывает.</p>
+            <div class="grid grid-cols-[4rem_1fr_1fr] items-center gap-2 text-sm">
+              <span />
+              <span class="text-muted-foreground">Минимум</span>
+              <span class="text-muted-foreground">Ожидаемая</span>
+              <template v-for="currency in SALARY_CURRENCIES" :key="currency">
+                <Label :for="`min-${currency}`" class="font-medium">{{ currency }}</Label>
+                <Input :id="`min-${currency}`" v-model="salaries[currency].min" type="number" min="0" />
+                <Input v-model="salaries[currency].expectation" type="number" min="0" />
+              </template>
             </div>
           </div>
+          <div class="space-y-3">
+            <h3 class="text-sm font-semibold">Частые вопросы в тестах</h3>
+            <p class="text-xs text-muted-foreground">Как отвечать на вопросы, которые встречаются в анкетах. Это подсказка агенту, а не готовый текст.</p>
+            <div v-for="topic in RESUME_FAQ_TOPICS" :key="topic.key" class="space-y-1.5">
+              <Label>{{ topic.question }}</Label>
+              <Textarea v-model="faqAnswers[topic.key]" rows="2" />
+            </div>
+            <div v-for="entry in customFaq" :key="entry.id" class="space-y-1.5 rounded-md border p-3">
+              <Input v-model="entry.question" placeholder="Вопрос" />
+              <Textarea v-model="entry.answer" rows="2" placeholder="Как отвечать" />
+              <Button variant="ghost" size="sm" @click="removeCustomFaq(entry.id)">Удалить</Button>
+            </div>
+            <Button variant="outline" size="sm" @click="addCustomFaq">Добавить свой вопрос</Button>
+          </div>
           <div class="space-y-1.5">
-            <Label>Заметки</Label>
+            <Label>Общие заметки о резюме</Label>
             <Textarea v-model="comment" rows="4" />
           </div>
           <div class="flex gap-2">

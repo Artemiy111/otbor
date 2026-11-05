@@ -171,7 +171,7 @@ const makeFake = (options: {
         isActive: true
       }),
     ResumeEnrichmentGet: () =>
-      Effect.succeed({ comment: "Релокация не нужна", experience: [], salaryExpectation: 300000, currency: "RUR" }),
+      Effect.succeed({ comment: "Релокация не нужна", experience: [], salaries: [{ currency: "RUB", min: null, expectation: 300000 }], faq: [{ key: "city", answer: "Москва" }], salaryExpectation: 300000, currency: "RUB" }),
     ApplicationsCreateManual: (payload: { vacancyId: string; hhAccountId: string; resumeId?: string }) => {
       calls.manual.push(payload)
       return Effect.succeed(
@@ -566,6 +566,7 @@ describe("manual mode", () => {
     expect(body.employer?.name).toBe("Employer 7")
     expect(body.resume?.id).toBe(id(800))
     expect(body.resume?.enrichment?.comment).toBe("Релокация не нужна")
+    expect(body.resume?.enrichment).toMatchObject({ faq: [{ key: "city", question: "В каком городе вы живёте?", answer: "Москва" }] })
     expect(body.application).toBeNull()
     expect(body.styleRules.join(" ")).toContain("em dash")
     expect(body.warnings.join(" ")).toContain("blacklist")
