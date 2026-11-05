@@ -222,7 +222,8 @@ const syncMutation = useMutation({
   mutation: async () => {
     const accountId = selectedAccountId.value
     let status = await resumeApi.syncRun(accountId)
-    syncMessage.value = "Задача поставлена в очередь, жду гарнесс…"
+    const accountName = accounts.value.find((a) => a.id === accountId)?.label ?? "выбранного аккаунта"
+    syncMessage.value = `Загружаю резюме аккаунта «${accountName}». Задачу выполняет браузерный harness, жду его…`
     const deadline = Date.now() + 180_000
     while (!["done", "failed", "needs_human"].includes(status.status) && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 2_000))
@@ -232,7 +233,9 @@ const syncMutation = useMutation({
     syncMessage.value =
       status.status === "done" && c
         ? `Найдено ${c.found}: новых ${c.imported}, обновлено ${c.updated}, без изменений ${c.unchanged}, не прочитано ${c.unreadable}`
-        : `Статус: ${status.status}${status.message ? ` — ${status.message}` : ""}`
+        : status.status === "pending"
+          ? "Harness не взял задачу за 3 минуты. Он, скорее всего, не запущен: выполните `otbor harness run` и нажмите кнопку ещё раз."
+          : `Статус: ${status.status}${status.message ? ` — ${status.message}` : ""}`
     return status
   },
   onSettled() {
@@ -251,7 +254,7 @@ const refresh = () => {
     <PageHeader title="Резюме" description="Резюме hh.ru и локальные дополнения для сопроводительных писем.">
       <template #actions>
         <Button variant="outline" :disabled="syncMutation.isLoading.value || !selectedAccountId" @click="syncMutation.mutate()">
-          {{ syncMutation.isLoading.value ? "Загружаю…" : "Загрузить с hh" }}
+          {{ syncMutation.isLoading.value ? "Загружаю…" : "Загрузить резюме с hh" }}
         </Button>
         <RefreshButton :loading="resumesQuery.isLoading.value" @refresh="refresh" />
       </template>
