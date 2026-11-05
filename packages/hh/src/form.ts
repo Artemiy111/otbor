@@ -129,7 +129,8 @@ interface Control {
 }
 
 const controlsOf = (block: string, pattern: RegExp): ReadonlyArray<Control> =>
-  [...block.matchAll(pattern)]
+  block
+    .matchAll(pattern)
     .map((match) => ({ index: match.index ?? 0, attrs: attrsOf(match[0]) }))
     .filter(
       (control) =>
@@ -137,6 +138,7 @@ const controlsOf = (block: string, pattern: RegExp): ReadonlyArray<Control> =>
         control.attrs.type !== "hidden" &&
         !LETTER_RE.test(control.attrs.name ?? "")
     )
+    .toArray()
 
 const taskIdOf = (name: string | undefined): string | null =>
   name?.match(/^task_(\d+)(?:_text)?$/)?.[1] ?? null

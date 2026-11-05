@@ -270,9 +270,11 @@ const DEFAULT_LENGTH: CoverLetterLength = "medium"
 
 const bulletList = (items: ReadonlyArray<string>): ReadonlyArray<string> =>
   items
+    .values()
     .map(text)
     .filter((item) => item !== "")
     .map((item) => `- ${item}`)
+    .toArray()
 
 export const buildCoverLetterPrompt = (input: CoverLetterPromptInput): WritingPrompt => {
   const language = resolveLanguage(input.language, vacancyHaystack(input.vacancy))

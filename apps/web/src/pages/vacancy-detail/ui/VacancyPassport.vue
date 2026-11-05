@@ -23,8 +23,10 @@ const rows = computed(() => props.page.recon.value)
 const order: ReadonlyArray<ReconGroup> = ["apply", "risk", "perk"]
 const groups = computed(() =>
   order
+    .values()
     .map((group) => ({ group, title: RECON_GROUPS[group], rows: rows.value.filter((row) => row.group === group) }))
     .filter((entry) => entry.rows.length > 0)
+    .toArray()
 )
 const all = computed(() => rows.value.filter((row) => row.group !== "profile"))
 const conflicts = computed(() => all.value.filter((row) => row.conflict))

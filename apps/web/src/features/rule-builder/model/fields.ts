@@ -353,10 +353,13 @@ export const presetFieldMeta = (field: PresetField): PresetFieldMeta =>
   FIELD_BY_NAME.get(field) ?? PRESET_FIELDS[0]!
 
 export const PRESET_FIELD_GROUPS: ReadonlyArray<PresetFieldGroupMeta> =
-  PRESET_FIELD_GROUP_ORDER.map((group) => ({
-    group,
-    fields: PRESET_FIELDS.filter((meta) => meta.group === group && meta.legacy !== true)
-  })).filter((group) => group.fields.length > 0)
+  PRESET_FIELD_GROUP_ORDER.values()
+    .map((group) => ({
+      group,
+      fields: PRESET_FIELDS.filter((meta) => meta.group === group && meta.legacy !== true)
+    }))
+    .filter((group) => group.fields.length > 0)
+    .toArray()
 
 export const PRESET_OPERATOR_LABELS: Record<PresetOperator, string> = {
   contains: "содержит",

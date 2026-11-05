@@ -152,7 +152,9 @@ export class FakeTelegramGateway implements TelegramGateway {
 
 const nextId = (messages: readonly TelegramMessage[]): string => {
   const ids = messages
+    .values()
     .map((message) => Number(message.id))
     .filter((id) => Number.isFinite(id))
+    .toArray()
   return String(Math.max(0, ...ids) + 1)
 }

@@ -100,7 +100,7 @@ export const termPattern = (term: string): RegExp =>
  * empty list. Used for highlighting, so it matches the raw (not normalized) text.
  */
 export const termsPattern = (terms: ReadonlyArray<string>): RegExp | null => {
-  const bodies = [...new Set(terms.map(normalizeTerm).filter((term) => term !== ""))]
+  const bodies = [...new Set(terms.values().map(normalizeTerm).filter((term) => term !== ""))]
     .sort((a, b) => b.length - a.length)
     .map(termBody)
   if (bodies.length === 0) return null

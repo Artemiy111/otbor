@@ -15,7 +15,8 @@
     "effect/noNestedEffectGen": "error",
     "effect/preferServiceOf": "error",
     "effect/preferMatchTagsExhaustive": "error",
-    "effect/noPromiseChainsInTests": "error"
+    "effect/noPromiseChainsInTests": "error",
+    "effect/noArrayFilterMap": "error"
   },
   "env": {
     "builtin": true,

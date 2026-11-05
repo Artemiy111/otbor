@@ -446,8 +446,10 @@ const normalize = (text: string, list: ReadonlyArray<KitAnswer>): string =>
   JSON.stringify([
     text.trim(),
     list
+      .values()
       .filter((item): item is Extract<KitAnswer, { questionId: string }> => "questionId" in item)
       .map((item) => [item.questionId, [...(item.optionIds ?? [])].sort(), (item.text ?? "").trim()])
+      .toArray()
       .sort()
   ])
 

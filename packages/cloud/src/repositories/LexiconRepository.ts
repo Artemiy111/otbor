@@ -729,7 +729,7 @@ export const upsert = (
     // `aliases` undefined means "leave the aliases alone" (a rename).
     const touchAliases = input.aliases !== undefined
     const aliases = [...new Set((input.aliases ?? []).map((alias) => alias.trim()).filter((alias) => alias.length > 0))]
-    const normalizedAliases = aliases.map(normalizeTerm).filter((alias) => alias !== normalized)
+    const normalizedAliases = aliases.values().map(normalizeTerm).filter((alias) => alias !== normalized).toArray()
 
     if (normalizedAliases.length > 0) {
       yield* tx

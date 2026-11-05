@@ -159,8 +159,10 @@ export const formatTable = (checks: ReadonlyArray<Check>): string => {
 
 export const formatHints = (checks: ReadonlyArray<Check>): string =>
   checks
+    .values()
     .filter((check) => (check.state === "fail" || check.state === "warn") && check.hint !== undefined)
     .map((check) => `  ${check.name}: ${check.hint}`)
+    .toArray()
     .join("\n")
 
 /** `doctor` fails only on required checks that failed. */
@@ -184,7 +186,7 @@ export const pendingMigrations = (
   applied: ReadonlyArray<number>
 ): ReadonlyArray<string> => {
   const done = new Set(applied)
-  return onDisk.filter((file) => !done.has(file.id)).map((file) => `${file.id}_${file.name}`)
+  return onDisk.values().filter((file) => !done.has(file.id)).map((file) => `${file.id}_${file.name}`).toArray()
 }
 
 /** Minimum bun the repo is written against: major.minor.patch comparison. */

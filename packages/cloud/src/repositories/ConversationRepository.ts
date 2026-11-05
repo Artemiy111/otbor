@@ -383,7 +383,7 @@ export const conversationForMessage = (
   accountId: string,
   rfcMessageIds: ReadonlyArray<string>
 ): RepoEffect<string | null> => {
-  const ids = rfcMessageIds.map((id) => id.trim()).filter((id) => id !== "")
+  const ids = rfcMessageIds.values().map((id) => id.trim()).filter((id) => id !== "").toArray()
   if (ids.length === 0) return Effect.succeed(null)
   const placeholders = sql.join(ids.map((id) => sql`${id}`), sql`, `)
 
