@@ -13,12 +13,7 @@ import {
   Button,
   Card,
   CardContent,
-  Input,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
+  Input
 } from "@/shared/ui"
 import PresetPreviewPanel from "./PresetPreviewPanel.vue"
 
@@ -37,7 +32,8 @@ const emit = defineEmits<{
 }>()
 
 const title = ref(props.preset?.title ?? "")
-const kind = ref<PresetKind>(props.preset?.kind ?? "explore")
+/** Legacy label, no behaviour behind it: kept as stored, "explore" for new presets. */
+const kind: PresetKind = props.preset?.kind ?? "explore"
 const filter = ref(reactive(toEditable(props.preset?.filter)))
 const formError = ref<string | null>(null)
 
@@ -75,7 +71,7 @@ const submit = () => {
     return
   }
   formError.value = null
-  emit("save", { title: trimmed, kind: kind.value, filter: buildFilter(filter.value) })
+  emit("save", { title: trimmed, kind, filter: buildFilter(filter.value) })
 }
 
 onMounted(() => {
@@ -108,15 +104,6 @@ onMounted(() => {
             :disabled="props.saving"
             @keydown.enter="submit"
           />
-          <Select :model-value="kind" @update:model-value="(v) => (kind = v === 'apply' ? 'apply' : 'explore')">
-            <SelectTrigger class="h-8 w-[150px] text-xs" title="Поиск — просмотр корпуса, отклики — для автооткликов">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="explore">Поиск</SelectItem>
-              <SelectItem value="apply">Отклики</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
 
         <RuleBuilder v-model="filter" :disabled="props.saving" />

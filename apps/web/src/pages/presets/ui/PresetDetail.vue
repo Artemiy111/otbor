@@ -4,7 +4,7 @@ import { useQuery } from "@pinia/colada"
 import type { PresetRecord } from "@otbor/contract"
 import { CircleAlert, Pencil, Trash2 } from "@lucide/vue"
 import { presetApi, presetKeys } from "@/entities/preset"
-import { describeError, formatDate, presetKindLabel } from "@/shared/lib"
+import { describeError, formatDate } from "@/shared/lib"
 import {
   Alert,
   AlertDescription,
@@ -62,9 +62,6 @@ const keywordCount = computed(() => props.preset.filter.keywordIds?.length ?? 0)
           <div class="min-w-0 space-y-2">
             <div class="flex flex-wrap items-center gap-2">
               <CardTitle class="text-lg">{{ props.preset.title }}</CardTitle>
-              <Badge :variant="props.preset.kind === 'apply' ? 'info' : 'secondary'">
-                {{ presetKindLabel(props.preset.kind) }}
-              </Badge>
               <Badge variant="outline">
                 {{ props.preset.system ? "системный" : "пользовательский" }}
               </Badge>

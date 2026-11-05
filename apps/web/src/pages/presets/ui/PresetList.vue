@@ -2,7 +2,7 @@
 import { computed, ref } from "vue"
 import type { PresetRecord } from "@otbor/contract"
 import { Search } from "@lucide/vue"
-import { formatDate, presetKindLabel } from "@/shared/lib"
+import { formatDate } from "@/shared/lib"
 import {
   Badge,
   Card,
@@ -105,12 +105,6 @@ const ruleCount = (preset: PresetRecord): number => presetRules(preset.filter).l
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-1.5">
                 <span class="truncate text-sm font-medium">{{ preset.title }}</span>
-                <Badge
-                  :variant="preset.kind === 'apply' ? 'info' : 'neutral'"
-                  class="shrink-0 text-[10px]"
-                >
-                  {{ presetKindLabel(preset.kind) }}
-                </Badge>
               </div>
               <div class="mt-0.5 text-[11px] text-muted-foreground">
                 правил {{ ruleCount(preset) }} · {{ formatDate(preset.updatedAt) }}
