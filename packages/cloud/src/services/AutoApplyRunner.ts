@@ -533,6 +533,7 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                     excludeResumeIds: row.resumeId === null ? pairResumeIds : [],
                     minPriority: row.minPriority,
                     sort: row.sort,
+                    sortDirection: row.sortDirection,
                     limit,
                     policyVersion: APPLY_POLICY_VERSION,
                     analysisPromptVersion: ANALYSIS_PROMPT_VERSION

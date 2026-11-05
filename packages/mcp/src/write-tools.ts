@@ -240,8 +240,9 @@ export const ApplyFilterSetSettings = writeTool("apply_filter_set_settings", {
     "account-wide filter): minFit (0-100), tests policy (human = needs the operator, skip, allow) and " +
     "freshHalfLifeHours, plus the auto-apply settings: autoMode ('off' or 'drafts' only; 'auto' = sending real " +
     "applications by itself is enabled by a human in the web UI or the CLI, this tool rejects it), dailyLimit " +
-    "(>= 0, hh allows 200 per account per day), batchSize (1-500), sort (priority, fit, newest, salary) and " +
-    "minPriority (>= 0). Settings left out keep their value; the rules are kept as they are. If only the " +
+    "(>= 0, hh allows 200 per account per day), batchSize (1-500), sort (priority, fit, newest, salary), " +
+    "sortDirection (desc = best first, default; asc = worst first, handy to test on vacancies that are not a pity to lose; " +
+    "the filter and limits still apply) and minPriority (>= 0). Settings left out keep their value; the rules are kept as they are. If only the " +
     "built-in default applied so far, it is stored as an explicit row. Sends nothing to hh.ru.",
   parameters: Schema.Struct({
     minFit: Schema.optional(Schema.Int).annotate({ description: "0-100: skip vacancies that score below this fit" }),
@@ -253,6 +254,9 @@ export const ApplyFilterSetSettings = writeTool("apply_filter_set_settings", {
     dailyLimit: Schema.optional(Schema.Int).annotate({ description: "Responses per 24 hours per hh account, >= 0" }),
     batchSize: Schema.optional(Schema.Int).annotate({ description: "Vacancies per auto-apply run, 1-500" }),
     sort: Schema.optional(Schema.Literals(["priority", "fit", "newest", "salary"])),
+    sortDirection: Schema.optional(Schema.Literals(["desc", "asc"])).annotate({
+      description: "Order of the auto-apply runner: desc = best first (default), asc = the reverse (worst first)"
+    }),
     minPriority: Schema.optional(Schema.Number).annotate({ description: "Skip decisions below this priority, >= 0" }),
     ...filterTarget
   }),

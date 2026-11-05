@@ -16,6 +16,7 @@
 | `daily_limit` | откликов в сутки на hh-аккаунт | **200** (лимит hh) |
 | `batch_size` | сколько вакансий брать за один запуск | 20 |
 | `sort` | `priority` / `fit` / `newest` / `salary` | `priority` |
+| `sort_direction` | `desc` (лучшие первыми) / `asc` (весь порядок инвертирован, худшие первыми; `nulls last` остаётся в конце). Влияет только на выбор исполнителя, решения не устаревают | `desc` |
 | `min_priority` | порог приоритета | 0 |
 | `boosts` | список `{ rule: PresetRule, weight: int -50..50 }` | см. ниже |
 
@@ -51,7 +52,7 @@
    ничего не берём.
 2. **Выбор.** Берём текущие (не устаревшие) решения `verdict = apply` этого
    аккаунта и резюме, по которым ещё нет отклика (account, vacancy, resume),
-   с `priority >= min_priority`, в порядке `sort`, не больше
+   с `priority >= min_priority`, в порядке `sort` и `sort_direction`, не больше
    `min(batch_size, remaining)`.
 3. **Создание.** `createFromDecision` в режиме `auto` или `drafts` по
    `auto_mode`. Он ставит чтение формы (`form_read`).
@@ -87,7 +88,7 @@
   порог, редактор boosts, кнопка «Запустить сейчас», счётчик «сегодня
   отправлено X из N».
 - CLI: `otbor filter set --auto off|drafts|auto --daily-limit N --batch N
-  --sort priority|fit|newest|salary --min-priority N`, `otbor apply run`
+  --sort priority|fit|newest|salary --order desc|asc --min-priority N`, `otbor apply run`
   (запуск расписания сейчас).
 - MCP: чтение параметров; включение режима `auto` через MCP НЕ даётся
   (только `off`/`drafts`), отправку включает человек из UI/CLI.

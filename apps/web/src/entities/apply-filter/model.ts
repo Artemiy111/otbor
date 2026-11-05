@@ -1,4 +1,4 @@
-import type { ApplyFilterSource, ApplySort, AutoMode, TestsPolicy } from "@otbor/contract"
+import type { ApplyFilterSource, ApplySort, AutoMode, SortDirection, TestsPolicy } from "@otbor/contract"
 
 export const applyFilterKeys = {
   all: ["apply-filter"] as const,
@@ -32,6 +32,11 @@ export const autoModeOptions: ReadonlyArray<{ value: AutoMode; label: string; hi
     label: "Отправка",
     hint: "То же, но готовый отклик, прошедший все проверки, уходит на hh.ru сам. Это необратимо."
   }
+]
+
+export const sortDirectionOptions: ReadonlyArray<{ value: SortDirection; label: string }> = [
+  { value: "desc", label: "Лучшие первыми" },
+  { value: "asc", label: "Худшие первыми" }
 ]
 
 export const applySortOptions: ReadonlyArray<{ value: ApplySort; label: string }> = [

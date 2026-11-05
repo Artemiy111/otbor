@@ -4,6 +4,7 @@ import type {
   ApplyUsage,
   AutoMode,
   ApplySort,
+  SortDirection,
   ApplyFilterView,
   HhAccountId,
   PresetFilter,
@@ -33,6 +34,7 @@ export interface ApplyAutoSetInput extends ApplyFilterTarget {
   readonly dailyLimit: number
   readonly batchSize: number
   readonly sort: ApplySort
+  readonly sortDirection: SortDirection
   readonly minPriority: number
   readonly boosts: ReadonlyArray<ApplyBoost>
 }
@@ -68,6 +70,7 @@ export const applyFilterApi = {
         dailyLimit: input.dailyLimit,
         batchSize: input.batchSize,
         sort: input.sort,
+        sortDirection: input.sortDirection,
         minPriority: input.minPriority,
         boosts: input.boosts
       })

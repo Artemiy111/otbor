@@ -28,6 +28,7 @@ export interface ApplyFilterSetInput extends ApplyFilterTarget {
   readonly dailyLimit?: number
   readonly batchSize?: number
   readonly sort?: ApplyFilterRecord["sort"]
+  readonly sortDirection?: ApplyFilterRecord["sortDirection"]
   readonly minPriority?: number
   readonly boosts?: ApplyFilterRecord["boosts"]
   readonly templatePresetId?: string | null
@@ -69,6 +70,7 @@ export class ApplyFilterService extends Context.Service<ApplyFilterService, Appl
         readonly freshHalfLifeHours?: number
         readonly dailyLimit?: number
         readonly batchSize?: number
+        readonly sortDirection?: ApplyFilterRecord["sortDirection"]
         readonly minPriority?: number
         readonly boosts?: ApplyFilterRecord["boosts"]
       }) =>
@@ -87,6 +89,9 @@ export class ApplyFilterService extends Context.Service<ApplyFilterService, Appl
             (!Number.isInteger(input.batchSize) || input.batchSize < 1 || input.batchSize > 500)
           ) {
             return yield* new InvalidInput({ message: "batchSize must be between 1 and 500" })
+          }
+          if (input.sortDirection !== undefined && input.sortDirection !== "desc" && input.sortDirection !== "asc") {
+            return yield* new InvalidInput({ message: "sortDirection must be desc or asc" })
           }
           if (input.minPriority !== undefined && !(Number.isFinite(input.minPriority) && input.minPriority >= 0)) {
             return yield* new InvalidInput({ message: "minPriority must be 0 or more" })
@@ -141,6 +146,7 @@ export class ApplyFilterService extends Context.Service<ApplyFilterService, Appl
                   dailyLimit: input.dailyLimit,
                   batchSize: input.batchSize,
                   sort: input.sort,
+                  sortDirection: input.sortDirection,
                   minPriority: input.minPriority,
                   boosts: input.boosts === undefined ? undefined : parseBoosts(input.boosts),
                   templatePresetId: input.templatePresetId

@@ -105,6 +105,11 @@ export const ApplySort = Schema.Literals(["priority", "fit", "newest", "salary"]
 
 export type ApplySort = typeof ApplySort.Type
 
+/** `desc` takes the best candidates first; `asc` reverses the whole order. */
+export const SortDirection = Schema.Literals(["desc", "asc"])
+
+export type SortDirection = typeof SortDirection.Type
+
 export const StreamMode = Schema.Literals(["drafts", "auto"])
 
 export type StreamMode = typeof StreamMode.Type

@@ -113,10 +113,10 @@ export const OtborWriteHandlers = OtborWriteToolkit.toLayer(Effect.gen(function*
       if (
         params.minFit === undefined && params.tests === undefined && params.freshHalfLifeHours === undefined &&
         params.autoMode === undefined && params.dailyLimit === undefined && params.batchSize === undefined &&
-        params.sort === undefined && params.minPriority === undefined
+        params.sort === undefined && params.sortDirection === undefined && params.minPriority === undefined
       ) {
         return yield* fail(
-          "pass at least one of minFit, tests, freshHalfLifeHours, autoMode, dailyLimit, batchSize, sort, minPriority"
+          "pass at least one of minFit, tests, freshHalfLifeHours, autoMode, dailyLimit, batchSize, sort, sortDirection, minPriority"
         )
       }
       if (params.autoMode === "auto") {
@@ -164,6 +164,7 @@ export const OtborWriteHandlers = OtborWriteToolkit.toLayer(Effect.gen(function*
         ...(params.dailyLimit === undefined ? {} : { dailyLimit: params.dailyLimit }),
         ...(params.batchSize === undefined ? {} : { batchSize: params.batchSize }),
         ...(params.sort === undefined ? {} : { sort: params.sort }),
+        ...(params.sortDirection === undefined ? {} : { sortDirection: params.sortDirection }),
         ...(params.minPriority === undefined ? {} : { minPriority: params.minPriority })
       }))
       return applyFilterBrief({ ...saved, source: resumeId === undefined ? "account" : "exact" }, accountDirectory(accounts))

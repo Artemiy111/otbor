@@ -31,7 +31,8 @@ import {
   StreamMode,
   TestsPolicy,
   AutoMode,
-  ApplySort
+  ApplySort,
+  SortDirection
 } from "./enums.ts"
 import {
   ApplicationId,
@@ -1379,6 +1380,7 @@ export const ApplyFilterSettings = Schema.Struct({
   /** Vacancies the runner takes per run. */
   batchSize: Schema.Int,
   sort: ApplySort,
+  sortDirection: SortDirection,
   /** The runner skips decisions below this priority. Never changes a verdict. */
   minPriority: Schema.Number,
   /** Scoring rules added to the deterministic fit. */
@@ -1399,6 +1401,7 @@ export const ApplyFilterRecord = Schema.Struct({
   dailyLimit: Schema.Int,
   batchSize: Schema.Int,
   sort: ApplySort,
+  sortDirection: SortDirection,
   minPriority: Schema.Number,
   boosts: Schema.Array(ApplyBoost),
   /** The preset this filter was last copied from; informational, the copy is independent. */
@@ -1432,6 +1435,7 @@ export const ApplyFilterView = Schema.Struct({
   dailyLimit: Schema.Int,
   batchSize: Schema.Int,
   sort: ApplySort,
+  sortDirection: SortDirection,
   minPriority: Schema.Number,
   boosts: Schema.Array(ApplyBoost),
   templatePresetId: Schema.NullOr(PresetId),

@@ -235,6 +235,8 @@ export const ApplyFilterBrief = Schema.Struct({
   /** Vacancies the auto-apply runner takes per run. */
   batchSize: Schema.Int,
   sort: Schema.String,
+  /** desc = best first (default); asc = the runner takes the reverse order (worst first). */
+  sortDirection: Schema.String,
   minPriority: Schema.Number,
   /** Readable scoring boosts, e.g. "salary >= 250000 (+8)". */
   boosts: Schema.Array(Schema.String),
@@ -279,6 +281,7 @@ export const applyFilterBrief = (
     dailyLimit: view.dailyLimit,
     batchSize: view.batchSize,
     sort: view.sort,
+    sortDirection: view.sortDirection,
     minPriority: view.minPriority,
     boosts: view.boosts.map((boost) => `${describeRule(boost.rule)} (${boost.weight > 0 ? "+" : ""}${boost.weight})`),
     ...(usage === undefined

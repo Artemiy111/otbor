@@ -121,6 +121,7 @@ export const DEFAULT_APPLY_SETTINGS: ApplyFilterSettings = {
   dailyLimit: DEFAULT_DAILY_LIMIT,
   batchSize: 20,
   sort: "priority",
+  sortDirection: "desc",
   minPriority: 0,
   boosts: DEFAULT_BOOSTS
 }

@@ -235,6 +235,7 @@ const makeFake = (options: {
         dailyLimit: 200,
         batchSize: 20,
         sort: "priority",
+        sortDirection: "desc",
         minPriority: 0,
         boosts: [{ rule: { field: "salary", op: "gte", value: 250000, currency: "RUB" }, weight: 8 }],
         templatePresetId: null,
@@ -256,6 +257,7 @@ const makeFake = (options: {
         dailyLimit: payload.dailyLimit ?? 200,
         batchSize: payload.batchSize ?? 20,
         sort: payload.sort ?? "priority",
+        sortDirection: payload.sortDirection ?? "desc",
         minPriority: payload.minPriority ?? 0,
         boosts: [],
         templatePresetId: null,
@@ -276,6 +278,7 @@ const makeFake = (options: {
         dailyLimit: 200,
         batchSize: 20,
         sort: "priority",
+        sortDirection: "desc",
         minPriority: 0,
         boosts: [],
         templatePresetId: payload.presetId,
@@ -859,6 +862,7 @@ describe("apply filter", () => {
     expect((await call(layer, "apply_filter_set_settings", { batchSize: 501 })).isError).toBe(true)
     expect((await call(layer, "apply_filter_set_settings", { dailyLimit: -1 })).isError).toBe(true)
     expect((await call(layer, "apply_filter_set_settings", { minPriority: -1 })).isError).toBe(true)
+    expect((await call(layer, "apply_filter_set_settings", { sortDirection: "sideways" })).isError).toBe(true)
     expect(calls.filterSet).toHaveLength(0)
 
     const ok = await call(layer, "apply_filter_set_settings", {
@@ -866,6 +870,7 @@ describe("apply filter", () => {
       dailyLimit: 50,
       batchSize: 10,
       sort: "fit",
+      sortDirection: "asc",
       minPriority: 30
     })
     expect(ok.isError).toBeFalsy()
@@ -876,9 +881,11 @@ describe("apply filter", () => {
       dailyLimit: 50,
       batchSize: 10,
       sort: "fit",
+      sortDirection: "asc",
       minPriority: 30
     }])
     expect((ok.structuredContent as { autoMode: string }).autoMode).toBe("drafts")
+    expect((ok.structuredContent as { sortDirection: string }).sortDirection).toBe("asc")
   })
 
   test("server instructions mention the apply filter and blocked_filter", () => {

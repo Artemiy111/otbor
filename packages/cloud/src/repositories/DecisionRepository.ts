@@ -172,20 +172,26 @@ export interface DecisionListOptions {
  * The ORDER BY of a decision list for one sort key. Shared with the auto-apply
  * candidate query so "newest" and "salary" mean the same everywhere.
  */
-export const decisionOrder = (sort: DecisionListOptions["sort"] | undefined): SQL => {
+export const decisionOrder = (
+  sort: DecisionListOptions["sort"] | undefined,
+  direction: "desc" | "asc" = "desc"
+): SQL => {
+  // Every term flips with the direction, tiebreakers included; `nulls last`
+  // stays last in both directions.
+  const dir = direction === "asc" ? sql.raw("asc") : sql.raw("desc")
   switch (sort) {
     case "priority":
-      return sql`${livePriorityExpr} desc, d.fit desc, d.created_at desc, d.id desc`
+      return sql`${livePriorityExpr} ${dir}, d.fit ${dir}, d.created_at ${dir}, d.id ${dir}`
     case "fit":
-      return sql`d.fit desc, ${livePriorityExpr} desc, d.created_at desc, d.id desc`
+      return sql`d.fit ${dir}, ${livePriorityExpr} ${dir}, d.created_at ${dir}, d.id ${dir}`
     case "newest":
-      return sql`vacancy.published_at desc nulls last, ${livePriorityExpr} desc, d.id desc`
+      return sql`vacancy.published_at ${dir} nulls last, ${livePriorityExpr} ${dir}, d.id ${dir}`
     case "salary":
-      return sql`coalesce(vacancy.salary_to, vacancy.salary_from) desc nulls last, ${livePriorityExpr} desc, d.id desc`
+      return sql`coalesce(vacancy.salary_to, vacancy.salary_from) ${dir} nulls last, ${livePriorityExpr} ${dir}, d.id ${dir}`
     case "random":
       return sql`random()`
     default:
-      return sql`d.created_at desc, d.id desc`
+      return sql`d.created_at ${dir}, d.id ${dir}`
   }
 }
 
@@ -332,6 +338,8 @@ export interface AutoApplyCandidateOptions {
   readonly excludeResumeIds: ReadonlyArray<string>
   readonly minPriority: number
   readonly sort: "priority" | "fit" | "newest" | "salary"
+  /** `asc` reverses every term of the ordering (nulls stay last). Default `desc`. */
+  readonly sortDirection?: "desc" | "asc"
   readonly limit: number
   readonly policyVersion: number
   readonly analysisPromptVersion: string
@@ -397,7 +405,7 @@ export const autoApplyCandidates = (
             and a.vacancy_id = d.vacancy_id
             and (d.resume_id is null or a.resume_id = d.resume_id or a.resume_id is null)
         )
-      order by ${decisionOrder(options.sort)}
+      order by ${decisionOrder(options.sort, options.sortDirection)}
       limit ${Math.max(0, Math.trunc(options.limit))}
     `)
     .pipe(

@@ -9,6 +9,7 @@ export {
   applyFilterKeys,
   applyFilterSourceLabel,
   applySortOptions,
+  sortDirectionOptions,
   autoModeOptions,
   testsPolicyOptions
 } from "./model"

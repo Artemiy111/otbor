@@ -155,6 +155,7 @@ if (!enabled || serverUrl === null) {
       autoMode: ApplyFilterRecord["autoMode"]
       batchSize: number
       sort: ApplyFilterRecord["sort"]
+      sortDirection: ApplyFilterRecord["sortDirection"]
       minPriority: number
       dailyLimit: number
     }>,
@@ -513,6 +514,58 @@ if (!enabled || serverUrl === null) {
       await configure(ctx, { autoMode: "drafts", batchSize: 1, sort: "priority" })
       expect(await tick(ctx.tenant.userId)).toMatchObject({ created: 1 })
       expect(await vacancyOrder(ctx)).toEqual([high.vacancyId, low.vacancyId])
+    }, 60_000)
+
+    test("sortDirection asc takes the opposite end of the same candidate set", async () => {
+      const ctx = await setup("aa-dir")
+      const best = await decided(ctx, "aa-dir-best", 90)
+      await decided(ctx, "aa-dir-mid", 70)
+      const worst = await decided(ctx, "aa-dir-worst", 50)
+
+      await configure(ctx, { autoMode: "drafts", batchSize: 1, sortDirection: "asc" })
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ created: 1 })
+      expect(await vacancyOrder(ctx)).toEqual([worst.vacancyId])
+
+      // Back to desc: the best of what is left is the best overall.
+      await configure(ctx, { sortDirection: "desc" })
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ created: 1 })
+      expect(await vacancyOrder(ctx)).toEqual([worst.vacancyId, best.vacancyId])
+    }, 60_000)
+
+    test("sortDirection does not make decisions stale and min_priority still applies", async () => {
+      const ctx = await setup("aa-dir-stale")
+      const best = await decided(ctx, "aa-dir-s-best", 90)
+      await decided(ctx, "aa-dir-s-low", 50)
+      // priority 45 and 25: the floor of 30 leaves only the best one, even worst-first
+      await configure(ctx, { autoMode: "drafts", batchSize: 1, minPriority: 30, sortDirection: "asc" })
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ selected: 1, created: 1 })
+      expect(await vacancyOrder(ctx)).toEqual([best.vacancyId])
+    }, 60_000)
+
+    test("newest asc takes the oldest published first and keeps vacancies without a date last", async () => {
+      const ctx = await setup("aa-dir-new")
+      const fresh = await decided(ctx, "aa-dir-n-fresh", 80)
+      const old = await decided(ctx, "aa-dir-n-old", 80)
+      const undated = await decided(ctx, "aa-dir-n-null", 80)
+      await owner((tx) =>
+        tx.execute(sql`
+          update vacancy set published_at = case id
+            when ${fresh.vacancyId} then now() - interval '1 hour'
+            when ${old.vacancyId} then now() - interval '10 days'
+            else null end
+          where id in (${fresh.vacancyId}, ${old.vacancyId}, ${undated.vacancyId})
+        `)
+      )
+
+      await configure(ctx, { autoMode: "drafts", batchSize: 1, sort: "newest", sortDirection: "asc" })
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ created: 1 })
+      expect(await vacancyOrder(ctx)).toEqual([old.vacancyId])
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ created: 1 })
+      expect(await vacancyOrder(ctx)).toEqual([old.vacancyId, fresh.vacancyId])
+
+      await configure(ctx, { sortDirection: "desc" })
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ created: 1 })
+      expect(await vacancyOrder(ctx)).toEqual([old.vacancyId, fresh.vacancyId, undated.vacancyId])
     }, 60_000)
 
     test("a pair row wins for its resume: off there, drafts for the rest", async () => {

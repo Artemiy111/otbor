@@ -19,6 +19,7 @@ export const toRecord = (row: typeof applyFilter.$inferSelect): ApplyFilterRecor
   dailyLimit: row.dailyLimit,
   batchSize: row.batchSize,
   sort: row.sort as ApplyFilterRecord["sort"],
+  sortDirection: row.sortDirection === "asc" ? "asc" : "desc",
   minPriority: Number(row.minPriority),
   boosts: parseBoosts(row.boosts),
   templatePresetId: row.templatePresetId as ApplyFilterRecord["templatePresetId"],
@@ -81,6 +82,7 @@ export const resolve = (
       dailyLimit: DEFAULT_APPLY_FILTER.dailyLimit,
       batchSize: DEFAULT_APPLY_FILTER.batchSize,
       sort: DEFAULT_APPLY_FILTER.sort,
+      sortDirection: DEFAULT_APPLY_FILTER.sortDirection,
       minPriority: DEFAULT_APPLY_FILTER.minPriority,
       boosts: DEFAULT_APPLY_FILTER.boosts,
       templatePresetId: null,
@@ -113,6 +115,7 @@ const fromRecord = (record: ApplyFilterRecord, source: ApplyFilterSource): Resol
   dailyLimit: record.dailyLimit,
   batchSize: record.batchSize,
   sort: record.sort,
+  sortDirection: record.sortDirection,
   minPriority: record.minPriority,
   boosts: record.boosts,
   templatePresetId: record.templatePresetId,
@@ -132,6 +135,7 @@ export interface UpsertApplyFilterInput {
   readonly dailyLimit?: number
   readonly batchSize?: number
   readonly sort?: ApplyFilterSettings["sort"]
+  readonly sortDirection?: ApplyFilterSettings["sortDirection"]
   readonly minPriority?: number
   readonly boosts?: ApplyFilterSettings["boosts"]
   /** `undefined` keeps the stored value; `null` clears it. */
@@ -156,12 +160,13 @@ export const upsert = (
         dailyLimit: input.dailyLimit ?? existing.dailyLimit,
         batchSize: input.batchSize ?? existing.batchSize,
         sort: input.sort ?? existing.sort,
+        sortDirection: input.sortDirection ?? existing.sortDirection,
         minPriority: input.minPriority ?? existing.minPriority,
         boosts: input.boosts ?? existing.boosts
       }
       // Only a real change of what decide() reads makes decisions stale; a
       // repeated save would otherwise leave them stale for ever (their input
-      // hash is the same). auto_mode, daily_limit, batch_size, sort and
+      // hash is the same). auto_mode, daily_limit, batch_size, sort, sort_direction and
       // min_priority steer the runner and the cap, not the verdict or fit.
       const scoring = (value: {
         readonly filter: PresetFilter
@@ -207,6 +212,7 @@ export const upsert = (
         dailyLimit: input.dailyLimit ?? DEFAULT_APPLY_FILTER.dailyLimit,
         batchSize: input.batchSize ?? DEFAULT_APPLY_FILTER.batchSize,
         sort: input.sort ?? DEFAULT_APPLY_FILTER.sort,
+        sortDirection: input.sortDirection ?? DEFAULT_APPLY_FILTER.sortDirection,
         minPriority: input.minPriority ?? DEFAULT_APPLY_FILTER.minPriority,
         boosts: [...(input.boosts ?? DEFAULT_APPLY_FILTER.boosts)],
         templatePresetId: input.templatePresetId ?? null

@@ -80,7 +80,7 @@ const SOURCE_TEXT: Record<ApplyFilterView["source"], string> = {
 
 type FilterLike =
   & Pick<ApplyFilterView, "filter" | "minFit" | "tests" | "freshHalfLifeHours" | "templatePresetId">
-  & Partial<Pick<ApplyFilterView, "autoMode" | "dailyLimit" | "batchSize" | "sort" | "minPriority" | "boosts">>
+  & Partial<Pick<ApplyFilterView, "autoMode" | "dailyLimit" | "batchSize" | "sort" | "sortDirection" | "minPriority" | "boosts">>
 
 const AUTO_TEXT = {
   off: "off (nothing is created or sent; the default)",
@@ -96,6 +96,7 @@ const printAuto = (view: FilterLike, usage?: ApplyUsage) =>
     yield* Console.log(`  daily limit:     ${view.dailyLimit}`)
     yield* Console.log(`  batch size:      ${view.batchSize}`)
     yield* Console.log(`  sort:            ${view.sort}`)
+    yield* Console.log(`  order:           ${view.sortDirection === "asc" ? "asc (worst first, inverted)" : "desc (best first)"}`)
     yield* Console.log(`  min priority:    ${view.minPriority}`)
     const boosts = view.boosts ?? []
     yield* Console.log(`  boosts:          ${boosts.length === 0 ? "none" : ""}`.trimEnd())
@@ -205,6 +206,10 @@ const set = Command.make(
       Flag.withDescription("Order in which the runner takes decisions"),
       Flag.optional
     ),
+    order: Flag.Literals("order", ["desc", "asc"]).pipe(
+      Flag.withDescription("Direction of --sort: desc = best first (default), asc = worst first (inverted)"),
+      Flag.optional
+    ),
     minPriority: Flag.Finite("min-priority").pipe(Flag.withDescription("Skip decisions below this priority (>= 0)"), Flag.optional),
     yes: Flag.Boolean("yes").pipe(
       Flag.withDescription("Confirm --auto auto: real applications will be sent on hh.ru"),
@@ -213,14 +218,14 @@ const set = Command.make(
     account: accountFlag,
     resume: resumeFlag
   },
-  Effect.fn(function*({ minFit, tests, halfLife, auto, dailyLimit, batch, sort, minPriority, yes, account, resume }) {
+  Effect.fn(function*({ minFit, tests, halfLife, auto, dailyLimit, batch, sort, order, minPriority, yes, account, resume }) {
     if (
       Option.isNone(minFit) && Option.isNone(tests) && Option.isNone(halfLife) && Option.isNone(auto) &&
-      Option.isNone(dailyLimit) && Option.isNone(batch) && Option.isNone(sort) && Option.isNone(minPriority)
+      Option.isNone(dailyLimit) && Option.isNone(batch) && Option.isNone(sort) && Option.isNone(order) && Option.isNone(minPriority)
     ) {
       return yield* Effect.fail(
         new Error(
-          "Pass at least one of --min-fit, --tests, --half-life-hours, --auto, --daily-limit, --batch, --sort, --min-priority"
+          "Pass at least one of --min-fit, --tests, --half-life-hours, --auto, --daily-limit, --batch, --sort, --order, --min-priority"
         )
       )
     }
@@ -263,6 +268,7 @@ const set = Command.make(
       dailyLimit: Option.getOrUndefined(dailyLimit),
       batchSize: Option.getOrUndefined(batch),
       sort: Option.getOrUndefined(sort),
+      sortDirection: Option.getOrUndefined(order),
       minPriority: Option.getOrUndefined(minPriority)
     })
     yield* Console.log(`saved the filter of ${hhAccountId}${resumeId === undefined ? "" : ` / ${resumeId}`}`)

@@ -4,6 +4,7 @@ import { AnalysisInsights, AnalysisRunInput, AnalysisRunResult, AnalysisStats, V
 import { MarketAnalytics } from "./market.ts"
 import {
   ApplySort,
+  SortDirection,
   AutoMode,
   BlacklistScope,
   EmployerBlacklistView,
@@ -1193,6 +1194,7 @@ export const ApplyFilterSet = Rpc.make("ApplyFilterSet", {
     dailyLimit: Schema.optional(Schema.Int),
     batchSize: Schema.optional(Schema.Int),
     sort: Schema.optional(ApplySort),
+    sortDirection: Schema.optional(SortDirection),
     minPriority: Schema.optional(Schema.Number),
     boosts: Schema.optional(Schema.Array(ApplyBoost)),
     templatePresetId: Schema.optional(Schema.NullOr(PresetId))

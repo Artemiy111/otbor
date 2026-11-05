@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue"
 import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
-import type { ApplyFilterView, ApplySort, AutoMode, ScheduleRun } from "@otbor/contract"
+import type { ApplyFilterView, ApplySort, AutoMode, SortDirection, ScheduleRun } from "@otbor/contract"
 import { CircleAlert, Play, Save } from "@lucide/vue"
 import {
   applyFilterApi,
   applyFilterKeys,
   applySortOptions,
+  sortDirectionOptions,
   autoModeOptions
 } from "@/entities/apply-filter"
 import { scheduleApi, scheduleKeys } from "@/entities/schedule"
@@ -56,6 +57,7 @@ const mode = ref<AutoMode>("off")
 const dailyLimit = ref(200)
 const batchSize = ref(20)
 const sort = ref<ApplySort>("priority")
+const sortDirection = ref<SortDirection>("desc")
 const minPriority = ref(0)
 const boosts = ref<Array<BoostRow>>([])
 const confirmed = ref(false)
@@ -67,6 +69,7 @@ const load = (value: ApplyFilterView) => {
   dailyLimit.value = value.dailyLimit
   batchSize.value = value.batchSize
   sort.value = value.sort
+  sortDirection.value = value.sortDirection
   minPriority.value = value.minPriority
   boosts.value = value.boosts.map((boost) => ({
     id: boostSequence++,
@@ -132,6 +135,7 @@ const saveMutation = useMutation({
       dailyLimit: dailyLimit.value,
       batchSize: batchSize.value,
       sort: sort.value,
+      sortDirection: sortDirection.value,
       minPriority: minPriority.value,
       boosts: boosts.value.map((boost) => ({ rule: buildRule(boost.rule)!, weight: boost.weight }))
     })
@@ -364,7 +368,7 @@ const modeBadge = (value: AutoMode) => (value === "off" ? "secondary" : value ==
         </Alert>
       </div>
 
-      <div class="grid gap-3 sm:grid-cols-4">
+      <div class="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <div class="space-y-1">
           <FieldLabel :hint="applyFilterHelp.dailyLimit">Лимит в сутки (на аккаунт hh)</FieldLabel>
           <Input v-model.number="dailyLimit" type="number" min="0" class="h-8" :disabled="busy" />
@@ -383,6 +387,23 @@ const modeBadge = (value: AutoMode) => (value === "off" ? "secondary" : value ==
               </SelectItem>
             </SelectContent>
           </Select>
+        </div>
+        <div class="space-y-1">
+          <FieldLabel :hint="applyFilterHelp.sortDirection">Порядок</FieldLabel>
+          <Select v-model="sortDirection" :disabled="busy">
+            <SelectTrigger class="h-8 text-sm"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="option in sortDirectionOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <span
+            v-if="sortDirection === 'asc'"
+            class="inline-block rounded border border-amber-500/50 bg-amber-500/10 px-1.5 py-0.5 text-xs text-foreground"
+          >
+            Порядок инвертирован
+          </span>
         </div>
         <div class="space-y-1">
           <FieldLabel :hint="applyFilterHelp.minPriority">Минимальный приоритет</FieldLabel>

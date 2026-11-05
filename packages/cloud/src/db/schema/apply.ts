@@ -97,6 +97,7 @@ export const applyFilter = pgTable(
     dailyLimit: integer("daily_limit").notNull().default(200),
     batchSize: integer("batch_size").notNull().default(20),
     sort: text("sort").notNull().default("priority"),
+    sortDirection: text("sort_direction").notNull().default("desc"),
     minPriority: numeric("min_priority", { mode: "number" }).notNull().default(0),
     boosts: jsonb("boosts").$type<ReadonlyArray<unknown>>().notNull().default([]),
     templatePresetId: uuid("template_preset_id").references(() => preset.id, {
