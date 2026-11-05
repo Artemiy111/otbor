@@ -1,6 +1,7 @@
 import { Schema } from "effect"
 import { Rpc, type RpcClient, type RpcClientError, RpcGroup } from "effect/rpc"
 import { AnalysisInsights, AnalysisRunInput, AnalysisRunResult, AnalysisStats, VacancyAnalysis } from "./analysis.ts"
+import { MarketAnalytics } from "./market.ts"
 import {
   BlacklistScope,
   EmployerBlacklistView,
@@ -206,6 +207,17 @@ export const AnalysisStatsGet = Rpc.make("AnalysisStatsGet", {
 export const AnalysisInsightsGet = Rpc.make("AnalysisInsightsGet", {
   payload: Schema.Struct({ days: Schema.optional(Schema.Int) }),
   success: AnalysisInsights,
+  error: ApiError
+})
+
+export const MarketAnalyticsGet = Rpc.make("MarketAnalyticsGet", {
+  payload: Schema.Struct({
+    /** Narrow the selection with this preset's filter. */
+    presetId: Schema.optional(PresetId),
+    /** Only vacancies published in the last N days; omit for all time. */
+    sinceDays: Schema.optional(Schema.Int)
+  }),
+  success: MarketAnalytics,
   error: ApiError
 })
 
@@ -1485,6 +1497,7 @@ export const OtborRpcs = RpcGroup.make(
   AnalysisRun,
   AnalysisStatsGet,
   AnalysisInsightsGet,
+  MarketAnalyticsGet,
   EmployersList,
   EmployersGet,
   BlacklistList,

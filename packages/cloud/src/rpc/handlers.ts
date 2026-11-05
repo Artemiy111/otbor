@@ -19,6 +19,7 @@ import { EvaluationRunner } from "../services/EvaluationRunner.ts"
 import { FitJudgeRunner } from "../services/FitJudgeRunner.ts"
 import { FitJudgeService } from "../services/FitJudgeService.ts"
 import { LexiconService } from "../services/LexiconService.ts"
+import { MarketService } from "../services/MarketService.ts"
 import { HhAccountService } from "../services/HhAccountService.ts"
 import { HydrationRunner } from "../services/HydrationRunner.ts"
 import { InferenceService } from "../services/InferenceService.ts"
@@ -64,6 +65,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const decisions = yield* DecisionService
     const fitJudge = yield* FitJudgeService
     const lexicon = yield* LexiconService
+    const market = yield* MarketService
     const applications = yield* ApplicationService
     const presets = yield* PresetService
     const applyFilters = yield* ApplyFilterService
@@ -196,6 +198,8 @@ export const OtborHandlers = OtborRpcs.toLayer(
       TelegramLoginQr: ({ id }) => telegram.loginQr(id),
       TelegramLoginStatus: ({ id }) => telegram.loginStatus(id),
 
+      MarketAnalyticsGet: (payload) => market.analytics(payload),
+
       LexiconList: (payload) => lexicon.lexiconList(payload),
       LexiconUpsert: (payload) => lexicon.lexiconUpsert(payload),
       LexiconRematch: () => corpus.rematchStart(),
@@ -322,6 +326,7 @@ export const OtborServices = Layer.mergeAll(
   FitJudgeService.layer,
   VacancyAnalysisService.layer,
   LexiconService.layer,
+  MarketService.layer,
   ApplicationService.layer,
   PresetService.layer,
   ApplyFilterService.layer,

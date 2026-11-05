@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue"
+import { AnalyticsPage } from "@/pages/analytics"
 import { ApplicationDetailPage } from "@/pages/application-detail"
 import { ApplicationsPage } from "@/pages/applications"
 import { ApplyFilterPage } from "@/pages/apply-filter"
@@ -41,6 +42,7 @@ const applicationId = computed(() =>
     <CompaniesPage v-else-if="route.name === 'companies'" />
     <CompanyDetailPage v-else-if="route.name === 'company'" :id="companyId" />
     <HydrationPage v-else-if="route.name === 'hydration'" />
+    <AnalyticsPage v-else-if="route.name === 'analytics'" />
     <KeywordsPage v-else-if="route.name === 'keywords'" />
     <DecisionsPage v-else-if="route.name === 'decisions'" />
     <ApplicationsPage v-else-if="route.name === 'applications'" />

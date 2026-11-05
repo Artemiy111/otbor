@@ -7,6 +7,7 @@ export type Route =
   | { readonly name: "companies" }
   | { readonly name: "company"; readonly id: string }
   | { readonly name: "keywords" }
+  | { readonly name: "analytics" }
   | { readonly name: "decisions" }
   | { readonly name: "applications" }
   | { readonly name: "application"; readonly id: string }
@@ -36,6 +37,8 @@ const parse = (): Route => {
       return { name: "hydration" }
     case "companies":
       return id === "" ? { name: "companies" } : { name: "company", id }
+    case "analytics":
+      return { name: "analytics" }
     case "keywords":
       return { name: "keywords" }
     case "decisions":
