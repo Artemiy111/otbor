@@ -8,6 +8,7 @@ import {
   CalendarClock,
   Contact,
   Filter,
+  Rocket,
   DatabaseZap,
   Gavel,
   HeartPulse,
@@ -89,6 +90,7 @@ export const navSections: ReadonlyArray<NavSection> = [
     items: [
       { id: "queue", label: "Очереди", href: "/queue", icon: ListChecks },
       { id: "inference", label: "Генерация", href: "/inference", icon: Sparkles },
+      { id: "auto-apply", label: "Автоотбор", href: "/auto-apply", icon: Rocket },
       { id: "apply-filter", label: "Фильтр откликов", href: "/apply-filter", icon: Filter },
       { id: "presets", label: "Пресеты", href: "/presets", icon: SlidersHorizontal }
     ]

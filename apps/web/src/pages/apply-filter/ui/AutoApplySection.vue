@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from "vue"
+import { computed, reactive, ref, watch } from "vue"
 import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
-import type { ApplyFilterView, ApplySort, AutoMode, SortDirection, ScheduleRun } from "@otbor/contract"
+import type { ApplyFilterView, ApplySort, AutoMode, SortDirection } from "@otbor/contract"
 import { CircleAlert, Play, Save } from "@lucide/vue"
 import {
   applyFilterApi,
@@ -10,8 +10,8 @@ import {
   sortDirectionOptions,
   autoModeOptions
 } from "@/entities/apply-filter"
-import { scheduleApi, scheduleKeys } from "@/entities/schedule"
-import { scheduleRunApi } from "@/entities/schedule-run"
+import { scheduleKeys } from "@/entities/schedule"
+import { RUN_COUNT_LABELS, useAutoApplyRun } from "@/features/auto-apply-run"
 import { FieldPicker, RuleRow, buildRule, isComplete, newRule, toEditableRule } from "@/features/rule-builder"
 import type { EditableRule } from "@/features/rule-builder"
 import { applyFilterHelp } from "../model/help"
@@ -103,26 +103,12 @@ const usageQuery = useQuery({
 })
 const usage = computed(() => usageQuery.data.value ?? null)
 
+const { ensureSchedule, run, runState, runCounts, runError, running } = useAutoApplyRun({
+  accountId: () => props.accountId,
+  scheduleEnabled: () => mode.value !== "off"
+})
+
 /* Save -------------------------------------------------------------------- */
-
-const schedulesQuery = useQuery({ key: () => scheduleKeys.list(), query: () => scheduleApi.list() })
-const applySchedule = computed(
-  () => (schedulesQuery.data.value ?? []).find((schedule) => schedule.kind === "apply") ?? null
-)
-
-/** One user-wide `apply` schedule (target `global` covers every hh account). */
-const ensureSchedule = async (enabled: boolean) => {
-  const existing = applySchedule.value
-  if (existing !== null) return existing
-  const created = await scheduleApi.upsert({
-    kind: "apply",
-    targetId: "global",
-    intervalMinutes: 15,
-    enabled
-  })
-  await queryCache.invalidateQueries({ key: scheduleKeys.all })
-  return created
-}
 
 const saveMutation = useMutation({
   mutation: async (_: void) => {
@@ -193,102 +179,6 @@ const save = async () => {
 }
 
 /* Run now ----------------------------------------------------------------- */
-
-interface RunCounts {
-  readonly selected: number
-  readonly created: number
-  readonly writingEnqueued: number
-  readonly kitsSet: number
-  readonly submitQueued: number
-  readonly needsHuman: number
-}
-
-const COUNT_LABELS: ReadonlyArray<readonly [keyof RunCounts, string]> = [
-  ["selected", "выбрано"],
-  ["created", "создано откликов"],
-  ["writingEnqueued", "писем в работе"],
-  ["kitsSet", "готово китов"],
-  ["submitQueued", "в очереди на отправку"],
-  ["needsHuman", "нужен человек"]
-]
-
-const runState = ref<"idle" | "waiting" | "done" | "error">("idle")
-const runCounts = ref<RunCounts | null>(null)
-const runError = ref<string | null>(null)
-let pollTimer: ReturnType<typeof setInterval> | null = null
-
-const stopPolling = () => {
-  if (pollTimer !== null) clearInterval(pollTimer)
-  pollTimer = null
-}
-onBeforeUnmount(stopPolling)
-
-const asCounts = (run: ScheduleRun): RunCounts | null => {
-  const detail = run.detail
-  if (detail === null || detail === undefined || typeof detail !== "object") return null
-  const record = detail as Record<string, unknown>
-  const pick = (key: keyof RunCounts) => (typeof record[key] === "number" ? (record[key] as number) : 0)
-  return {
-    selected: pick("selected"),
-    created: pick("created"),
-    writingEnqueued: pick("writingEnqueued"),
-    kitsSet: pick("kitsSet"),
-    submitQueued: pick("submitQueued"),
-    needsHuman: pick("needsHuman")
-  }
-}
-
-const runMutation = useMutation({
-  mutation: async (_: void) => {
-    const schedule = await ensureSchedule(mode.value !== "off")
-    const startedAt = Date.now() - 2000
-    const accepted = await scheduleApi.runNow(schedule.id)
-    return { scheduleId: schedule.id, startedAt, accepted: accepted.accepted }
-  }
-})
-
-const run = async () => {
-  runError.value = null
-  runCounts.value = null
-  stopPolling()
-  try {
-    const { scheduleId, startedAt } = await runMutation.mutateAsync()
-    runState.value = "waiting"
-    let attempts = 0
-    pollTimer = setInterval(async () => {
-      attempts += 1
-      try {
-        const page = await scheduleRunApi.list({ scheduleId, limit: 1 })
-        const latest = page.items[0]
-        if (latest !== undefined && Date.parse(latest.startedAt) >= startedAt && latest.status !== "running") {
-          stopPolling()
-          if (latest.status === "error") {
-            runState.value = "error"
-            runError.value = latest.error ?? "Запуск завершился ошибкой."
-          } else {
-            runState.value = "done"
-            runCounts.value = asCounts(latest)
-          }
-          await Promise.all([
-            queryCache.invalidateQueries({ key: applyFilterKeys.usage(props.accountId) }),
-            queryCache.invalidateQueries({ key: scheduleKeys.all })
-          ])
-          return
-        }
-      } catch {
-        // Try again on the next tick.
-      }
-      if (attempts >= 40) {
-        stopPolling()
-        runState.value = "idle"
-        runError.value = "Результат пока не готов. Смотрите страницу расписаний."
-      }
-    }, 3000)
-  } catch (error) {
-    runState.value = "error"
-    runError.value = describeError(error)
-  }
-}
 
 const saveError = computed(() => (saveMutation.error.value === null ? null : describeError(saveMutation.error.value)))
 const busy = computed(() => saveMutation.isLoading.value)
@@ -442,7 +332,7 @@ const modeBadge = (value: AutoMode) => (value === "off" ? "secondary" : value ==
         <Button
           variant="outline"
           size="sm"
-          :disabled="runMutation.isLoading.value || runState === 'waiting' || accountId === ''"
+          :disabled="running || runState === 'waiting' || accountId === ''"
           title="Запускает расписание apply один раз, не дожидаясь интервала"
           @click="run"
         >
@@ -462,7 +352,7 @@ const modeBadge = (value: AutoMode) => (value === "off" ? "secondary" : value ==
       </Alert>
       <p v-if="runState === 'done'" class="text-sm">
         <template v-if="runCounts">
-          <span v-for="[key, label] in COUNT_LABELS" :key="key" class="mr-3">
+          <span v-for="[key, label] in RUN_COUNT_LABELS" :key="key" class="mr-3">
             {{ label }}: <b>{{ runCounts[key] }}</b>
           </span>
         </template>

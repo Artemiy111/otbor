@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { autoRunLabel } from "@/entities/auto-apply"
 import { computed } from "vue"
 import { describeKitAnswer } from "@otbor/contract"
 import { useQuery } from "@pinia/colada"
@@ -77,6 +78,9 @@ const cost = (value: number | null | undefined): string =>
     >
       <template #actions>
         <StatusBadge v-if="data" :value="data.application.state" raw />
+        <Badge v-if="data?.application.autoRun" :variant="data.application.autoRun === 'auto' ? 'info' : 'outline'">
+          {{ autoRunLabel(data.application.autoRun) }}
+        </Badge>
         <Button v-if="data" as-child variant="outline" size="sm">
           <a :href="vacancyPath(data.application.vacancyId)">Вакансия</a>
         </Button>

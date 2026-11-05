@@ -5,6 +5,7 @@ import type { ApplicationRecord, HhAccountRecord } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert } from "@lucide/vue"
 import { resumeApi, resumeKeys } from "@/entities/resume"
+import { autoRunLabel } from "@/entities/auto-apply"
 import { applicationApi, applicationKeys } from "@/entities/application"
 import { AccountChip, hhAccountNameById, useAccountFilter } from "@/entities/hh-account"
 import { accountFilterOptions } from "@/features/account-filter"
@@ -19,6 +20,7 @@ import {
 } from "@/shared/lib"
 import {
   Alert,
+  Badge,
   Button,
   AlertDescription,
   AlertTitle,
@@ -112,12 +114,17 @@ const columns: ColumnDef<ApplicationRecord>[] = [
           },
           row.original.vacancyTitle ?? row.original.vacancyId
         ),
-        h("div", { class: "text-xs text-muted-foreground" }, [
+        h("div", { class: "flex items-center gap-2 text-xs text-muted-foreground" }, [
           h(
             "a",
             { href: vacancyPath(row.original.vacancyId), class: "hover:text-foreground" },
             "вакансия"
-          )
+          ),
+          row.original.autoRun
+            ? h(Badge, { variant: row.original.autoRun === "auto" ? "info" : "outline" }, () =>
+                autoRunLabel(row.original.autoRun!)
+              )
+            : null
         ])
       ])
   },

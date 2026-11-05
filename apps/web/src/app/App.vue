@@ -4,6 +4,7 @@ import { AnalyticsPage } from "@/pages/analytics"
 import { ApplicationDetailPage } from "@/pages/application-detail"
 import { ApplicationsPage } from "@/pages/applications"
 import { ApplyFilterPage } from "@/pages/apply-filter"
+import { AutoApplyPage } from "@/pages/auto-apply"
 import { BlacklistPage } from "@/pages/blacklist"
 import { CompaniesPage } from "@/pages/companies"
 import { CompanyDetailPage } from "@/pages/company-detail"
@@ -51,6 +52,7 @@ const applicationId = computed(() =>
     <InferencePage v-else-if="route.name === 'inference'" />
     <PresetsPage v-else-if="route.name === 'presets'" />
     <ApplyFilterPage v-else-if="route.name === 'apply-filter'" />
+    <AutoApplyPage v-else-if="route.name === 'auto-apply'" />
     <SearchPage v-else-if="route.name === 'search'" />
     <SchedulesPage v-else-if="route.name === 'schedules'" />
     <ContactsPage v-else-if="route.name === 'contacts'" />

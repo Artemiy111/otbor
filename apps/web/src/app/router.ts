@@ -15,6 +15,7 @@ export type Route =
   | { readonly name: "inference" }
   | { readonly name: "presets" }
   | { readonly name: "apply-filter" }
+  | { readonly name: "auto-apply" }
   | { readonly name: "hydration" }
   | { readonly name: "search" }
   | { readonly name: "schedules" }
@@ -53,6 +54,8 @@ const parse = (): Route => {
       return { name: "presets" }
     case "apply-filter":
       return { name: "apply-filter" }
+    case "auto-apply":
+      return { name: "auto-apply" }
     case "search":
       return { name: "search" }
     case "schedules":
