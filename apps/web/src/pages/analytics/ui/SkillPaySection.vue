@@ -5,7 +5,7 @@ import { Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, T
 import BarList, { type BarRow } from "./BarList.vue"
 import ChartCard from "./ChartCard.vue"
 import SkillScatter from "./SkillScatter.vue"
-import { rub, thousands } from "./tip"
+import { currencySymbol, money, thousands } from "./tip"
 
 const props = defineProps<{
   text: ReadonlyArray<SkillSalary>
@@ -34,7 +34,7 @@ const rows = computed<ReadonlyArray<BarRow>>(() =>
   ranked.value.map((skill) => ({
     label: skill.key,
     value: metric.value === "median" ? skill.median : premium(skill),
-    hint: `${skill.n} вак. с зарплатой · ${skill.count} всего · медиана ${rub(skill.median)}`
+    hint: `${skill.n} вак. с зарплатой · ${skill.count} всего · медиана ${money(skill.median)}`
   }))
 )
 const format = (value: number): string => (metric.value === "median" ? thousands(value) : `${value > 0 ? "+" : ""}${value}%`)
@@ -95,7 +95,7 @@ const descriptions = {
     <div class="grid gap-6 lg:grid-cols-2">
       <BarList
         :rows="rows"
-        :value-label="metric === 'median' ? 'Медиана, ₽' : 'Премия'"
+        :value-label="metric === 'median' ? `Медиана, ${currencySymbol()}` : 'Премия'"
         :format="format"
         :color="source === 'text' ? 'var(--chart-1)' : 'var(--chart-2)'"
         :label-width="130"

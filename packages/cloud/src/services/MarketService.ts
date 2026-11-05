@@ -11,6 +11,7 @@ export interface MarketServiceShape {
   readonly analytics: (input: {
     readonly presetId?: string
     readonly sinceDays?: number
+    readonly currency?: string
   }) => Effect.Effect<MarketAnalytics, ApiError>
 }
 
@@ -42,7 +43,8 @@ export class MarketService extends Context.Service<MarketService, MarketServiceS
               MarketRepository.analytics(tx, {
                 filter: preset?.filter,
                 userId: currentUser.userId,
-                sinceDays: input.sinceDays
+                sinceDays: input.sinceDays,
+                currency: input.currency
               })
             )
             .pipe(Effect.mapError(toStorageError("market.analytics")))

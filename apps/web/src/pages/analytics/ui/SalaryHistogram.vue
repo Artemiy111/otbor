@@ -4,7 +4,7 @@ import type { SalaryHistogramBucket } from "@otbor/contract"
 import { StackedBar } from "@unovis/ts"
 import { VisAxis, VisStackedBar, VisXYContainer } from "@unovis/vue"
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/shared/ui"
-import { thousands, tip } from "./tip"
+import { currencySymbol, thousands, tip } from "./tip"
 
 const props = defineProps<{ buckets: ReadonlyArray<SalaryHistogramBucket> }>()
 const config: ChartConfig = { count: { label: "Вакансий", color: "var(--chart-1)" } }
@@ -19,7 +19,7 @@ const label = (bucket: SalaryHistogramBucket): string =>
 
 const triggers = {
   [StackedBar.selectors.bar]: (bucket: SalaryHistogramBucket) =>
-    tip(`${label(bucket)} ₽`, [{ label: "Вакансий", value: String(bucket.count), color: "var(--chart-1)" }])
+    tip(`${label(bucket)} ${currencySymbol()}`, [{ label: "Вакансий", value: String(bucket.count), color: "var(--chart-1)" }])
 }
 </script>
 

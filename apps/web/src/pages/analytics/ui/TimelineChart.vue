@@ -3,14 +3,14 @@ import { computed } from "vue"
 import type { MarketTimelinePoint } from "@otbor/contract"
 import { VisArea, VisAxis, VisCrosshair, VisLine, VisXYContainer } from "@unovis/vue"
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/shared/ui"
-import { tip } from "./tip"
+import { currencySymbol, tip } from "./tip"
 
 const props = defineProps<{ points: ReadonlyArray<MarketTimelinePoint> }>()
 
-const config: ChartConfig = {
+const config = computed<ChartConfig>(() => ({
   count: { label: "Вакансий", color: "var(--chart-1)" },
-  withSalary: { label: "С зарплатой в ₽", color: "var(--chart-2)" }
-}
+  withSalary: { label: `С зарплатой в ${currencySymbol()}`, color: "var(--chart-2)" }
+}))
 
 const data = computed(() => props.points.map((point) => ({ ...point, day: new Date(`${point.date}T00:00:00Z`) })))
 type Row = (typeof data.value)[number]
@@ -20,7 +20,7 @@ const dayFmt = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short"
 const template = (row: Row) =>
   tip(dayFmt.format(row.day), [
     { label: "Вакансий", value: String(row.count), color: "var(--chart-1)" },
-    { label: "С зарплатой в ₽", value: String(row.withSalary), color: "var(--chart-2)" }
+    { label: `С зарплатой в ${currencySymbol()}`, value: String(row.withSalary), color: "var(--chart-2)" }
   ])
 </script>
 

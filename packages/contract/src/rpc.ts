@@ -219,7 +219,9 @@ export const MarketAnalyticsGet = Rpc.make("MarketAnalyticsGet", {
     /** Narrow the selection with this preset's filter. */
     presetId: Schema.optional(PresetId),
     /** Only vacancies published in the last N days; omit for all time. */
-    sinceDays: Schema.optional(Schema.Int)
+    sinceDays: Schema.optional(Schema.Int),
+    /** Salary currency, ISO code; default RUB. */
+    currency: Schema.optional(Schema.String)
   }),
   success: MarketAnalytics,
   error: ApiError

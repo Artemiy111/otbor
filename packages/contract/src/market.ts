@@ -78,6 +78,10 @@ export const MarketAnalytics = Schema.Struct({
     /** Vacancies in the whole corpus. */
     totalDocs: Schema.Number,
     withSalary: Schema.Number,
+    /** ISO code the salaries are counted in (`RUR` is folded into `RUB`). */
+    currency: Schema.String,
+    /** Currencies with salaried vacancies in the selection, most frequent first. */
+    currencies: Schema.Array(Schema.Struct({ code: Schema.String, count: Schema.Number })),
     publishedFrom: Schema.NullOr(Schema.String),
     publishedTo: Schema.NullOr(Schema.String)
   }),

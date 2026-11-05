@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue"
+import { computed, ref, watchEffect } from "vue"
 import { useQuery } from "@pinia/colada"
 import { marketApi, marketKeys } from "@/entities/market"
 import { presetApi, presetKeys } from "@/entities/preset"
@@ -27,10 +27,11 @@ import SalaryBySeniority from "./SalaryBySeniority.vue"
 import SalaryHistogram from "./SalaryHistogram.vue"
 import SkillPaySection from "./SkillPaySection.vue"
 import TimelineChart from "./TimelineChart.vue"
-import { SENIORITY_ORDER, WORK_FORMAT_LABELS, rub, seniorityLabel } from "./tip"
+import { SENIORITY_ORDER, WORK_FORMAT_LABELS, activeCurrency, currencySymbol, money, seniorityLabel } from "./tip"
 
 const presetId = ref("all")
 const sinceDays = ref("0")
+const currency = ref("RUB")
 
 const presetsQuery = useQuery({
   key: () => presetKeys.list("all"),
@@ -39,15 +40,27 @@ const presetsQuery = useQuery({
 const presets = computed(() => presetsQuery.data.value ?? [])
 
 const query = useQuery({
-  key: () => marketKeys.get(presetId.value, Number(sinceDays.value)),
+  key: () => marketKeys.get(presetId.value, Number(sinceDays.value), currency.value),
   query: () =>
     marketApi.get({
       presetId: presetId.value === "all" ? undefined : presetId.value,
-      sinceDays: Number(sinceDays.value) || undefined
+      sinceDays: Number(sinceDays.value) || undefined,
+      currency: currency.value
     }),
   staleTime: 60_000
 })
 const data = computed(() => query.data.value)
+watchEffect(() => {
+  activeCurrency.value = data.value?.meta.currency ?? currency.value
+})
+// Currencies offered in the picker: the ones present in the selection, plus the chosen one.
+const currencyOptions = computed(() => {
+  const found = data.value?.meta.currencies ?? []
+  return found.some((item) => item.code === currency.value)
+    ? found
+    : [...found, { code: currency.value, count: 0 }]
+})
+const symbol = computed(() => currencySymbol(activeCurrency.value))
 const errorText = computed(() => (query.error.value === null ? null : describeError(query.error.value)))
 
 const coverage = computed(() => {
@@ -100,6 +113,17 @@ const companyRows = computed(() => (data.value?.counts.companies ?? []).map((b) 
           </SelectContent>
         </Select>
       </div>
+      <div class="space-y-1.5">
+        <Label for="market-currency" class="text-xs text-muted-foreground">Валюта зарплат</Label>
+        <Select :key="data ? 'ready' : 'init'" v-model="currency">
+          <SelectTrigger id="market-currency" class="w-[170px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem v-for="item in currencyOptions" :key="item.code" :value="item.code">
+              {{ item.code }}{{ item.count > 0 ? ` · ${item.count}` : "" }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
     </form>
 
     <Alert v-if="errorText" variant="destructive" class="mb-4">
@@ -114,12 +138,12 @@ const companyRows = computed(() => (data.value?.counts.companies ?? []).map((b) 
     <div v-else-if="data" class="space-y-4">
       <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Вакансий в выборке" :value="formatNumber(data.meta.docs)" :hint="`из ${formatNumber(data.meta.totalDocs)} в корпусе`" />
-        <StatCard label="С зарплатой в ₽" :value="formatNumber(data.meta.withSalary)" :hint="`${coverage}% выборки`" />
-        <StatCard label="Медианная зарплата" :value="data.salaries.overall ? rub(data.salaries.overall.median) : '—'" :hint="data.salaries.overall ? `p25 ${rub(data.salaries.overall.p25)}` : undefined" />
-        <StatCard label="Верхний дециль" :value="data.salaries.overall ? rub(data.salaries.overall.p90) : '—'" :hint="data.salaries.overall ? `p75 ${rub(data.salaries.overall.p75)}` : undefined" />
+        <StatCard :label="`С зарплатой в ${symbol}`" :value="formatNumber(data.meta.withSalary)" :hint="`${coverage}% выборки`" />
+        <StatCard label="Медианная зарплата" :value="data.salaries.overall ? money(data.salaries.overall.median) : '—'" :hint="data.salaries.overall ? `p25 ${money(data.salaries.overall.p25)}` : undefined" />
+        <StatCard label="Верхний дециль" :value="data.salaries.overall ? money(data.salaries.overall.p90) : '—'" :hint="data.salaries.overall ? `p75 ${money(data.salaries.overall.p75)}` : undefined" />
       </div>
 
-      <ChartCard title="Новые вакансии по дням" description="Сколько вакансий опубликовано и сколько из них называют зарплату в рублях" :empty="data.timeline.length === 0">
+      <ChartCard title="Новые вакансии по дням" description="Сколько вакансий опубликовано и сколько из них называют зарплату в выбранной валюте" :empty="data.timeline.length === 0">
         <TimelineChart :points="data.timeline" />
       </ChartCard>
 
@@ -133,10 +157,10 @@ const companyRows = computed(() => (data.value?.counts.companies ?? []).map((b) 
       </div>
 
       <div class="grid gap-4 lg:grid-cols-2">
-        <ChartCard title="Зарплата по грейдам" description="Середина вилки, ₽/мес; группы от 3 вакансий с зарплатой" :empty="data.salaries.bySeniority.length === 0">
+        <ChartCard title="Зарплата по грейдам" :description="`Середина вилки, ${symbol}/мес; группы от 3 вакансий с зарплатой`" :empty="data.salaries.bySeniority.length === 0">
           <SalaryBySeniority :groups="data.salaries.bySeniority" />
         </ChartCard>
-        <ChartCard title="Распределение зарплат" description="Сколько вакансий попадает в каждую вилку, ₽/мес" :empty="data.meta.withSalary === 0">
+        <ChartCard title="Распределение зарплат" :description="`Сколько вакансий попадает в каждую вилку, ${symbol}/мес`" :empty="data.meta.withSalary === 0">
           <SalaryHistogram :buckets="data.salaries.histogram" />
         </ChartCard>
       </div>

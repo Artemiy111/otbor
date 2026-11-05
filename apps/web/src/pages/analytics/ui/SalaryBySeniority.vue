@@ -4,7 +4,7 @@ import type { SalaryGroup } from "@otbor/contract"
 import { GroupedBar } from "@unovis/ts"
 import { VisAxis, VisGroupedBar, VisXYContainer } from "@unovis/vue"
 import { ChartContainer, ChartTooltip, type ChartConfig } from "@/shared/ui"
-import { SENIORITY_ORDER, rub, seniorityLabel, thousands, tip } from "./tip"
+import { SENIORITY_ORDER, money, seniorityLabel, thousands, tip } from "./tip"
 
 const props = defineProps<{ groups: ReadonlyArray<SalaryGroup> }>()
 
@@ -23,10 +23,10 @@ const colors = [config.p25!.color!, config.median!.color!, config.p75!.color!]
 const triggers = {
   [GroupedBar.selectors.bar]: (row: SalaryGroup) =>
     tip(`${seniorityLabel(row.key)} · ${row.n} вак.`, [
-      { label: "p25", value: rub(row.p25), color: colors[0] },
-      { label: "Медиана", value: rub(row.median), color: colors[1] },
-      { label: "p75", value: rub(row.p75), color: colors[2] },
-      { label: "p90", value: rub(row.p90) }
+      { label: "p25", value: money(row.p25), color: colors[0] },
+      { label: "Медиана", value: money(row.median), color: colors[1] },
+      { label: "p75", value: money(row.p75), color: colors[2] },
+      { label: "p90", value: money(row.p90) }
     ])
 }
 </script>

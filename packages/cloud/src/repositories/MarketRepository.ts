@@ -8,31 +8,40 @@ export interface MarketOptions {
   readonly filter?: PresetFilter
   readonly userId?: string
   readonly sinceDays?: number
+  /** ISO code; `RUB` also covers the legacy `RUR`. */
+  readonly currency?: string
 }
 
 /** A skill needs this many salaried vacancies to be ranked at all. */
 const MIN_SKILL_SAMPLE = 3
 const SKILL_LIMIT = 150
 
-const HISTOGRAM_EDGES = [80_000, 120_000, 160_000, 200_000, 250_000, 300_000, 400_000] as const
+const RUB_HISTOGRAM_EDGES: ReadonlyArray<number> = [80_000, 120_000, 160_000, 200_000, 250_000, 300_000, 400_000]
+
+const RAW_MID = `case when vacancy.salary_from is not null and vacancy.salary_to is not null
+  then (vacancy.salary_from + vacancy.salary_to) / 2.0
+  else coalesce(vacancy.salary_from, vacancy.salary_to)::numeric end`
 
 /**
- * Monthly ruble salary of a vacancy: the middle of the range, or the single
- * bound. Foreign currencies, hourly typos and absurd values are dropped so one
- * bad row cannot move a median.
+ * Monthly salary of a vacancy in one currency: the middle of the range, or the
+ * single bound. Rubles also drop absurd values (hourly typos) so one bad row
+ * cannot move a median; other currencies have no such sane range.
  */
-const MID = sql.raw(`
-  case
-    when vacancy.salary_currency in ('RUB', 'RUR')
-      and coalesce(vacancy.salary_from, vacancy.salary_to) is not null
-      and (case when vacancy.salary_from is not null and vacancy.salary_to is not null
-                then (vacancy.salary_from + vacancy.salary_to) / 2.0
-                else coalesce(vacancy.salary_from, vacancy.salary_to)::numeric end)
-          between 15000 and 2000000
-    then (case when vacancy.salary_from is not null and vacancy.salary_to is not null
-               then (vacancy.salary_from + vacancy.salary_to) / 2.0
-               else coalesce(vacancy.salary_from, vacancy.salary_to)::numeric end)
-  end`)
+const midSql = (currency: string): SQL => {
+  const codes = currency === "RUB" ? ["RUB", "RUR"] : [currency]
+  const list = sql.join(codes.map((code) => sql`${code}`), sql`, `)
+  const bounds = currency === "RUB" ? sql.raw(`and (${RAW_MID}) between 15000 and 2000000`) : sql``
+  return sql`case when vacancy.salary_currency in (${list})
+    and coalesce(vacancy.salary_from, vacancy.salary_to) is not null ${bounds}
+    then (${sql.raw(RAW_MID)}) end`
+}
+
+/** Edges for the histogram: fixed rubles, otherwise the 1/8..7/8 quantiles rounded to 2 digits. */
+const roundNice = (value: number): number => {
+  if (value <= 0) return 0
+  const magnitude = 10 ** Math.max(Math.floor(Math.log10(value)) - 1, 0)
+  return Math.round(value / magnitude) * magnitude
+}
 
 const num = (value: unknown): number => (value === null || value === undefined ? 0 : Number(value))
 
@@ -51,6 +60,7 @@ export const analytics = (
   options: MarketOptions
 ): RepoEffect<MarketAnalytics> =>
   Effect.gen(function*() {
+    const currency = (options.currency ?? "RUB").toUpperCase().replace(/^RUR$/, "RUB")
     const filterClause: SQL = vacancyFilterSql(options.filter ?? {}, { userId: options.userId })
     const sinceDays = Math.max(0, Math.trunc(options.sinceDays ?? 0))
     const sinceClause = sinceDays > 0
@@ -69,11 +79,18 @@ export const analytics = (
       insert into market_sel
       select vacancy.id, vacancy.published_at, vacancy.seniority, vacancy.area_name,
              (select e.name from employer e where e.id = vacancy.employer_id),
-             vacancy.work_formats, ${MID}
+             vacancy.work_formats, ${midSql(currency)}
       from vacancy
       where ${filterClause} ${sinceClause}
     `)
 
+    const currencyRows = yield* tx.execute(sql`
+      select case when salary_currency = 'RUR' then 'RUB' else salary_currency end as code, count(*)::int as count
+      from vacancy
+      where coalesce(salary_from, salary_to) is not null and salary_currency is not null
+        and salary_currency <> 'unknown' and vacancy.id in (select id from market_sel)
+      group by 1 order by 2 desc
+    `)
     const total = yield* tx.execute(sql`select count(*)::int as n from vacancy`)
     const head = yield* tx.execute(sql`
       select count(*)::int as docs, count(mid)::int as with_salary,
@@ -113,8 +130,17 @@ export const analytics = (
       from market_sel where mid is not null
       group by seniority having count(mid) >= 3 order by 4
     `)
+    let histogramEdges = RUB_HISTOGRAM_EDGES
+    if (currency !== "RUB") {
+      const quantiles = yield* tx.execute(sql`
+        select ${sql.raw([1, 2, 3, 4, 5, 6, 7].map((i) => `percentile_cont(${i / 8}) within group (order by mid) as q${i}`).join(", "))}
+        from market_sel where mid is not null
+      `)
+      const row = rowsOf<Record<string, unknown>>(quantiles)[0] ?? {}
+      histogramEdges = [...new Set([1, 2, 3, 4, 5, 6, 7].map((i) => roundNice(num(row[`q${i}`]))).filter((v) => v > 0))].sort((a, b) => a - b)
+    }
     const histogram = yield* tx.execute(sql`
-      select width_bucket(mid, ${sql.raw(`array[${HISTOGRAM_EDGES.join(",")}]::numeric[]`)}) as bucket,
+      select width_bucket(mid, ${sql.raw(`array[${histogramEdges.length === 0 ? "1" : histogramEdges.join(",")}]::numeric[]`)}) as bucket,
              count(*)::int as count
       from market_sel where mid is not null group by 1 order by 1
     `)
@@ -166,7 +192,7 @@ export const analytics = (
 
     const counts = new Map<number, number>()
     for (const row of rowsOf<{ bucket: number; count: number }>(histogram)) counts.set(num(row.bucket), num(row.count))
-    const edges = [null, ...HISTOGRAM_EDGES, null]
+    const edges = [null, ...(histogramEdges.length === 0 ? [1] : histogramEdges), null]
     const histogramBuckets = edges.slice(0, -1).map((from, index) => ({
       from,
       to: edges[index + 1] ?? null,
@@ -179,6 +205,8 @@ export const analytics = (
         docs: num(headRow?.docs),
         totalDocs: num(rowsOf<{ n: number }>(total)[0]?.n),
         withSalary: num(headRow?.with_salary),
+        currency,
+        currencies: rowsOf<{ code: string; count: number }>(currencyRows).map((row) => ({ code: row.code, count: num(row.count) })),
         publishedFrom: iso(headRow?.pub_min),
         publishedTo: iso(headRow?.pub_max)
       },

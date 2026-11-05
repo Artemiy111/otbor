@@ -22,8 +22,25 @@ export const tip = (title: string, rows: ReadonlyArray<TipRow>): string =>
       .join("")}
   </div>`
 
-export const rub = (value: number): string =>
-  `${new Intl.NumberFormat("ru-RU").format(Math.round(value))} ₽`
+import { ref } from "vue"
+
+/** Currency of the data on screen; the page sets it, tooltips read it when shown. */
+export const activeCurrency = ref("RUB")
+
+export const currencySymbol = (code: string = activeCurrency.value): string => {
+  try {
+    return (
+      new Intl.NumberFormat("ru-RU", { style: "currency", currency: code })
+        .formatToParts(1)
+        .find((part) => part.type === "currency")?.value ?? code
+    )
+  } catch {
+    return code
+  }
+}
+
+export const money = (value: number): string =>
+  `${new Intl.NumberFormat("ru-RU").format(Math.round(value))} ${currencySymbol()}`
 
 /** 185 000 → "185k", for axis ticks. */
 export const thousands = (value: number): string =>

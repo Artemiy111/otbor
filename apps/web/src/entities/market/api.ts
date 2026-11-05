@@ -6,6 +6,8 @@ export interface MarketInput {
   readonly presetId?: string
   /** Only vacancies published in the last N days. */
   readonly sinceDays?: number
+  /** ISO code, default RUB. */
+  readonly currency?: string
 }
 
 export const marketApi = {
@@ -13,7 +15,8 @@ export const marketApi = {
     call((client) =>
       client.MarketAnalyticsGet({
         presetId: input.presetId as PresetId | undefined,
-        sinceDays: input.sinceDays
+        sinceDays: input.sinceDays,
+        currency: input.currency
       })
     )
 }
