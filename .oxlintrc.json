@@ -14,7 +14,8 @@
   "rules": {
     "effect/noNestedEffectGen": "error",
     "effect/preferServiceOf": "error",
-    "effect/preferMatchTagsExhaustive": "error"
+    "effect/preferMatchTagsExhaustive": "error",
+    "effect/noPromiseChainsInTests": "error"
   },
   "env": {
     "builtin": true,

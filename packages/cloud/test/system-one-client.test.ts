@@ -10,6 +10,14 @@ interface Seen {
   body: any
 }
 
+const readJson = async (request: Request): Promise<unknown> => {
+  try {
+    return await request.json()
+  } catch {
+    return null
+  }
+}
+
 const seen: Array<Seen> = []
 let reply: () => Response | Promise<Response> = () => Response.json({ answers: {} })
 let server: ReturnType<typeof Bun.serve>
@@ -22,7 +30,7 @@ beforeAll(() => {
         method: request.method,
         path: new URL(request.url).pathname,
         auth: request.headers.get("authorization"),
-        body: await request.json().catch(() => null)
+        body: await readJson(request)
       })
       return reply()
     }

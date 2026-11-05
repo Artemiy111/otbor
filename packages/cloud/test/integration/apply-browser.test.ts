@@ -677,8 +677,9 @@ if (!enabled || serverUrl === null) {
       expect(attempt?.exit?.tag).toBe("ambiguous")
 
       // A late completion from the dead performer is a stale lease.
-      const late = await support
-        .completeJobFailure(ctx.tenant.userId, {
+      let late: unknown
+      try {
+        late = await support.completeJobFailure(ctx.tenant.userId, {
           harnessId: ctx.harness.id,
           token: ctx.harness.token!,
           jobId: job.id,
@@ -686,7 +687,9 @@ if (!enabled || serverUrl === null) {
           epoch: job.leaseEpoch,
           exit: { tag: "submitted", artifacts: successEvidence(ctx.externalId) }
         })
-        .catch((error) => error)
+      } catch (error) {
+        late = error
+      }
       expect(await stateOf(ctx)).toBe("submitting")
       expect(late).toBeDefined()
     })

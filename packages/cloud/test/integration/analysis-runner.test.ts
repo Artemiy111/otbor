@@ -144,9 +144,10 @@ if (!enabled || serverUrl === null) {
     const after = await stored(two.vacancyId)
     expect(after?.inputHash).not.toBe(before?.inputHash)
 
-    const [candidate] = await owner((tx) =>
+    const otherRows = await owner((tx) =>
       VacancyAnalysisRepository.listCandidates(tx, { promptVersion: "other", limit: 500 })
-    ).then((rows) => rows.filter((item) => item.vacancyId === two.vacancyId))
+    )
+    const [candidate] = otherRows.filter((item) => item.vacancyId === two.vacancyId)
     expect(after?.inputHash).toBe(analysisInputHash(buildAnalysisState(candidate!.input)))
   })
 

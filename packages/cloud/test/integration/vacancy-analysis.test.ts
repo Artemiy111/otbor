@@ -46,10 +46,10 @@ if (!enabled || serverUrl === null) {
       })
     )
 
-  const candidates = (vacancyId: string, promptVersion = "a4") =>
-    owner((tx) => VacancyAnalysisRepository.listCandidates(tx, { promptVersion, limit: 500 })).then((rows) =>
-      rows.filter((row) => row.vacancyId === vacancyId)
-    )
+  const candidates = async (vacancyId: string, promptVersion = "a4") => {
+    const rows = await owner((tx) => VacancyAnalysisRepository.listCandidates(tx, { promptVersion, limit: 500 }))
+    return rows.filter((row) => row.vacancyId === vacancyId)
+  }
 
   const facts = interpretAnswers({ overtime: { type: "noul", noul: 0.02 } }, { threshold: 0.8 })
 

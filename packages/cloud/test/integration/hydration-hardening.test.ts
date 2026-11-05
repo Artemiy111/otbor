@@ -129,8 +129,8 @@ if (!enabled || serverUrl === null) {
       }).pipe(Effect.provideService(PageFetch, fetchPage))
     )
 
-  const attempts = (kind: "vacancy" | "employer") =>
-    support
+  const attempts = async (kind: "vacancy" | "employer") => {
+    const result = await support
       .runAs(
         "owner",
         Effect.gen(function*() {
@@ -146,14 +146,15 @@ if (!enabled || serverUrl === null) {
           )
         })
       )
-      .then((result) => result.rows as ReadonlyArray<{
-        target_id: string
-        external_id: string
-        attempts: number
-        last_status: string
-        last_error: string | null
-        deferred: boolean
-      }>)
+    return result.rows as ReadonlyArray<{
+      target_id: string
+      external_id: string
+      attempts: number
+      last_status: string
+      last_error: string | null
+      deferred: boolean
+    }>
+  }
 
   describe("blocked hh responses", () => {
     test("a captcha stops the vacancy pass and defers only the attempted target", async () => {
