@@ -26,11 +26,24 @@ const avatar = computed(() => employerAvatar(props.vacancy.employerName))
 const facts = computed(() =>
   [
     props.vacancy.seniority === "unknown" ? null : seniorityLabel(props.vacancy.seniority),
-    experienceLabel(props.vacancy.experienceCode),
     employmentFormLabel(props.vacancy.employmentForm),
     ...props.vacancy.workFormats.map(workFormatText)
   ].filter((value): value is string => value !== null)
 )
+const HH_YEARS: Record<string, number> = { noExperience: 0, between1And3: 1, between3And6: 3, moreThan6: 6 }
+/** Required experience as on the vacancy page: hh's range, the AI's reading, amber when they disagree. */
+const experience = computed(() => {
+  const hh = props.vacancy.experienceCode ?? null
+  const hhText = experienceLabel(hh)?.replace(/^опыт /, "") ?? null
+  const ai = props.vacancy.analysisYearsMin ?? null
+  const aiYears = ai === null ? null : Math.round(ai)
+  const aiText = aiYears === null ? null : aiYears <= 0 ? "без опыта" : `от ${aiYears} ${aiYears === 1 ? "года" : "лет"}`
+  if (hhText === null && aiText === null) return null
+  const hhYears = hh === null ? null : (HH_YEARS[hh] ?? null)
+  const conflict = hhYears !== null && aiYears !== null && hhYears !== aiYears
+  const text = conflict ? `${hhText} ≠ ${aiText}` : (hhText ?? aiText)
+  return { text: `опыт ${text}`, conflict, title: `hh: ${hhText ?? "—"}\nИИ: ${aiText ?? "—"}` }
+})
 const hasSalary = computed(() => props.vacancy.salaryFrom != null || props.vacancy.salaryTo != null)
 const seenAgo = computed(() => formatAge(Math.max(0, (Date.now() - Date.parse(props.vacancy.lastSeenAt)) / 1000)))
 </script>
@@ -63,8 +76,13 @@ const seenAgo = computed(() => formatAge(Math.max(0, (Date.now() - Date.parse(pr
 
       <p v-if="vacancy.snippet" class="line-clamp-2 text-sm leading-relaxed text-muted-foreground">{{ vacancy.snippet }}</p>
 
-      <div v-if="facts.length || role" class="flex flex-wrap gap-1.5">
+      <div v-if="facts.length || role || experience" class="flex flex-wrap gap-1.5">
         <span v-if="role" class="rounded-md bg-sky-500/10 px-2 py-0.5 text-xs font-medium text-sky-700 dark:text-sky-300" title="Роль по ИИ-анализу">ИИ: {{ role }}</span>
+        <span
+          v-if="experience"
+          :title="experience.title"
+          :class="cn('rounded-md border px-2 py-0.5 text-xs', experience.conflict ? 'border-amber-500/60 bg-amber-500/10 text-amber-900 dark:text-amber-100' : 'border-border text-foreground/80')"
+        >{{ experience.text }}</span>
         <span v-for="fact in facts" :key="fact" class="rounded-md bg-muted px-2 py-0.5 text-xs text-foreground/80">{{ fact }}</span>
       </div>
 

@@ -48,6 +48,7 @@ export interface VacancyRow {
   readonly blacklistLayers?: ReadonlyArray<BlacklistScope> | null
   readonly analysed?: boolean | null
   readonly analysisRole?: string | null
+  readonly analysisYearsMin?: number | null
   readonly letterRequired?: boolean | null
   readonly hasTest?: boolean | null
   readonly testRequired?: boolean | null
@@ -87,6 +88,7 @@ export const toSummary = (row: VacancyRow): VacancySummary => {
     responsesTotal: row.responsesTotal ?? null,
     responsesVacancy: row.responsesVacancy ?? null,
     analysisRole: row.analysisRole ?? null,
+    analysisYearsMin: row.analysisYearsMin == null ? null : Number(row.analysisYearsMin),
     letterRequired: row.letterRequired ?? null,
     hasTest: row.hasTest ?? null,
     testRequired: row.testRequired ?? null,
@@ -409,6 +411,10 @@ export const rowSelection = {
   letterRequired: sql<boolean | null>`(${vacancy.signals} -> 'hh' ->> 'letterRequired')::boolean`,
   hasTest: sql<boolean | null>`(${vacancy.signals} -> 'hh' -> 'test' ->> 'hasTest')::boolean`,
   testRequired: sql<boolean | null>`(${vacancy.signals} -> 'hh' -> 'test' ->> 'required')::boolean`,
+  analysisYearsMin: sql<number | null>`(
+    select (a.facts->'yearsMin'->>'value')::float8 from vacancy_analysis a
+    where a.vacancy_id = ${vacancy.id} and a.prompt_version = ${ANALYSIS_PROMPT_VERSION}
+  )`,
   analysisRole: sql<string | null>`(
     select a.facts->'role'->>'value' from vacancy_analysis a
     where a.vacancy_id = ${vacancy.id} and a.prompt_version = ${ANALYSIS_PROMPT_VERSION}

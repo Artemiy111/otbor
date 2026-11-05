@@ -178,6 +178,8 @@ export const VacancySummary = Schema.Struct({
   testRequired: Schema.optional(Schema.NullOr(Schema.Boolean)),
   /** Role the AI analysis assigned (`facts.role`), absent without a current analysis. */
   analysisRole: Schema.optional(Schema.NullOr(Schema.String)),
+  /** Minimum years of experience the AI analysis read from the text (`facts.yearsMin`). */
+  analysisYearsMin: Schema.optional(Schema.NullOr(Schema.Number)),
   /** First characters of the description, for the listing card. */
   snippet: Schema.optional(Schema.NullOr(Schema.String))
 })
