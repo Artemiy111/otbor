@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import { useStorage } from "@vueuse/core"
-import { CircleAlert, ExternalLink, RefreshCw } from "@lucide/vue"
+import { Archive, CircleAlert, ExternalLink, RefreshCw } from "@lucide/vue"
 import { RefreshButton } from "@/features/refresh-button"
 import { Alert, AlertDescription, AlertTitle, Button, Hint, Skeleton } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
@@ -62,6 +62,13 @@ const data = page.data
     </div>
 
     <template v-else-if="data">
+      <Alert v-if="data.vacancy.archived" class="mb-3">
+        <Archive />
+        <AlertTitle>Вакансия в архиве</AlertTitle>
+        <AlertDescription>
+          hh больше не принимает отклики на неё. Черновик можно сохранить, но отправить его не получится.
+        </AlertDescription>
+      </Alert>
       <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0 flex-1 space-y-2.5">
           <VacancyMetaLine :data="data" />

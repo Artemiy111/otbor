@@ -203,6 +203,9 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
         const kind = classifyResponsePage(html, lastUrl)
         if (kind === "login") return letterUnclicked(lastUrl, "session_expired", "hh redirected to the login page")
         if (kind === "captcha") return letterUnclicked(lastUrl, "captcha", "hh asked for a captcha")
+        if (kind === "archived") {
+          return letterUnclicked(lastUrl, "vacancy_archived", "the vacancy is archived, hh takes no responses")
+        }
         if (kind !== "responded") {
           return letterUnclicked(lastUrl, "not_submitted", "hh shows no response to this vacancy")
         }
