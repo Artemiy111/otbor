@@ -225,8 +225,9 @@ export const upsertVacancy = (tx: Executor, input: UpsertVacancyInput) => {
         descriptionHtml: sql`excluded.description_html`,
         hydrationStatus: sql`excluded.hydration_status`,
         contentHash: sql`excluded.content_hash`,
-        responsesTotal: sql`excluded.responses_total`,
-        responsesVacancy: sql`excluded.responses_vacancy`,
+        // Only the vacancy page carries the counts; a search card (null) must not erase them.
+        responsesTotal: sql`coalesce(excluded.responses_total, ${vacancy.responsesTotal})`,
+        responsesVacancy: sql`coalesce(excluded.responses_vacancy, ${vacancy.responsesVacancy})`,
         // jsonb merge: a stub draft ({}) leaves stored keys, `hh` replaces only `hh`.
         signals: sql`${vacancy.signals} || excluded.signals`,
         lastSeenAt: sql`now()`
