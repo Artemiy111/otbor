@@ -7,6 +7,8 @@ export const applicationKeys = {
   inference: (id: string) => ["inference", id] as const,
   letterAttach: (vacancyId: string, accountId: string) =>
     ["applications", "letter-attach", vacancyId, accountId] as const,
+  letterDraft: (vacancyId: string, accountId: string, resumeId: string) =>
+    ["applications", "letter-draft", vacancyId, accountId, resumeId] as const,
   vacancyForm: (vacancyId: string) => ["applications", "vacancy-form", vacancyId] as const
 }
 

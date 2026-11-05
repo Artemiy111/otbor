@@ -1524,3 +1524,11 @@ export const LetterAttachStatus = Schema.Struct({
 })
 
 export type LetterAttachStatus = typeof LetterAttachStatus.Type
+
+/** The unsent cover letter kept for a response (account + vacancy + resume). */
+export const LetterDraft = Schema.Struct({
+  letter: Schema.NullOr(Schema.String),
+  updatedAt: Schema.NullOr(Schema.String)
+})
+
+export type LetterDraft = typeof LetterDraft.Type

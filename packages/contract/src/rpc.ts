@@ -59,6 +59,7 @@ import {
   CrawlSchedule,
   NegotiationsSyncStatus,
   LetterAttachStatus,
+  LetterDraft,
   ResumeSyncStatus,
   DecisionRecord,
   EvaluateBatchResult,
@@ -1041,6 +1042,29 @@ export const VacancyLetterAttachStatusGet = Rpc.make("VacancyLetterAttachStatus"
   error: ApiError
 })
 
+/** The unsent letter for one response; every resume has its own. */
+export const VacancyLetterDraftGet = Rpc.make("VacancyLetterDraftGet", {
+  payload: Schema.Struct({
+    vacancyId: VacancyId,
+    hhAccountId: HhAccountId,
+    resumeId: Schema.NullOr(ResumeId)
+  }),
+  success: LetterDraft,
+  error: ApiError
+})
+
+/** Saves the letter; blank text deletes the draft. */
+export const VacancyLetterDraftSave = Rpc.make("VacancyLetterDraftSave", {
+  payload: Schema.Struct({
+    vacancyId: VacancyId,
+    hhAccountId: HhAccountId,
+    resumeId: Schema.NullOr(ResumeId),
+    letter: Schema.String
+  }),
+  success: LetterDraft,
+  error: ApiError
+})
+
 export const ApplicationsApprove = Rpc.make("ApplicationsApprove", {
   payload: Schema.Struct({ id: ApplicationId }),
   success: ApplicationRecord,
@@ -1485,6 +1509,8 @@ export const OtborRpcs = RpcGroup.make(
   VacancyFormRefresh,
   VacancyLetterAttach,
   VacancyLetterAttachStatusGet,
+  VacancyLetterDraftGet,
+  VacancyLetterDraftSave,
   ApplicationsApprove,
   ApplicationsSkip,
   ApplicationsRetry,

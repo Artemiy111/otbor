@@ -1,5 +1,5 @@
-import type { ApiError, HhAccountId, JobStatus, LetterAttachStatus } from "@otbor/contract"
-import { InvalidInput, NotFound } from "@otbor/contract"
+import type { ApiError, HhAccountId, JobStatus, LetterAttachStatus, LetterDraft } from "@otbor/contract"
+import { Conflict, InvalidInput, NotFound } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
 import { createHash } from "node:crypto"
@@ -39,7 +39,17 @@ const statusOf = (status: JobStatus): LetterAttachStatus["status"] => {
   }
 }
 
+const NIL_RESUME = "00000000-0000-0000-0000-000000000000"
+
+export interface LetterDraftKey {
+  readonly vacancyId: string
+  readonly hhAccountId: string
+  readonly resumeId: string | null
+}
+
 export interface LetterAttachShape {
+  readonly draftGet: (key: LetterDraftKey) => Effect.Effect<LetterDraft, ApiError>
+  readonly draftSave: (key: LetterDraftKey & { readonly letter: string }) => Effect.Effect<LetterDraft, ApiError>
   readonly attach: (input: {
     readonly vacancyId: string
     readonly hhAccountId: string
@@ -89,6 +99,15 @@ export class LetterAttach extends Context.Service<LetterAttach, LetterAttachShap
                 if (account.rows[0] === undefined) {
                   return { _tag: "missing", entity: "HhAccount", id: input.hhAccountId } as const
                 }
+                // hh keeps one response and one chat per resume; this job names
+                // none, so with several responses it could land in the wrong chat.
+                const responses = yield* tx.execute(sql`
+                  select count(distinct coalesce(resume_id::text, '')) as n from application
+                  where hh_account_id = ${input.hhAccountId} and vacancy_id = ${vacancy.id}
+                    and state in ('submitted', 'submitting', 'queued')`)
+                if (Number((responses.rows[0] as { n: number | string } | undefined)?.n ?? 0) > 1) {
+                  return { _tag: "ambiguous" } as const
+                }
                 const latest = yield* QueueRepository.latestForVacancy(
                   tx,
                   input.hhAccountId,
@@ -123,6 +142,14 @@ export class LetterAttach extends Context.Service<LetterAttach, LetterAttachShap
               })
             )
             .pipe(Effect.mapError(toStorageError("letter.attach")))
+          if (result._tag === "ambiguous") {
+            return yield* Effect.fail(
+              new Conflict({
+                entity: "LetterAttach",
+                message: "several responses (resumes) exist for this vacancy; the letter cannot pick the right chat yet"
+              })
+            )
+          }
           return result._tag === "missing"
             ? yield* Effect.fail(new NotFound({ entity: result.entity, id: result.id }))
             : result.status
@@ -133,7 +160,49 @@ export class LetterAttach extends Context.Service<LetterAttach, LetterAttachShap
           .asUser(currentUser.userId, (tx) => statusIn(tx, input.hhAccountId, input.vacancyId))
           .pipe(Effect.mapError(toStorageError("letter.status")))
 
-      return LetterAttach.of({ attach, status })
+      const draftGet: LetterAttachShape["draftGet"] = (key) =>
+        database
+          .asUser(currentUser.userId, (tx) =>
+            Effect.gen(function*() {
+              const result = yield* tx.execute(sql`
+                select letter, updated_at from letter_draft
+                where hh_account_id = ${key.hhAccountId} and vacancy_id = ${key.vacancyId}
+                  and resume_id = ${key.resumeId ?? NIL_RESUME}::uuid
+                limit 1`)
+              const row = result.rows[0] as { letter: string; updated_at: Date | string } | undefined
+              return row === undefined
+                ? ({ letter: null, updatedAt: null } satisfies LetterDraft)
+                : ({ letter: row.letter, updatedAt: new Date(row.updated_at).toISOString() } satisfies LetterDraft)
+            })
+          )
+          .pipe(Effect.mapError(toStorageError("letter.draftGet")))
+
+      const draftSave: LetterAttachShape["draftSave"] = (key) =>
+        database
+          .asUser(currentUser.userId, (tx) =>
+            Effect.gen(function*() {
+              const letter = key.letter.trim()
+              if (letter === "") {
+                yield* tx.execute(sql`
+                  delete from letter_draft
+                  where hh_account_id = ${key.hhAccountId} and vacancy_id = ${key.vacancyId}
+                    and resume_id = ${key.resumeId ?? NIL_RESUME}::uuid`)
+                return { letter: null, updatedAt: null } satisfies LetterDraft
+              }
+              const result = yield* tx.execute(sql`
+                insert into letter_draft (user_id, hh_account_id, vacancy_id, resume_id, letter)
+                values (${currentUser.userId}, ${key.hhAccountId}, ${key.vacancyId},
+                        ${key.resumeId ?? NIL_RESUME}::uuid, ${letter})
+                on conflict (user_id, hh_account_id, vacancy_id, resume_id)
+                do update set letter = excluded.letter, updated_at = now()
+                returning updated_at`)
+              const row = result.rows[0] as { updated_at: Date | string }
+              return { letter, updatedAt: new Date(row.updated_at).toISOString() } satisfies LetterDraft
+            })
+          )
+          .pipe(Effect.mapError(toStorageError("letter.draftSave")))
+
+      return LetterAttach.of({ attach, status, draftGet, draftSave })
     })
   )
 }

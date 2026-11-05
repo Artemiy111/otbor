@@ -12,6 +12,8 @@ import type {
   KitAnswer,
   KitRecord,
   LetterAttachStatus,
+  LetterDraft,
+  ResumeId,
   VacancyFormState,
   VacancyId
 } from "@otbor/contract"
@@ -126,6 +128,32 @@ export const applicationApi = {
       client.VacancyLetterAttach({
         vacancyId: input.vacancyId as VacancyId,
         hhAccountId: input.hhAccountId as HhAccountId,
+        letter: input.letter
+      })
+    ),
+  letterDraftGet: (input: {
+    readonly vacancyId: string
+    readonly hhAccountId: string
+    readonly resumeId: string | null
+  }): Promise<LetterDraft> =>
+    call((client) =>
+      client.VacancyLetterDraftGet({
+        vacancyId: input.vacancyId as VacancyId,
+        hhAccountId: input.hhAccountId as HhAccountId,
+        resumeId: (input.resumeId || null) as ResumeId | null
+      })
+    ),
+  letterDraftSave: (input: {
+    readonly vacancyId: string
+    readonly hhAccountId: string
+    readonly resumeId: string | null
+    readonly letter: string
+  }): Promise<LetterDraft> =>
+    call((client) =>
+      client.VacancyLetterDraftSave({
+        vacancyId: input.vacancyId as VacancyId,
+        hhAccountId: input.hhAccountId as HhAccountId,
+        resumeId: (input.resumeId || null) as ResumeId | null,
         letter: input.letter
       })
     ),
