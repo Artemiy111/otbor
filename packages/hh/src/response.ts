@@ -102,4 +102,5 @@ export const formFragment = (html: string): string => {
 
 /** A short, text-only excerpt of a page for evidence and logs. */
 export const pageExcerpt = (html: string, max = 600): string =>
-  htmlToText(html).replace(/\s+/g, " ").trim().slice(0, max)
+  // Without styles and scripts: a page whose first screen is inline fonts says nothing.
+  htmlToText(visibleMarkup(html)).replace(/\s+/g, " ").trim().slice(0, max)
