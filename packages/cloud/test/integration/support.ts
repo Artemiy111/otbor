@@ -2146,6 +2146,7 @@ export const seedSearchVacancy = async (input: {
   readonly salaryFrom?: number
   readonly salaryTo?: number
   readonly salaryCurrency?: string
+  readonly areaId?: number
   readonly publishedDaysAgo?: number
   readonly archived?: boolean
   readonly skills?: ReadonlyArray<string>
@@ -2168,6 +2169,7 @@ export const seedSearchVacancy = async (input: {
             salaryFrom: input.salaryFrom ?? null,
             salaryTo: input.salaryTo ?? null,
             salaryCurrency: input.salaryCurrency ?? null,
+            areaId: input.areaId ?? null,
             publishedAt: new Date(Date.now() - (input.publishedDaysAgo ?? 30) * 86_400_000),
             archived: input.archived ?? false,
             workFormats: [],

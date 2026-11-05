@@ -1,4 +1,5 @@
 import type { LexiconKeyword, PresetFilter, PresetRule } from "@otbor/contract"
+import { expandAreaIds } from "@otbor/contract/areas"
 import type { LexiconEntryInput, LexiconMatch } from "@otbor/domain"
 import { ANALYSIS_PROMPT_VERSION, matchLexicon, normalizeTerm } from "@otbor/domain"
 import { sql, type SQL } from "drizzle-orm"
@@ -182,6 +183,18 @@ const ruleClause = (rule: PresetRule, filter: PresetFilter): SQL => {
     return rule.orMissing === true
       ? sql`(${stated} or (vacancy.salary_from is null and vacancy.salary_to is null))`
       : stated
+  }
+
+  if (rule.field === "location") {
+    // Values are hh area ids; a country or region stands for everything below
+    // it. One JSON parameter keeps a whole country (thousands of ids) well
+    // under the bind-parameter limit. A vacancy without an area is in no place.
+    const ids = expandAreaIds(
+      stringList(value).map(Number).filter((id) => Number.isInteger(id) && id > 0)
+    )
+    if (ids.length === 0) return sql`true`
+    const inside = sql`coalesce(vacancy.area_id in (select (jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))::int), false)`
+    return op === "not_in" || op === "neq" ? sql`not ${inside}` : inside
   }
 
   if (rule.field === "published_days") {

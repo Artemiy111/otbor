@@ -1147,6 +1147,11 @@ export const PresetField = Schema.Literals([
   "keywords",
   "employer",
   "area",
+  /**
+   * Where the vacancy is: values are hh area ids (as strings) from the
+   * country > region > city tree. A country covers all its cities.
+   */
+  "location",
   "salary_from",
   "salary_to",
   "salary_currency",

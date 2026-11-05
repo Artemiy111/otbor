@@ -4,13 +4,13 @@ import type {
   PresetOperator,
   PresetRule
 } from "@otbor/contract"
-import { ANALYSIS_LEVEL_LABELS, ANALYSIS_ROLE_LABELS, roleFamilyLabel, seniorityLabel, statusLabel, workFormatLabel } from "@/shared/lib"
+import { areaLabel, ANALYSIS_LEVEL_LABELS, ANALYSIS_ROLE_LABELS, roleFamilyLabel, seniorityLabel, statusLabel, workFormatLabel } from "@/shared/lib"
 
 /**
  * Browser-side mirror of the preset whitelist. The backend owns enforcement;
  * this file owns labels, grouping and which controls the editor renders.
  */
-export type PresetFieldKind = "text" | "select" | "number" | "boolean"
+export type PresetFieldKind = "text" | "select" | "number" | "boolean" | "location"
 
 export const PRESET_FIELD_GROUP_ORDER = [
   "Текст и словарь",
@@ -160,11 +160,19 @@ export const PRESET_FIELDS: ReadonlyArray<PresetFieldMeta> = [
   },
   {
     field: "area",
-    label: "Город",
+    label: "Город (по тексту)",
     group: "Текст и словарь",
     kind: "text",
     ops: TEXT_OPS,
     hint: "Регион из карточки вакансии."
+  },
+  {
+    field: "location",
+    label: "Локация",
+    group: "Классификация",
+    kind: "location",
+    ops: ["in", "not_in"],
+    hint: "Страна, регион или город по справочнику hh. Страна включает все её города."
   },
   {
     field: "salary_currency",
@@ -405,6 +413,7 @@ export const presetValueLabel = (
   value: string | number | boolean
 ): string => {
   if (typeof value === "boolean") return value ? "да" : "нет"
+  if (field === "location") return areaLabel(value)
   const option = presetFieldMeta(field).options?.find((item) => item.value === String(value))
   return option?.label ?? String(value)
 }

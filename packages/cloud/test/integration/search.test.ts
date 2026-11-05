@@ -215,4 +215,35 @@ if (!enabled || serverUrl === null) {
         { rules: [{ field: "salary", op: "gte", value: 3_000, currency: "USD" }] }
       ] }] })).toEqual(sorted(rub400, usd4k))
     }, 60_000)
+    test("location matches a country with all its cities, a single city, several places and negation", async () => {
+      const tenant = await support.seedTenant("location-filter")
+      const employer = await support.seedEmployerStats("e-location", "Location Co")
+      const mk = (label: string, areaId?: number) =>
+        support.seedSearchVacancy({ label, title: label, employerId: employer, ...(areaId === undefined ? {} : { areaId }) })
+
+      // hh ids: 1 Москва, 2 Санкт-Петербург (Россия 113); 160 Алматы (Казахстан 40); 1002 Минск (Беларусь 16)
+      const moscow = await mk("l1", 1)
+      const spb = await mk("l2", 2)
+      const almaty = await mk("l3", 160)
+      const minsk = await mk("l4", 1002)
+      const unknown = await mk("l5")
+
+      const ids = async (filter: PresetFilter) =>
+        (await support.runAs(
+          tenant.userId,
+          Effect.gen(function*() {
+            const corpus = yield* CorpusService
+            return yield* corpus.list({ limit: 50, filter })
+          })
+        )).items.map((row): string => row.id).sort()
+      const sorted = (...list: Array<string>) => [...list].sort()
+
+      expect(await ids({ rules: [{ field: "location", op: "in", value: ["113"] }] })).toEqual(sorted(moscow, spb))
+      expect(await ids({ rules: [{ field: "location", op: "in", value: ["2"] }] })).toEqual([spb])
+      expect(await ids({ rules: [{ field: "location", op: "in", value: ["40", "16"] }] })).toEqual(sorted(almaty, minsk))
+      expect(await ids({ rules: [{ field: "location", op: "in", value: ["113", "160"] }] }))
+        .toEqual(sorted(moscow, spb, almaty))
+      expect(await ids({ rules: [{ field: "location", op: "not_in", value: ["113"] }] }))
+        .toEqual(sorted(almaty, minsk, unknown))
+    }, 60_000)
 }

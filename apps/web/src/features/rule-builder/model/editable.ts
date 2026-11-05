@@ -75,7 +75,9 @@ export const newGroup = (field: PresetField = "salary"): EditableGroup => ({
 
 /** Fields whose multi-value operators edit a list instead of comma-separated text. */
 export const usesList = (field: PresetField): boolean =>
-  field === "keywords" || presetFieldMeta(field).kind === "select"
+  field === "keywords" ||
+  presetFieldMeta(field).kind === "select" ||
+  presetFieldMeta(field).kind === "location"
 
 export const toEditableRule = (rule: PresetRule): EditableRule => {
   const base: EditableRule = {

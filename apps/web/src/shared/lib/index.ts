@@ -6,6 +6,7 @@ export {
   type AnalysisTone,
   type AnalysisView
 } from "./analysis"
+export { areaLabel, areasModule, loadAreas } from "./areas"
 export { cn } from "./cn"
 export { contactHref } from "./contacts"
 export { describeError } from "./error"

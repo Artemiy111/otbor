@@ -68,3 +68,9 @@ test("parsePresetFilter drops empty group rules and empty branches", () => {
     { branches: [{ rules: [{ field: "salary", op: "gte", value: 3000, currency: "USD" }, { field: "title", op: "contains", value: " " }] }] }
   ])
 })
+
+test("a location rule keeps its area ids and an empty one is dropped", () => {
+  const rule = { field: "location", op: "in", value: ["113", "160"] } as const
+  expect(parsePresetFilter({ rules: [rule] })).toEqual({ rules: [rule] })
+  expect(parsePresetFilter({ rules: [{ field: "location", op: "in", value: [] }] })).toEqual({})
+})

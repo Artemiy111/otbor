@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue"
+import { areaLabel } from "@/shared/lib"
 import { useQuery } from "@pinia/colada"
 import type { PresetField, PresetOperator } from "@otbor/contract"
 import { ChevronDown, X } from "@lucide/vue"
@@ -23,6 +24,7 @@ import {
   presetOperatorLabel
 } from "../model/fields"
 import { changeField, changeOperator, isComplete, usesList, type EditableRule } from "../model/editable"
+import AreaPicker from "./AreaPicker.vue"
 import KeywordPicker from "./KeywordPicker.vue"
 
 /** One rule on one line: field, operator, value (and currency for salary). Edited in place. */
@@ -53,8 +55,10 @@ const options = computed(() => {
 
 const summary = computed(() => {
   if (props.rule.values.length === 0) return "Выбрать…"
-  const labels = props.rule.values.map(
-    (value) => options.value.find((option) => option.value === value)?.label ?? value
+  const labels = props.rule.values.map((value) =>
+    props.rule.field === "location"
+      ? areaLabel(value)
+      : options.value.find((option) => option.value === value)?.label ?? value
   )
   return labels.length <= 2 ? labels.join(", ") : `${labels.slice(0, 2).join(", ")} +${labels.length - 2}`
 })
@@ -151,9 +155,15 @@ const onCurrency = (value: unknown) => {
           <ChevronDown class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         </button>
       </PopoverTrigger>
-      <PopoverContent :class="rule.field === 'keywords' ? 'w-[420px]' : 'w-64'" align="start">
+      <PopoverContent :class="rule.field === 'keywords' || rule.field === 'location' ? 'w-[420px]' : 'w-64'" align="start">
+        <AreaPicker
+          v-if="rule.field === 'location'"
+          :model-value="rule.values"
+          :disabled="props.disabled"
+          @update:model-value="(values) => (rule.values = values)"
+        />
         <KeywordPicker
-          v-if="rule.field === 'keywords'"
+          v-else-if="rule.field === 'keywords'"
           :model-value="rule.values"
           :keywords="lexicon"
           :loading="lexiconQuery.isPending.value"
