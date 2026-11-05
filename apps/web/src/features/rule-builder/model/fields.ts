@@ -56,6 +56,18 @@ const TEXT_OPS: ReadonlyArray<PresetOperator> = [
   "not_in"
 ]
 
+/** Free-text fields that can match a whole list of substrings in one rule. */
+const TEXT_LIST_OPS: ReadonlyArray<PresetOperator> = [
+  "contains",
+  "contains_any",
+  "not_contains",
+  "not_contains_any",
+  "eq",
+  "neq",
+  "in",
+  "not_in"
+]
+
 const NUMBER_OPS: ReadonlyArray<PresetOperator> = ["lt", "lte", "eq", "gt", "gte", "neq"]
 
 const BOOLEAN_OPS: ReadonlyArray<PresetOperator> = ["is_true", "is_false"]
@@ -121,7 +133,7 @@ export const PRESET_FIELDS: ReadonlyArray<PresetFieldMeta> = [
     label: "Заголовок",
     group: "Текст и словарь",
     kind: "text",
-    ops: TEXT_OPS,
+    ops: TEXT_LIST_OPS,
     hint: "Подстрока в названии вакансии без учёта регистра."
   },
   {
@@ -129,7 +141,7 @@ export const PRESET_FIELDS: ReadonlyArray<PresetFieldMeta> = [
     label: "Описание",
     group: "Текст и словарь",
     kind: "text",
-    ops: TEXT_OPS,
+    ops: TEXT_LIST_OPS,
     hint: "Текст описания вакансии."
   },
   {
@@ -153,7 +165,7 @@ export const PRESET_FIELDS: ReadonlyArray<PresetFieldMeta> = [
     label: "Работодатель",
     group: "Текст и словарь",
     kind: "text",
-    ops: TEXT_OPS,
+    ops: TEXT_LIST_OPS,
     hint: "Название компании."
   },
   {
@@ -161,7 +173,7 @@ export const PRESET_FIELDS: ReadonlyArray<PresetFieldMeta> = [
     label: "Город (по тексту)",
     group: "Текст и словарь",
     kind: "text",
-    ops: TEXT_OPS,
+    ops: TEXT_LIST_OPS,
     hint: "Регион из карточки вакансии."
   },
   {
@@ -354,6 +366,8 @@ export const PRESET_FIELD_GROUPS: ReadonlyArray<PresetFieldGroupMeta> =
 export const PRESET_OPERATOR_LABELS: Record<PresetOperator, string> = {
   contains: "содержит",
   not_contains: "не содержит",
+  contains_any: "содержит любое из",
+  not_contains_any: "не содержит ни одного из",
   eq: "равно",
   neq: "не равно",
   in: "входит в",
@@ -386,7 +400,7 @@ export const SALARY_CURRENCIES: ReadonlyArray<PresetFieldOption> = [
 ]
 
 export const isMultiValueOperator = (op: PresetOperator): boolean =>
-  op === "in" || op === "not_in"
+  op === "in" || op === "not_in" || op === "contains_any" || op === "not_contains_any"
 
 export const PRESET_LOCATION_LABELS: Record<KeywordMatchLocation, string> = {
   any: "Везде",

@@ -1178,6 +1178,10 @@ export type PresetField = typeof PresetField.Type
 export const PresetOperator = Schema.Literals([
   "contains",
   "not_contains",
+  /** Text contains any of the listed substrings. */
+  "contains_any",
+  /** Text contains none of the listed substrings. */
+  "not_contains_any",
   "eq",
   "neq",
   "in",

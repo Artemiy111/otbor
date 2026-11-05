@@ -131,7 +131,7 @@ if (!enabled || serverUrl === null) {
       const decision = await latest(tenant.userId, id)
       expect(decision?.verdict).toBe("skip")
       expect(decision?.reasons[0]?.code).toBe("blocked_filter")
-      expect(decision?.reasons[0]?.detail).toContain("title not_contains продаж")
+      expect(decision?.reasons[0]?.detail).toContain("title not_contains_any продаж")
     })
 
     test("a confident unpaid test task in the analysis blocks the vacancy", async () => {

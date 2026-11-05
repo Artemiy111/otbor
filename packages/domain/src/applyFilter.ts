@@ -14,13 +14,7 @@ import type { ApplyFilterSettings, PresetFilter, PresetRule } from "@otbor/contr
  *   drivers are mostly caught by "курьер" and the analysis role.
  */
 
-const title = (op: "contains" | "not_contains", value: string): PresetRule => ({
-  field: "title",
-  op,
-  value
-})
-
-/** Former `DEVOPS_GATE_POLICY.strong`, one OR branch per stem. */
+/** Former `DEVOPS_GATE_POLICY.strong`, now the list of one `title contains_any` rule. */
 export const DEVOPS_TITLE_STEMS: ReadonlyArray<string> = [
   "devops",
   "dev ops",
@@ -45,7 +39,7 @@ export const DEVOPS_TITLE_STEMS: ReadonlyArray<string> = [
   "руководителя платформ"
 ]
 
-/** Former `DEVOPS_GATE_POLICY.reject`, one `title not_contains` rule per stem. */
+/** Former `DEVOPS_GATE_POLICY.reject`, now the list of one `title not_contains_any` rule. */
 export const DEVOPS_TITLE_REJECT_STEMS: ReadonlyArray<string> = [
   "системный администратор",
   "системного администратор",
@@ -82,10 +76,16 @@ export const DEVOPS_TITLE_REJECT_STEMS: ReadonlyArray<string> = [
   "экономист"
 ]
 
+/**
+ * The built-in template, also the fallback filter when none is stored.
+ * Batch staleness looks at `APPLY_POLICY_VERSION`, not at this value: when you
+ * change it, bump `APPLY_POLICY_VERSION` in decision.ts so decisions refresh.
+ */
 export const DEVOPS_APPLY_FILTER: PresetFilter = {
   rules: [
     { field: "seniority", op: "in", value: ["middle", "senior", "lead", "unknown"] },
-    ...DEVOPS_TITLE_REJECT_STEMS.map((stem) => title("not_contains", stem))
+    // One rule with a list: "the title contains none of these".
+    { field: "title", op: "not_contains_any", value: [...DEVOPS_TITLE_REJECT_STEMS] }
   ],
   groups: [
     // Salary and work format are deliberately not part of the template: they
@@ -93,7 +93,8 @@ export const DEVOPS_APPLY_FILTER: PresetFilter = {
     // Identity: a DevOps stem in the title, or a confident analysis role.
     {
       branches: [
-        ...DEVOPS_TITLE_STEMS.map((stem) => ({ rules: [title("contains", stem)] })),
+        // One rule with a list: "the title contains any of these".
+        { rules: [{ field: "title", op: "contains_any", value: [...DEVOPS_TITLE_STEMS] }] },
         { rules: [{ field: "analysis_role", op: "in", value: ["devops", "sre", "platform"] }] }
       ]
     }
@@ -128,6 +129,8 @@ const valueText = (rule: PresetRule): string => {
 const OPERATOR_TEXT: Record<PresetRule["op"], string> = {
   contains: "contains",
   not_contains: "not_contains",
+  contains_any: "contains_any",
+  not_contains_any: "not_contains_any",
   eq: "=",
   neq: "!=",
   in: "in",

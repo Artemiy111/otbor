@@ -104,6 +104,30 @@ if (!enabled || serverUrl === null) {
       expect((await evaluate(tenant.userId, { vacancyId: other })).reasons[0]!.code).toBe("blocked_filter")
     })
 
+    test("contains_any / not_contains_any match a whole list of substrings in one rule", async () => {
+      const tenant = await support.seedTenant("af-lists")
+      await support.applyFilterSet(tenant.userId, {
+        hhAccountId: tenant.accountId,
+        filter: {
+          rules: [
+            { field: "title", op: "contains_any", value: ["sre", "mlops"] },
+            { field: "title", op: "not_contains_any", value: ["продаж", "sales"] }
+          ]
+        }
+      })
+      const sre = await support.seedVacancyTitled("af-lists-1", "Senior SRE engineer", {})
+      const mlops = await support.seedVacancyTitled("af-lists-2", "MLOps инженер", {})
+      const sales = await support.seedVacancyTitled("af-lists-3", "SRE sales support", {})
+      const other = await support.seedVacancyTitled("af-lists-4", "Frontend developer", {})
+
+      expect((await evaluate(tenant.userId, { vacancyId: sre })).verdict).toBe("apply")
+      expect((await evaluate(tenant.userId, { vacancyId: mlops })).verdict).toBe("apply")
+      const salesDecision = await evaluate(tenant.userId, { vacancyId: sales })
+      expect(salesDecision.reasons[0]).toMatchObject({ code: "blocked_filter" })
+      expect(salesDecision.reasons[0]!.detail).toBe("title not_contains_any sales")
+      expect((await evaluate(tenant.userId, { vacancyId: other })).reasons[0]!.code).toBe("blocked_filter")
+    })
+
     test("a skip names the failed rules", async () => {
       const tenant = await support.seedTenant("af-reasons")
       const sales = await support.seedVacancyTitled("af-reasons-1", "DevOps менеджер по продажам", {
@@ -115,7 +139,7 @@ if (!enabled || serverUrl === null) {
       expect(decision).toMatchObject({ verdict: "skip", fit: 0, priority: 0 })
       const reason = decision.reasons[0]!
       expect(reason.code).toBe("blocked_filter")
-      expect(reason.detail).toContain("title not_contains продаж")
+      expect(reason.detail).toContain("title not_contains_any продаж")
       // The passing rules are not listed.
       expect(reason.detail).not.toContain("title contains devops")
     })

@@ -51,10 +51,11 @@ export interface DecisionSettings {
 }
 
 /**
- * Version of the decision logic (not of the filter: a filter edit changes the
- * input hash instead). Bump it when `decide` itself changes.
+ * Version of the decision logic. Bump it when `decide` changes, and when the
+ * built-in template `DEVOPS_APPLY_FILTER` changes: a stored filter edit is
+ * tracked by `apply_filter.rules_changed_at`, the built-in one only by this.
  */
-export const APPLY_POLICY_VERSION = 3
+export const APPLY_POLICY_VERSION = 4
 
 /**
  * Scoring constants. They only rank; they never block. They are the former

@@ -260,6 +260,12 @@ const ruleClause = (rule: PresetRule, filter: PresetFilter, context: VacancyFilt
 
   const textField = textFieldSql(rule.field)
   if (textField !== null) {
+    if (op === "contains_any" || op === "not_contains_any") {
+      const patterns = stringList(value).map((item) => item.trim()).filter(Boolean).map(textPattern)
+      if (patterns.length === 0) return sql`true`
+      const any = sql`${textField} ilike any (array[${sql.join(patterns.map((pattern) => sql`${pattern}`), sql`, `)}])`
+      return op === "not_contains_any" ? sql`not coalesce(${any}, false)` : any
+    }
     if (op === "contains") {
       return sql`${textField} ilike ${textPattern(value)}`
     }
@@ -305,6 +311,21 @@ export interface VacancyFilterContext {
 interface FilterPart {
   readonly label: string
   readonly clause: SQL
+  /** Which listed substrings matched (a text), so a failed `not_contains_any` can name them. */
+  readonly hits?: SQL
+  readonly hitsLabel?: string
+}
+
+/** The listed substrings of a `*_contains_any` rule that the text contains, comma separated. */
+const listHitsSql = (rule: PresetRule): SQL | undefined => {
+  if (rule.op !== "not_contains_any") return undefined
+  const field = textFieldSql(rule.field)
+  if (field === null) return undefined
+  const items = stringList(rule.value).map((item) => item.trim()).filter(Boolean)
+  if (items.length === 0) return undefined
+  const itemList = sql.join(items.map((item) => sql`${item}`), sql`, `)
+  const patternList = sql.join(items.map((item) => sql`${textPattern(item)}`), sql`, `)
+  return sql`(select string_agg(t.item, ', ') from unnest(array[${itemList}]::text[], array[${patternList}]::text[]) as t(item, pattern) where ${field} ilike t.pattern)`
 }
 
 /**
@@ -348,7 +369,7 @@ const filterParts = (
   }
 
   for (const rule of filter.rules ?? []) {
-    parts.push({ label: describeRule(rule), clause: ruleClause(rule, filter, context) })
+    parts.push({ label: describeRule(rule), clause: ruleClause(rule, filter, context), hits: listHitsSql(rule), hitsLabel: `${rule.field} not_contains_any` })
   }
 
   for (const group of filter.groups ?? []) {
@@ -390,7 +411,10 @@ export const evaluateFilter = (
     if (parts.length === 0) return { passed: true, failed: [] }
 
     const columns = sql.join(
-      parts.map((part, index) => sql`coalesce(${part.clause}, false) as ${sql.raw(`c${index}`)}`),
+      parts.flatMap((part, index) => [
+        sql`coalesce(${part.clause}, false) as ${sql.raw(`c${index}`)}`,
+        ...(part.hits === undefined ? [] : [sql`${part.hits} as ${sql.raw(`h${index}`)}`])
+      ]),
       sql`, `
     )
     const result = yield* tx.execute(sql`
@@ -399,9 +423,15 @@ export const evaluateFilter = (
     const row = result.rows[0] as Record<string, unknown> | undefined
     if (row === undefined) return { passed: false, failed: ["vacancy not found"] }
 
-    const failed = parts
-      .filter((_, index) => row[`c${index}`] !== true)
-      .map((part) => part.label)
+    // A failed "contains none of" rule names the substrings that matched, not
+    // the whole list.
+    const failed = parts.flatMap((part, index) => {
+      if (row[`c${index}`] === true) return []
+      const hits = row[`h${index}`]
+      return typeof hits === "string" && hits !== "" && part.hitsLabel !== undefined
+        ? [`${part.hitsLabel} ${hits}`]
+        : [part.label]
+    })
     return { passed: failed.length === 0, failed }
   })
 

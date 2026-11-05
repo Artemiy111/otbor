@@ -13,18 +13,22 @@ describe("apply filter template", () => {
     expect(DEFAULT_APPLY_FILTER).toMatchObject({ minFit: 45, tests: "human", freshHalfLifeHours: 72 })
   })
 
-  test("the title gate is one OR group with a branch per stem plus the analysis role", () => {
+  test("identity is one OR group: the title list or the analysis role", () => {
     const groups = DEFAULT_APPLY_FILTER.filter.groups ?? []
     const identity = groups.find((group) =>
       group.branches.some((branch) => branch.rules.some((rule) => rule.field === "analysis_role"))
     )
-    expect(identity?.branches.length).toBe(DEVOPS_TITLE_STEMS.length + 1)
+    expect(identity?.branches.length).toBe(2)
+    const titleRule = identity?.branches[0]?.rules[0]
+    expect(titleRule).toMatchObject({ field: "title", op: "contains_any" })
+    expect(titleRule?.value).toEqual([...DEVOPS_TITLE_STEMS])
   })
 
-  test("rejects are title not_contains rules", () => {
-    const rejects = (DEFAULT_APPLY_FILTER.filter.rules ?? []).filter((rule) => rule.op === "not_contains")
-    expect(rejects.length).toBeGreaterThan(10)
-    expect(rejects.every((rule) => rule.field === "title")).toBe(true)
+  test("rejects are one title not_contains_any rule with the whole list", () => {
+    const rejects = (DEFAULT_APPLY_FILTER.filter.rules ?? []).filter((rule) => rule.op === "not_contains_any")
+    expect(rejects.length).toBe(1)
+    expect(rejects[0]).toMatchObject({ field: "title" })
+    expect((rejects[0]!.value as ReadonlyArray<string>).length).toBeGreaterThan(10)
   })
 })
 
@@ -58,5 +62,17 @@ describe("devops title stems", () => {
     for (const stem of ["devsecops", "dev-sec-ops", "mlops", "ml ops", "девсекопс", "млопс"]) {
       expect(DEVOPS_TITLE_STEMS).toContain(stem)
     }
+  })
+})
+
+describe("list operators keep the template short", () => {
+  test("the DevOps template is a handful of rules, not one per stem", () => {
+    const filter = DEFAULT_APPLY_FILTER.filter
+    expect(filter.rules?.length).toBe(2)
+    expect(filter.groups?.length).toBe(1)
+    expect(filter.groups![0]!.branches.length).toBe(2)
+    expect(describeRule({ field: "title", op: "contains_any", value: ["a", "b"] })).toBe(
+      "title contains_any a,b"
+    )
   })
 })
