@@ -46,7 +46,10 @@ const tooltip = (group: (typeof groups.value)[number]) =>
 </script>
 
 <template>
-  <div v-if="groups.length > 0" class="space-y-2">
+  <section v-if="groups.length > 0">
+    <h2 class="mb-2 text-sm font-semibold">
+      Ключевые слова<span v-if="resume" class="font-normal text-muted-foreground"> · {{ found }} из {{ groups.length }} в резюме</span>
+    </h2>
     <div class="flex flex-wrap gap-1.5">
       <Hint v-for="group in groups" :key="group.term" :text="tooltip(group)">
       <span
@@ -64,14 +67,8 @@ const tooltip = (group: (typeof groups.value)[number]) =>
       </span>
       </Hint>
     </div>
-    <p v-if="resume" class="text-xs text-muted-foreground">
-      <span class="text-emerald-700 dark:text-emerald-300">Зелёные</span> есть в резюме «{{ resume.title }}»: {{ found }} из
-      {{ groups.length }}. Число — сколько раз слово встречается в вакансии.
-      <template v-if="missingNames.length > 0">
-        Нет в резюме, но есть в заголовке: <b class="text-foreground">{{ missingNames.join(", ") }}</b>.
-      </template>
+    <p v-if="resume && missingNames.length > 0" class="mt-2 text-xs text-muted-foreground">
+      Нет в резюме, но есть в заголовке: <b class="text-foreground">{{ missingNames.join(", ") }}</b>.
     </p>
-    <p v-else class="text-xs text-muted-foreground">Число — сколько раз слово встречается в вакансии.</p>
-  </div>
-  <p v-else class="text-sm text-muted-foreground">Словарь не нашёл ключевых слов в этой вакансии.</p>
+  </section>
 </template>

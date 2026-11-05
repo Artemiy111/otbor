@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { VacancyPage } from "../model"
+import ResponseRows from "./response/ResponseRows.vue"
 import VacancyApply from "./VacancyApply.vue"
 import VacancyDecision from "./VacancyDecision.vue"
 import VacancyDescription from "./VacancyDescription.vue"
@@ -14,15 +15,17 @@ const h2 = "mb-2 text-sm font-semibold"
 <template>
   <div v-if="page.data.value" class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_28rem]">
     <div class="min-w-0 space-y-6">
+      <ResponseRows
+        :vacancy-id="page.id()"
+        :applications="page.applications.value"
+        :accounts="page.accounts.value"
+        :resumes="page.resumes.value"
+        :account-id="page.accountId.value"
+        :resume-id="page.resumeId.value"
+      />
       <VacancyPassport :page="page" :data="page.data.value" :contacts="page.contacts.value" />
-      <section>
-        <h2 :class="h2">Навыки</h2>
-        <VacancySkills :data="page.data.value" :resume="page.selectedResume.value" />
-      </section>
-      <section>
-        <h2 :class="h2">Ключевые слова</h2>
-        <VacancyKeywords :data="page.data.value" :resume="page.selectedResume.value" />
-      </section>
+      <VacancySkills :data="page.data.value" :resume="page.selectedResume.value" />
+      <VacancyKeywords :data="page.data.value" :resume="page.selectedResume.value" />
       <section>
         <h2 :class="h2">Описание</h2>
         <VacancyDescription :data="page.data.value" />

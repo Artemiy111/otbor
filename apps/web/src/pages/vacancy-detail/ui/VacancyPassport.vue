@@ -107,10 +107,8 @@ const cap = "text-[10px] font-semibold uppercase tracking-wide text-muted-foregr
       <span v-if="!page.analysis.value && !page.analysisPending.value" class="text-amber-700 dark:text-amber-300">модель вакансию не разбирала</span>
     </div>
 
-    <p v-if="all.length === 0" class="text-xs text-muted-foreground">Особых требований к отклику, рисков и плюсов не найдено.</p>
-
-    <!-- chips with a source mark per parameter -->
-    <div v-else class="space-y-1.5">
+    <!-- chips with a source mark per parameter; nothing found, nothing shown -->
+    <div v-if="all.length > 0" class="space-y-1.5">
       <div v-for="entry in groups" :key="entry.group" class="flex flex-wrap items-center gap-1.5">
         <span :class="cap" class="w-full sm:w-auto sm:min-w-[5.5rem]">{{ entry.title }}</span>
         <Hint v-for="row in entry.rows" :key="row.key" :text="tip(row)">

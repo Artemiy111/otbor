@@ -12,7 +12,6 @@ import VacancyLayoutFocus from "./VacancyLayoutFocus.vue"
 import VacancyLayoutSwitch from "./VacancyLayoutSwitch.vue"
 import VacancyMetaLine from "./VacancyMetaLine.vue"
 import VacancyProfileChips from "./VacancyProfileChips.vue"
-import ResponseRows from "./response/ResponseRows.vue"
 
 const props = defineProps<{ id: string }>()
 const page = useVacancyPage(() => props.id)
@@ -71,16 +70,6 @@ const data = page.data
         <div class="flex flex-wrap items-center gap-3">
           <VacancyLayoutSwitch v-model="layout" />
         </div>
-      </div>
-      <div class="mb-6">
-        <ResponseRows
-          :vacancy-id="props.id"
-          :applications="page.applications.value"
-          :accounts="page.accounts.value"
-          :resumes="page.resumes.value"
-          :account-id="page.accountId.value"
-          :resume-id="page.resumeId.value"
-        />
       </div>
       <VacancyLayoutDesk v-if="layout === 'desk'" :page="page" />
       <VacancyLayoutFocus v-else :page="page" />

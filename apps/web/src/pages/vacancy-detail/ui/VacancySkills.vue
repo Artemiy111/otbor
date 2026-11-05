@@ -14,7 +14,10 @@ const found = computed(() => items.value.filter((item) => item.inResume === true
 </script>
 
 <template>
-  <div v-if="items.length > 0" class="space-y-2">
+  <section v-if="items.length > 0">
+    <h2 class="mb-2 text-sm font-semibold">
+      Навыки<span v-if="resume" class="font-normal text-muted-foreground"> · {{ found }} из {{ items.length }} в резюме</span>
+    </h2>
     <div class="flex flex-wrap gap-1.5">
       <Hint
         v-for="item in items"
@@ -35,9 +38,5 @@ const found = computed(() => items.value.filter((item) => item.inResume === true
       </span>
       </Hint>
     </div>
-    <p v-if="resume" class="text-xs text-muted-foreground">
-      <span class="text-emerald-700 dark:text-emerald-300">Зелёные</span> есть в резюме «{{ resume.title }}»: {{ found }} из {{ items.length }}.
-    </p>
-  </div>
-  <p v-else class="text-sm text-muted-foreground">Навыки в вакансии не указаны.</p>
+  </section>
 </template>
