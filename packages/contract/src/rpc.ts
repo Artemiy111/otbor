@@ -122,7 +122,23 @@ export const IngestResult = Schema.Struct({
 export type IngestResult = typeof IngestResult.Type
 
 /** Columns the vacancy list can be sorted by on the server. */
-export const VacancySortKey = Schema.Literals(["title", "employer", "salary", "area", "date", "analysed"])
+export const VacancySortKey = Schema.Literals([
+  "title",
+  "employer",
+  "rating",
+  "salary",
+  "area",
+  "seniority",
+  "experience",
+  "employment",
+  "date",
+  "firstSeen",
+  "lastSeen",
+  "archived",
+  "blacklisted",
+  "responses",
+  "analysed"
+])
 export type VacancySortKey = typeof VacancySortKey.Type
 
 export const VacancySort = Schema.Struct({

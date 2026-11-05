@@ -1,48 +1,40 @@
 <script setup lang="ts">
-import { computed, h, ref, watch } from "vue"
+import { computed, ref, watch } from "vue"
 import { useDebounceFn } from "@vueuse/core"
 import { useQuery } from "@pinia/colada"
 import { applicationApi, respondedByVacancy } from "@/entities/application"
 import { resumeApi, resumeKeys } from "@/entities/resume"
-import { AccountChip, ALL_ACCOUNTS, useAccountFilter } from "@/entities/hh-account"
+import { ALL_ACCOUNTS, useAccountFilter } from "@/entities/hh-account"
 import { accountFilterOptions } from "@/features/account-filter"
 import type { GateVerdict, VacancySort, VacancySortKey, VacancySummary } from "@otbor/contract"
-import type { ColumnDef, PaginationState, SortingState } from "@tanstack/vue-table"
-import { CircleAlert, ListFilter } from "@lucide/vue"
+import { ArrowDownNarrowWide, ArrowUpNarrowWide, CircleAlert, ListFilter } from "@lucide/vue"
 import { vacancyApi, vacancyKeys } from "@/entities/vacancy"
 import { blacklistVisibilityOptions } from "@/features/blacklist-filter"
 import { vacancyAnalysedOptions, vacancyArchiveOptions, vacancyGateOptions } from "@/features/vacancy-filter"
 import { RefreshButton } from "@/features/refresh-button"
 import { presetApi, presetKeys } from "@/entities/preset"
 import { RuleBuilder, buildFilter, emptyEditable, toEditable } from "@/features/rule-builder"
-import {
-  companyPath,
-  describeError,
-  formatDate,
-  formatSalary,
-  seniorityLabel,
-  vacancyPath
-} from "@/shared/lib"
+import { describeError } from "@/shared/lib"
 import {
   Alert,
   AlertDescription,
   AlertTitle,
   Badge,
   Button,
-  DataTable,
+  EmptyState,
+  Input,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-  StatusBadge,
-  filterableHeader,
-  sortableHeader
+  Skeleton
 } from "@/shared/ui"
+import RowFeed from "./listing/RowFeed.vue"
+import { SORT_OPTIONS } from "./listing/model"
 import { PageHeader } from "@/widgets/page-header"
 
 const PAGE_SIZE = 25
-const SORT_KEYS: ReadonlyArray<VacancySortKey> = ["title", "employer", "salary", "area", "date", "analysed"]
 
 const gate = ref("all")
 const analysed = ref("all")
@@ -50,18 +42,25 @@ const archived = ref("active")
 const includeBlacklisted = ref(false)
 /** Search, sort and page are sent to the server: they apply to every vacancy, not to a loaded slice. */
 const search = ref("")
-const sorting = ref<SortingState>([])
-const pagination = ref<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE })
+const sortKey = ref<VacancySortKey>("date")
+const sortDirection = ref<"asc" | "desc">("desc")
+const pageIndex = ref(0)
+
+const changeSortKey = (value: unknown) => {
+  const option = SORT_OPTIONS.find((item) => item.value === value)
+  if (option === undefined) return
+  sortKey.value = option.value
+  sortDirection.value = option.defaultDirection
+}
+const toggleDirection = () => {
+  sortDirection.value = sortDirection.value === "asc" ? "desc" : "asc"
+}
 
 const applySearch = useDebounceFn((value: string) => {
   search.value = value
 }, 300)
 
-const serverSort = computed<VacancySort | undefined>(() => {
-  const first = sorting.value[0]
-  if (first === undefined || !SORT_KEYS.includes(first.id as VacancySortKey)) return undefined
-  return { key: first.id as VacancySortKey, direction: first.desc ? "desc" : "asc" }
-})
+const serverSort = computed<VacancySort>(() => ({ key: sortKey.value, direction: sortDirection.value }))
 
 /** Ad-hoc rules: the same constructor as presets, applied on the server to the whole corpus. */
 const rulesOpen = ref(false)
@@ -106,13 +105,29 @@ const ruleCount = computed(() => (ruleFilter.value?.rules?.length ?? 0) + (ruleF
 watch(
   () => JSON.stringify(ruleFilter.value ?? null),
   () => {
-    pagination.value = { ...pagination.value, pageIndex: 0 }
+    pageIndex.value = 0
   }
+)
+
+
+/** Defaults that differ from the plain list: shown in the badge of the filters button. */
+const flagCount = computed(
+  () =>
+    Number(archived.value !== "active") +
+    Number(includeBlacklisted.value) +
+    Number(gate.value !== "all") +
+    Number(analysed.value !== "all") +
+    Number(accountId.value !== ALL_ACCOUNTS)
 )
 
 const gateCache = new Map<string, GateVerdict>()
 
 const { accounts, accountId, hhAccountId, scopeKey, defaultAccountId } = useAccountFilter(ALL_ACCOUNTS)
+
+// Any change of what is listed starts from the first page.
+watch([gate, analysed, archived, includeBlacklisted, search, sortKey, sortDirection, accountId], () => {
+  pageIndex.value = 0
+})
 
 const applicationsQuery = useQuery({
   key: () => ["applications", "by-vacancy"],
@@ -129,9 +144,9 @@ const listQuery = useQuery({
       analysed: analysed.value,
       respondedAccountId: scopeKey.value,
       search: search.value,
-      sort: serverSort.value === undefined ? "" : `${serverSort.value.key}:${serverSort.value.direction}`,
-      page: String(pagination.value.pageIndex),
-      pageSize: pagination.value.pageSize,
+      sort: `${serverSort.value.key}:${serverSort.value.direction}`,
+      page: String(pageIndex.value),
+      pageSize: PAGE_SIZE,
       includeArchived: archived.value === "all",
       includeBlacklisted: includeBlacklisted.value,
       hhAccountId: scopeKey.value,
@@ -139,8 +154,8 @@ const listQuery = useQuery({
     }),
   query: () =>
     vacancyApi.list({
-      limit: pagination.value.pageSize,
-      offset: pagination.value.pageIndex * pagination.value.pageSize,
+      limit: PAGE_SIZE,
+      offset: pageIndex.value * PAGE_SIZE,
       gate: gate.value === "all" ? undefined : gate.value,
       analysed: analysed.value === "all" ? undefined : analysed.value === "yes",
       respondedAccountId: hhAccountId.value,
@@ -156,18 +171,8 @@ const listQuery = useQuery({
 const vacancies = computed<ReadonlyArray<VacancySummary>>(() => listQuery.data.value?.items ?? [])
 const total = computed(() => listQuery.data.value?.total ?? 0)
 
-const onSortingChange = (value: SortingState) => {
-  sorting.value = value
-}
-const onGlobalFilterChange = (value: string) => {
-  void applySearch(value)
-}
-const onPaginationChange = (value: PaginationState) => {
-  pagination.value = value
-}
-
-const visibleRows = ref<ReadonlyArray<VacancySummary>>([])
-const pageTitles = computed(() => [...new Set(visibleRows.value.map((vacancy) => vacancy.title))])
+const pageCount = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)))
+const pageTitles = computed(() => [...new Set(vacancies.value.map((vacancy) => vacancy.title))])
 
 const gatesQuery = useQuery({
   key: () => ["vacancies", "gates", pageTitles.value] as const,
@@ -199,162 +204,6 @@ const gatesQuery = useQuery({
 const gateFor = (title: string): GateVerdict | null => gatesQuery.data.value?.[title] ?? null
 const isLoading = computed(() => listQuery.isLoading.value || gatesQuery.isLoading.value)
 
-const columns: ColumnDef<VacancySummary>[] = [
-  {
-    accessorKey: "title",
-    header: filterableHeader<VacancySummary>("Вакансия", {
-      value: () => archived.value,
-      options: () => vacancyArchiveOptions,
-      onChange: (value) => (archived.value = value)
-    }),
-    cell: ({ row }) => {
-      const vacancy = row.original
-      return h("div", { class: "max-w-[420px]" }, [
-        h(
-          "a",
-          {
-            href: vacancyPath(vacancy.id),
-            class: "font-medium text-foreground transition-colors hover:text-primary"
-          },
-          vacancy.title
-        ),
-        h(
-          "div",
-          { class: "mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground" },
-          [
-            h("span", null, seniorityLabel(vacancy.seniority)),
-            vacancy.archived
-              ? h(Badge, { variant: "neutral", class: "text-[10px]" }, () => "архив")
-              : null,
-          ]
-        )
-      ])
-    }
-  },
-  {
-    id: "employer",
-    accessorFn: (row) => row.employerName ?? "",
-    header: sortableHeader<VacancySummary>("Компания"),
-    cell: ({ row }) => {
-      const vacancy = row.original
-      return vacancy.employerId
-        ? h(
-            "a",
-            {
-              href: companyPath(vacancy.employerId),
-              class: "text-foreground transition-colors hover:text-primary"
-            },
-            vacancy.employerName ?? "Без названия"
-          )
-        : h("span", null, vacancy.employerName ?? "—")
-    }
-  },
-  {
-    id: "salary",
-    accessorFn: (row) => row.salaryFrom ?? row.salaryTo ?? null,
-    enableGlobalFilter: false,
-    header: sortableHeader<VacancySummary>("Зарплата"),
-    cell: ({ row }) =>
-      h(
-        "span",
-        { class: "whitespace-nowrap" },
-        formatSalary(row.original.salaryFrom, row.original.salaryTo, row.original.salaryCurrency)
-      )
-  },
-  {
-    id: "area",
-    accessorFn: (row) => row.areaName ?? "",
-    header: sortableHeader<VacancySummary>("Город"),
-    cell: ({ row }) => h("span", null, row.original.areaName ?? "—")
-  },
-  {
-    id: "gate",
-    enableSorting: false,
-    enableGlobalFilter: false,
-    header: filterableHeader<VacancySummary>("Проверка", {
-      value: () => gate.value,
-      options: () => vacancyGateOptions,
-      onChange: (value) => (gate.value = value)
-    }),
-    cell: ({ row }) => {
-      const verdict = gateFor(row.original.title)
-      if (verdict !== null) return h(StatusBadge, { value: verdict })
-      return gatesQuery.isPending.value
-        ? h("span", { class: "text-xs text-muted-foreground" }, "…")
-        : h("span", { class: "text-xs text-muted-foreground" }, "—")
-    }
-  },
-  {
-    id: "analysed",
-    accessorFn: (row) => row.analysed === true,
-    enableGlobalFilter: false,
-    header: filterableHeader<VacancySummary>("ИИ-анализ", {
-      value: () => analysed.value,
-      options: () => vacancyAnalysedOptions,
-      onChange: (value) => (analysed.value = value)
-    }),
-    cell: ({ row }) =>
-      row.original.analysed
-        ? h(Badge, { variant: "info", class: "text-[10px]" }, () => "проанализирована")
-        : h("span", { class: "text-xs text-muted-foreground" }, "нет")
-  },
-  {
-    id: "blacklisted",
-    accessorFn: (row) => row.blacklisted,
-    enableSorting: false,
-    enableGlobalFilter: false,
-    header: filterableHeader<VacancySummary>("Чёрный список", {
-      value: () => (includeBlacklisted.value ? "show" : "hide"),
-      options: () => blacklistVisibilityOptions,
-      onChange: (value) => (includeBlacklisted.value = value === "show")
-    }),
-    cell: ({ row }) =>
-      row.original.blacklisted
-        ? h(Badge, { variant: "destructive", class: "text-[10px]" }, () => "заблокирована")
-        : h("span", { class: "text-xs text-muted-foreground" }, "—")
-  },
-  {
-    id: "accounts",
-    enableSorting: false,
-    enableGlobalFilter: false,
-    header: filterableHeader<VacancySummary>("Аккаунты", {
-      value: () => accountId.value,
-      options: () => accountFilterOptions(accounts.value, defaultAccountId.value),
-      onChange: (value) => (accountId.value = value)
-    }),
-    cell: ({ row }) => {
-      const ids = respondedAccounts.value.get(row.original.id) ?? []
-      return ids.length === 0
-        ? h("span", { class: "text-muted-foreground" }, "—")
-        : h(
-            "div",
-            { class: "flex flex-wrap gap-1" },
-            ids.map((item) =>
-              h(AccountChip, {
-                key: item.accountId,
-                accountId: item.accountId,
-                accounts: accounts.value,
-                resumeIds: item.resumeIds,
-                resumes: resumes.value
-              })
-            )
-          )
-    }
-  },
-  {
-    id: "date",
-    accessorFn: (row) => row.publishedAt ?? row.lastSeenAt,
-    enableGlobalFilter: false,
-    header: sortableHeader<VacancySummary>("Дата"),
-    cell: ({ row }) =>
-      h(
-        "span",
-        { class: "whitespace-nowrap text-muted-foreground" },
-        formatDate(row.original.publishedAt ?? row.original.lastSeenAt)
-      )
-  }
-]
-
 const refresh = () => {
   void listQuery.refetch()
   void gatesQuery.refetch()
@@ -365,7 +214,7 @@ const refresh = () => {
   <section>
     <PageHeader
       title="Вакансии"
-      description="Корпус вакансий: заголовок, компания, зарплата, город и детерминированная проверка заголовка. Новые вакансии появляются через расписания на странице «Обход»."
+      description="Корпус вакансий: сортировка по любому полю. Новые вакансии появляются через расписания на странице «Обход»."
     >
       <template #actions>
         <Button variant="outline" as-child>
@@ -389,8 +238,8 @@ const refresh = () => {
         @click="rulesOpen = !rulesOpen"
       >
         <ListFilter class="h-3.5 w-3.5" />
-        Правила
-        <Badge v-if="ruleCount > 0" variant="neutral" class="text-[10px]">{{ ruleCount }}</Badge>
+        Фильтры и правила
+        <Badge v-if="ruleCount + flagCount > 0" variant="neutral" class="text-[10px]">{{ ruleCount + flagCount }}</Badge>
       </button>
       <Select v-if="presets.length > 0" model-value="" @update:model-value="applyPreset">
         <SelectTrigger class="inline-flex h-8 w-[190px] text-xs">
@@ -411,40 +260,97 @@ const refresh = () => {
         Сбросить
       </button>
       </div>
-      <div v-show="rulesOpen || ruleCount > 0">
+      <div v-show="rulesOpen || ruleCount > 0" class="space-y-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-xs text-muted-foreground">По умолчанию</span>
+          <Select :model-value="archived" @update:model-value="archived = String($event)">
+            <SelectTrigger class="h-8 w-[160px] text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="o in vacancyArchiveOptions" :key="o.value" :value="o.value">{{ o.label }}</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select :model-value="includeBlacklisted ? 'show' : 'hide'" @update:model-value="includeBlacklisted = $event === 'show'">
+            <SelectTrigger class="h-8 w-[190px] text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="o in blacklistVisibilityOptions" :key="o.value" :value="o.value">{{ o.label }}</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select :model-value="gate" @update:model-value="gate = String($event)">
+            <SelectTrigger class="h-8 w-[180px] text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="o in vacancyGateOptions" :key="o.value" :value="o.value">{{ o.label }}</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select :model-value="analysed" @update:model-value="analysed = String($event)">
+            <SelectTrigger class="h-8 w-[190px] text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="o in vacancyAnalysedOptions" :key="o.value" :value="o.value">{{ o.label }}</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select :model-value="accountId" @update:model-value="accountId = String($event)">
+            <SelectTrigger class="h-8 w-[170px] text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="o in accountFilterOptions(accounts, defaultAccountId)" :key="o.value" :value="o.value">{{ o.label }}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         <RuleBuilder v-model="rules" :flags="false" />
       </div>
     </div>
 
-    <DataTable
-      :columns="columns"
-      :data="vacancies"
-      :is-loading="listQuery.isPending.value"
-      :loading-row-count="8"
-      :page-size="PAGE_SIZE"
-      server-side
-      :row-count="total"
-      @update:sorting="onSortingChange"
-      @update:global-filter="onGlobalFilterChange"
-      @update:pagination="onPaginationChange"
-      filter
-      filter-label="Поиск"
-      filter-placeholder="Название, компания или город"
-      empty-title="Вакансий не найдено"
-      empty-description="Измените запрос, проверку заголовка или включите архивные. Если корпус пуст, создайте расписание поиска на странице «Обход» и запустите его."
-      @update:visible-rows="visibleRows = $event"
-    >
-      <template #summary="{ table }">
-        <p class="mb-3 text-xs text-muted-foreground">
-          Проверка заголовка — правило, не ИИ: «подходит» значит, что заголовок похож на
-          DevOps/SRE-роль, «неясно» уходит в тихий список, «отклонено» — жёсткий минус.
-          Колонка «ИИ-анализ» показывает, есть ли у вакансии разбор локальной моделью для текущей версии промпта.
-        </p>
-        <p class="mb-3 text-xs text-muted-foreground">
-          Найдено {{ total }} · страница {{ table.getState().pagination.pageIndex + 1 }} из
-          {{ Math.max(1, table.getPageCount()) }}
-        </p>
-      </template>
-    </DataTable>
+    <div class="mb-1 flex flex-wrap items-center gap-2 border-b border-border pb-3">
+      <Input
+        class="h-8 w-[260px] text-xs"
+        placeholder="Название, компания или город"
+        aria-label="Поиск"
+        :model-value="search"
+        @update:model-value="applySearch(String($event))"
+      />
+    </div>
+
+    <div class="flex flex-wrap items-center justify-between gap-2 py-2">
+      <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span>Сортировка</span>
+        <Select :model-value="sortKey" @update:model-value="changeSortKey">
+          <SelectTrigger class="h-8 w-[200px] text-xs"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem v-for="o in SORT_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button variant="outline" size="icon" class="h-8 w-8" :aria-label="sortDirection === 'asc' ? 'По возрастанию' : 'По убыванию'" @click="toggleDirection">
+          <ArrowUpNarrowWide v-if="sortDirection === 'asc'" />
+          <ArrowDownNarrowWide v-else />
+        </Button>
+        <span class="ml-2">Найдено {{ total }}</span>
+      </div>
+    </div>
+
+    <div v-if="listQuery.isPending.value" class="divide-y divide-border border-y border-border">
+      <div v-for="n in 8" :key="n" class="px-3 py-4"><Skeleton class="h-10 w-full" /></div>
+    </div>
+    <EmptyState
+      v-else-if="vacancies.length === 0"
+      title="Вакансий не найдено"
+      description="Измените запрос, проверку заголовка или включите архивные. Если корпус пуст, создайте расписание поиска на странице «Обход» и запустите его."
+    />
+    <div v-else class="divide-y divide-border border-y border-border">
+      <RowFeed
+        v-for="vacancy in vacancies"
+        :key="vacancy.id"
+        :vacancy="vacancy"
+        :gate="gateFor(vacancy.title)"
+        :responded="respondedAccounts.get(vacancy.id) ?? []"
+        :accounts="accounts"
+        :resumes="resumes"
+      />
+    </div>
+
+    <div class="flex items-center justify-between py-3 text-xs text-muted-foreground">
+      <span>Страница {{ pageIndex + 1 }} из {{ pageCount }}</span>
+      <div class="flex gap-1">
+        <Button variant="outline" size="sm" :disabled="pageIndex === 0" @click="pageIndex -= 1">Назад</Button>
+        <Button variant="outline" size="sm" :disabled="pageIndex + 1 >= pageCount" @click="pageIndex += 1">Вперёд</Button>
+      </div>
+    </div>
   </section>
 </template>

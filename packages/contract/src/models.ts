@@ -167,7 +167,14 @@ export const VacancySummary = Schema.Struct({
   /** Which layers matched: app, the selected hh account, or hh native hiding. */
   blacklistLayers: Schema.Array(BlacklistScope),
   /** A vacancy analysis exists for the current analysis prompt version. */
-  analysed: Schema.optional(Schema.Boolean)
+  analysed: Schema.optional(Schema.Boolean),
+  /** Responses as shown by hh at the last hydration: all vacancies of the employer's group / this vacancy. */
+  responsesTotal: Schema.optional(Schema.NullOr(Schema.Int)),
+  responsesVacancy: Schema.optional(Schema.NullOr(Schema.Int)),
+  /** Role the AI analysis assigned (`facts.role`), absent without a current analysis. */
+  analysisRole: Schema.optional(Schema.NullOr(Schema.String)),
+  /** First characters of the description, for the listing card. */
+  snippet: Schema.optional(Schema.NullOr(Schema.String))
 })
 
 export type VacancySummary = typeof VacancySummary.Type

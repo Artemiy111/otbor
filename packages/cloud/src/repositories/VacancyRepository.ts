@@ -47,6 +47,12 @@ export interface VacancyRow {
   readonly responsesVacancy?: number | null
   readonly blacklistLayers?: ReadonlyArray<BlacklistScope> | null
   readonly analysed?: boolean | null
+  readonly analysisRole?: string | null
+}
+
+const toSnippet = (text: string | null): string | null => {
+  const flat = text?.replace(/\s+/g, " ").trim() ?? ""
+  return flat === "" ? null : flat.length > 280 ? `${flat.slice(0, 280).trimEnd()}…` : flat
 }
 
 export const toSummary = (row: VacancyRow): VacancySummary => {
@@ -74,7 +80,11 @@ export const toSummary = (row: VacancyRow): VacancySummary => {
     createdAt: row.createdAt.toISOString(),
     lastSeenAt: row.lastSeenAt.toISOString(),
     blacklisted: blacklistLayers.length > 0,
-    blacklistLayers
+    blacklistLayers,
+    responsesTotal: row.responsesTotal ?? null,
+    responsesVacancy: row.responsesVacancy ?? null,
+    analysisRole: row.analysisRole ?? null,
+    snippet: toSnippet(row.descriptionText)
   }
 }
 
@@ -390,6 +400,10 @@ export const rowSelection = {
   descriptionHtml: vacancy.descriptionHtml,
   workFormats: vacancy.workFormats,
   blacklistLayers: sql<ReadonlyArray<string>>`'[]'::json`,
+  analysisRole: sql<string | null>`(
+    select a.facts->'role'->>'value' from vacancy_analysis a
+    where a.vacancy_id = ${vacancy.id} and a.prompt_version = ${ANALYSIS_PROMPT_VERSION}
+  )`,
   analysed: sql<boolean>`exists (
     select 1 from vacancy_analysis a
     where a.vacancy_id = ${vacancy.id} and a.prompt_version = ${ANALYSIS_PROMPT_VERSION}
@@ -609,12 +623,27 @@ export const list = (tx: Executor, filter: VacancyFilter = {}) => {
           or vacancy.area_name ilike ${likePattern(searchTerm)} escape '\\'
         )`
 
+  const blacklistInput = {
+    userId: filter.userId,
+    hhAccountId: filter.hhAccountId ?? null,
+    employerExternalId: sql`employer.external_id`,
+    vacancyExternalId: sql`vacancy.external_id`
+  }
   const sortExpressions: Record<VacancySortKey, SQL> = {
     title: sql`lower(vacancy.title)`,
     employer: sql`lower(employer.name)`,
+    rating: sql`employer.rating`,
     salary: sql`coalesce(vacancy.salary_from, vacancy.salary_to)`,
     area: sql`lower(vacancy.area_name)`,
+    seniority: sql`case vacancy.seniority when 'junior' then 1 when 'middle' then 2 when 'senior' then 3 when 'lead' then 4 else null end`,
+    experience: sql`case vacancy.experience_code when 'noExperience' then 0 when 'between1And3' then 1 when 'between3And6' then 2 when 'moreThan6' then 3 else null end`,
+    employment: sql`vacancy.employment_form`,
     date: sql`coalesce(vacancy.published_at, vacancy.last_seen_at)`,
+    firstSeen: sql`vacancy.created_at`,
+    lastSeen: sql`vacancy.last_seen_at`,
+    archived: sql`vacancy.archived`,
+    blacklisted: BlacklistRepository.matchExistsSql(blacklistInput),
+    responses: sql`vacancy.responses_total`,
     analysed: analysedExists
   }
   const orderBy = filter.sort === undefined
@@ -622,12 +651,6 @@ export const list = (tx: Executor, filter: VacancyFilter = {}) => {
     : sql`${sortExpressions[filter.sort.key]} ${sql.raw(filter.sort.direction === "asc" ? "asc" : "desc")} nulls last,
           vacancy.published_at desc nulls last, vacancy.created_at desc, vacancy.id`
 
-  const blacklistInput = {
-    userId: filter.userId,
-    hhAccountId: filter.hhAccountId ?? null,
-    employerExternalId: sql`employer.external_id`,
-    vacancyExternalId: sql`vacancy.external_id`
-  }
   const blacklistClause =
     filter.includeBlacklisted === true
       ? sql`true`
