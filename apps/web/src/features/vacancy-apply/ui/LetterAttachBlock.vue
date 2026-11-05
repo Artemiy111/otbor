@@ -4,29 +4,36 @@ import { useQuery } from "@pinia/colada"
 import { useIntervalFn } from "@vueuse/core"
 import { CircleAlert, CircleCheck, LoaderCircle, Send } from "@lucide/vue"
 import type { ApplicationRecord } from "@otbor/contract"
+import type { GeneratedDraft } from "@otbor/domain"
 import { applicationApi, applicationKeys } from "@/entities/application"
 import { describeError } from "@/shared/lib"
+import DraftGenerator from "./DraftGenerator.vue"
 import { Alert, AlertDescription, AlertTitle, Button, Textarea } from "@/shared/ui"
 
 const props = defineProps<{
   vacancyId: string
   accountId: string
+  resumeId: string
   applications: ReadonlyArray<ApplicationRecord>
 }>()
 
 const MAX_LETTER = 2000
 
-/** The letter written in otbor for this account, if a draft with one exists. */
-const draft = computed(
+/**
+ * The letter written in otbor for this account. The draft became "submitted"
+ * when hh showed the response, so any application otbor made itself counts,
+ * the newest one first.
+ */
+const own = computed(
   () =>
-    props.applications.find(
-      (application) => application.hhAccountId === props.accountId && application.state === "draft"
-    ) ?? null
+    props.applications
+      .filter((application) => application.hhAccountId === props.accountId && application.origin !== "imported")
+      .toSorted((left, right) => (left.updatedAt < right.updatedAt ? 1 : -1))[0] ?? null
 )
 const draftQuery = useQuery({
-  key: () => applicationKeys.detail(draft.value?.id ?? "none"),
-  query: () => applicationApi.get(draft.value!.id),
-  enabled: () => draft.value !== null
+  key: () => applicationKeys.detail(own.value?.id ?? "none"),
+  query: () => applicationApi.get(own.value!.id),
+  enabled: () => own.value !== null
 })
 
 const letter = ref("")
@@ -38,6 +45,13 @@ watch(
   },
   { immediate: true }
 )
+
+const generated = (draft: GeneratedDraft) => {
+  if (draft.letter !== null) {
+    letter.value = draft.letter.slice(0, MAX_LETTER)
+    touched.value = true
+  }
+}
 
 const statusQuery = useQuery({
   key: () => applicationKeys.letterAttach(props.vacancyId, props.accountId),
@@ -75,6 +89,15 @@ const send = async () => {
     <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
       Сопроводительное к уже отправленному отклику
     </div>
+    <DraftGenerator
+      :vacancy-id="vacancyId"
+      :account-id="accountId"
+      :resume-id="resumeId"
+      :questions="[]"
+      :disabled="busy || active"
+      @generated="generated"
+      @failed="(reason) => (errorText = reason)"
+    />
     <Textarea
       v-model="letter"
       class="min-h-32 leading-relaxed"

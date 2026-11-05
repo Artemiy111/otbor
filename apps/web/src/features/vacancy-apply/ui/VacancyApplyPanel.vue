@@ -642,6 +642,7 @@ const NO_FORM = "no-form"
       v-if="finished || sent.some((item) => item.accountId === accountId)"
       :vacancy-id="vacancyId"
       :account-id="accountId"
+      :resume-id="resumeId"
       :applications="applications"
     />
 
