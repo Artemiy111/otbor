@@ -148,7 +148,12 @@ export const VacanciesList = Rpc.make("VacanciesList", {
     /** Default `false`: blacklist layers hide rows from the default view. */
     includeBlacklisted: Schema.optional(Schema.Boolean),
     /** Selects the account whose blacklist layers apply to this page. */
-    hhAccountId: Schema.optional(HhAccountId)
+    hhAccountId: Schema.optional(HhAccountId),
+    /**
+     * Ad-hoc rules, compiled by the same builder as presets. They own the
+     * archive state (`includeArchived` of the filter, not of the list).
+     */
+    filter: Schema.optional(PresetFilter)
   }),
   success: Schema.Struct({
     items: Schema.Array(VacancySummary),

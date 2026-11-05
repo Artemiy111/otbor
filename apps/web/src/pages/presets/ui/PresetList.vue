@@ -11,7 +11,7 @@ import {
   Input,
   Skeleton
 } from "@/shared/ui"
-import { presetRules } from "../model/rules"
+import { presetRules } from "@/features/rule-builder"
 
 const props = withDefaults(
   defineProps<{

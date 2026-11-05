@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, ref } from "vue"
+import { computed, h, reactive, ref, watch } from "vue"
 import { useDebounceFn } from "@vueuse/core"
 import { useQuery } from "@pinia/colada"
 import { applicationApi, respondedByVacancy } from "@/entities/application"
@@ -8,11 +8,12 @@ import { AccountChip, ALL_ACCOUNTS, useAccountFilter } from "@/entities/hh-accou
 import { accountFilterOptions } from "@/features/account-filter"
 import type { GateVerdict, VacancySort, VacancySortKey, VacancySummary } from "@otbor/contract"
 import type { ColumnDef, PaginationState, SortingState } from "@tanstack/vue-table"
-import { CircleAlert } from "@lucide/vue"
+import { CircleAlert, ListFilter } from "@lucide/vue"
 import { vacancyApi, vacancyKeys } from "@/entities/vacancy"
 import { blacklistVisibilityOptions } from "@/features/blacklist-filter"
 import { vacancyAnalysedOptions, vacancyArchiveOptions, vacancyGateOptions } from "@/features/vacancy-filter"
 import { RefreshButton } from "@/features/refresh-button"
+import { RuleBuilder, buildFilter, emptyEditable } from "@/features/rule-builder"
 import {
   companyPath,
   describeError,
@@ -56,6 +57,27 @@ const serverSort = computed<VacancySort | undefined>(() => {
   return { key: first.id as VacancySortKey, direction: first.desc ? "desc" : "asc" }
 })
 
+/** Ad-hoc rules: the same constructor as presets, applied on the server to the whole corpus. */
+const rulesOpen = ref(false)
+const rules = reactive(emptyEditable())
+const ruleFilter = computed(() => {
+  const built = buildFilter(rules)
+  if (built.rules === undefined) return undefined
+  // The header toggles own archive and blacklist visibility.
+  return {
+    ...built,
+    ...(archived.value === "all" ? { includeArchived: true } : {}),
+    ...(includeBlacklisted.value ? { includeBlacklisted: true } : {})
+  }
+})
+const ruleCount = computed(() => ruleFilter.value?.rules?.length ?? 0)
+watch(
+  () => JSON.stringify(ruleFilter.value ?? null),
+  () => {
+    pagination.value = { ...pagination.value, pageIndex: 0 }
+  }
+)
+
 const gateCache = new Map<string, GateVerdict>()
 
 const { accounts, accountId, hhAccountId, scopeKey, defaultAccountId } = useAccountFilter(ALL_ACCOUNTS)
@@ -80,7 +102,8 @@ const listQuery = useQuery({
       pageSize: pagination.value.pageSize,
       includeArchived: archived.value === "all",
       includeBlacklisted: includeBlacklisted.value,
-      hhAccountId: scopeKey.value
+      hhAccountId: scopeKey.value,
+      filter: JSON.stringify(ruleFilter.value ?? null)
     }),
   query: () =>
     vacancyApi.list({
@@ -93,7 +116,8 @@ const listQuery = useQuery({
       sort: serverSort.value,
       includeArchived: archived.value === "all",
       includeBlacklisted: includeBlacklisted.value,
-      hhAccountId: hhAccountId.value
+      hhAccountId: hhAccountId.value,
+      filter: ruleFilter.value
     })
 })
 
@@ -324,6 +348,21 @@ const refresh = () => {
       <AlertTitle>Не удалось загрузить вакансии</AlertTitle>
       <AlertDescription>{{ describeError(listQuery.error.value) }}</AlertDescription>
     </Alert>
+
+    <div class="mb-3 space-y-2">
+      <button
+        type="button"
+        class="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs hover:bg-accent"
+        @click="rulesOpen = !rulesOpen"
+      >
+        <ListFilter class="h-3.5 w-3.5" />
+        Правила
+        <Badge v-if="ruleCount > 0" variant="neutral" class="text-[10px]">{{ ruleCount }}</Badge>
+      </button>
+      <div v-show="rulesOpen || ruleCount > 0">
+        <RuleBuilder v-model="rules" :flags="false" />
+      </div>
+    </div>
 
     <DataTable
       :columns="columns"

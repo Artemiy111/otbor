@@ -5,11 +5,12 @@ import type {
   HydrationTarget,
   IngestResult,
   KeywordMatchRecord,
+  PresetFilter,
   VacancyDetail,
   VacancyDraft,
   VacancySummary
 } from "@otbor/contract"
-import { NotFound } from "@otbor/contract"
+import { NotFound, parsePresetFilter } from "@otbor/contract"
 import {
   ANALYSIS_PROMPT_VERSION,
   detectVacancyTextFacts,
@@ -144,7 +145,9 @@ export interface CorpusServiceShape {
     drafts: ReadonlyArray<VacancyDraft>,
     options?: { readonly userId?: string }
   ) => Effect.Effect<IngestResult, ApiError>
-  readonly list: (filter: VacancyRepository.VacancyFilter) => Effect.Effect<
+  readonly list: (
+    filter: Omit<VacancyRepository.VacancyFilter, "extraWhere"> & { readonly filter?: PresetFilter }
+  ) => Effect.Effect<
     { readonly items: ReadonlyArray<VacancySummary>; readonly total: number },
     ApiError
   >
@@ -204,10 +207,28 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
             .pipe(Effect.mapError(toStorageError("vacancy.ingest")))
         })
 
-      const list: CorpusServiceShape["list"] = (filter) =>
+      const list: CorpusServiceShape["list"] = ({ filter: ruleFilter, ...filter }) =>
         database
           .asUser(currentUser.userId, (tx) =>
-            VacancyRepository.list(tx, { ...filter, userId: currentUser.userId })
+            VacancyRepository.list(tx, {
+              ...filter,
+              userId: currentUser.userId,
+              ...(ruleFilter === undefined
+                ? {}
+                : {
+                    // The filter owns archive state; the blacklist toggle of the
+                    // list stays in charge of account and hh layers.
+                    extraWhere: LexiconRepository.vacancyFilterSql(
+                      parsePresetFilter({
+                        ...ruleFilter,
+                        includeBlacklisted: filter.includeBlacklisted === true
+                          ? true
+                          : ruleFilter.includeBlacklisted
+                      }),
+                      { userId: currentUser.userId }
+                    )
+                  })
+            })
           )
           .pipe(Effect.mapError(toStorageError("vacancy.list")))
 

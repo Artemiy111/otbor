@@ -519,6 +519,11 @@ export interface VacancyFilter {
   readonly hhAccountId?: string
   /** Set by the service; RLS already scopes `hidden_target` to this user. */
   readonly userId?: string
+  /**
+   * A compiled preset filter over the `vacancy` table. When set it owns the
+   * archive decision (`includeArchived` is ignored), exactly as in a preset.
+   */
+  readonly extraWhere?: SQL
 }
 
 /** `%term%` with LIKE wildcards in the term escaped, for `ilike ... escape '\\'`. */
@@ -527,7 +532,10 @@ const likePattern = (term: string): string => `%${term.replace(/[\\%_]/g, (char)
 export const list = (tx: Executor, filter: VacancyFilter = {}) => {
   const limit = Math.min(Math.max(filter.limit ?? 50, 1), 200)
   const offset = Math.max(filter.offset ?? 0, 0)
-  const archivedClause = filter.includeArchived === true ? sql`true` : sql`not vacancy.archived`
+  const archivedClause = filter.extraWhere !== undefined || filter.includeArchived === true
+    ? sql`true`
+    : sql`not vacancy.archived`
+  const extraClause = filter.extraWhere === undefined ? sql`true` : sql`(${filter.extraWhere})`
 
   const gateClause =
     filter.gate === undefined || filter.gate === ""
@@ -602,7 +610,7 @@ export const list = (tx: Executor, filter: VacancyFilter = {}) => {
       )}
       from vacancy
       left join employer on employer.id = vacancy.employer_id
-      where ${archivedClause} and ${gateClause} and ${analysedClause} and ${respondedClause} and ${searchClause} and ${blacklistClause}
+      where ${archivedClause} and ${gateClause} and ${analysedClause} and ${respondedClause} and ${searchClause} and ${blacklistClause} and ${extraClause}
       order by ${orderBy}
       limit ${limit} offset ${offset}
     `)
@@ -611,7 +619,7 @@ export const list = (tx: Executor, filter: VacancyFilter = {}) => {
       select count(*)::int as count
       from vacancy
       left join employer on employer.id = vacancy.employer_id
-      where ${archivedClause} and ${gateClause} and ${analysedClause} and ${respondedClause} and ${searchClause} and ${blacklistClause}
+      where ${archivedClause} and ${gateClause} and ${analysedClause} and ${respondedClause} and ${searchClause} and ${blacklistClause} and ${extraClause}
     `)
 
     return {

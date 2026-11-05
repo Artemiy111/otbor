@@ -1,4 +1,4 @@
-import type { GateVerdict, VacancyAnalysis, VacancyDetail, VacancySummary } from "@otbor/contract"
+import type { GateVerdict, PresetFilter, VacancyAnalysis, VacancyDetail, VacancySummary } from "@otbor/contract"
 import type { VacancyId, VacancySort } from "@otbor/contract"
 import { call } from "@/shared/api"
 
@@ -13,6 +13,7 @@ export interface VacancyListInput {
   readonly includeArchived?: boolean
   readonly includeBlacklisted?: boolean
   readonly hhAccountId?: string
+  readonly filter?: PresetFilter
 }
 
 export interface VacancyListResult {
@@ -33,7 +34,8 @@ export const vacancyApi = {
         sort: input.sort,
         includeArchived: input.includeArchived,
         includeBlacklisted: input.includeBlacklisted,
-        hhAccountId: input.hhAccountId as any
+        hhAccountId: input.hhAccountId as any,
+        filter: input.filter
       })
     ),
   get: (id: string): Promise<VacancyDetail> =>

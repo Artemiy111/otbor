@@ -21,8 +21,8 @@ import PresetPreviewPanel from "./PresetPreviewPanel.vue"
 import {
   PRESET_LOCATION_LABELS,
   describePresetRule
-} from "../model/fields"
-import { presetRules } from "../model/rules"
+} from "@/features/rule-builder"
+import { presetRules } from "@/features/rule-builder"
 
 const props = withDefaults(
   defineProps<{

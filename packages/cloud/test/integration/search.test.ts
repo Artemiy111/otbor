@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import type { PresetFilter } from "@otbor/contract"
 import { Effect } from "effect"
+import { CorpusService } from "../../src/services/CorpusService.ts"
 import { DecisionService } from "../../src/services/DecisionService.ts"
 import * as support from "./support.ts"
 
@@ -137,6 +138,37 @@ if (!enabled || serverUrl === null) {
       // random sort and offset return a valid page
       expect(await ids({ sort: "random", limit: 2 })).toHaveLength(2)
       expect(await ids({ sort: "fit", limit: 2, offset: 1 })).toEqual([smallUnknown, smallMiddle])
+    }, 60_000)
+  })
+
+  describe("vacancy list with ad-hoc rules (CorpusService.list)", () => {
+    test("applies the same rule builder as presets and keeps archive control in the filter", async () => {
+      const tenant = await support.seedTenant("list-filter")
+      const employer = await support.seedEmployerStats("e-list", "List Co")
+      const middle = await support.seedSearchVacancy({
+        label: "lf1", title: "Mid", employerId: employer, seniority: "middle", skills: ["Kubernetes"]
+      })
+      await support.seedSearchVacancy({ label: "lf2", title: "Sen", employerId: employer, seniority: "senior" })
+      const archived = await support.seedSearchVacancy({
+        label: "lf3", title: "Old mid", employerId: employer, seniority: "middle", archived: true
+      })
+
+      const ids = async (filter: PresetFilter | undefined) =>
+        (await support.runAs(
+          tenant.userId,
+          Effect.gen(function*() {
+            const corpus = yield* CorpusService
+            return yield* corpus.list({ limit: 50, filter })
+          })
+        )).items.map((row): string => row.id)
+
+      expect(await ids({ rules: [{ field: "seniority", op: "eq", value: "middle" }] })).toEqual([middle])
+      expect((await ids({
+        rules: [{ field: "seniority", op: "eq", value: "middle" }],
+        includeArchived: true
+      })).sort()).toEqual([middle, archived].sort())
+      expect(await ids({ rules: [{ field: "skills", op: "contains", value: "kubernetes" }] })).toEqual([middle])
+      expect((await ids(undefined)).length).toBe(2)
     }, 60_000)
   })
 }
