@@ -737,9 +737,6 @@ const NO_FORM = "no-form"
             Вернуть сохранённое
           </Button>
         </div>
-        <p class="text-xs text-muted-foreground">
-          Черновик хранит письмо и ответы теста для пары «аккаунт + резюме». На hh ничего не отправляется.
-        </p>
       </div>
 
       <!-- test -->
@@ -790,9 +787,6 @@ const NO_FORM = "no-form"
           />
         </fieldset>
       </div>
-      <p v-else-if="form !== null" class="text-xs text-muted-foreground">
-        У этой вакансии нет вопросов теста: нужно только письмо.
-      </p>
 
       <!-- result -->
       <Alert v-if="errorText" variant="destructive">
