@@ -5,10 +5,12 @@ import { RESUME_FAQ_TOPICS, SALARY_CURRENCIES } from "@otbor/contract"
 import type { HhAccountRecord, ResumeEnrichment, ResumeRecord, SalaryCurrency } from "@otbor/contract"
 import { CircleAlert } from "@lucide/vue"
 import { hhAccountApi, hhAccountKeys, useDefaultAccount } from "@/entities/hh-account"
+import { keywordApi, keywordKeys } from "@/entities/keyword"
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { AccountResumePicker } from "@/features/vacancy-apply"
 import { RefreshButton } from "@/features/refresh-button"
 import { currencySymbol, describeError, formatDate } from "@/shared/lib"
+import type { HighlightTerm } from "@/shared/ui"
 import {
   Alert,
   AlertDescription,
@@ -70,6 +72,18 @@ const enrichmentQuery = useQuery({
 })
 
 const showFullText = ref(false)
+
+// Every keyword of the lexicon, with its aliases. Those that hh vacancies list as skills are red.
+const keywordsQuery = useQuery({
+  key: () => keywordKeys.list("", "all", "any"),
+  query: () => keywordApi.list({ limit: 5000 })
+})
+const highlightTerms = computed<ReadonlyArray<HighlightTerm>>(() =>
+  (keywordsQuery.data.value ?? []).flatMap((keyword) => {
+    const kind = keyword.skillVacancyCount > 0 ? "skill" : "keyword"
+    return [keyword.term, ...keyword.aliases.map((a) => a.alias)].map((text) => ({ text, kind }) as const)
+  })
+)
 const comment = ref("")
 /** "auto": work it out from the resume (the last job has no end date). */
 const employment = ref<"auto" | "employed" | "unemployed">("auto")
@@ -309,7 +323,14 @@ const refresh = () => {
         </CardHeader>
         <CardContent class="space-y-4">
           <div class="space-y-4 rounded-md border p-4">
-            <h3 class="text-sm font-semibold">Что видит ИИ</h3>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h3 class="text-sm font-semibold">Что видит ИИ</h3>
+              <p class="text-xs text-muted-foreground">
+                В тексте подсвечено:
+                <mark class="rounded-sm bg-yellow-200/80 px-1 text-foreground dark:bg-yellow-400/25">ключевое слово</mark>
+                <mark class="ml-1 rounded-sm bg-red-200/70 px-1 text-foreground dark:bg-red-500/30">навык из вакансий hh</mark>
+              </p>
+            </div>
             <dl class="grid gap-3 text-sm sm:grid-cols-[160px_1fr]">
               <dt class="text-muted-foreground">Зарплата</dt>
               <dd>{{ aiSalaries }}</dd>
@@ -321,7 +342,7 @@ const refresh = () => {
                 <span v-if="!selectedResume.skills.length">не указаны</span>
               </dd>
               <dt class="text-muted-foreground">О себе</dt>
-              <dd class="whitespace-pre-wrap"><HighlightedText v-if="selectedResume.about" :text="selectedResume.about" :terms="selectedResume.skills" /><template v-else>нет</template></dd>
+              <dd class="whitespace-pre-wrap"><HighlightedText v-if="selectedResume.about" :text="selectedResume.about" :terms="highlightTerms" /><template v-else>нет</template></dd>
               <dt class="text-muted-foreground">Заметки оператора</dt>
               <dd class="whitespace-pre-wrap">{{ comment || "нет" }}</dd>
             </dl>
@@ -333,7 +354,7 @@ const refresh = () => {
                 {{ showFullText ? "Скрыть" : "Показать" }}
               </Button>
             </div>
-            <pre v-if="showFullText" class="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-4 text-sm"><HighlightedText :text="selectedResume.text" :terms="selectedResume.skills" /></pre>
+            <pre v-if="showFullText" class="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-4 text-sm"><HighlightedText :text="selectedResume.text" :terms="highlightTerms" /></pre>
           </div>
           <div v-if="experienceItems.length" class="space-y-2">
             <h3 class="text-sm font-semibold">Опыт работы</h3>
@@ -341,7 +362,7 @@ const refresh = () => {
               <li v-for="item in experienceItems" :key="item.key" class="rounded-md border p-3 text-sm">
                 <div class="font-medium">{{ item.title }}</div>
                 <div v-if="item.period" class="text-muted-foreground">{{ item.period }}</div>
-                <p v-if="item.description" class="mt-1 whitespace-pre-wrap"><HighlightedText :text="item.description" :terms="selectedResume.skills" /></p>
+                <p v-if="item.description" class="mt-1 whitespace-pre-wrap"><HighlightedText :text="item.description" :terms="highlightTerms" /></p>
                 <div class="mt-2 space-y-1.5">
                   <Label>Заметка для агента</Label>
                   <Textarea v-model="jobNotes[item.key]" rows="2" placeholder="Формат работы, причина ухода, что подчеркнуть" />
