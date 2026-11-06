@@ -32,6 +32,8 @@ const NO_FORM = "no-form"
 export interface BrowserSubmitInput {
   readonly kind: "submit" | "letter"
   readonly externalId: string
+  /** hh's id of the user logged in on the page. */
+  readonly hhid?: string | null | undefined
   readonly resumeTitle: string | null
   readonly letter: string | null
   readonly answers: ReadonlyArray<FormAnswer>
@@ -41,7 +43,10 @@ export interface BrowserSubmitInput {
 }
 
 export interface BrowserApplyShape {
-  readonly drafts: (externalId: string) => Effect.Effect<BrowserDrafts, ApiError>
+  readonly drafts: (input: {
+    readonly externalId: string
+    readonly hhid?: string | null | undefined
+  }) => Effect.Effect<BrowserDrafts, ApiError>
   readonly recordSubmit: (input: BrowserSubmitInput) => Effect.Effect<BrowserSubmitResult, ApiError>
 }
 
@@ -70,6 +75,36 @@ const vacancyIdOf = (tx: Executor, externalId: string) =>
   tx
     .execute(sql`select id from vacancy where source = 'hh' and external_id = ${externalId} limit 1`)
     .pipe(Effect.map((result) => (result.rows[0]?.id as string | undefined) ?? null))
+
+/**
+ * The account of the hh user logged in on the page. `otbor hh login` stores
+ * the browser session of an account as `hh_<hhid>`, so the page's `hhid` names
+ * the account even when one browser holds several (Zen containers).
+ */
+const accountOfHhid = (tx: Executor, hhid: string | null | undefined) =>
+  Effect.gen(function*() {
+    const id = (hhid ?? "").trim()
+    if (!/^\d+$/.test(id)) return null
+    const result = yield* tx.execute(sql`select id from hh_account where session_profile = ${`hh_${id}`} limit 1`)
+    return (result.rows[0]?.id as string | undefined) ?? null
+  })
+
+/** The account is known: its resume by that title, else its one application to the vacancy. */
+const targetInAccount = (tx: Executor, hhAccountId: string, vacancyId: string, resumeTitle: string | null) =>
+  Effect.gen(function*() {
+    if (resumeTitle !== null) {
+      const own = yield* tx.execute(sql`
+        select id from resume where hh_account_id = ${hhAccountId} and btrim(title) = ${resumeTitle}`)
+      if (own.rows.length === 1) return { hhAccountId, resumeId: own.rows[0]!.id as string }
+    }
+    const apps = yield* tx.execute(sql`
+      select resume_id from application
+      where hh_account_id = ${hhAccountId} and vacancy_id = ${vacancyId} and state <> 'skipped'`)
+    return {
+      hhAccountId,
+      resumeId: apps.rows.length === 1 ? ((apps.rows[0]!.resume_id as string | null) ?? null) : null
+    }
+  })
 
 interface Target {
   readonly hhAccountId: string
@@ -143,12 +178,15 @@ export class BrowserApply extends Context.Service<BrowserApply, BrowserApplyShap
       const database = yield* Database
       const currentUser = yield* CurrentUser
 
-      const drafts: BrowserApplyShape["drafts"] = (externalId) =>
+      const drafts: BrowserApplyShape["drafts"] = ({ externalId, hhid }) =>
         database
           .asUser(currentUser.userId, (tx) =>
             Effect.gen(function*() {
+              const account = yield* accountOfHhid(tx, hhid)
               const vacancyId = yield* vacancyIdOf(tx, externalId)
-              if (vacancyId === null) return { vacancyId: null, drafts: [] } satisfies BrowserDrafts
+              if (vacancyId === null) {
+                return { vacancyId: null, hhAccountId: account as BrowserDrafts["hhAccountId"], drafts: [] } satisfies BrowserDrafts
+              }
               const result = yield* tx.execute(sql`
                 select a.id, a.hh_account_id, coalesce(h.label, nullif(btrim(concat_ws(' ', h.first_name, h.last_name)), '')) as account_name,
                   a.resume_id, r.title as resume_title, a.state, a.updated_at,
@@ -163,10 +201,12 @@ export class BrowserApply extends Context.Service<BrowserApply, BrowserApplyShap
                 left join letter_draft ld on ld.hh_account_id = a.hh_account_id and ld.vacancy_id = a.vacancy_id
                   and ld.resume_id = coalesce(a.resume_id, ${NIL_RESUME}::uuid)
                 where a.vacancy_id = ${vacancyId} and a.state <> 'skipped'
+                  and (${account}::uuid is null or a.hh_account_id = ${account}::uuid)
                 order by a.updated_at desc`)
               const rows = result.rows as unknown as ReadonlyArray<DraftRow>
               return {
                 vacancyId: vacancyId as BrowserDrafts["vacancyId"],
+                hhAccountId: account as BrowserDrafts["hhAccountId"],
                 drafts: rows.map(
                   (row): BrowserDraft => ({
                     applicationId: row.id as BrowserDraft["applicationId"],
@@ -208,7 +248,11 @@ export class BrowserApply extends Context.Service<BrowserApply, BrowserApplyShap
                 if (vacancyId === null) {
                   return result("unknown_vacancy", null, `vacancy ${input.externalId} is not in the corpus`)
                 }
-                const target = yield* resolveTarget(tx, vacancyId, resumeTitle)
+                const account = yield* accountOfHhid(tx, input.hhid)
+                const target =
+                  account !== null
+                    ? yield* targetInAccount(tx, account, vacancyId, resumeTitle)
+                    : yield* resolveTarget(tx, vacancyId, resumeTitle)
                 if (target === null) {
                   return result("no_account", null, "cannot tell which hh account responded; set a default account")
                 }

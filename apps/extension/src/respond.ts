@@ -7,7 +7,7 @@ import type {
   ResponseForm
 } from "@otbor/contract"
 import { parseResponseForm } from "@otbor/hh"
-import type { Request } from "@/messages.ts"
+import type { Request, Settings } from "@/messages.ts"
 
 /**
  * hh's own response form, opened by the operator (the `/applicant/vacancy_response`
@@ -28,12 +28,15 @@ import type { Request } from "@/messages.ts"
 
 const LETTER_SELECTOR =
   'textarea[data-qa="vacancy-response-popup-form-letter-input"], textarea[data-qa*="letter"], textarea[name="letter"], [contenteditable="true"][data-qa*="letter"]'
-const LETTER_TOGGLE_SELECTOR = '[data-qa="vacancy-response-letter-toggle"]'
+/** "Добавить сопроводительное": `add-cover-letter` in the popup (seen 2026-11-06), the older toggle elsewhere. */
+const LETTER_TOGGLE_SELECTOR = '[data-qa="add-cover-letter"], [data-qa="vacancy-response-letter-toggle"]'
 const SUBMIT_SELECTOR = '[data-qa="vacancy-response-submit-popup"]'
 /** "Отправить" of the letter dialog of a response hh already holds. */
 const LETTER_SUBMIT_SELECTOR = '[data-qa="vacancy-response-letter-submit"]'
 const SUCCESS_SELECTOR = '[data-qa="responded-success-attach-cover-letter"]'
 const RESUME_SELECTED_SELECTOR = '[data-qa="resume-title"]'
+/** The options of the opened resume select, each with its own `resume-title`. */
+const RESUME_OPTION_SELECTOR = 'label[role="option"]'
 /** The one-click "Откликнуться" on a vacancy page: without a form hh responds at once. */
 const QUICK_RESPONSE_SELECTOR =
   '[data-qa="vacancy-response-link-top"], [data-qa="vacancy-response-link-bottom"]'
@@ -42,6 +45,8 @@ const TASK_SELECTOR = '[data-qa="task-body"]'
 const LETTER_HINT_RE = /letter|cover|сопровод|письм/i
 
 const FILLED = "otborFilled"
+const RESUME_PICKED = "otborResume"
+const OPENED_KEY = "otbor:opened:"
 const PENDING_KEY = "otbor:pending-submit"
 /** A submit that reloaded the page is still checked on the next page this long. */
 const PENDING_TTL_MS = 90_000
@@ -59,6 +64,41 @@ const vacancyExternalId = (): string | null => {
   if (fromUrl !== null && /^\d+$/.test(fromUrl)) return fromUrl
   const input = document.querySelector<HTMLInputElement>('input[name="vacancyId"], input[name="vacancy_id"]')
   return input?.value && /^\d+$/.test(input.value) ? input.value : null
+}
+
+/**
+ * hh's id of the user logged in on this page, from its initial state. One
+ * browser may hold several hh users (Zen containers); this says which one.
+ */
+const HHID_RE = /"hhid"\s*:\s*"?(\d+)/
+const HHID_KEY = "otbor:hhid"
+let hhidLookup: Promise<string | null> | null = null
+
+const pageHhid = (): Promise<string | null> => {
+  const template = document.getElementById("HH-Lux-InitialState")
+  const text = template instanceof HTMLTemplateElement ? template.content.textContent : template?.textContent
+  const own = HHID_RE.exec(text ?? "")?.[1]
+  if (own !== undefined) return Promise.resolve(own)
+  try {
+    const kept = sessionStorage.getItem(HHID_KEY)
+    if (kept !== null) return Promise.resolve(kept)
+  } catch {
+    // no storage: ask hh below
+  }
+  // The home page of the same tab (same container cookies) carries it, as `otbor hh login` reads it.
+  hhidLookup ??= fetch("/", { credentials: "same-origin" })
+    .then((response) => response.text())
+    .then((html) => {
+      const found = HHID_RE.exec(html)?.[1] ?? null
+      try {
+        if (found !== null) sessionStorage.setItem(HHID_KEY, found)
+      } catch {
+        // fine without the cache
+      }
+      return found
+    })
+    .catch(() => null)
+  return hhidLookup
 }
 
 const norm = (text: string | null | undefined): string =>
@@ -199,6 +239,44 @@ const pickDraft = (
   return null
 }
 
+const titleOf = (element: Element | null): string =>
+  norm((element as HTMLElement | null)?.innerText ?? element?.textContent ?? "")
+
+/**
+ * Selects the draft's resume in hh's resume select, when another is selected.
+ * Only opens the select and clicks an option; the form sends nothing by it.
+ */
+const selectResume = async (wanted: string): Promise<boolean> => {
+  const target = norm(wanted)
+  if (norm(selectedResumeTitle()) === target) return true
+  const card = document.querySelector(RESUME_SELECTED_SELECTOR)?.closest<HTMLElement>('[role="button"]')
+  if (card === null || card === undefined) return false
+  card.click()
+  let option: HTMLElement | null = null
+  for (let i = 0; i < 20 && option === null; i++) {
+    await wait(100)
+    option =
+      [...document.querySelectorAll<HTMLElement>(RESUME_OPTION_SELECTOR)].find(
+        (item) => titleOf(item.querySelector(RESUME_SELECTED_SELECTOR)) === target
+      ) ?? null
+  }
+  if (option === null) {
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+    return false
+  }
+  option.click()
+  for (let i = 0; i < 20; i++) {
+    await wait(100)
+    if (norm(selectedResumeTitle()) === target) return true
+  }
+  return false
+}
+
+/** A draft the operator could still send: not sent, not being sent by otbor. */
+const sendable = (draft: BrowserDraft): boolean =>
+  (draft.state === "draft" || draft.state === "needs_human" || draft.state === "failed") &&
+  (draft.letter !== null || draft.answers.length > 0)
+
 /**
  * Before a response the kit's letter; once hh holds the response, the letter
  * kept for it (the unsent draft) first.
@@ -249,13 +327,15 @@ interface Snapshot {
 
 const describe = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
-export const startResponseWatch = (send: Send): { readonly check: () => void } => {
+export const startResponseWatch = (
+  send: Send
+): { readonly check: () => void; readonly maybeOpen: (settings: Settings) => Promise<void> } => {
   const cache = new Map<string, { readonly at: number; readonly value: Promise<BrowserDrafts> }>()
 
   const draftsFor = (externalId: string): Promise<BrowserDrafts> => {
     const hit = cache.get(externalId)
     if (hit !== undefined && Date.now() - hit.at < 30_000) return hit.value
-    const value = send<BrowserDrafts>({ type: "drafts", externalId })
+    const value = pageHhid().then((hhid) => send<BrowserDrafts>({ type: "drafts", externalId, hhid }))
     cache.set(externalId, { at: Date.now(), value })
     value.catch(() => cache.delete(externalId))
     return value
@@ -264,6 +344,33 @@ export const startResponseWatch = (send: Send): { readonly check: () => void } =
   /** The draft pasted into the form of a vacancy, to tell its answers from the operator's. */
   const pasted = new Map<string, BrowserDraft>()
   let busy = false
+
+  /**
+   * Once per response form: when the selected resume has no draft and exactly
+   * one other resume of this account has one, that resume is selected.
+   */
+  const pickResume = async (externalId: string): Promise<string | null> => {
+    const anchor = document.querySelector<HTMLElement>(SUBMIT_SELECTOR)
+    if (anchor === null || anchor.dataset[RESUME_PICKED] !== undefined) return null
+    if (document.querySelector(RESUME_SELECTED_SELECTOR) === null) return null
+    anchor.dataset[RESUME_PICKED] = "pending"
+    const { drafts } = await draftsFor(externalId)
+    const usable = drafts.filter(sendable)
+    const selected = norm(selectedResumeTitle())
+    if (usable.some((draft) => norm(draft.resumeTitle) === selected)) {
+      anchor.dataset[RESUME_PICKED] = "kept"
+      return null
+    }
+    const titled = usable.filter((draft) => draft.resumeTitle !== null)
+    if (titled.length !== 1) {
+      anchor.dataset[RESUME_PICKED] = "none"
+      return null
+    }
+    const ok = await selectResume(titled[0]!.resumeTitle!)
+    anchor.dataset[RESUME_PICKED] = ok ? "done" : "failed"
+    if (!ok) toast(`otbor: не получилось выбрать резюме «${titled[0]!.resumeTitle}» — выберите его сами`, "warn")
+    return ok ? `резюме «${titled[0]!.resumeTitle}»` : null
+  }
 
   /** Test answers, once per response form (the submit button carries the mark). */
   const fillAnswers = async (externalId: string): Promise<string | null> => {
@@ -336,9 +443,10 @@ export const startResponseWatch = (send: Send): { readonly check: () => void } =
     if (externalId === null) return
     busy = true
     try {
+      const picked = await pickResume(externalId)
       const answers = await fillAnswers(externalId)
       const letter = await fillLetters(externalId)
-      const parts = [answers, letter === null ? null : "письмо"].filter((part): part is string => part !== null)
+      const parts = [picked, answers, letter === null ? null : "письмо"].filter((part): part is string => part !== null)
       if (parts.length === 0) return
       const draft = letter?.draft ?? pasted.get(externalId)
       const whose = draft?.resumeTitle ?? draft?.accountName ?? "черновик"
@@ -400,6 +508,7 @@ export const startResponseWatch = (send: Send): { readonly check: () => void } =
         payload: {
           kind: snap.kind,
           externalId: snap.externalId,
+          hhid: await pageHhid(),
           resumeTitle: snap.resumeTitle,
           letter: snap.letter,
           answers: snap.answers,
@@ -483,5 +592,33 @@ export const startResponseWatch = (send: Send): { readonly check: () => void } =
     })()
   }
 
-  return { check: () => void autofill() }
+  /**
+   * On a vacancy page with a draft of this page's account, opens hh's response
+   * form once per tab. It goes to the address hh's "Откликнуться" link points
+   * at instead of clicking it: the click responds at once on a vacancy without
+   * a form, the address only shows the form (the harness reads forms by it).
+   */
+  const maybeOpen = async (settings: Settings): Promise<void> => {
+    if (!settings.autoOpenResponse) return
+    const externalId = /^\/vacancy\/(\d+)/.exec(location.pathname)?.[1]
+    if (externalId === undefined) return
+    if (document.querySelector(QUICK_RESPONSE_SELECTOR) === null || document.querySelector(SUBMIT_SELECTOR) !== null) return
+    if (respondedNow()) return
+    try {
+      if (sessionStorage.getItem(OPENED_KEY + externalId) !== null) return
+    } catch {
+      return
+    }
+    const { hhAccountId, drafts } = await draftsFor(externalId)
+    // Without knowing the page's account a draft may be another account's.
+    if (hhAccountId === null || !drafts.some(sendable)) return
+    try {
+      sessionStorage.setItem(OPENED_KEY + externalId, String(Date.now()))
+    } catch {
+      return
+    }
+    location.assign(`/applicant/vacancy_response?vacancyId=${externalId}`)
+  }
+
+  return { check: () => void autofill(), maybeOpen }
 }

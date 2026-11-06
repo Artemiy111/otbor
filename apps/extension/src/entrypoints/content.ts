@@ -59,6 +59,7 @@ export default defineContentScript({
           const items = reply?.items ?? (await send<CaptureReply["items"]>({ type: "lookup", externalIds: [externalId] }))
           const item = items.find((i) => i.externalId === externalId)
           show({ status: "ok", item, saved }, settings)
+          await responses?.maybeOpen(settings).catch((error) => console.warn("[otbor] open response", error))
         } else if (kind === "search") {
           const drafts = await readSearch(fresh)
           if (drafts.length === 0) return

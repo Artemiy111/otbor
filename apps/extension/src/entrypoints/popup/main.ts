@@ -23,12 +23,14 @@ const init = async () => {
   $<HTMLInputElement>("apiUrl").value = settings.apiUrl
   $<HTMLInputElement>("webUrl").value = settings.webUrl
   $<HTMLInputElement>("autoCapture").checked = settings.autoCapture
+  $<HTMLInputElement>("autoOpenResponse").checked = settings.autoOpenResponse
   $("form").addEventListener("submit", async (event) => {
     event.preventDefault()
     await saveSettings({
       apiUrl: $<HTMLInputElement>("apiUrl").value.trim() || DEFAULT_SETTINGS.apiUrl,
       webUrl: $<HTMLInputElement>("webUrl").value.trim().replace(/\/$/, "") || DEFAULT_SETTINGS.webUrl,
-      autoCapture: $<HTMLInputElement>("autoCapture").checked
+      autoCapture: $<HTMLInputElement>("autoCapture").checked,
+      autoOpenResponse: $<HTMLInputElement>("autoOpenResponse").checked
     })
     await ping()
   })

@@ -56,8 +56,8 @@ if (!enabled || serverUrl === null) {
       await support.dropTestDatabase(base)
     }, 60_000)
 
-    const drafts = (userId: string, externalId: string) =>
-      support.runAs(userId, Effect.flatMap(BrowserApply, (service) => service.drafts(externalId)))
+    const drafts = (userId: string, externalId: string, hhid?: string) =>
+      support.runAs(userId, Effect.flatMap(BrowserApply, (service) => service.drafts({ externalId, hhid })))
     const record = (userId: string, payload: BrowserSubmitInput) =>
       support.runAs(userId, Effect.flatMap(BrowserApply, (service) => service.recordSubmit(payload)))
     const kitOf = (userId: string, applicationId: string) =>
@@ -181,6 +181,33 @@ if (!enabled || serverUrl === null) {
       expect(result.status).toBe("recorded")
       expect(result.application?.id).toBe(open as never)
       expect(result.application?.resumeId).toBe(mine as never)
+    })
+
+    test("the page's hhid names the account: its drafts only, and the response goes to it", async () => {
+      const tenant = await support.seedTenant("browser-hhid")
+      const other = await support.addAccount(tenant.userId, "second")
+      await support.setDefaultAccount(tenant.userId, tenant.accountId)
+      await support.runAs(
+        tenant.userId,
+        support.ownerTx((tx) => tx.execute(sql`update hh_account set session_profile = 'hh_555001' where id = ${other}`))
+      )
+      const externalId = String(9_200_000 + Math.floor(Math.random() * 90_000))
+      const vacancyId = await support.seedVacancyWithExternal(externalId, "Browser hhid")
+      const mine = await support.seedResume({ userId: tenant.userId, accountId: tenant.accountId, title: "DevOps" })
+      const theirs = await support.seedResume({ userId: tenant.userId, accountId: other, title: "DevOps" })
+      const first = await support.seedApplication({ userId: tenant.userId, accountId: tenant.accountId, vacancyId, resumeId: mine, state: "draft" })
+      const second = await support.seedApplication({ userId: tenant.userId, accountId: other, vacancyId, resumeId: theirs, state: "draft" })
+      await support.seedKit({ userId: tenant.userId, applicationId: first })
+      await support.seedKit({ userId: tenant.userId, applicationId: second })
+
+      const seen = await drafts(tenant.userId, externalId, "555001")
+      expect(seen.hhAccountId).toBe(other as never)
+      expect(seen.drafts.map((draft) => draft.applicationId)).toEqual([second as never])
+      expect((await drafts(tenant.userId, externalId)).drafts).toHaveLength(2)
+
+      const result = await record(tenant.userId, input(externalId, { hhid: "555001", resumeTitle: "DevOps" }))
+      expect(result.application?.id).toBe(second as never)
+      expect((await appRow(tenant.userId, first)).state).toBe("draft")
     })
 
     test("an otbor submit in flight is left to the reconcile", async () => {

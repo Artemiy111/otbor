@@ -172,7 +172,11 @@ export const ApplicationsSetKit = Rpc.make("ApplicationsSetKit", {
  * the response form the operator opened on hh.ru. Read only.
  */
 export const VacancyBrowserDrafts = Rpc.make("VacancyBrowserDrafts", {
-  payload: Schema.Struct({ externalId: Schema.String }),
+  payload: Schema.Struct({
+    externalId: Schema.String,
+    /** hh's id of the user logged in on the page (`hhid` of its state); picks the account. */
+    hhid: Schema.optional(Schema.NullOr(Schema.String))
+  }),
   success: BrowserDrafts,
   error: ApiError
 })
@@ -187,6 +191,8 @@ export const ApplicationsRecordBrowserSubmit = Rpc.make("ApplicationsRecordBrows
   payload: Schema.Struct({
     kind: Schema.Literals(["submit", "letter"]),
     externalId: Schema.String,
+    /** hh's id of the user logged in on the page; names the account when otbor knows it. */
+    hhid: Schema.optional(Schema.NullOr(Schema.String)),
     /** The resume the form had selected, as hh titles it. */
     resumeTitle: Schema.NullOr(Schema.String),
     letter: Schema.NullOr(Schema.String),

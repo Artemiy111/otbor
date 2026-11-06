@@ -264,6 +264,8 @@ export type BrowserDraft = typeof BrowserDraft.Type
 export const BrowserDrafts = Schema.Struct({
   /** null when the vacancy is not in the corpus. */
   vacancyId: Schema.NullOr(VacancyId),
+  /** The account of the page's hh user, when it is one of otbor's; drafts are then its only. */
+  hhAccountId: Schema.NullOr(HhAccountId),
   drafts: Schema.Array(BrowserDraft)
 })
 

@@ -45,7 +45,7 @@ const handle = async (request: Request): Promise<unknown> => {
     case "lookup":
       return lookup(request.externalIds)
     case "drafts":
-      return call((api) => api.VacancyBrowserDrafts({ externalId: request.externalId }))
+      return call((api) => api.VacancyBrowserDrafts({ externalId: request.externalId, hhid: request.hhid }))
     case "record":
       return call((api) => api.ApplicationsRecordBrowserSubmit(request.payload))
     case "capture": {
