@@ -176,6 +176,21 @@ export const ProxyStatus = Schema.Struct({
   label: Schema.String,
   origin: Schema.NullOr(ProxyConfigOrigin),
   rotate: Schema.NullOr(ProxyRotate),
-  maxRotations: Schema.NullOr(Schema.Int)
+  maxRotations: Schema.NullOr(Schema.Int),
+  /** Subscription host only (no token path/query); null for a ready endpoint. */
+  subscription: Schema.NullOr(Schema.String)
 })
 export type ProxyStatus = typeof ProxyStatus.Type
+
+/**
+ * Write-only proxy settings from the UI. `url` is a secret: it is saved to
+ * the local proxy file and never returned.
+ */
+export const ProxySettingsInput = Schema.Struct({
+  kind: Schema.Literals(["subscription", "endpoint"]),
+  /** Omit to keep the saved URL and change only rotation. */
+  url: Schema.optional(Schema.String),
+  rotate: Schema.optional(ProxyRotate),
+  maxRotations: Schema.optional(Schema.Int)
+})
+export type ProxySettingsInput = typeof ProxySettingsInput.Type

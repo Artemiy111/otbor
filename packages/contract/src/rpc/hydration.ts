@@ -7,6 +7,7 @@ import {
   EmployerHydrationTarget,
   HydrationStats,
   HydrationTarget,
+  ProxySettingsInput,
   ProxyStatus,
   VacancyDraft
 } from "../models/index.ts"
@@ -73,6 +74,19 @@ export const VacancyHydrate = Rpc.make("VacancyHydrate", {
 
 /** Read-only, safe proxy state: no subscription URL or credentials. */
 export const ProxyStatusRpc = Rpc.make("ProxyStatus", {
+  success: ProxyStatus,
+  error: ApiError
+})
+
+/** Saves the local proxy file (0600). Env variables still win per field. */
+export const ProxyConfigure = Rpc.make("ProxyConfigure", {
+  payload: ProxySettingsInput,
+  success: ProxyStatus,
+  error: ApiError
+})
+
+/** Removes the saved proxy file. */
+export const ProxyClear = Rpc.make("ProxyClear", {
   success: ProxyStatus,
   error: ApiError
 })

@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/shared/ui"
+import ProxyCard from "./ProxyCard.vue"
 import { PageHeader } from "@/widgets/page-header"
 
 const { accounts, defaultAccountId } = useDefaultAccount()
@@ -23,7 +24,7 @@ const { accounts, defaultAccountId } = useDefaultAccount()
   <section>
     <PageHeader
       title="Настройки"
-      description="Параметры этого кабинета. Хранятся в браузере и не меняют данные на сервере."
+      description="Параметры кабинета. Аккаунт по умолчанию хранится в браузере; прокси — локально на сервере."
     />
 
     <div class="grid max-w-2xl gap-4">
@@ -66,6 +67,8 @@ const { accounts, defaultAccountId } = useDefaultAccount()
           </div>
         </CardContent>
       </Card>
+
+      <ProxyCard />
 
       <Card>
         <CardHeader>

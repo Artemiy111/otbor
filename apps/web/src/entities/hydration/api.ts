@@ -4,6 +4,7 @@ import type {
   HydrationStats,
   HydrationTarget,
   ProxyMode,
+  ProxySettingsInput,
   ProxyStatus,
   VacancyId
 } from "@otbor/contract"
@@ -16,6 +17,9 @@ export interface HydrationListInput {
 export const hydrationApi = {
   stats: (): Promise<HydrationStats> => call((client) => client.HydrationStats()),
   proxyStatus: (): Promise<ProxyStatus> => call((client) => client.ProxyStatus()),
+  proxyConfigure: (input: ProxySettingsInput): Promise<ProxyStatus> =>
+    call((client) => client.ProxyConfigure(input)),
+  proxyClear: (): Promise<ProxyStatus> => call((client) => client.ProxyClear()),
   vacancyTargets: (input: HydrationListInput = {}): Promise<ReadonlyArray<HydrationTarget>> =>
     call((client) =>
       client.VacanciesHydrationTargets({ limit: input.limit ?? 25 })

@@ -677,7 +677,7 @@ onUnmounted(stopRunsPolling)
           <Alert v-if="manualProxyMode === 'proxy' && !proxyStatus?.configured" variant="warning" class="mt-2">
             <CircleAlert />
             <AlertTitle>Прокси не настроен</AlertTitle>
-            <AlertDescription>Установите proxy через CLI или переключите режим на «Авто»/«Напрямую».</AlertDescription>
+            <AlertDescription>Настройте прокси в «Настройках» или переключите режим на «Авто»/«Напрямую».</AlertDescription>
           </Alert>
         </div>
         <div class="space-y-2">
@@ -691,7 +691,7 @@ onUnmounted(stopRunsPolling)
             · ротация: {{ proxyStatus.rotate === 'captcha' ? `при капче, до ${proxyStatus.maxRotations ?? 0}` : 'выключена' }}
           </p>
           <p v-else class="text-xs text-muted-foreground">
-            Без прокси запросы идут напрямую. Если hh.ru блокирует IP, запустите <code>otbor proxy set</code>.
+            Без прокси запросы идут напрямую. Если hh.ru блокирует IP, настройте прокси в «Настройках».
           </p>
         </div>
       </CardContent>

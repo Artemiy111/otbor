@@ -147,6 +147,8 @@ export const OtborHandlers = OtborRpcs.toLayer(
         }),
       VacancyHydrate: ({ id, proxyMode, force }) => hydrateAndEvaluate(id, proxyMode, force),
       ProxyStatus: () => proxy.status(),
+      ProxyConfigure: (payload) => proxy.configure(payload),
+      ProxyClear: () => proxy.clear(),
       HydrationStats: () => hydrationStats.stats(),
       EmployersHydrationTargets: (payload) => hydrationStats.employerTargets(payload),
       EmployersHydrateOne: ({ id, proxyMode }) =>
