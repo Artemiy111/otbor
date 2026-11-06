@@ -143,6 +143,23 @@ if (!enabled || serverUrl === null) {
       expect(await kitOf(tenant.userId, result.application!.id)).toMatchObject({ letter: "Письмо", formHash: "no-form" })
     })
 
+    test("a response sent without the draft's letter keeps that letter as the one to add", async () => {
+      const tenant = await support.seedTenant("browser-noletter")
+      const externalId = String(9_400_000 + Math.floor(Math.random() * 90_000))
+      const vacancyId = await support.seedVacancyWithExternal(externalId, "Browser no letter")
+      const applicationId = await support.seedApplication({
+        userId: tenant.userId,
+        accountId: tenant.accountId,
+        vacancyId,
+        state: "draft"
+      })
+      await support.seedKit({ userId: tenant.userId, applicationId })
+
+      expect((await record(tenant.userId, input(externalId))).status).toBe("recorded")
+      const [draft] = (await drafts(tenant.userId, externalId)).drafts
+      expect(draft).toMatchObject({ state: "submitted", letter: null, pendingLetter: "integration test" })
+    })
+
     test("an otbor submit in flight is left to the reconcile", async () => {
       const tenant = await support.seedTenant("browser-inflight")
       const externalId = String(9_500_000 + Math.floor(Math.random() * 400_000))

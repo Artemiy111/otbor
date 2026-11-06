@@ -262,6 +262,15 @@ export class BrowserApply extends Context.Service<BrowserApply, BrowserApplyShap
                     costUsd: same ? (previous.costUsd ?? null) : null
                   })
                 }
+                const unsent = blank(previous?.letter)
+                if (input.kind === "submit" && letter === null && unsent !== null) {
+                  // Sent without the letter the draft had: keep it as the letter to add to the response.
+                  yield* tx.execute(sql`
+                    insert into letter_draft (user_id, hh_account_id, vacancy_id, resume_id, letter)
+                    values (${currentUser.userId}, ${target.hhAccountId}, ${vacancyId},
+                            ${target.resumeId ?? NIL_RESUME}::uuid, ${unsent})
+                    on conflict (user_id, hh_account_id, vacancy_id, resume_id) do nothing`)
+                }
                 if (input.kind === "letter" && letter !== null) {
                   // The letter is with hh now; the unsent draft of it is done.
                   yield* tx.execute(sql`

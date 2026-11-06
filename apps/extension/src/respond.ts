@@ -13,18 +13,21 @@ import type { Request } from "@/messages.ts"
  * hh's own response form, opened by the operator (the `/applicant/vacancy_response`
  * page or the response popup on a vacancy page).
  *
- * - Autofill: when the form appears and otbor has a draft for the vacancy, its
- *   letter and answers are pasted into empty fields, once per form. Nothing is
- *   clicked except hh's "add a letter" toggle; the operator presses the button.
+ * - Autofill: when otbor has a draft for the vacancy, its answers go into the
+ *   test once per form, and its letter into every empty letter field the moment
+ *   one shows up: the field of the form, or the letter popup hh opens right
+ *   after a quick response. Nothing is clicked except hh's "add a letter"
+ *   toggle; the operator presses the buttons.
  * - Record: when the operator presses hh's button and hh shows "you
  *   responded", what was on the form is sent to the cloud, which checks the
  *   evidence and stores the application as submitted.
  *
- * Selectors are the harness's (`packages/harness/src/browser/core.ts`).
+ * Selectors are the harness's (`packages/harness/src/browser/core.ts`), plus a
+ * looser match for the letter field, whose markup differs between hh's forms.
  */
 
 const LETTER_SELECTOR =
-  'textarea[data-qa="vacancy-response-popup-form-letter-input"], textarea[data-qa*="letter"], textarea[name="letter"]'
+  'textarea[data-qa="vacancy-response-popup-form-letter-input"], textarea[data-qa*="letter"], textarea[name="letter"], [contenteditable="true"][data-qa*="letter"]'
 const LETTER_TOGGLE_SELECTOR = '[data-qa="vacancy-response-letter-toggle"]'
 const SUBMIT_SELECTOR = '[data-qa="vacancy-response-submit-popup"]'
 /** "Отправить" of the letter dialog of a response hh already holds. */
@@ -35,6 +38,8 @@ const RESUME_SELECTED_SELECTOR = '[data-qa="resume-title"]'
 const QUICK_RESPONSE_SELECTOR =
   '[data-qa="vacancy-response-link-top"], [data-qa="vacancy-response-link-bottom"]'
 const TASK_SELECTOR = '[data-qa="task-body"]'
+/** Words that name a letter field when its data-qa does not. */
+const LETTER_HINT_RE = /letter|cover|сопровод|письм/i
 
 const FILLED = "otborFilled"
 const PENDING_KEY = "otbor:pending-submit"
@@ -42,6 +47,7 @@ const PENDING_KEY = "otbor:pending-submit"
 const PENDING_TTL_MS = 90_000
 
 type Send = <T>(request: Request) => Promise<T>
+type Field = HTMLTextAreaElement | HTMLElement
 
 /* -------------------------------------------------------------------------- */
 /* Page reading                                                               */
@@ -63,27 +69,40 @@ const selectedResumeTitle = (): string | null => {
   return text === undefined || text === "" ? null : text
 }
 
-const letterField = (): HTMLTextAreaElement | null => {
-  for (const field of document.querySelectorAll<HTMLTextAreaElement>(LETTER_SELECTOR)) {
-    if (field.offsetParent !== null || field.getClientRects().length > 0) return field
-  }
-  return null
+const visible = (element: Element): boolean =>
+  (element as HTMLElement).offsetParent !== null || element.getClientRects().length > 0
+
+/** A field named like a letter by its attributes or its label. */
+const looksLikeLetter = (field: Element): boolean => {
+  const name = field.getAttribute("name") ?? ""
+  if (name.startsWith("task_")) return false
+  const own = [name, field.getAttribute("data-qa"), field.getAttribute("placeholder"), field.getAttribute("aria-label")]
+    .filter(Boolean)
+    .join(" ")
+  if (LETTER_HINT_RE.test(own)) return true
+  const id = field.getAttribute("id")
+  const label = id === null ? null : document.querySelector(`label[for="${CSS.escape(id)}"]`)
+  const near = (label ?? field.closest("label"))?.textContent ?? ""
+  return LETTER_HINT_RE.test(near)
 }
 
-const hasForm = (): boolean =>
-  document.querySelector(SUBMIT_SELECTOR) !== null ||
-  document.querySelector(TASK_SELECTOR) !== null ||
-  letterField() !== null
+const letterFields = (): Array<Field> => {
+  const out: Array<Field> = []
+  for (const field of document.querySelectorAll<Field>(LETTER_SELECTOR)) if (visible(field)) out.push(field)
+  // hh's other letter forms (the popup after a quick response) carry no `letter` data-qa.
+  for (const field of document.querySelectorAll<Field>('textarea, [contenteditable="true"]')) {
+    if (!out.includes(field) && visible(field) && looksLikeLetter(field)) out.push(field)
+  }
+  return out
+}
+
+const letterField = (): Field | null => letterFields()[0] ?? null
+
+const valueOf = (field: Field): string =>
+  field instanceof HTMLTextAreaElement ? field.value : (field.textContent ?? "")
 
 const respondedNow = (): boolean =>
   document.querySelector(SUCCESS_SELECTOR) !== null || /вы\s+откликнулись/i.test(document.body?.innerText ?? "")
-
-/** The letter dialog of a response hh already holds, not the response form. */
-const isAttachDialog = (): boolean =>
-  document.querySelector(LETTER_SUBMIT_SELECTOR) !== null &&
-  // A responded page may keep the submit button ("respond again").
-  (document.querySelector(SUBMIT_SELECTOR) === null || respondedNow())
-
 
 /** The markup the cloud reads to confirm the response itself. */
 const evidence = (): string => {
@@ -129,9 +148,14 @@ const readAnswers = (form: ResponseForm, draft: BrowserDraft | null): Array<Form
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 /** React keeps its own value; the native setter plus an input event updates both. */
-const setText = (field: HTMLTextAreaElement, text: string): void => {
-  const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set
-  setter?.call(field, text)
+const setText = (field: Field, text: string): void => {
+  if (field instanceof HTMLTextAreaElement) {
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set
+    setter?.call(field, text)
+  } else {
+    field.focus()
+    field.textContent = text
+  }
   field.dispatchEvent(new Event("input", { bubbles: true }))
   field.dispatchEvent(new Event("change", { bubbles: true }))
 }
@@ -157,44 +181,30 @@ const fillQuestion = (question: FormQuestion, answer: FormAnswer): boolean => {
   return true
 }
 
-const fillLetter = async (letter: string): Promise<boolean> => {
-  let field = letterField()
-  if (field === null) {
-    const toggle = document.querySelector<HTMLElement>(LETTER_TOGGLE_SELECTOR)
-    if (toggle === null) return false
-    toggle.click()
-    for (let i = 0; i < 20 && field === null; i++) {
-      await wait(100)
-      field = letterField()
-    }
-    if (field === null) return false
-  }
-  if (field.value.trim() !== "") return false
-  setText(field, letter)
-  return true
-}
-
 /**
  * The draft for the form on screen: the one of the resume the form has
  * selected, else the only one there is.
  */
 const pickDraft = (
   drafts: ReadonlyArray<BrowserDraft>,
-  attach: boolean
+  usable: (draft: BrowserDraft) => boolean
 ): { readonly draft: BrowserDraft; readonly matched: boolean } | null => {
-  const usable = drafts.filter((draft) =>
-    attach
-      ? draft.state === "submitted" && (draft.pendingLetter ?? draft.letter) !== null
-      : draft.state !== "submitted" && (draft.letter !== null || draft.answers.length > 0)
-  )
+  const candidates = drafts.filter(usable)
   const title = norm(selectedResumeTitle())
   if (title !== "") {
-    const same = usable.find((draft) => norm(draft.resumeTitle) === title)
+    const same = candidates.find((draft) => norm(draft.resumeTitle) === title)
     if (same !== undefined) return { draft: same, matched: true }
   }
-  if (usable.length === 1) return { draft: usable[0]!, matched: title === "" }
+  if (candidates.length === 1) return { draft: candidates[0]!, matched: title === "" }
   return null
 }
+
+/**
+ * Before a response the kit's letter; once hh holds the response, the letter
+ * kept for it (the unsent draft) first.
+ */
+const letterOf = (draft: BrowserDraft, responded: boolean): string | null =>
+  responded ? (draft.pendingLetter ?? draft.letter) : (draft.letter ?? draft.pendingLetter)
 
 /* -------------------------------------------------------------------------- */
 /* Notice                                                                     */
@@ -242,77 +252,103 @@ const describe = (error: unknown): string => (error instanceof Error ? error.mes
 export const startResponseWatch = (send: Send): { readonly check: () => void } => {
   const cache = new Map<string, { readonly at: number; readonly value: Promise<BrowserDrafts> }>()
 
-  const draftsFor = (externalId: string, fresh = false): Promise<BrowserDrafts> => {
+  const draftsFor = (externalId: string): Promise<BrowserDrafts> => {
     const hit = cache.get(externalId)
-    if (!fresh && hit !== undefined && Date.now() - hit.at < 30_000) return hit.value
+    if (hit !== undefined && Date.now() - hit.at < 30_000) return hit.value
     const value = send<BrowserDrafts>({ type: "drafts", externalId })
     cache.set(externalId, { at: Date.now(), value })
     value.catch(() => cache.delete(externalId))
     return value
   }
 
-  /* ---- autofill ---------------------------------------------------------- */
-
-  let filling = false
   /** The draft pasted into the form of a vacancy, to tell its answers from the operator's. */
   const pasted = new Map<string, BrowserDraft>()
+  let busy = false
 
-  const autofill = async (): Promise<void> => {
-    if (filling || !hasForm()) return
-    const externalId = vacancyExternalId()
-    if (externalId === null) return
-    const attach = isAttachDialog()
-    // One fill per form instance: hh re-renders the field, the mark goes with it.
-    const anchor = attach ? letterField() : (document.querySelector<HTMLElement>(SUBMIT_SELECTOR) ?? letterField())
-    if (anchor === null || anchor.dataset[FILLED] !== undefined) return
-    filling = true
+  /** Test answers, once per response form (the submit button carries the mark). */
+  const fillAnswers = async (externalId: string): Promise<string | null> => {
+    const anchor = document.querySelector<HTMLElement>(SUBMIT_SELECTOR)
+    if (anchor === null || anchor.dataset[FILLED] !== undefined) return null
+    if (document.querySelector(TASK_SELECTOR) === null) return null
+    anchor.dataset[FILLED] = "pending"
     try {
-      anchor.dataset[FILLED] = "pending"
       const { drafts } = await draftsFor(externalId)
-      const picked = pickDraft(drafts, attach)
+      const picked = pickDraft(drafts, (draft) => draft.state !== "submitted" && draft.answers.length > 0)
       if (picked === null) {
         anchor.dataset[FILLED] = "none"
-        if (drafts.filter((d) => d.state !== "submitted").length > 1) {
-          toast("otbor: черновиков несколько — выберите резюме в форме, чтобы вставить нужный", "warn")
-          delete anchor.dataset[FILLED]
-        }
-        return
+        return null
       }
-      const { draft } = picked
-      pasted.set(externalId, draft)
-      const parts: Array<string> = []
-
-      if (attach) {
-        const text = draft.pendingLetter ?? draft.letter
-        if (text !== null && (await fillLetter(text))) parts.push("письмо")
-      } else {
-        const form = liveForm()
-        let answered = 0
-        for (const question of form.questions) {
-          const answer = draft.answers.find((item) => item.questionId === question.id)
-          if (answer !== undefined && fillQuestion(question, answer)) answered++
-        }
-        if (answered > 0) parts.push(`ответы ${answered} из ${form.questions.length}`)
-        if (draft.letter !== null && form.coverLetter !== "absent" && (await fillLetter(draft.letter))) {
-          parts.push("письмо")
-        } else if (draft.letter !== null && letterField() === null && document.querySelector(LETTER_TOGGLE_SELECTOR) === null) {
-          // The quick form may have no letter field at all: hh takes it after the response.
-          parts.push("письмо можно будет добавить после отклика")
-        }
-        if (draft.formHash !== null && draft.formHash !== "no-form" && form.questions.length > 0 && draft.formHash !== form.formHash) {
-          parts.push("форма изменилась с черновика — проверьте ответы")
-        }
+      pasted.set(externalId, picked.draft)
+      const form = liveForm()
+      let answered = 0
+      for (const question of form.questions) {
+        const answer = picked.draft.answers.find((item) => item.questionId === question.id)
+        if (answer !== undefined && fillQuestion(question, answer)) answered++
       }
       anchor.dataset[FILLED] = "done"
-      if (parts.length === 0) return
-      const whose = draft.resumeTitle ?? draft.accountName ?? "черновик"
-      const note = picked.matched ? "" : `\nВ форме выбрано другое резюме: проверьте его.`
-      toast(`otbor: вставлено из черновика (${whose}): ${parts.join(", ")}.${note}`, picked.matched ? "good" : "warn")
+      if (answered === 0) return null
+      const changed =
+        picked.draft.formHash !== null && picked.draft.formHash !== "no-form" && picked.draft.formHash !== form.formHash
+      return `ответы ${answered} из ${form.questions.length}${changed ? " (форма изменилась — проверьте)" : ""}`
     } catch (error) {
       delete anchor.dataset[FILLED]
+      throw error
+    }
+  }
+
+  /** The letter, into each empty letter field once, whenever one appears. */
+  const fillLetters = async (externalId: string): Promise<{ text: string; draft: BrowserDraft; matched: boolean } | null> => {
+    let fields = letterFields().filter((field) => field.dataset[FILLED] === undefined)
+    const toggle = document.querySelector<HTMLElement>(LETTER_TOGGLE_SELECTOR)
+    if (fields.length === 0 && (toggle === null || toggle.dataset[FILLED] !== undefined)) return null
+    const responded = respondedNow()
+    const { drafts } = await draftsFor(externalId)
+    const picked = pickDraft(drafts, (draft) => letterOf(draft, responded) !== null)
+    if (picked === null) {
+      for (const field of fields) field.dataset[FILLED] = "none"
+      if (toggle !== null) toggle.dataset[FILLED] = "none"
+      return null
+    }
+    const text = letterOf(picked.draft, responded)!
+    if (fields.length === 0 && toggle !== null) {
+      // The field hides behind "Добавить сопроводительное".
+      toggle.dataset[FILLED] = "done"
+      toggle.click()
+      for (let i = 0; i < 20 && fields.length === 0; i++) {
+        await wait(100)
+        fields = letterFields().filter((field) => field.dataset[FILLED] === undefined)
+      }
+    }
+    let filled = false
+    for (const field of fields) {
+      field.dataset[FILLED] = "done"
+      // Typed by the operator, or kept by hh from an earlier try: not ours to replace.
+      if (valueOf(field).trim() !== "") continue
+      setText(field, text)
+      filled = true
+    }
+    return filled ? { text, draft: picked.draft, matched: picked.matched } : null
+  }
+
+  const autofill = async (): Promise<void> => {
+    if (busy) return
+    const externalId = vacancyExternalId()
+    if (externalId === null) return
+    busy = true
+    try {
+      const answers = await fillAnswers(externalId)
+      const letter = await fillLetters(externalId)
+      const parts = [answers, letter === null ? null : "письмо"].filter((part): part is string => part !== null)
+      if (parts.length === 0) return
+      const draft = letter?.draft ?? pasted.get(externalId)
+      const whose = draft?.resumeTitle ?? draft?.accountName ?? "черновик"
+      const matched = letter?.matched ?? true
+      const note = matched ? "" : "\nВ форме выбрано другое резюме: проверьте его."
+      toast(`otbor: вставлено из черновика (${whose}): ${parts.join(", ")}.${note}`, matched ? "good" : "warn")
+    } catch (error) {
       console.warn("[otbor] autofill", describe(error))
     } finally {
-      filling = false
+      busy = false
     }
   }
 
@@ -325,11 +361,12 @@ export const startResponseWatch = (send: Send): { readonly check: () => void } =
     } catch {
       form = null
     }
+    const field = letterField()
     return {
       kind,
       externalId,
       resumeTitle: selectedResumeTitle(),
-      letter: letterField()?.value.trim() || null,
+      letter: field === null ? null : valueOf(field).trim() || null,
       answers: form === null ? [] : readAnswers(form, pasted.get(externalId) ?? null),
       formHash: form !== null && form.layout === "known" && form.questions.length > 0 ? form.formHash : null,
       respondedBefore: respondedNow(),
@@ -372,10 +409,10 @@ export const startResponseWatch = (send: Send): { readonly check: () => void } =
         }
       })
       cache.delete(snap.externalId)
-      const what = snap.kind === "letter" ? "Письмо" : "Отклик"
+      const what = snap.kind === "letter" ? "письмо" : "отклик"
       switch (result.status) {
         case "recorded":
-          toast(`otbor: ${what.toLowerCase()} сохранён в базе.`)
+          toast(`otbor: ${what} сохранён в базе.`)
           break
         case "already":
           break
@@ -383,7 +420,7 @@ export const startResponseWatch = (send: Send): { readonly check: () => void } =
           toast("otbor: этот отклик уже отправляет otbor — его сверит reconcile.", "warn")
           break
         default:
-          toast(`otbor: ${what.toLowerCase()} не сохранён — ${result.message ?? result.status}`, "bad")
+          toast(`otbor: ${what} не сохранён — ${result.message ?? result.status}`, "bad")
       }
     } catch (error) {
       toast(`otbor: отклик не сохранён в базе — ${describe(error)}`, "bad")
@@ -391,7 +428,7 @@ export const startResponseWatch = (send: Send): { readonly check: () => void } =
   }
 
   /** Waits for hh to confirm; `done` decides what counts as confirmed. */
-  const confirm = async (snap: Snapshot, done: () => boolean, timeoutMs: number): Promise<boolean> => {
+  const confirm = async (done: () => boolean, timeoutMs: number): Promise<boolean> => {
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline) {
       await wait(500)
@@ -404,7 +441,6 @@ export const startResponseWatch = (send: Send): { readonly check: () => void } =
     savePending(snap)
     // "Responded" that was already on the page proves nothing; the form must be gone too.
     const ok = await confirm(
-      snap,
       () => respondedNow() && (!snap.respondedBefore || document.querySelector(SUBMIT_SELECTOR) === null),
       20_000
     )
@@ -413,7 +449,7 @@ export const startResponseWatch = (send: Send): { readonly check: () => void } =
   }
 
   const afterLetter = async (snap: Snapshot): Promise<void> => {
-    const ok = await confirm(snap, () => document.querySelector(LETTER_SUBMIT_SELECTOR) === null, 12_000)
+    const ok = await confirm(() => document.querySelector(LETTER_SUBMIT_SELECTOR) === null, 12_000)
     if (ok) await record(snap)
   }
 
@@ -442,7 +478,7 @@ export const startResponseWatch = (send: Send): { readonly check: () => void } =
   if (pending !== null) {
     void (async () => {
       savePending(pending)
-      const ok = await confirm(pending, respondedNow, 15_000)
+      const ok = await confirm(respondedNow, 15_000)
       if (takePending() !== null && ok) await record(pending)
     })()
   }
