@@ -88,12 +88,16 @@ const run = Command.make(
       Flag.withDescription("Lease long-poll, 0–30 seconds"),
       Flag.optional
     ),
+    concurrency: Flag.Int("concurrency").pipe(
+      Flag.withDescription("Jobs run at the same time, 1–8 (default 3, or OTBOR_HARNESS_CONCURRENCY)"),
+      Flag.optional
+    ),
     once: Flag.Boolean("once").pipe(
       Flag.withDescription("Read one lease and exit"),
       Flag.withDefault(false)
     )
   },
-  Effect.fn(function*({ harness, token, apiUrl, kinds, accounts, wait, once }) {
+  Effect.fn(function*({ harness, token, apiUrl, kinds, accounts, wait, concurrency, once }) {
     const saved = readHarnessState()
     const harnessId = Option.getOrElse(
       harness,
@@ -128,7 +132,12 @@ const run = Command.make(
       OTBOR_HARNESS_TOKEN: deviceToken,
       OTBOR_HARNESS_KINDS: (kinds.length > 0 ? kinds : (saved?.kinds ?? [])).join(","),
       OTBOR_HARNESS_ACCOUNTS: accountIds.join(","),
-      OTBOR_HARNESS_WAIT_SECONDS: String(waitSeconds)
+      OTBOR_HARNESS_WAIT_SECONDS: String(waitSeconds),
+      ...(Option.isSome(concurrency)
+        ? { OTBOR_HARNESS_CONCURRENCY: String(concurrency.value) }
+        : process.env.OTBOR_HARNESS_CONCURRENCY === undefined
+          ? {}
+          : { OTBOR_HARNESS_CONCURRENCY: process.env.OTBOR_HARNESS_CONCURRENCY })
     })
 
     // Browser jobs need the account's hh session on this machine. The profile

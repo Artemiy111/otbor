@@ -222,6 +222,38 @@ describe("runHarness", () => {
     expect(completed[0]?.tag).toBe("blocked")
   })
 
+  test("runs `concurrency` lease loops at once", async () => {
+    const config = await makeConfig({ OTBOR_HARNESS_CONCURRENCY: "3" })
+    const job = makeJob({ kind: "browser", stage: "prepare" })
+    let leases = 0
+    let inFlight = 0
+    let peak = 0
+
+    // Each loop blocks inside leaseNext until the third one has arrived, so the
+    // peak is 3 only if three loops run side by side. The fiber is then stopped.
+    const fiber = Effect.runFork(
+      runHarness(config).pipe(
+        Effect.provide(
+          gatewayLayer({
+            leaseNext: () =>
+              Effect.gen(function*() {
+                leases += 1
+                inFlight += 1
+                peak = Math.max(peak, inFlight)
+                yield* Effect.sleep(Duration.millis(60))
+                inFlight -= 1
+                return { job: null }
+              })
+          })
+        )
+      )
+    )
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    await Effect.runPromise(Effect.sync(() => fiber.interruptUnsafe()))
+    expect(peak).toBe(3)
+    expect(leases).toBeGreaterThanOrEqual(3)
+  })
+
   test("once mode returns after an empty lease without completing anything", async () => {
     const config = await makeConfig({}, true)
     let leases = 0

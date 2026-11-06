@@ -403,6 +403,7 @@ export const runHarness = Effect.fn("Harness.runHarness")(function*(
     kinds: config.kinds,
     accounts: config.accounts,
     waitSeconds: config.waitSeconds,
+    concurrency: config.once ? 1 : config.concurrency,
     once: config.once
   })
 
@@ -417,15 +418,26 @@ export const runHarness = Effect.fn("Harness.runHarness")(function*(
     )
   }
 
-  while (true) {
-    const result = yield* leaseOnce(config, runOptions).pipe(Effect.result)
+  const worker = Effect.gen(function*() {
+    while (true) {
+      const result = yield* leaseOnce(config, runOptions).pipe(Effect.result)
 
-    if (result._tag === "Failure") {
-      yield* Effect.logError(`lease loop: ${result.failure.message}`)
+      if (result._tag === "Failure") {
+        yield* Effect.logError(`lease loop: ${result.failure.message}`)
+        if (config.once) return
+        yield* Effect.sleep(RETRY_DELAY)
+      }
+
       if (config.once) return
-      yield* Effect.sleep(RETRY_DELAY)
     }
+  })
 
-    if (config.once) return
-  }
+  // Several independent lease loops: a slow letter or form read no longer holds
+  // up the rest of the queue. The cloud leases each job to one loop only.
+  if (config.once || config.concurrency <= 1) return yield* worker
+  yield* Effect.forEach(
+    Array.from({ length: config.concurrency }, (_, index) => index),
+    () => worker,
+    { concurrency: "unbounded", discard: true }
+  )
 })

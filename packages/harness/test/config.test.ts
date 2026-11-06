@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
 import {
   DEFAULT_API_URL,
+  DEFAULT_CONCURRENCY,
   DEFAULT_WAIT_SECONDS,
   parseHarnessConfig
 } from "../src/config.ts"
@@ -32,6 +33,15 @@ describe("parseHarnessConfig", () => {
     expect(config.accounts).toEqual([])
     expect(config.waitSeconds).toBe(DEFAULT_WAIT_SECONDS)
     expect(config.once).toBe(false)
+    expect(config.concurrency).toBe(DEFAULT_CONCURRENCY)
+  })
+
+  test("concurrency is read from the environment and bounded", async () => {
+    expect((await parse({ ...baseEnv, OTBOR_HARNESS_CONCURRENCY: "5" })).concurrency).toBe(5)
+    for (const value of ["0", "9", "x", "1.5"]) {
+      const error = await parseError({ ...baseEnv, OTBOR_HARNESS_CONCURRENCY: value })
+      expect(error.message).toContain("OTBOR_HARNESS_CONCURRENCY")
+    }
   })
 
   test("accepts a custom API URL and comma separated kinds and accounts", async () => {

@@ -7,6 +7,9 @@ import { Effect, Schema } from "effect"
 
 export const DEFAULT_API_URL = "http://127.0.0.1:3001/rpc"
 export const DEFAULT_WAIT_SECONDS = 30
+/** Jobs one harness runs at the same time. */
+export const DEFAULT_CONCURRENCY = 3
+export const MAX_CONCURRENCY = 8
 
 /** Configuration errors are answers, not crashes: print the message and exit. */
 export class HarnessConfigError extends Schema.TaggedError<HarnessConfigError>()(
@@ -23,6 +26,7 @@ const HarnessConfig = Schema.Struct({
   kinds: Schema.Array(JobKind),
   accounts: Schema.Array(HhAccountIdSchema),
   waitSeconds: Schema.Int,
+  concurrency: Schema.Int,
   once: Schema.Boolean
 })
 
@@ -71,6 +75,20 @@ const waitSecondsValue = (
       )
 }
 
+const concurrencyValue = (
+  value: string | undefined
+): Effect.Effect<number, HarnessConfigError> => {
+  if (value === undefined || value.trim() === "") return Effect.succeed(DEFAULT_CONCURRENCY)
+  const parsed = Number(value.trim())
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= MAX_CONCURRENCY
+    ? Effect.succeed(parsed)
+    : Effect.fail(
+        new HarnessConfigError({
+          message: `OTBOR_HARNESS_CONCURRENCY must be an integer between 1 and ${MAX_CONCURRENCY}`
+        })
+      )
+}
+
 /**
  * Pure env parsing so the run loop can be tested without touching process.env.
  * The final object still goes through Schema: the IDs, kinds, accounts and
@@ -84,6 +102,7 @@ export const parseHarnessConfig = Effect.fn("Harness.parseConfig")(
     const harnessId = yield* required(env, "OTBOR_HARNESS_ID")
     const token = yield* required(env, "OTBOR_HARNESS_TOKEN")
     const waitSeconds = yield* waitSecondsValue(env.OTBOR_HARNESS_WAIT_SECONDS)
+    const concurrency = yield* concurrencyValue(env.OTBOR_HARNESS_CONCURRENCY)
 
     const decoded = yield* Schema.decodeUnknownEffect(HarnessConfig)({
       apiUrl: apiUrl === undefined || apiUrl.length === 0 ? DEFAULT_API_URL : apiUrl,
@@ -92,6 +111,7 @@ export const parseHarnessConfig = Effect.fn("Harness.parseConfig")(
       kinds: commaList(env.OTBOR_HARNESS_KINDS, ["inference"]),
       accounts: commaList(env.OTBOR_HARNESS_ACCOUNTS, []),
       waitSeconds,
+      concurrency,
       once: false
     }).pipe(
       Effect.mapError(

@@ -9,9 +9,9 @@ import type {
   SubmitEvidence
 } from "@otbor/contract"
 import { classifyResponsePage, parseResumeRefs } from "@otbor/hh"
-import { Effect, Layer, Schema } from "effect"
+import { Effect, Layer, Schema, Semaphore } from "effect"
 import { existsSync } from "node:fs"
-import { chromium, type Page } from "playwright"
+import { chromium, type BrowserContext, type Page } from "playwright"
 import {
   CHAT_INPUT_SELECTOR,
   RESUME_OPTION_SELECTOR,
@@ -110,27 +110,86 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
       ? hhProfileDir(name)
       : hhProfileDir(name, { OTBOR_HH_PROFILES_DIR: config.profilesDir })
 
-  /** Launches the profile, runs `use`, and always closes the browser. */
+  /**
+   * One Chrome per profile directory: Chrome locks a profile, so concurrent jobs
+   * of the same account share a context and each gets its own page. The context
+   * opens with the first user and closes with the last; a new user waits for a
+   * close that is still running.
+   */
+  const shared = new Map<string, { readonly context: Promise<BrowserContext>; users: number }>()
+  const closing = new Map<string, Promise<void>>()
+  const exclusive = new Map<string, Semaphore.Semaphore>()
+
+  const launch = (dir: string) =>
+    chromium.launchPersistentContext(dir, {
+      headless: config.headless ?? true,
+      ...(executablePath === undefined ? {} : { executablePath }),
+      ignoreDefaultArgs: ["--no-sandbox"]
+    })
+
+  const joinContext = async (dir: string): Promise<BrowserContext> => {
+    await closing.get(dir)
+    let entry = shared.get(dir)
+    if (entry === undefined) {
+      entry = { context: launch(dir), users: 0 }
+      shared.set(dir, entry)
+    }
+    entry.users += 1
+    try {
+      return await entry.context
+    } catch (error) {
+      leaveContext(dir)
+      throw error
+    }
+  }
+
+  const leaveContext = (dir: string): void => {
+    const entry = shared.get(dir)
+    if (entry === undefined) return
+    entry.users -= 1
+    if (entry.users > 0) return
+    shared.delete(dir)
+    const done = entry.context
+      .then((context) => context.close())
+      .catch(() => undefined)
+      .finally(() => {
+        if (closing.get(dir) === done) closing.delete(dir)
+      })
+    closing.set(dir, done)
+  }
+
+  /**
+   * Opens a page of the profile's browser, runs `use`, always closes the page and
+   * releases the browser. Jobs that act on the account (everything but a form
+   * read) run one at a time per profile; form reads run side by side.
+   */
   const withPage = <A, E>(
     profile: string | null | undefined,
-    use: (page: Page) => Effect.Effect<A, E>
-  ) =>
-    Effect.scoped(
+    use: (page: Page) => Effect.Effect<A, E>,
+    options: { readonly parallel?: boolean } = {}
+  ) => {
+    const dir = profileDir(profile)
+    const run = Effect.scoped(
       Effect.gen(function*() {
         const context = yield* Effect.acquireRelease(
-          attempt(() =>
-            chromium.launchPersistentContext(profileDir(profile), {
-              headless: config.headless ?? true,
-              ...(executablePath === undefined ? {} : { executablePath }),
-              ignoreDefaultArgs: ["--no-sandbox"]
-            })
-          ),
+          attempt(() => joinContext(dir)),
+          () => Effect.sync(() => leaveContext(dir))
+        )
+        const page = yield* Effect.acquireRelease(
+          attempt(() => context.newPage()),
           (opened) => Effect.promise(() => opened.close().catch(() => undefined))
         )
-        const page = context.pages()[0] ?? (yield* attempt(() => context.newPage()))
         return yield* use(page)
       })
     )
+    if (options.parallel === true) return run
+    let gate = exclusive.get(dir)
+    if (gate === undefined) {
+      gate = Semaphore.makeUnsafe(1)
+      exclusive.set(dir, gate)
+    }
+    return gate.withPermits(1)(run)
+  }
 
   const content = (page: Page) =>
     attempt(() => page.content()).pipe(Effect.orElseSucceed(() => null as string | null))
@@ -166,7 +225,8 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
         yield* open(page, payload.externalId)
         const html = yield* settle(page, config.settleMs)
         return prepareExit(html, page.url())
-      })
+      }),
+      { parallel: true }
     ).pipe(
       Effect.catch((error) =>
         Effect.succeed<HarnessExit>({ tag: "transport", message: error.message })
