@@ -26,12 +26,22 @@ import { Database } from "../db/Database.ts"
 import { CurrentUser } from "./CurrentUser.ts"
 import * as ContactRepository from "../repositories/ContactRepository.ts"
 import * as LexiconRepository from "../repositories/LexiconRepository.ts"
-import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
 import * as DecisionRepository from "../repositories/DecisionRepository.ts"
 import * as EmployerRepository from "../repositories/EmployerRepository.ts"
 import * as VacancyAnalysisRepository from "../repositories/VacancyAnalysisRepository.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
 import { toStorageError, stableHash } from "./support.ts"
+
+interface LookupApplicationRow {
+  readonly id: string
+  readonly hh_account_id: string
+  readonly state: string
+  readonly hh_status: string | null
+  readonly resume_id: string | null
+  readonly account_name: string | null
+  readonly account_color: string | null
+  readonly resume_title: string | null
+}
 
 const toKeywordMatch = (match: LexiconRepository.StoredMatch): KeywordMatchRecord => ({
   keywordId: match.keywordId as KeywordMatchRecord["keywordId"],
@@ -285,19 +295,29 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
                   limit: 1,
                   vacancyFilter: sql`vacancy.id = ${row.id}`
                 })
-                const applications = yield* ApplicationRepository.list(tx, currentUser.userId, {
-                  vacancyId: row.id,
-                  limit: 20
-                })
+                const applications = yield* tx.execute(sql`
+                  select a.id, a.hh_account_id, a.state, a.hh_status, a.resume_id::text as resume_id,
+                    coalesce(h.label, nullif(btrim(concat_ws(' ', h.first_name, h.last_name)), '')) as account_name,
+                    h.color as account_color, r.title as resume_title
+                  from application a
+                  join hh_account h on h.id = a.hh_account_id
+                  left join resume r on r.id = a.resume_id
+                  where a.user_id = ${currentUser.userId} and a.vacancy_id = ${row.id}
+                  order by h.created_at, r.title nulls last, a.updated_at desc
+                  limit 40`)
                 items.push({
                   externalId,
                   vacancy: VacancyRepository.toSummary(row),
                   decision: decision ?? null,
-                  applications: applications.map((a) => ({
-                    id: a.id,
-                    hhAccountId: a.hhAccountId,
-                    state: a.state,
-                    hhStatus: a.hhStatus ?? null
+                  applications: (applications.rows as unknown as ReadonlyArray<LookupApplicationRow>).map((a) => ({
+                    id: a.id as VacancyLookupItem["applications"][number]["id"],
+                    hhAccountId: a.hh_account_id as VacancyLookupItem["applications"][number]["hhAccountId"],
+                    hhAccountName: a.account_name,
+                    hhAccountColor: a.account_color,
+                    resumeId: a.resume_id,
+                    resumeTitle: a.resume_title,
+                    state: a.state as VacancyLookupItem["applications"][number]["state"],
+                    hhStatus: a.hh_status
                   }))
                 })
               }

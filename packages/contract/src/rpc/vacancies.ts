@@ -103,6 +103,11 @@ export const VacancyLookupItem = Schema.Struct({
     Schema.Struct({
       id: ApplicationId,
       hhAccountId: HhAccountId,
+      /** The account's label, else the owner's name. */
+      hhAccountName: Schema.NullOr(Schema.String),
+      hhAccountColor: Schema.NullOr(Schema.String),
+      resumeId: Schema.NullOr(Schema.String),
+      resumeTitle: Schema.NullOr(Schema.String),
       state: ApplicationState,
       hhStatus: Schema.NullOr(Schema.String)
     })

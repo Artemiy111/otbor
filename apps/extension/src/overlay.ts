@@ -50,7 +50,7 @@ interface Fact {
 
 /** Facts worth showing; the search card uses them as tags, the vacancy page as rows. */
 export const factsFor = (item: VacancyLookupItem): ReadonlyArray<Fact> => {
-  const { vacancy, decision, applications } = item
+  const { vacancy, decision } = item
   const facts: Array<Fact> = []
 
   if (decision !== null) {
@@ -74,13 +74,6 @@ export const factsFor = (item: VacancyLookupItem): ReadonlyArray<Fact> => {
     facts.push({ label: "Тест", value: "нет", tone: "muted" })
   }
 
-  if (applications.length > 0) {
-    facts.push({
-      label: "Отклик",
-      value: applications.map((a) => STATE[a.state] ?? a.state).join(", "),
-      tone: applications.some((a) => a.state === "submitted") ? "good" : "warn"
-    })
-  }
   if (vacancy.blacklisted) {
     facts.push({ label: "Чёрный список", value: vacancy.blacklistLayers.join(", ") || "да", tone: "bad" })
   }
@@ -91,13 +84,86 @@ export const factsFor = (item: VacancyLookupItem): ReadonlyArray<Fact> => {
   return facts
 }
 
+/* ----------------------------- response status ----------------------------- */
+
+interface Status {
+  readonly text: string
+  readonly color: string
+  /** Not sent yet: drawn as a ring instead of a filled dot. */
+  readonly pending: boolean
+}
+
+/** hh's negotiation state wins over ours: it is what the employer did. */
+const HH_STATUS: Record<string, Omit<Status, "pending">> = {
+  RESPONSE: { text: "отправлен", color: "#8a94a6" },
+  NOT_VIEWED: { text: "не просмотрен", color: "#8a94a6" },
+  VIEWED: { text: "просмотрен", color: "#2f7de1" },
+  INVITATION: { text: "приглашение", color: "#1a8f4d" },
+  INTERVIEW: { text: "приглашение", color: "#1a8f4d" },
+  OFFER: { text: "оффер", color: "#0d6b36" },
+  DISCARD: { text: "отказ", color: "#d63a3a" },
+  DISCARD_AFTER_INTERVIEW: { text: "отказ после собеседования", color: "#d63a3a" },
+  HIDDEN: { text: "скрыт", color: "#6b7280" }
+}
+
+type LookupApplication = VacancyLookupItem["applications"][number]
+
+const statusOf = (a: LookupApplication): Status => {
+  const hh = a.hhStatus === null ? undefined : HH_STATUS[a.hhStatus]
+  if (hh !== undefined) return { ...hh, pending: false }
+  if (a.hhStatus !== null) return { text: a.hhStatus.toLowerCase(), color: "#6b7280", pending: false }
+  switch (a.state) {
+    case "submitted":
+      return { text: "отправлен", color: "#8a94a6", pending: false }
+    case "failed":
+      return { text: "ошибка отправки", color: "#d63a3a", pending: true }
+    case "skipped":
+      return { text: "пропущен", color: "#b8bec9", pending: true }
+    default:
+      return { text: STATE[a.state] ?? a.state, color: "#b26a00", pending: true }
+  }
+}
+
+const whoOf = (a: LookupApplication): string =>
+  [a.hhAccountName ?? "аккаунт", a.resumeTitle ?? "без резюме"].join(" · ")
+
+const makeDot = (a: LookupApplication, size = 12): HTMLElement => {
+  const status = statusOf(a)
+  const dot = document.createElement("span")
+  dot.setAttribute(MARK, "")
+  dot.title = `${whoOf(a)}: ${status.text}`
+  const account = a.hhAccountColor ?? "transparent"
+  dot.style.cssText = [
+    "display:inline-block",
+    "flex:none",
+    `width:${size}px`,
+    `height:${size}px`,
+    "border-radius:50%",
+    "box-sizing:border-box",
+    status.pending ? `border:2px solid ${status.color}` : `background:${status.color}`,
+    // The account's colour as a thin halo, so two accounts read apart.
+    `box-shadow:0 0 0 2px #fff,0 0 0 3.5px ${account}`,
+    "cursor:help"
+  ].join(";")
+  return dot
+}
+
+/** One dot per (account, resume): the newest application of each pair. */
+const latestPerResume = (applications: ReadonlyArray<LookupApplication>): ReadonlyArray<LookupApplication> => {
+  const seen = new Map<string, LookupApplication>()
+  for (const a of applications) {
+    const key = `${a.hhAccountId}:${a.resumeId ?? ""}`
+    if (!seen.has(key)) seen.set(key, a)
+  }
+  return [...seen.values()]
+}
+
 /* ------------------------------ search cards ------------------------------ */
 
 /** Tags shown on a search card: compact, and only the ones that help choosing. */
 const cardTags = (item: VacancyLookupItem): ReadonlyArray<{ readonly text: string; readonly tone: Tone }> => {
-  const { vacancy, decision, applications } = item
+  const { vacancy, decision } = item
   const tags: Array<{ text: string; tone: Tone }> = []
-  if (applications.some((a) => a.state === "submitted")) tags.push({ text: "Вы откликнулись", tone: "good" })
   if (vacancy.blacklisted) tags.push({ text: "Чёрный список", tone: "bad" })
   if (decision !== null) {
     const verdict = VERDICT[decision.verdict] ?? { text: decision.verdict, tone: "muted" as Tone }
@@ -130,24 +196,36 @@ const makeTag = (template: Element | null, text: string, tone: Tone): HTMLElemen
   return tag
 }
 
+/** Our row of hh-style tags, set apart from hh's own tags right under them. */
 const paintCard = (card: Element, item: VacancyLookupItem | undefined, template: Element | null): void => {
   card.querySelectorAll(`[${MARK}]`).forEach((node) => node.remove())
   card.setAttribute(DONE, "")
   if (item === undefined) return
   const tags = cardTags(item)
-  if (tags.length === 0) return
+  const responses = latestPerResume(item.applications)
+  if (tags.length === 0 && responses.length === 0) return
 
-  let host = card.querySelector<HTMLElement>("[class*='compensation-labels']")
-  if (host === null) {
-    host = document.createElement("div")
-    host.setAttribute(MARK, "")
-    host.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;margin:8px 0"
-    const anchor = card.querySelector("[class*='info-section']") ?? card.querySelector("[data-qa='serp-item__title']")?.closest("span")
-    anchor?.before(host)
-    if (anchor == null) return
-  }
+  const row = document.createElement("div")
+  row.setAttribute(MARK, "")
+  row.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0"
+
   const own = template ?? card.querySelector("[class*='magritte-tag']:not([data-otbor])")
-  for (const tag of tags) host.append(makeTag(own, tag.text, tag.tone))
+  if (responses.length > 0) {
+    const dots = document.createElement("span")
+    dots.setAttribute(MARK, "")
+    dots.style.cssText = "display:inline-flex;align-items:center;gap:7px;padding:0 4px"
+    for (const a of responses) dots.append(makeDot(a))
+    row.append(dots)
+  }
+  for (const tag of tags) row.append(makeTag(own, tag.text, tag.tone))
+
+  const hhTags = card.querySelector("[class*='compensation-labels']")
+  if (hhTags !== null) {
+    hhTags.after(row)
+    return
+  }
+  const anchor = card.querySelector("[class*='info-section']") ?? card.querySelector("[data-qa='serp-item__title']")?.closest("span")
+  anchor?.before(row)
 }
 
 export const paintCards = (items: ReadonlyMap<string, VacancyLookupItem>): void => {
@@ -179,7 +257,13 @@ const rowTemplate = (): HTMLElement | null =>
     "[data-qa='work-formats-text']:has(dl), [data-qa='work-experience-text']:has(dl), [data-qa='work-schedule-by-days-text']:has(dl)"
   )
 
-const makeRow = (template: HTMLElement | null, label: string, value: string, tone: Tone, href?: string): HTMLElement => {
+const makeRow = (
+  template: HTMLElement | null,
+  label: string,
+  value: string | Node,
+  tone: Tone,
+  href?: string
+): HTMLElement => {
   let row: HTMLElement
   let dt: HTMLElement
   let dd: HTMLElement
@@ -201,7 +285,9 @@ const makeRow = (template: HTMLElement | null, label: string, value: string, ton
   }
   dt.replaceChildren(document.createTextNode(`${label}: `))
   dd.replaceChildren()
-  if (href === undefined) {
+  if (typeof value !== "string") {
+    dd.append(value)
+  } else if (href === undefined) {
     dd.textContent = value
   } else {
     const link = document.createElement("a")
@@ -217,6 +303,26 @@ const makeRow = (template: HTMLElement | null, label: string, value: string, ton
   dd.style.fontWeight = tone === "muted" ? "" : "600"
   row.setAttribute(MARK, "")
   return row
+}
+
+/** "● Аккаунт · Резюме — статус", one line per (account, resume). */
+const responseList = (responses: ReadonlyArray<LookupApplication>): HTMLElement => {
+  const list = document.createElement("span")
+  list.style.cssText = "display:inline-flex;flex-direction:column;gap:2px;vertical-align:top"
+  for (const a of responses) {
+    const status = statusOf(a)
+    const line = document.createElement("span")
+    line.style.cssText = "display:inline-flex;align-items:center;gap:8px"
+    const text = document.createElement("span")
+    text.append(document.createTextNode(`${whoOf(a)} — `))
+    const verdict = document.createElement("b")
+    verdict.textContent = status.text
+    verdict.style.color = status.color
+    text.append(verdict)
+    line.append(makeDot(a, 10), text)
+    list.append(line)
+  }
+  return list
 }
 
 export const renderVacancy = (state: PanelState, settings: Settings): void => {
@@ -239,6 +345,8 @@ export const renderVacancy = (state: PanelState, settings: Settings): void => {
     const href = `${settings.webUrl}/vacancies/${state.item.vacancy.id}`
     rows.push(makeRow(template, "otbor", state.saved === "inserted" ? "сохранено, открыть" : "в базе, открыть", "muted", href))
     for (const fact of factsFor(state.item)) rows.push(makeRow(template, fact.label, fact.value, fact.tone))
+    const responses = latestPerResume(state.item.applications)
+    if (responses.length > 0) rows.push(makeRow(template, "Отклики", responseList(responses), "muted"))
   } else {
     rows.push(makeRow(template, "otbor", "вакансии нет в базе", "muted"))
   }
