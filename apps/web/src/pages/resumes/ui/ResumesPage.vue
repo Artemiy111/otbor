@@ -131,6 +131,7 @@ const resumeHint = (key: string): string | null => {
     return `командировки в резюме: ${TRIP_LABELS[r.businessTripReadiness] ?? r.businessTripReadiness}`
   }
   if (key === "english_level") {
+    if (r.englishLevel) return `английский в резюме: ${r.englishLevel}`
     const mention = [...r.skills, ...r.text.split(/\n+/)].find((line) => /англий|english/i.test(line))
     return mention ? mention.trim().slice(0, 120) : null
   }

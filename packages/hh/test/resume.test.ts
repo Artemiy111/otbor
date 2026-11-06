@@ -47,6 +47,15 @@ describe("parseResumePage", () => {
     expect(resume!.updatedAt).toBe("2023-11-14T22:13:20.000Z")
   })
 
+  test("reads the English level from the language block, whatever shape hh uses", () => {
+    const level = (language: unknown) => parseResumePage(resumeHtml({ language }))?.englishLevel
+    expect(level([{ id: "rus", string: "Русский", degree: "native" }, { id: "eng", string: "Английский", degree: "b2" }])).toBe("B2")
+    expect(level([{ name: "Английский", degree: { id: "l4", string: "Средне-продвинутый" } }])).toBe("B2")
+    expect(level([{ string: "Английский — C1 — Продвинутый" }])).toBe("C1")
+    expect(level([{ string: "Немецкий", degree: "a2" }])).toBeNull()
+    expect(level(undefined)).toBeNull()
+  })
+
   test("a page without a resume is unreadable, not empty", () => {
     expect(parseResumePage("<html>oops</html>")).toBeNull()
     expect(

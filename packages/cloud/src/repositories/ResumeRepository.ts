@@ -25,6 +25,7 @@ export interface StoredResume {
   readonly relocation: string | null
   readonly business_trip_readiness: string | null
   readonly travel_time: string | null
+  readonly english_level: string | null
   readonly is_active: boolean
   readonly last_seen_at: Date | string
   readonly created_at: Date | string
@@ -59,6 +60,7 @@ export const toRecord = (row: StoredResume): ResumeRecord => ({
   relocation: row.relocation,
   businessTripReadiness: row.business_trip_readiness,
   travelTime: row.travel_time,
+  englishLevel: row.english_level,
   isActive: row.is_active,
   lastSeenAt: iso(row.last_seen_at),
   createdAt: iso(row.created_at),
@@ -69,7 +71,7 @@ const selection = sql`
   select id, user_id, hh_account_id, source, external_id, hash, content_hash,
          title, text, about, skills, experience, education, work_formats,
          salary_amount, salary_currency, status, area_name, relocation,
-         business_trip_readiness, travel_time, is_active, last_seen_at,
+         business_trip_readiness, travel_time, english_level, is_active, last_seen_at,
          created_at, updated_at
   from resume
 `
@@ -141,6 +143,7 @@ export interface UpsertResumeInput {
   readonly relocation?: string | null
   readonly businessTripReadiness?: string | null
   readonly travelTime?: string | null
+  readonly englishLevel?: string | null
   readonly isActive?: boolean
   readonly lastSeenAt?: Date | string | null
   readonly now?: Date
@@ -184,6 +187,7 @@ export const upsert = (
           relocation = ${input.relocation === undefined ? existing.relocation : input.relocation},
           business_trip_readiness = ${input.businessTripReadiness === undefined ? existing.business_trip_readiness : input.businessTripReadiness},
           travel_time = ${input.travelTime === undefined ? existing.travel_time : input.travelTime},
+          english_level = ${input.englishLevel === undefined ? existing.english_level : input.englishLevel},
           is_active = ${isActive},
           last_seen_at = ${lastSeenAt},
           updated_at = ${now}
@@ -198,7 +202,7 @@ export const upsert = (
         user_id, hh_account_id, source, external_id, hash, content_hash,
         title, text, about, skills, experience, education, work_formats,
         salary_amount, salary_currency, status, area_name, relocation,
-        business_trip_readiness, travel_time, is_active, last_seen_at
+        business_trip_readiness, travel_time, english_level, is_active, last_seen_at
       ) values (
         ${input.userId}, ${input.hhAccountId}::uuid, ${source}, ${input.externalId},
         ${""}, ${null},
@@ -214,6 +218,7 @@ export const upsert = (
         ${input.relocation ?? null},
         ${input.businessTripReadiness ?? null},
         ${input.travelTime ?? null},
+        ${input.englishLevel ?? null},
         ${isActive},
         ${lastSeenAt}
       )

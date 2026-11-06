@@ -66,6 +66,7 @@ export const resume = pgTable(
     relocation: text("relocation"),
     businessTripReadiness: text("business_trip_readiness"),
     travelTime: text("travel_time"),
+    englishLevel: text("english_level"),
     isActive: boolean("is_active").notNull().default(false),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
     createdAt: createdAt(),

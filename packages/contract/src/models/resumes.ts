@@ -95,6 +95,7 @@ export const ResumeRecord = Schema.Struct({
   relocation: Schema.optional(Schema.NullOr(Schema.String)),
   businessTripReadiness: Schema.optional(Schema.NullOr(Schema.String)),
   travelTime: Schema.optional(Schema.NullOr(Schema.String)),
+  englishLevel: Schema.optional(Schema.NullOr(Schema.String)),
   isActive: Schema.Boolean,
   lastSeenAt: Schema.String,
   createdAt: Schema.String,
@@ -121,6 +122,7 @@ export const ResumeDraft = Schema.Struct({
   relocation: Schema.optional(Schema.NullOr(Schema.String)),
   businessTripReadiness: Schema.optional(Schema.NullOr(Schema.String)),
   travelTime: Schema.optional(Schema.NullOr(Schema.String)),
+  englishLevel: Schema.optional(Schema.NullOr(Schema.String)),
   isActive: Schema.optional(Schema.Boolean),
   lastSeenAt: Schema.optional(Schema.String)
 })

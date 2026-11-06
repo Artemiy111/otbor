@@ -75,7 +75,7 @@ export const hintsFor = (
       },
       salary,
       resumeWorkFormats: resume?.workFormats ?? [],
-      profile: { city: faq("city") ?? resume?.areaName ?? null, relocation, english: faq("english_level"), startDate: faq("notice_period") }
+      profile: { city: faq("city") ?? resume?.areaName ?? null, relocation, english: faq("english_level") ?? resume?.englishLevel ?? null, startDate: faq("notice_period") }
     }).map(
       (hint): StoredHint => ({
         questionId: hint.questionId,

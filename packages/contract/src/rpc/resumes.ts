@@ -38,6 +38,7 @@ export const ResumeUpsert = Rpc.make("ResumeUpsert", {
     relocation: Schema.optional(Schema.NullOr(Schema.String)),
     businessTripReadiness: Schema.optional(Schema.NullOr(Schema.String)),
     travelTime: Schema.optional(Schema.NullOr(Schema.String)),
+    englishLevel: Schema.optional(Schema.NullOr(Schema.String)),
     isActive: Schema.optional(Schema.Boolean),
     lastSeenAt: Schema.optional(Schema.String)
   }),

@@ -34,6 +34,7 @@ export interface ResumeUpsertInput {
   readonly relocation?: string | null
   readonly businessTripReadiness?: string | null
   readonly travelTime?: string | null
+  readonly englishLevel?: string | null
   readonly isActive?: boolean
   readonly lastSeenAt?: string
 }
@@ -119,6 +120,7 @@ export class ResumeService extends Context.Service<ResumeService, ResumeServiceS
               relocation: input.relocation,
               businessTripReadiness: input.businessTripReadiness,
               travelTime: input.travelTime,
+              englishLevel: input.englishLevel,
               isActive: input.isActive,
               lastSeenAt: input.lastSeenAt ?? null
             })

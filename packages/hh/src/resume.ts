@@ -55,6 +55,8 @@ export interface ParsedResume {
   readonly relocation: string | null
   readonly businessTripReadiness: string | null
   readonly travelTime: string | null
+  /** The English level from the resume's language block, e.g. `B2`; null when not stated. */
+  readonly englishLevel: string | null
   readonly professionalRole: string | null
   readonly updatedAt: string | null
 }
@@ -279,6 +281,39 @@ const renderText = (parts: {
   return blocks.join("\n\n")
 }
 
+/** Every string leaf of a value, in order. */
+const leafStrings = (value: unknown, depth = 0): ReadonlyArray<string> => {
+  if (typeof value === "string") return [value]
+  if (depth > 4 || value === null || typeof value !== "object") return []
+  return Object.values(value as Obj).flatMap((item) => leafStrings(item, depth + 1))
+}
+
+const DEGREE_LABELS: Record<string, string> = {
+  l1: "A1", l2: "A2", l3: "B1", l4: "B2", l5: "C1", l6: "C2", native: "родной"
+}
+
+/**
+ * The English entry of the resume's language block. hh states the degree as a
+ * CEFR level or a word; the exact field names are not guaranteed, so every
+ * string of the entry is inspected.
+ */
+const readEnglishLevel = (language: unknown): string | null => {
+  const items = Array.isArray(language) ? language : language === undefined || language === null ? [] : [language]
+  for (const item of items) {
+    const leaves = leafStrings(item).map((leaf) => leaf.trim()).filter((leaf) => leaf !== "")
+    if (!leaves.some((leaf) => /^(eng|en|англ)/i.test(leaf) || /english|английск/i.test(leaf))) continue
+    for (const leaf of leaves) {
+      const cefr = leaf.match(/\b([abc][12])\b/i)?.[1]
+      if (cefr) return cefr.toUpperCase()
+      const code = DEGREE_LABELS[leaf.toLowerCase()]
+      if (code) return code
+    }
+    const word = leaves.find((leaf) => !/^(eng|en)$/i.test(leaf) && !/english|английск/i.test(leaf) && !/^\d+$/.test(leaf))
+    return word ?? null
+  }
+  return null
+}
+
 /** Parses one resume page. `null` when the page holds no readable resume. */
 export const parseResumePage = (html: string): ParsedResume | null => {
   const state = readInitialState(html)
@@ -322,6 +357,7 @@ export const parseResumePage = (html: string): ParsedResume | null => {
     relocation: readStrings(resume.relocation)[0] ?? null,
     businessTripReadiness: readStrings(resume.businessTripReadiness)[0] ?? null,
     travelTime: readStrings(resume.travelTime)[0] ?? null,
+    englishLevel: readEnglishLevel(resume.language ?? resume.languages),
     professionalRole: readString(role?.text) ?? readString(role?.string),
     updatedAt: toIso(attributes.updated)
   }
