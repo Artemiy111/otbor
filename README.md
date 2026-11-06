@@ -183,24 +183,21 @@ OpenCode; `inference run --model` применяется через
 
 ## Письма, ответы и резюме
 
-Письменные задачи идут через ту же очередь: облако собирает вакансию, резюме и
-задачу в строгий промпт, а текст возвращает inference-харнес.
+Письменные задачи идут через ту же очередь: облако собирает промпт, а текст
+возвращает inference-харнес. Письмо и ответы на тест пишет один промпт, общий
+для веба, автопилота и CLI.
 
 ```bash
-otbor write letter <application-id> --tone "спокойно и по делу" --length short
-otbor write letter <application-id> --language ru --save
-
-otbor write answers <application-id> --question "Почему мы?" --save
-cat questions.txt | otbor write answers <application-id>
+otbor write draft <application-id> --length short
+otbor write draft <application-id> --save
 
 otbor write resume ./resume.txt --target-role "Platform Engineer"
 cat resume.txt | otbor write resume --target-role "SRE"
 ```
 
-`--language auto|ru|en` выбирает язык промпта; без флага язык определяется по
-тексту вакансии или резюме. `--save` для письма и ответов обновляет существующий kit заявки через
-`ApplicationsSetKit`, сохраняя форму (`formHash`) и остальные поля. Без kit
-ничего не создаётся. Подробности и ограничения: [docs/writing.md](docs/writing.md).
+`write draft --save` заменяет письмо в существующем kit заявки через
+`ApplicationsSetKit`, ответы и `formHash` остаются прежними. Без kit ничего не
+создаётся. Подробности: [docs/writing.md](docs/writing.md).
 
 ## Проверки
 

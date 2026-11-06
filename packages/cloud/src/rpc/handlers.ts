@@ -267,8 +267,6 @@ export const OtborHandlers = OtborRpcs.toLayer(
       DraftGenerate: (payload) => writing.draft(payload),
       DraftPromptPreview: (payload) => writing.draftPrompt(payload),
 
-      WritingCoverLetter: (payload) => writing.coverLetter(payload),
-      WritingAnswers: (payload) => writing.answers(payload),
       WritingResume: (payload) => writing.resume(payload)
     }
   })

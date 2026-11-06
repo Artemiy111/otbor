@@ -125,7 +125,7 @@ import {
   TelegramSyncNow
 } from "./telegram.ts"
 import { VacanciesEvaluate, VacanciesGet, VacanciesList } from "./vacancies.ts"
-import { WritingAnswers, WritingCoverLetter, WritingResume } from "./writing.ts"
+import { WritingResume } from "./writing.ts"
 
 export const OtborRpcs = RpcGroup.make(
   SystemHealth,
@@ -238,8 +238,6 @@ export const OtborRpcs = RpcGroup.make(
   DraftGenerate,
   DraftPromptPreview,
   InferenceGet,
-  WritingCoverLetter,
-  WritingAnswers,
   WritingResume,
   ResumesList,
   ResumeGet,

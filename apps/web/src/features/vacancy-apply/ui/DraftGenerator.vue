@@ -100,9 +100,9 @@ const writeSaved = () => {
 
 const LENGTH_KEY = "otbor.draft-generator.length"
 const LENGTHS: ReadonlyArray<{ id: DraftLetterLength; label: string; hint: string }> = [
-  { id: "short", label: "Короткое", hint: "до 500 знаков, 2-3 абзаца" },
-  { id: "medium", label: "Среднее", hint: "до 900 знаков, 3 абзаца" },
-  { id: "long", label: "Длинное", hint: "до 1500 знаков, 3-4 абзаца" }
+  { id: "short", label: "Короткое", hint: "до 400 знаков, 1-2 абзаца" },
+  { id: "medium", label: "Среднее", hint: "до 700 знаков, 2-3 абзаца" },
+  { id: "long", label: "Длинное", hint: "до 1000 знаков, 3-4 абзаца" }
 ]
 const readLength = (): DraftLetterLength => {
   try {

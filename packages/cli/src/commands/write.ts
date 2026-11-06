@@ -1,10 +1,10 @@
-import type { Answer, ApplicationId, HarnessJob, HarnessJobId } from "@otbor/contract"
+import type { ApplicationId, FormQuestion, HarnessJob, HarnessJobId } from "@otbor/contract"
 import { InferenceResult as InferenceResultSchema } from "@otbor/contract"
 import { Console, Effect, FileSystem, Option, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { Api } from "../client.ts"
 import { resolveApplicationId } from "../resolve.ts"
-import { parseAnswers, questionLines } from "../writing.ts"
+import { parseGeneratedDraft, type GeneratedDraft } from "@otbor/domain"
 
 /** The cloud answers `pending`/`leased`/`running` until the job settles. */
 const terminal = new Set<string>([
@@ -138,47 +138,73 @@ const timeoutError = (timeout: number) =>
     : Effect.void
 
 /* -------------------------------------------------------------------------- */
-/* Letter                                                                     */
+/* Draft: cover letter and form answers                                       */
 /* -------------------------------------------------------------------------- */
 
-const letter = Command.make(
-  "letter",
+/** The draft for people: the letter, then each answer under its question. */
+const printDraft = (draft: GeneratedDraft, questions: ReadonlyArray<FormQuestion>) =>
+  Effect.gen(function*() {
+    yield* Console.log(draft.letter ?? "(no letter)")
+    for (const answer of draft.answers) {
+      const question = questions.find((candidate) => candidate.id === answer.questionId)
+      const value = answer.optionIds === undefined
+        ? (answer.text ?? "")
+        : answer.optionIds
+            .map((id) => question?.options.find((option) => option.id === id)?.label ?? id)
+            .join(", ")
+      yield* Console.log("")
+      yield* Console.log(`? ${question?.text ?? answer.questionId}`)
+      yield* Console.log(value)
+    }
+    for (const problem of draft.problems) yield* Console.error(`note: ${problem}`)
+  })
+
+const draft = Command.make(
+  "draft",
   {
     id: Argument.String("application-id").pipe(
       Argument.withDescription("Application id or prefix")
     ),
-    tone: Flag.String("tone").pipe(
-      Flag.withDescription("Tone of the letter (defaults to professional and specific)"),
-      Flag.optional
-    ),
     length: Flag.Literals("length", ["short", "medium", "long"]).pipe(
-      Flag.withDescription("Target letter length"),
+      Flag.withDescription("Letter ceiling: short 400, medium 700, long 1000 characters"),
       Flag.optional
     ),
     save: Flag.Boolean("save").pipe(
-      Flag.withDescription("Replace the letter in the application's existing kit"),
+      Flag.withDescription("Replace the letter in the application's existing kit (answers stay as they are)"),
       Flag.withDefault(false)
     ),
-    language: languageFlag,
+    harness: Flag.String("harness").pipe(
+      Flag.withDescription("Agent that writes the draft (defaults to the harness default)"),
+      Flag.optional
+    ),
     model: modelFlag,
+    effort: Flag.String("effort").pipe(
+      Flag.withDescription("Reasoning effort for the agent"),
+      Flag.optional
+    ),
     timeout: timeoutFlag,
     noWait: noWaitFlag,
     json: jsonFlag
   },
-  Effect.fn(function*({ id, tone, length, save, language, model, timeout, noWait, json }) {
+  Effect.fn(function*({ id, length, save, harness, model, effort, timeout, noWait, json }) {
     yield* timeoutError(timeout)
     if (noWait && save) {
       return yield* Effect.fail(new Error("--save needs the result; drop --no-wait"))
     }
     const api = yield* Api
     const applicationId = yield* resolveApplicationId(api, id)
+    const detail = yield* api.ApplicationsGet({ id: applicationId })
+    const application = detail.application
 
-    const { job } = yield* api.WritingCoverLetter({
-      applicationId,
-      ...(Option.isSome(tone) ? { tone: tone.value } : {}),
+    // The same prompt as the web and the auto-apply runner.
+    const { job } = yield* api.DraftGenerate({
+      vacancyId: application.vacancyId,
+      hhAccountId: application.hhAccountId,
+      ...(application.resumeId == null ? {} : { resumeId: application.resumeId }),
       ...(Option.isSome(length) ? { length: length.value } : {}),
-      ...(Option.isSome(language) ? { language: language.value } : {}),
-      ...(Option.isSome(model) ? { model: model.value } : {})
+      ...(Option.isSome(harness) ? { harness: harness.value } : {}),
+      ...(Option.isSome(model) ? { model: model.value } : {}),
+      ...(Option.isSome(effort) ? { effort: effort.value } : {})
     })
 
     if (noWait) {
@@ -186,17 +212,28 @@ const letter = Command.make(
       return
     }
 
-    const outcome = yield* settle(job, { timeout, json })
-    if (!save) return
-
+    const outcome = yield* waitFor(job.id, timeout)
     const text = usableText(outcome)
+    if (json) {
+      yield* Console.log(JSON.stringify(outcome, null, 2))
+    } else if (text === null) {
+      yield* printSettled(outcome.job, outcome.timedOut)
+    }
     if (text === null) {
-      yield* Console.error("not saved: the letter was not produced")
       process.exitCode = 1
       return
     }
 
-    const detail = yield* api.ApplicationsGet({ id: applicationId })
+    const questions = detail.form?.form.questions ?? []
+    const parsed = parseGeneratedDraft(text, questions)
+    if (!json) yield* printDraft(parsed, questions)
+    if (!save) return
+
+    if (parsed.letter === null) {
+      yield* Console.error("not saved: the draft has no letter")
+      process.exitCode = 1
+      return
+    }
     const kit = detail.kit
     if (kit === null || kit === undefined) {
       return yield* Effect.fail(
@@ -205,11 +242,10 @@ const letter = Command.make(
         )
       )
     }
-
     const record = yield* api.ApplicationsSetKit({
       applicationId: applicationId as ApplicationId,
       formHash: kit.formHash,
-      letter: text,
+      letter: parsed.letter,
       answers: kit.answers,
       model: kit.model ?? undefined,
       promptHash: kit.promptHash ?? undefined,
@@ -217,114 +253,7 @@ const letter = Command.make(
     })
     yield* Console.log(`saved letter: kit ${record.id} form=${record.formHash}`)
   })
-).pipe(Command.withDescription("Write a cover letter for an application"))
-
-/* -------------------------------------------------------------------------- */
-/* Answers                                                                    */
-/* -------------------------------------------------------------------------- */
-
-const readQuestions = (flags: ReadonlyArray<string>) =>
-  Effect.gen(function*() {
-    if (flags.length > 0) return flags
-
-    if (process.stdin.isTTY) {
-      return yield* Effect.fail(
-        new Error("Pass --question at least once, or pipe one question per line on stdin")
-      )
-    }
-
-    const questions = questionLines(yield* readStdin)
-    if (questions.length === 0) {
-      return yield* Effect.fail(new Error("No questions found on stdin"))
-    }
-    return questions
-  })
-
-const answers = Command.make(
-  "answers",
-  {
-    id: Argument.String("application-id").pipe(
-      Argument.withDescription("Application id or prefix")
-    ),
-    question: Flag.String("question").pipe(
-      Flag.withDescription("Employer question (repeatable; defaults to stdin lines)"),
-      Flag.between(0, 50)
-    ),
-    save: Flag.Boolean("save").pipe(
-      Flag.withDescription("Best effort: save the parsed JSON into an existing kit"),
-      Flag.withDefault(false)
-    ),
-    language: languageFlag,
-    model: modelFlag,
-    timeout: timeoutFlag,
-    noWait: noWaitFlag,
-    json: jsonFlag
-  },
-  Effect.fn(function*({ id, question, save, language, model, timeout, noWait, json }) {
-    yield* timeoutError(timeout)
-    if (noWait && save) {
-      return yield* Effect.fail(new Error("--save needs the result; drop --no-wait"))
-    }
-    const api = yield* Api
-    const applicationId = yield* resolveApplicationId(api, id)
-    const questions = yield* readQuestions(question)
-
-    const { job } = yield* api.WritingAnswers({
-      applicationId,
-      questions,
-      ...(Option.isSome(language) ? { language: language.value } : {}),
-      ...(Option.isSome(model) ? { model: model.value } : {})
-    })
-
-    if (noWait) {
-      yield* describeJob(job, json)
-      return
-    }
-
-    const outcome = yield* settle(job, { timeout, json })
-    if (!save) return
-
-    const text = usableText(outcome)
-    if (text === null) {
-      yield* Console.error("not saved: the answers were not produced")
-      process.exitCode = 1
-      return
-    }
-
-    const parsed: ReadonlyArray<Answer> | null = parseAnswers(text)
-    if (parsed === null) {
-      yield* Console.error(
-        "not saved: the answer is not a JSON array of { question, answer }; raw output follows"
-      )
-      yield* Console.error(text)
-      process.exitCode = 1
-      return
-    }
-
-    const detail = yield* api.ApplicationsGet({ id: applicationId })
-    const kit = detail.kit
-    if (kit === null || kit === undefined) {
-      yield* Console.error(
-        `not saved: application ${applicationId} has no kit; run \`otbor apply kit\` first`
-      )
-      process.exitCode = 1
-      return
-    }
-
-    const record = yield* api.ApplicationsSetKit({
-      applicationId: applicationId as ApplicationId,
-      formHash: kit.formHash,
-      letter: kit.letter ?? null,
-      answers: parsed,
-      model: kit.model ?? undefined,
-      promptHash: kit.promptHash ?? undefined,
-      costUsd: kit.costUsd ?? undefined
-    })
-    yield* Console.log(`saved answers: kit ${record.id} answers=${record.answers.length}`)
-  })
-).pipe(
-  Command.withDescription("Answer employer test or questionnaire questions for an application")
-)
+).pipe(Command.withDescription("Write the cover letter and form answers for an application"))
 
 /* -------------------------------------------------------------------------- */
 /* Resume                                                                     */
@@ -386,6 +315,6 @@ const resume = Command.make(
 ).pipe(Command.withDescription("Rewrite a resume for a target role"))
 
 export const writeCommand = Command.make("write").pipe(
-  Command.withSubcommands([letter, answers, resume]),
-  Command.withDescription("Writing: cover letters, employer answers and resume rewrites")
+  Command.withSubcommands([draft, resume]),
+  Command.withDescription("Writing: cover letter with form answers, and resume rewrites")
 )

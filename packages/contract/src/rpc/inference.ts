@@ -50,7 +50,8 @@ export const DraftGenerate = Rpc.make("DraftGenerate", {
     hhAccountId: HhAccountId,
     resumeId: Schema.optional(Schema.String),
     length: Schema.optional(DraftLetterLength),
-    harness: Schema.String,
+    /** None: the harness default. */
+    harness: Schema.optional(Schema.String),
     model: Schema.optional(Schema.String),
     effort: Schema.optional(Schema.String)
   }),

@@ -1,19 +1,18 @@
-import type { ApiError, ApplicationRecord, HarnessJob } from "@otbor/contract"
-import { InvalidInput, NotFound } from "@otbor/contract"
+import type { ApiError, HarnessJob, ResumeEnrichment } from "@otbor/contract"
+import { InvalidInput, NotFound, RESUME_FAQ_TOPICS } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { randomUUID } from "node:crypto"
 import { Context, Effect, Layer } from "effect"
 import { Database, type DatabaseError, type Executor } from "../db/Database.ts"
 import * as ResumeEnrichmentRepository from "../repositories/ResumeEnrichmentRepository.ts"
-import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
 import * as VacancyFormRepository from "../repositories/VacancyFormRepository.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
+import { hintsFor } from "./formHints.ts"
 import {
   buildDraftPrompt,
-  buildAnswersPrompt,
-  buildCoverLetterPrompt,
   buildResumePrompt,
   resolveEmployment,
+  type ApplicantProfile,
   type CoverLetterLength,
   type VacancyContext,
   type WritingLanguageOption,
@@ -27,27 +26,13 @@ import { toStorageError } from "./support.ts"
 /* Inputs                                                                     */
 /* -------------------------------------------------------------------------- */
 
-export interface CoverLetterInput {
-  readonly applicationId: string
-  readonly tone?: string
-  readonly length?: CoverLetterLength
-  readonly language?: WritingLanguageOption
-  readonly model?: string
-}
-
-export interface AnswersInput {
-  readonly applicationId: string
-  readonly questions: ReadonlyArray<string>
-  readonly language?: WritingLanguageOption
-  readonly model?: string
-}
-
 export interface DraftInput {
   readonly vacancyId: string
   readonly hhAccountId: string
   readonly resumeId?: string
   readonly length?: CoverLetterLength
-  readonly harness: string
+  /** None: the harness default, the same as an auto-apply filter without a writer. */
+  readonly harness?: string
   readonly model?: string
   readonly effort?: string
   readonly language?: WritingLanguageOption
@@ -61,10 +46,6 @@ export interface ResumeInput {
 }
 
 export interface WritingServiceShape {
-  readonly coverLetter: (
-    input: CoverLetterInput
-  ) => Effect.Effect<{ readonly job: HarnessJob }, ApiError>
-  readonly answers: (input: AnswersInput) => Effect.Effect<{ readonly job: HarnessJob }, ApiError>
   readonly resume: (input: ResumeInput) => Effect.Effect<{ readonly job: HarnessJob }, ApiError>
   /** Cover letter and employer-test answers of a vacancy in one model call. No application needed. */
   readonly draft: (input: DraftInput) => Effect.Effect<{ readonly job: HarnessJob }, ApiError>
@@ -84,19 +65,11 @@ export interface WritingServiceShape {
 /* Loading                                                                    */
 /* -------------------------------------------------------------------------- */
 
-interface ApplicationContext {
-  readonly application: ApplicationRecord
-  readonly vacancy: VacancyRepository.VacancyRow
-  readonly resumeText: string | null
-}
-
 type Missing = {
   readonly _tag: "missing"
   readonly entity: string
   readonly id: string
 }
-
-type Loaded = { readonly _tag: "ok"; readonly context: ApplicationContext } | Missing
 
 const missing = (entity: string, id: string): Missing => ({ _tag: "missing", entity, id })
 
@@ -114,41 +87,32 @@ const resumeTextFor = (
       })
     )
 
-/**
- * Everything a writing prompt needs, loaded in one user-scoped transaction.
- * A resume is optional on an application; a dangling resume id is not.
- */
-const loadApplicationContext = (
-  tx: Executor,
-  userId: string,
-  applicationId: string
-): Effect.Effect<Loaded, DatabaseError> =>
-  Effect.gen(function*() {
-    const application = yield* ApplicationRepository.findAny(tx, applicationId)
-    if (application === null || application.userId !== userId) {
-      return missing("Application", applicationId)
-    }
-
-    const vacancy = yield* VacancyRepository.findById(tx, application.vacancyId)
-    if (vacancy === null) {
-      return missing("Vacancy", application.vacancyId)
-    }
-
-    const resumeId = application.resumeId ?? null
-    const resumeText = resumeId === null ? null : yield* resumeTextFor(tx, userId, resumeId)
-    if (resumeId !== null && resumeText === null) {
-      return missing("Resume", resumeId)
-    }
-
-    return { _tag: "ok" as const, context: { application, vacancy, resumeText } }
-  })
-
 const vacancyContext = (vacancy: VacancyRepository.VacancyRow): VacancyContext => ({
   title: vacancy.title,
   employer: vacancy.employerName,
   description: vacancy.descriptionText,
   skills: vacancy.skills
 })
+
+/** The enrichment as prompt notes; known FAQ topics get their question text. */
+const applicantProfile = (enrichment: ResumeEnrichment): ApplicantProfile => {
+  const topics = new Map<string, string>(RESUME_FAQ_TOPICS.map((topic) => [topic.key, topic.question]))
+  return {
+    comment: enrichment.comment,
+    salaries: enrichment.salaries,
+    faq: enrichment.faq.map((entry) => ({
+      question: topics.get(entry.key) ?? entry.question ?? "",
+      answer: entry.answer
+    })),
+    // The key is the lower-cased "company position" the web saved the note under.
+    jobs: enrichment.experience.map((job) => ({
+      job: job.key,
+      comment: job.comment ?? null,
+      leaveReason: job.leaveReason ?? null,
+      employmentType: job.employmentType ?? null
+    }))
+  }
+}
 
 /** The account an application-free job (a resume rewrite) belongs to. */
 const accountFor = (tx: Executor, userId: string) =>
@@ -206,91 +170,6 @@ export class WritingService extends Context.Service<WritingService, WritingServi
             ...(input.effort === undefined ? {} : { effort: input.effort })
           },
           idempotencyKey: `writing:${input.userId}:${randomUUID()}`
-        })
-
-      const coverLetter: WritingServiceShape["coverLetter"] = (input) =>
-        Effect.gen(function*() {
-          const outcome = yield* database
-            .asUser(currentUser.userId, (tx) =>
-              Effect.gen(function*() {
-                const loaded = yield* loadApplicationContext(
-                  tx,
-                  currentUser.userId,
-                  input.applicationId
-                )
-                if (loaded._tag === "missing") return loaded
-
-                const { application, vacancy, resumeText } = loaded.context
-                const prompt = buildCoverLetterPrompt({
-                  vacancy: vacancyContext(vacancy),
-                  resumeText,
-                  ...(input.tone === undefined ? {} : { tone: input.tone }),
-                  ...(input.length === undefined ? {} : { length: input.length }),
-                  ...(input.language === undefined ? {} : { language: input.language })
-                })
-                const job = yield* enqueue(tx, {
-                  userId: currentUser.userId,
-                  hhAccountId: application.hhAccountId,
-                  prompt,
-                  model: modelOf(input.model)
-                })
-                return { _tag: "ok" as const, job }
-              })
-            )
-            .pipe(Effect.mapError(toStorageError("writing.coverLetter")))
-
-          if (outcome._tag === "missing") {
-            return yield* new NotFound({ entity: outcome.entity, id: outcome.id })
-          }
-          return { job: outcome.job }
-        })
-
-      const answers: WritingServiceShape["answers"] = (input) =>
-        Effect.gen(function*() {
-          const questions = input.questions.map((question) => question.trim())
-          if (questions.length === 0) {
-            return yield* new InvalidInput({
-              message: "at least one question is required"
-            })
-          }
-          if (questions.some((question) => question === "")) {
-            return yield* new InvalidInput({
-              message: "questions must not be empty"
-            })
-          }
-
-          const outcome = yield* database
-            .asUser(currentUser.userId, (tx) =>
-              Effect.gen(function*() {
-                const loaded = yield* loadApplicationContext(
-                  tx,
-                  currentUser.userId,
-                  input.applicationId
-                )
-                if (loaded._tag === "missing") return loaded
-
-                const { application, vacancy, resumeText } = loaded.context
-                const prompt = buildAnswersPrompt({
-                  vacancy: vacancyContext(vacancy),
-                  resumeText,
-                  questions,
-                  ...(input.language === undefined ? {} : { language: input.language })
-                })
-                const job = yield* enqueue(tx, {
-                  userId: currentUser.userId,
-                  hhAccountId: application.hhAccountId,
-                  prompt,
-                  model: modelOf(input.model)
-                })
-                return { _tag: "ok" as const, job }
-              })
-            )
-            .pipe(Effect.mapError(toStorageError("writing.answers")))
-
-          if (outcome._tag === "missing") {
-            return yield* new NotFound({ entity: outcome.entity, id: outcome.id })
-          }
-          return { job: outcome.job }
         })
 
       const resume: WritingServiceShape["resume"] = (input) =>
@@ -352,7 +231,10 @@ export class WritingService extends Context.Service<WritingService, WritingServi
           if (resumeId !== null && resumeText === null) return missing("Resume", resumeId)
 
           // Works now or not: the operator's word on the resume, else its last job.
+          // The enrichment also carries what the operator added: notes, salary,
+          // FAQ answers and per-job comments; all of it goes to APPLICANT NOTES.
           let employment = resolveEmployment(null, [])
+          let profile: ApplicantProfile | null = null
           if (resumeId !== null) {
             const enrichment = yield* ResumeEnrichmentRepository.get(tx, currentUser.userId, resumeId)
             const jobs = yield* tx.execute(
@@ -363,12 +245,16 @@ export class WritingService extends Context.Service<WritingService, WritingServi
               enrichment?.currentlyEmployed,
               Array.isArray(experience) ? experience : []
             )
+            if (enrichment !== null) profile = applicantProfile(enrichment)
           }
 
           // The form is the vacancy's, the same for every applicant. Without one
           // (no test, never read) there are no questions to answer.
           const state = yield* VacancyFormRepository.getState(tx, vacancy.id)
           const form = state.form
+          const hints = form === null
+            ? []
+            : yield* hintsFor(tx, { userId: currentUser.userId, vacancyId: vacancy.id, resumeId }, form)
           const signal = yield* tx.execute(
             sql`select signals->'hh'->>'letterRequired' as required from vacancy where id = ${vacancy.id} limit 1`
           )
@@ -386,6 +272,8 @@ export class WritingService extends Context.Service<WritingService, WritingServi
             coverLetter: form?.coverLetter ?? (letterRequired ? "required" : "optional"),
             ...(input.length === undefined ? {} : { length: input.length }),
             employment,
+            profile,
+            hints,
             questions: (form?.questions ?? []).map((question) => ({
               id: question.id,
               kind: question.kind,
@@ -400,8 +288,8 @@ export class WritingService extends Context.Service<WritingService, WritingServi
 
       const draft: WritingServiceShape["draft"] = (input) =>
         Effect.gen(function*() {
-          if (input.harness.trim() === "") {
-            return yield* new InvalidInput({ message: "a harness must be chosen" })
+          if (input.harness !== undefined && input.harness.trim() === "") {
+            return yield* new InvalidInput({ message: "the harness name is empty" })
           }
           const outcome = yield* database
             .asUser(currentUser.userId, (tx) =>
@@ -413,7 +301,7 @@ export class WritingService extends Context.Service<WritingService, WritingServi
                   hhAccountId: input.hhAccountId,
                   prompt: loaded.prompt,
                   model: modelOf(input.model),
-                  harness: input.harness.trim(),
+                  harness: modelOf(input.harness),
                   effort: modelOf(input.effort)
                 })
                 return { _tag: "ok" as const, job }
@@ -442,7 +330,7 @@ export class WritingService extends Context.Service<WritingService, WritingServi
           }
         })
 
-      return WritingService.of({ coverLetter, answers, resume, draft, draftPrompt })
+      return WritingService.of({ resume, draft, draftPrompt })
     })
   )
 }

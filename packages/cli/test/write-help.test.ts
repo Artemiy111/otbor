@@ -24,37 +24,19 @@ describe("otbor write help", () => {
     expect(help.out).toContain("write")
   })
 
-  test("write help lists letter, answers and resume", () => {
+  test("write help lists draft and resume", () => {
     const help = cli("write", "--help")
     expect(help.code).toBe(0)
-    expect(help.out).toContain("letter")
-    expect(help.out).toContain("answers")
+    expect(help.out).toContain("draft")
     expect(help.out).toContain("resume")
   })
 
-  test("write letter documents its flags", () => {
-    const help = cli("write", "letter", "--help")
+  test("write draft documents its flags", () => {
+    const help = cli("write", "draft", "--help")
     expect(help.code).toBe(0)
-    for (const flag of [
-      "--tone",
-      "--length",
-      "--language",
-      "--save",
-      "--model",
-      "--timeout",
-      "--no-wait",
-      "--json"
-    ]) {
+    for (const flag of ["--length", "--save", "--harness", "--model", "--effort", "--timeout", "--no-wait", "--json"]) {
       expect(help.out).toContain(flag)
     }
-  })
-
-  test("write answers documents repeatable questions and save", () => {
-    const help = cli("write", "answers", "--help")
-    expect(help.code).toBe(0)
-    expect(help.out).toContain("--question")
-    expect(help.out).toContain("--language")
-    expect(help.out).toContain("--save")
   })
 
   test("write resume documents the target role and shared flags", () => {

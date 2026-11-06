@@ -1,4 +1,4 @@
-import type { ApplicationRecord, ResponseForm, StoredHint } from "@otbor/contract"
+import type { ResponseForm, StoredHint } from "@otbor/contract"
 import { answerHints } from "@otbor/domain"
 import { Effect } from "effect"
 import type { DatabaseError, Executor } from "../db/Database.ts"
@@ -14,7 +14,7 @@ import * as VacancyRepository from "../repositories/VacancyRepository.ts"
  */
 export const hintsFor = (
   tx: Executor,
-  application: ApplicationRecord,
+  application: { readonly userId: string; readonly vacancyId: string; readonly resumeId?: string | null },
   form: ResponseForm
 ): Effect.Effect<ReadonlyArray<StoredHint>, DatabaseError> =>
   Effect.gen(function*() {
