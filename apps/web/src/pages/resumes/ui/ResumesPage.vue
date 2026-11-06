@@ -6,6 +6,7 @@ import type { HhAccountRecord, ResumeEnrichment, ResumeRecord, SalaryCurrency } 
 import { CircleAlert } from "@lucide/vue"
 import { hhAccountApi, hhAccountKeys, useDefaultAccount } from "@/entities/hh-account"
 import { keywordApi, keywordKeys } from "@/entities/keyword"
+import { presetApi, presetKeys } from "@/entities/preset"
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { AccountResumePicker } from "@/features/vacancy-apply"
 import { RefreshButton } from "@/features/refresh-button"
@@ -26,6 +27,11 @@ import {
   HighlightedText,
   Input,
   Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Tabs,
   TabsContent,
   TabsList,
@@ -73,17 +79,34 @@ const enrichmentQuery = useQuery({
 
 const showFullText = ref(false)
 
-// Every keyword of the lexicon, with its aliases. Those that hh vacancies list as skills are red.
-const keywordsQuery = useQuery({
-  key: () => keywordKeys.list("", "all", "any"),
-  query: () => keywordApi.list({ limit: 5000 })
+// The lexicon, counted over the vacancies of the chosen preset ("all" is the whole corpus).
+const highlightPresetId = ref("all")
+const skillThreshold = ref<string | number>(10)
+const presetsQuery = useQuery({
+  key: () => presetKeys.list("all"),
+  query: () => presetApi.list({})
 })
-const highlightTerms = computed<ReadonlyArray<HighlightTerm>>(() =>
-  (keywordsQuery.data.value ?? []).flatMap((keyword) => {
-    const kind = keyword.skillVacancyCount > 0 ? "skill" : "keyword"
+const keywordsQuery = useQuery({
+  key: () => keywordKeys.list("", highlightPresetId.value, "any"),
+  query: () =>
+    keywordApi.list({
+      limit: 5000,
+      presetId: highlightPresetId.value === "all" ? undefined : highlightPresetId.value
+    })
+})
+/**
+ * Yellow: a keyword that occurs in the text of at least one vacancy of the selection.
+ * Red: a keyword that at least `skillThreshold` vacancies list among their hh skills.
+ */
+const highlightTerms = computed<ReadonlyArray<HighlightTerm>>(() => {
+  const threshold = Math.max(1, Math.trunc(Number(skillThreshold.value)) || 1)
+  return (keywordsQuery.data.value ?? []).flatMap((keyword) => {
+    const kind = keyword.skillVacancyCount >= threshold ? "skill" : keyword.vacancyCount > 0 ? "keyword" : null
+    if (kind === null) return []
     return [keyword.term, ...keyword.aliases.map((a) => a.alias)].map((text) => ({ text, kind }) as const)
   })
-)
+})
+
 const comment = ref("")
 /** "auto": work it out from the resume (the last job has no end date). */
 const employment = ref<"auto" | "employed" | "unemployed">("auto")
@@ -323,12 +346,32 @@ const refresh = () => {
         </CardHeader>
         <CardContent class="space-y-4">
           <div class="space-y-4 rounded-md border p-4">
+            <div class="flex flex-wrap items-end gap-3 rounded-md bg-muted/40 p-3">
+              <div class="space-y-1.5">
+                <Label for="highlight-preset" class="text-xs text-muted-foreground">Выборка вакансий для подсветки</Label>
+                <Select v-model="highlightPresetId">
+                  <SelectTrigger id="highlight-preset" class="w-[240px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Все вакансии</SelectItem>
+                    <SelectItem v-for="preset in presetsQuery.data.value ?? []" :key="preset.id" :value="preset.id">
+                      {{ preset.title }}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div class="space-y-1.5">
+                <Label for="highlight-threshold" class="text-xs text-muted-foreground">Навык красным от, вакансий</Label>
+                <Input id="highlight-threshold" v-model="skillThreshold" type="number" min="1" class="w-[120px]" />
+              </div>
+            </div>
             <div class="flex flex-wrap items-center justify-between gap-2">
               <h3 class="text-sm font-semibold">Что видит ИИ</h3>
               <p class="text-xs text-muted-foreground">
                 В тексте подсвечено:
-                <mark class="rounded-sm bg-yellow-200/80 px-1 text-foreground dark:bg-yellow-400/25">ключевое слово</mark>
-                <mark class="ml-1 rounded-sm bg-red-200/70 px-1 text-foreground dark:bg-red-500/30">навык из вакансий hh</mark>
+                <mark class="rounded-sm bg-yellow-200/80 px-1 text-foreground dark:bg-yellow-400/25">слово из текстов вакансий</mark>
+                <mark class="ml-1 rounded-sm bg-red-200/70 px-1 text-foreground dark:bg-red-500/30">навык hh из ≥ {{ Math.max(1, Math.trunc(Number(skillThreshold)) || 1) }} вакансий</mark>
               </p>
             </div>
             <dl class="grid gap-3 text-sm sm:grid-cols-[160px_1fr]">
