@@ -694,13 +694,26 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
           catch: (error) =>
             new InvalidInput({ message: error instanceof Error ? error.message : String(error) })
         })
-        const response = yield* Effect.tryPromise({
-          try: () => fetchPage(url, proxy),
-          catch: (error) =>
-            new InvalidInput({
-              message: `fetch ${url}: ${error instanceof Error ? error.message : String(error)}`
-            })
-        })
+        const download = (via: string | null) =>
+          Effect.tryPromise({
+            try: () => fetchPage(url, via),
+            catch: (error) =>
+              new InvalidInput({
+                message: `fetch ${url}: ${error instanceof Error ? error.message : String(error)}`
+              })
+          })
+        // One public page on demand. A proxy that does not answer at all (a
+        // connection error, not an hh answer) falls back to a direct request;
+        // a block page or a bad status is never retried around the proxy.
+        const response = yield* download(proxy).pipe(
+          Effect.catch((error) =>
+            proxy === null
+              ? Effect.fail(error)
+              : Effect.logWarning(`${error.message}; trying ${url} without the proxy`).pipe(
+                  Effect.andThen(download(null))
+                )
+          )
+        )
         const block = classifyResponse(response.status, response.html)
         if (block !== null) {
           return yield* new InvalidInput({ message: blockMessage(url, block) })
