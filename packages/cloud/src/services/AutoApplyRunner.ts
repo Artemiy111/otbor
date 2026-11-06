@@ -10,7 +10,6 @@ import { InferenceResult as InferenceResultSchema } from "@otbor/contract"
 import {
   ANALYSIS_PROMPT_VERSION,
   APPLY_POLICY_VERSION,
-  checkTextStyle,
   parseGeneratedDraft
 } from "@otbor/domain"
 import { sql } from "drizzle-orm"
@@ -444,10 +443,6 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                 return human("the writing result is not a JSON draft")
               }
               const letter = stored.form.coverLetter === "absent" ? null : draft.letter
-              if (letter !== null) {
-                const style = [...new Set(checkTextStyle(letter).map((violation) => violation.code))]
-                if (style.length > 0) return human(`the cover letter breaks the house style: ${style.join(", ")}`)
-              }
               const payload = job.payload as { prompt?: unknown; system?: unknown } | null
               yield* applications.setKit({
                 applicationId: app.id,

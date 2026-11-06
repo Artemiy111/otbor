@@ -12,7 +12,7 @@ import {
   type StoredHint,
   SubmitEvidence
 } from "@otbor/contract"
-import { type AnswerHint, validateAnswers } from "@otbor/domain"
+import { type AnswerHint, checkTextStyle, validateAnswers } from "@otbor/domain"
 import {
   classifyResponsePage,
   isSubmitSuccess,
@@ -204,6 +204,17 @@ export const checkKit = (input: KitCheckInput): ReadonlyArray<KitProblem> => {
       questionId: FORM_ID,
       message: "the form requires a cover letter"
     })
+  }
+
+  if (form.coverLetter !== "absent" && kit.letter != null) {
+    const style = [...new Set(checkTextStyle(kit.letter).map((violation) => violation.code))]
+    if (style.length > 0) {
+      problems.push({
+        code: "banned_style",
+        questionId: FORM_ID,
+        message: `the cover letter breaks the house style: ${style.join(", ")}`
+      })
+    }
   }
 
   return problems

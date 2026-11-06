@@ -158,6 +158,12 @@ describe("checkKit", () => {
     expect(problems.map((problem) => problem.code)).toEqual(["letter_required"])
   })
 
+  test("a cover letter that breaks the house style fails the kit", () => {
+    const needsLetter: ResponseForm = { ...form, coverLetter: "optional" }
+    const problems = checkKit({ form: needsLetter, hints: [], kit: kitFor(needsLetter, fullAnswers(), "Здравствуйте!") })
+    expect(problems.map((problem) => problem.code)).toEqual(["banned_style"])
+  })
+
   test("legacy question/answer pairs are matched by text and option label", () => {
     const converted = toFormAnswers(form, [
       { question: "Вы имеете оконченное ТЕХНИЧЕСКОЕ высшее образование?", answer: "Да" },
