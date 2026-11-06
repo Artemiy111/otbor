@@ -202,10 +202,10 @@ if (!enabled || serverUrl === null) {
       })
       const second = await support.applyFilterSet(tenant.userId, {
         hhAccountId: tenant.accountId,
-        filter: { includeArchived: true }
+        filter: { includeBlacklisted: true }
       })
       expect(second.id).toBe(first.id)
-      expect(second).toMatchObject({ minFit: 20, tests: "allow", filter: { includeArchived: true } })
+      expect(second).toMatchObject({ minFit: 20, tests: "allow", filter: { includeBlacklisted: true } })
     })
 
     test("changing the filter makes decisions stale; a repeated save does not", async () => {

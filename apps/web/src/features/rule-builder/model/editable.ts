@@ -41,7 +41,6 @@ export interface EditableGroup {
 export interface EditableFilter {
   rules: Array<EditableRule>
   groups: Array<EditableGroup>
-  includeArchived: boolean
   includeBlacklisted: boolean
   location: KeywordMatchLocation
   /** Legacy lexicon restriction. Carried through unchanged, never edited. */
@@ -99,7 +98,6 @@ export const toEditableRule = (rule: PresetRule): EditableRule => {
 export const emptyEditable = (): EditableFilter => ({
   rules: [],
   groups: [],
-  includeArchived: false,
   includeBlacklisted: false,
   location: "any",
   keywordIds: undefined
@@ -117,7 +115,6 @@ export const toEditable = (filter: PresetFilter | undefined): EditableFilter =>
             rules: branch.rules.map(toEditableRule)
           }))
         })),
-        includeArchived: filter.includeArchived === true,
         includeBlacklisted: filter.includeBlacklisted === true,
         location: filter.location ?? "any",
         keywordIds: filter.keywordIds
@@ -195,7 +192,6 @@ export const buildFilter = (state: EditableFilter): PresetFilter =>
         rules: branch.rules.map(buildRule).filter((rule): rule is PresetRule => rule !== null)
       }))
     })),
-    ...(state.includeArchived ? { includeArchived: true } : {}),
     ...(state.includeBlacklisted ? { includeBlacklisted: true } : {}),
     ...(state.location === "any" ? {} : { location: state.location }),
     ...(state.keywordIds === undefined ? {} : { keywordIds: state.keywordIds })

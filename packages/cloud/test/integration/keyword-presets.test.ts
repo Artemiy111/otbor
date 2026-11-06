@@ -116,7 +116,16 @@ if (!integrationEnabled || serverUrl === null) {
       // Archived vacancies only join when the preset asks for them.
       const withArchived = await seedPreset(tenant.userId, {
         title: "DevOps match with archive",
-        filter: { text: "DevOps", rules: notManager, includeArchived: true }
+        filter: {
+          text: "DevOps",
+          rules: notManager,
+          groups: [{
+            branches: [
+              { rules: [{ field: "archived", op: "is_true" }] },
+              { rules: [{ field: "archived", op: "is_false" }] }
+            ]
+          }]
+        }
       })
       expect(asCounts(await lexiconList(tenant.userId, { presetId: withArchived }))).toEqual({
         [`docker-${suffix}`]: 2,

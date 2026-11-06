@@ -70,7 +70,6 @@ const keywordCount = computed(() => props.preset.filter.keywordIds?.length ?? 0)
             <CardDescription class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
               <span>обновлён {{ formatDate(props.preset.updatedAt) }}</span>
               <span>правил: {{ rules.length + groups.length }}</span>
-              <span v-if="props.preset.filter.includeArchived">архивные включены</span>
               <span v-if="locationLabel">словарь: {{ locationLabel }}</span>
               <span
                 v-if="keywordCount > 0"

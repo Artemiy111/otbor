@@ -227,7 +227,7 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
                           ? true
                           : ruleFilter.includeBlacklisted
                       }),
-                      { userId: currentUser.userId }
+                      { userId: currentUser.userId, includeArchived: filter.includeArchived === true }
                     )
                   })
             })

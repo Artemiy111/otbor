@@ -150,20 +150,19 @@ if (!enabled || serverUrl === null) {
         label: "lf3", title: "Old mid", employerId: employer, seniority: "middle", archived: true
       })
 
-      const ids = async (filter: PresetFilter | undefined) =>
+      const ids = async (filter: PresetFilter | undefined, includeArchived = false) =>
         (await support.runAs(
           tenant.userId,
           Effect.gen(function*() {
             const corpus = yield* CorpusService
-            return yield* corpus.list({ limit: 50, filter })
+            return yield* corpus.list({ limit: 50, filter, includeArchived })
           })
         )).items.map((row): string => row.id)
 
       expect(await ids({ rules: [{ field: "seniority", op: "eq", value: "middle" }] })).toEqual([middle])
       expect((await ids({
-        rules: [{ field: "seniority", op: "eq", value: "middle" }],
-        includeArchived: true
-      })).sort()).toEqual([middle, archived].sort())
+        rules: [{ field: "seniority", op: "eq", value: "middle" }]
+      }, true)).sort()).toEqual([middle, archived].sort())
       expect(await ids({ rules: [{ field: "skills", op: "contains", value: "kubernetes" }] })).toEqual([middle])
       expect((await ids(undefined)).length).toBe(2)
     }, 60_000)

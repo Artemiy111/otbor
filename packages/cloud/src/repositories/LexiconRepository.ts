@@ -355,6 +355,11 @@ const ruleClause = (rule: PresetRule, filter: PresetFilter, context: VacancyFilt
 export interface VacancyFilterContext {
   /** Enables the default app-layer blacklist exclusion for presets. */
   readonly userId?: string
+  /**
+   * The list's own archive toggle, not part of a stored filter: a stored filter
+   * excludes archived vacancies unless one of its rules is about `archived`.
+   */
+  readonly includeArchived?: boolean
 }
 
 /** One AND clause of a filter with a readable name, as `vacancyFilterSql` joins them. */
@@ -393,7 +398,7 @@ const filterParts = (
     ...(filter.rules ?? []),
     ...(filter.groups ?? []).flatMap((group) => group.branches.flatMap((branch) => branch.rules))
   ].some((rule) => rule.field === "archived")
-  if (filter.includeArchived !== true && !hasArchivedRule) {
+  if (context.includeArchived !== true && !hasArchivedRule) {
     parts.push({ label: "not archived", clause: sql`not vacancy.archived` })
   }
 

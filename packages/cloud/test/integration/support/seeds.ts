@@ -294,7 +294,6 @@ export const seedPreset = async (
       /** Legacy keys of old stored filters (`gate`, ...) may be seeded on purpose. */
       readonly [legacy: string]: unknown
       readonly keywordIds?: ReadonlyArray<string>
-      readonly includeArchived?: boolean
       readonly includeBlacklisted?: boolean
     }
   }

@@ -69,7 +69,6 @@ const ruleFilter = computed(() => {
   // The header toggles own archive and blacklist visibility.
   return {
     ...built,
-    ...(archived.value === "all" ? { includeArchived: true } : {}),
     ...(includeBlacklisted.value ? { includeBlacklisted: true } : {})
   }
 })
@@ -86,7 +85,6 @@ const applyPreset = (id: unknown) => {
   rules.value.groups = next.groups
   rules.value.location = next.location
   rules.value.keywordIds = next.keywordIds
-  archived.value = next.includeArchived ? "all" : "active"
   includeBlacklisted.value = next.includeBlacklisted
   rulesOpen.value = true
 }

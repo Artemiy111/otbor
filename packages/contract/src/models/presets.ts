@@ -13,8 +13,8 @@ import { VacancySummary } from "./corpus.ts"
  * The concrete filter a preset carries. Every field is optional: an absent
  * field does not constrain the result.
  *
- * `text` matches the vacancy title case-insensitively, and `includeArchived` widens the search to
- * archived vacancies. `keywordIds` only narrows which keywords are returned;
+ * `text` matches the vacancy title case-insensitively. Archived vacancies are excluded unless a
+ * rule on the `archived` field says otherwise. `keywordIds` only narrows which keywords are returned;
  * it never changes which vacancies are counted.
  */
 /**
@@ -143,7 +143,6 @@ export const PresetFilter = Schema.Struct({
   keywordIds: Schema.optional(Schema.Array(KeywordId)),
   /** Where a keyword must appear: title, body, HH skills, or text+skills. */
   location: Schema.optional(KeywordMatchLocation),
-  includeArchived: Schema.optional(Schema.Boolean),
   /**
    * By default a preset excludes app-level blacklisted companies; `true`
    * explicitly includes them so the preset can drive auto-applies.
@@ -200,7 +199,7 @@ export const isCompleteRule = (rule: PresetRule): boolean => {
 
 /**
  * Parses a stored or submitted filter and drops values that mean "no
- * constraint": blank text, an empty keyword list and `includeArchived: false`.
+ * constraint": blank text and an empty keyword list.
  * Unknown properties (the legacy `{"all":[]}` default) are ignored.
  */
 export const parsePresetFilter = (input: unknown): PresetFilter => {
@@ -227,7 +226,6 @@ export const parsePresetFilter = (input: unknown): PresetFilter => {
     ...(decoded.location === undefined || decoded.location === "any"
       ? {}
       : { location: decoded.location }),
-    ...(decoded.includeArchived === true ? { includeArchived: true } : {}),
     ...(decoded.includeBlacklisted === true ? { includeBlacklisted: true } : {})
   }
 }

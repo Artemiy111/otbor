@@ -271,7 +271,6 @@ export const applyFilterBrief = (
   if (filter.keywordIds !== undefined && filter.keywordIds.length > 0) {
     options.push(`${filter.keywordIds.length} keywords${filter.location === undefined ? "" : ` in ${filter.location}`}`)
   }
-  if (filter.includeArchived === true) options.push("includes archived")
   if (filter.includeBlacklisted === true) options.push("includes blacklisted employers")
   return {
     source: view.source,

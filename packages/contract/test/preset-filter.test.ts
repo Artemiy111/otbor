@@ -16,15 +16,14 @@ describe("preset filter parsing", () => {
     expect(
       parsePresetFilter({
         text: "  DevOps  ",
-        keywordIds: [firstKeyword, firstKeyword, secondKeyword],
-        includeArchived: false
+        keywordIds: [firstKeyword, firstKeyword, secondKeyword]
       })
     ).toEqual({
       text: "DevOps",
       keywordIds: [firstKeyword, secondKeyword]
     })
     expect(parsePresetFilter({ text: "   ", keywordIds: [] })).toEqual({})
-    expect(parsePresetFilter({ includeArchived: true })).toEqual({ includeArchived: true })
+    expect(parsePresetFilter({ includeArchived: true })).toEqual({})
     expect(parsePresetFilter({ location: "any" })).toEqual({})
     expect(parsePresetFilter({ location: "text_or_skills" })).toEqual({
       location: "text_or_skills"
@@ -69,8 +68,7 @@ describe("preset filter parsing", () => {
     const filter = {
       text: "DevOps",
       keywordIds: [firstKeyword],
-      location: "skills" as const,
-      includeArchived: true
+      location: "skills" as const
     }
     expect(Schema.decodeUnknownSync(PresetFilter)(filter)).toEqual(filter)
   })
