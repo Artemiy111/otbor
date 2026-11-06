@@ -17,6 +17,7 @@ const BLOCKED_HOSTS: ReadonlyArray<string> = [
   "weborama.fr",
   "googletagmanager.com",
   "google-analytics.com",
+  "adriver.ru",
   "doubleclick.net"
 ]
 

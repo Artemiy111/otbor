@@ -1,0 +1,29 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "requestDomains": [
+        "mc.yandex.ru",
+        "mc.yandex.com",
+        "top-fwz1.mail.ru",
+        "top.mail.ru",
+        "counter.yadro.ru",
+        "vk.com",
+        "st.hybrid.ai",
+        "eye.targetads.io",
+        "rap.skcrtxr.com",
+        "weborama-tech.ru",
+        "weborama.fr",
+        "adriver.ru",
+        "googletagmanager.com",
+        "google-analytics.com",
+        "doubleclick.net"
+      ],
+      "domainType": "thirdParty"
+    }
+  }
+]
