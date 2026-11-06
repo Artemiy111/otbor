@@ -147,6 +147,24 @@ export const importTopics = (
             and not exists (select 1 from harness_jobs j where j.application_id = dup.id)
         `)
       }
+      // An application otbor submitted itself follows hh's state too: an
+      // invitation, a refusal from either side. hh is the authority.
+      const followed = yield* tx.execute(sql`
+        update application
+        set hh_status = ${topic.state}, hh_responded_at = coalesce(${respondedAt}, hh_responded_at), updated_at = now()
+        where hh_account_id = ${input.hhAccountId}
+          and vacancy_id = ${vacancyId}
+          and origin = 'otbor'
+          and state = 'submitted'
+          and (resume_id is null or ${resumeId}::uuid is null or resume_id = ${resumeId}::uuid)
+          and (hh_status is distinct from ${topic.state}
+               or hh_responded_at is distinct from coalesce(${respondedAt}, hh_responded_at))
+        returning id
+      `)
+      if (followed.rows.length > 0) {
+        updated += 1
+        continue
+      }
       // hh holds a response, so an otbor draft (or a stuck attempt) for it is
       // wrong: hh is the authority. The row keeps its origin and its kit.
       const settled = yield* tx.execute(sql`
