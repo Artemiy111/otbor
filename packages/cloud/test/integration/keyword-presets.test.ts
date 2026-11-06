@@ -88,14 +88,15 @@ if (!integrationEnabled || serverUrl === null) {
       await seedVacancyKeyword({ vacancyId: archived, keywordId: kubernetes, matchedForm: "kubernetes" })
 
       // The "DevOps manager" vacancy is excluded by a title rule.
-      const notManager = [{ field: "title", op: "not_contains", value: "manager" }]
+      const notManagerOnly = [{ field: "title", op: "not_contains", value: "manager" }]
+      const notManager = [...notManagerOnly, { field: "archived", op: "is_false" }]
       const devopsPreset = await seedPreset(tenant.userId, {
         title: "DevOps match",
         filter: { text: "DevOps", rules: notManager }
       })
       const backendPreset = await seedPreset(tenant.userId, {
         title: "Backend match",
-        filter: { text: "Backend" }
+        filter: { text: "Backend", rules: [{ field: "archived", op: "is_false" }] }
       })
 
       const asCounts = (keywords: ReadonlyArray<{ term: string; vacancyCount: number }>) =>
@@ -118,7 +119,7 @@ if (!integrationEnabled || serverUrl === null) {
         title: "DevOps match with archive",
         filter: {
           text: "DevOps",
-          rules: notManager,
+          rules: notManagerOnly,
           groups: [{
             branches: [
               { rules: [{ field: "archived", op: "is_true" }] },

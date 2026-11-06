@@ -70,7 +70,15 @@ export const applyFilterFromPreset = (
  * archived and blacklist clauses stay), so a test about something else is not
  * decided by the built-in DevOps filter.
  */
-export const openApplyFilter = (tenant: Tenant, filter: PresetFilter = {}) =>
+/** Nothing is hidden implicitly, so a test filter names what it excludes. */
+export const EXCLUDE_ARCHIVED_AND_BLACKLISTED: PresetFilter = {
+  rules: [
+    { field: "archived", op: "is_false" },
+    { field: "hidden", op: "not_in", value: ["app"] }
+  ]
+}
+
+export const openApplyFilter = (tenant: Tenant, filter: PresetFilter = EXCLUDE_ARCHIVED_AND_BLACKLISTED) =>
   applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter })
 
 export const removePreset = async (userId: string, id: string) =>

@@ -85,7 +85,10 @@ export const DEVOPS_APPLY_FILTER: PresetFilter = {
   rules: [
     { field: "seniority", op: "in", value: ["middle", "senior", "lead", "unknown"] },
     // One rule with a list: "the title contains none of these".
-    { field: "title", op: "not_contains_any", value: [...DEVOPS_TITLE_REJECT_STEMS] }
+    { field: "title", op: "not_contains_any", value: [...DEVOPS_TITLE_REJECT_STEMS] },
+    // Nothing is hidden implicitly: archived vacancies and the app blacklist are plain rules.
+    { field: "archived", op: "is_false" },
+    { field: "hidden", op: "not_in", value: ["app"] }
   ],
   groups: [
     // Salary and work format are deliberately not part of the template: they

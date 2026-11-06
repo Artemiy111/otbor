@@ -61,7 +61,11 @@ export const analytics = (
 ): RepoEffect<MarketAnalytics> =>
   Effect.gen(function*() {
     const currency = (options.currency ?? "RUB").toUpperCase().replace(/^RUR$/, "RUB")
-    const filterClause: SQL = vacancyFilterSql(options.filter ?? {}, { userId: options.userId })
+    const filterClause: SQL = vacancyFilterSql(
+      // Without a filter the market is the active vacancies.
+      options.filter ?? { rules: [{ field: "archived", op: "is_false" }] },
+      { userId: options.userId }
+    )
     const sinceDays = Math.max(0, Math.trunc(options.sinceDays ?? 0))
     const sinceClause = sinceDays > 0
       ? sql`and vacancy.published_at >= now() - make_interval(days => ${sinceDays})`

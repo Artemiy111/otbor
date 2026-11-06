@@ -68,7 +68,7 @@ describe("devops title stems", () => {
 describe("list operators keep the template short", () => {
   test("the DevOps template is a handful of rules, not one per stem", () => {
     const filter = DEFAULT_APPLY_FILTER.filter
-    expect(filter.rules?.length).toBe(2)
+    expect(filter.rules?.length).toBe(4)
     expect(filter.groups?.length).toBe(1)
     expect(filter.groups![0]!.branches.length).toBe(2)
     expect(describeRule({ field: "title", op: "contains_any", value: ["a", "b"] })).toBe(

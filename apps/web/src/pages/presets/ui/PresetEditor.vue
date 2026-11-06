@@ -5,7 +5,7 @@ import { parsePresetFilter } from "@otbor/contract"
 import type { PresetFilter, PresetKind, PresetPreview, PresetRecord } from "@otbor/contract"
 import { CircleAlert, Save } from "@lucide/vue"
 import { presetApi } from "@/entities/preset"
-import { RuleBuilder, allRules, buildFilter, isComplete, toEditable } from "@/features/rule-builder"
+import { NEW_PRESET_FILTER, RuleBuilder, allRules, buildFilter, isComplete, toEditable } from "@/features/rule-builder"
 import { describeError } from "@/shared/lib"
 import {
   Alert,
@@ -36,7 +36,7 @@ const emit = defineEmits<{
 const title = ref(props.preset?.title ?? "")
 /** Legacy label, no behaviour behind it: kept as stored, "explore" for new presets. */
 const kind: PresetKind = props.preset?.kind ?? "explore"
-const filter = ref(reactive(toEditable(props.preset?.filter)))
+const filter = ref(reactive(toEditable(props.preset === null ? NEW_PRESET_FILTER : props.preset.filter)))
 const formError = ref<string | null>(null)
 
 /** "rules" is the builder; "json" shows and edits the very filter that is saved and sent to the server. */

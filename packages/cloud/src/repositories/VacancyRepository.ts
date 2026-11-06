@@ -598,8 +598,8 @@ export interface VacancyFilter {
   /** Set by the service; RLS already scopes `hidden_target` to this user. */
   readonly userId?: string
   /**
-   * A compiled preset filter over the `vacancy` table. When set it owns the
-   * archive decision (`includeArchived` is ignored), exactly as in a preset.
+   * A compiled preset filter over the `vacancy` table, ANDed with the list's
+   * own archive and blacklist toggles.
    */
   readonly extraWhere?: SQL
 }
@@ -610,9 +610,7 @@ const likePattern = (term: string): string => `%${term.replace(/[\\%_]/g, (char)
 export const list = (tx: Executor, filter: VacancyFilter = {}) => {
   const limit = Math.min(Math.max(filter.limit ?? 50, 1), 200)
   const offset = Math.max(filter.offset ?? 0, 0)
-  const archivedClause = filter.extraWhere !== undefined || filter.includeArchived === true
-    ? sql`true`
-    : sql`not vacancy.archived`
+  const archivedClause = filter.includeArchived === true ? sql`true` : sql`not vacancy.archived`
   const extraClause = filter.extraWhere === undefined ? sql`true` : sql`(${filter.extraWhere})`
 
   const analysedExists = sql`exists (

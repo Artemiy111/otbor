@@ -99,15 +99,13 @@ export const resolve = (
 /**
  * The built-in filter for one account. The account's own hide list (and what
  * it hid on hh) always blocked a vacancy; as a rule it needs the account id,
- * so it is added here rather than to the static template. A `hidden` rule
- * replaces the implicit app-wide blacklist clause, so it names the app layer too.
+ * so the template's `hidden` rule gets it here (next to the app layer).
  */
 const defaultFilterFor = (hhAccountId: string): PresetFilter => ({
   ...DEFAULT_APPLY_FILTER.filter,
-  rules: [
-    ...(DEFAULT_APPLY_FILTER.filter.rules ?? []),
-    { field: "hidden", op: "not_in", value: ["app", `account:${hhAccountId}`] }
-  ]
+  rules: (DEFAULT_APPLY_FILTER.filter.rules ?? []).map((rule) =>
+    rule.field === "hidden" ? { ...rule, value: ["app", `account:${hhAccountId}`] } : rule
+  )
 })
 
 const fromRecord = (record: ApplyFilterRecord, source: ApplyFilterSource): ResolvedApplyFilter => ({

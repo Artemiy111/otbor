@@ -248,12 +248,12 @@ if (!enabled || serverUrl === null) {
       expect(low.reasons[0]).toMatchObject({ code: "blocked_low_fit", detail: "fit 50 < 70" })
     })
 
-    test("archive comes from the filter", async () => {
+    test("archive comes from the filter's own rule", async () => {
       const tenant = await support.seedTenant("af-implicit")
       await support.openApplyFilter(tenant)
       const archived = await support.seedVacancyTitled("af-implicit-a", "DevOps archived", { archived: true })
       const decision = await evaluate(tenant.userId, { vacancyId: archived })
-      expect(decision.reasons[0]).toMatchObject({ code: "blocked_filter", detail: "not archived" })
+      expect(decision.reasons[0]).toMatchObject({ code: "blocked_filter", detail: "archived is false" })
     })
 
     test("a filter can opt into blacklisted employers", async () => {
@@ -275,7 +275,7 @@ if (!enabled || serverUrl === null) {
       await support.openApplyFilter(tenant)
       expect((await evaluate(tenant.userId, { vacancyId: target.vacancyId })).reasons[0]).toMatchObject({
         code: "blocked_filter",
-        detail: "not blacklisted"
+        detail: expect.stringContaining("hidden not_in app")
       })
 
       await support.applyFilterSet(tenant.userId, {
@@ -522,7 +522,7 @@ if (!enabled || serverUrl === null) {
 
         const changed = await support.applyFilterSet(tenant.userId, {
           hhAccountId: tenant.accountId,
-          filter: {},
+          filter: support.EXCLUDE_ARCHIVED_AND_BLACKLISTED,
           autoMode: "drafts",
           dailyLimit: 50,
           batchSize: 7,

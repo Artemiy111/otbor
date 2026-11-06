@@ -154,7 +154,7 @@ export const VacanciesTop = readTool("vacancies_top", {
 const SEARCH_DESCRIPTION = `Search the vacancy corpus with ad-hoc filters, for chat requests like "take 10 mediocre vacancies, around middle level, with Kubernetes, not big companies". Returns vacancies that have a decision (the pipeline makes decisions), joined with seniority, experience, top skills, employer, salary, fit, priority, account and hh url, so you can explain each choice. All criteria are ANDed. Filtering runs server-side in SQL with the same engine presets use (see presets_list / preset_preview). \`presetId\` and \`filter\` can be combined: the ad-hoc rules extend the preset's.
 
 PARAMETERS
-- filter: { rules?: [{field, op, value?}], text?, location? }. Blacklisted vacancies are excluded unless a rule on the hidden field is given; archived ones are excluded unless a rule on the archived field is given. Prefer rules.
+- filter: { rules?: [{field, op, value?}], text?, location? }. Nothing is excluded implicitly: unless the user asks for them, add {field:"archived",op:"is_false"} and {field:"hidden",op:"not_in",value:["app"]} to rules. Prefer rules.
 - verdict: apply (default) | draft | skip. The default "apply" only sees vacancies the policy would apply to; for "mediocre" or lower-fit requests pass verdict "draft" or "skip" and bound the score with minFit / maxFit (roughly 40-70 for mediocre).
 - minFit / maxFit: fit score bounds, 0-100.
 - account: hh account id, prefix or name. limit (default 10, max 50), offset.

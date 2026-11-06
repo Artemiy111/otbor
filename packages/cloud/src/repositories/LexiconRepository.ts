@@ -354,14 +354,8 @@ export interface VacancyFilterContext {
   /** Enables the default app-layer blacklist exclusion for presets. */
   readonly userId?: string
   /**
-   * The list's own archive toggle, not part of a stored filter: a stored filter
-   * excludes archived vacancies unless one of its rules is about `archived`.
-   */
-  readonly includeArchived?: boolean
-  /**
-   * The list's own toggle and the evaluator's override, not part of a stored
-   * filter: a stored filter excludes app-blacklisted companies unless one of
-   * its rules is about `hidden`.
+   * Evaluator override (manual check of a blacklisted vacancy): `hidden` rules
+   * stop counting the app-wide blacklist. Not part of a stored filter.
    */
   readonly includeBlacklisted?: boolean
 }
@@ -407,8 +401,8 @@ const liftAppBlacklist = (filter: PresetFilter): PresetFilter => {
 }
 
 /**
- * The clauses of a filter in evaluation order: the implicit ones
- * (archived, app blacklist, legacy `text`), every rule, every OR group.
+ * The clauses of a filter in evaluation order: the shorthand `text`, every
+ * rule, every OR group. Nothing is added implicitly.
  * `vacancyFilterSql` ANDs them; `evaluateFilter` reports each separately.
  */
 const filterParts = (
@@ -417,29 +411,6 @@ const filterParts = (
 ): ReadonlyArray<FilterPart> => {
   const parts: Array<FilterPart> = []
   const filter = context.includeBlacklisted === true ? liftAppBlacklist(source) : source
-
-  const allRules = [
-    ...(filter.rules ?? []),
-    ...(filter.groups ?? []).flatMap((group) => group.branches.flatMap((branch) => branch.rules))
-  ]
-  const hasArchivedRule = allRules.some((rule) => rule.field === "archived")
-  const hasHiddenRule = allRules.some((rule) => rule.field === "hidden")
-  if (context.includeArchived !== true && !hasArchivedRule) {
-    parts.push({ label: "not archived", clause: sql`not vacancy.archived` })
-  }
-
-  // A preset hides app-level blacklisted companies unless a `hidden` rule says
-  // otherwise. Account and hh-native layers stay out of a shared preset preview.
-  if (context.includeBlacklisted !== true && !hasHiddenRule && context.userId !== undefined) {
-    parts.push({
-      label: "not blacklisted",
-      clause: sql`not ${BlacklistRepository.appBlacklistExistsSql({
-        userId: context.userId,
-        employerExternalId: sql`(select e_bl.external_id from employer e_bl where e_bl.id = vacancy.employer_id)`,
-        vacancyExternalId: sql`vacancy.external_id`
-      })}`
-    })
-  }
 
   const text = filter.text?.trim()
   if (text !== undefined && text !== "") {
@@ -475,7 +446,7 @@ export const vacancyFilterSql = (
  * Evaluates a filter against one vacancy with the very SQL search uses: one
  * query, one boolean per clause. `failed` names every clause that did not
  * hold, so a skip can say which rules cost the vacancy. A missing vacancy
- * fails. `includeBlacklisted` lifts the implicit app blacklist exclusion.
+ * fails. `includeBlacklisted` lifts the app blacklist out of `hidden` rules.
  */
 export const evaluateFilter = (
   tx: Executor,
@@ -681,7 +652,8 @@ export const list = (
       ? null
       : `%${normalizeTerm(options.query)}%`
 
-    const filter = options.filter ?? {}
+    // Without a filter every keyword is listed, counted over active vacancies.
+    const filter: PresetFilter = options.filter ?? { rules: [{ field: "archived", op: "is_false" }] }
     const context = { userId: options.userId }
     const ids = filter.keywordIds ?? []
     const keywordClause = ids.length === 0

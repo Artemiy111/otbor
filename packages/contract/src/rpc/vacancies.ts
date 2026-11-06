@@ -57,8 +57,8 @@ export const VacanciesList = Rpc.make("VacanciesList", {
     /** Selects the account whose blacklist layers apply to this page. */
     hhAccountId: Schema.optional(HhAccountId),
     /**
-     * Ad-hoc rules, compiled by the same builder as presets. The archive
-     * toggle of the list (`includeArchived`) decides whether archived rows join, unless a rule is about `archived`.
+     * Ad-hoc rules, compiled by the same builder as presets. Ad-hoc
+     * rules are ANDed with the list's own `includeArchived` / `includeBlacklisted` toggles.
      */
     filter: Schema.optional(PresetFilter)
   }),

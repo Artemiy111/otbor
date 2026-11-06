@@ -101,6 +101,14 @@ export const emptyEditable = (): EditableFilter => ({
   keywordIds: undefined
 })
 
+/** Nothing is hidden implicitly: a new preset starts with these two rules, which it may delete. */
+export const NEW_PRESET_FILTER: PresetFilter = {
+  rules: [
+    { field: "archived", op: "is_false" },
+    { field: "hidden", op: "not_in", value: ["app"] }
+  ]
+}
+
 export const toEditable = (filter: PresetFilter | undefined): EditableFilter =>
   filter === undefined
     ? emptyEditable()

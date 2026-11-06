@@ -129,17 +129,19 @@ if (!integrationEnabled || serverUrl === null) {
       // The row stayed in the corpus; only visibility changed.
       expect((await hiddenTargetRowsFor(tenant.userId)).length).toBe(2)
 
-      // Preset preview excludes app-blocked rows by default and can opt in.
+      // A filter hides nothing on its own: app-blocked rows leave only by a `hidden` rule.
       const previewFilter = {
         rules: [{ field: "title" as const, op: "contains" as const, value: suffix }]
       }
-      const previewHidden = await presetPreview(tenant.userId, previewFilter)
+      expect((await presetPreview(tenant.userId, previewFilter)).count).toBe(3)
+      const previewHidden = await presetPreview(tenant.userId, {
+        rules: [...previewFilter.rules, { field: "hidden" as const, op: "not_in" as const, value: ["app"] }]
+      })
       expect(previewHidden.count).toBe(1)
       expect(previewHidden.vacancies.map((item) => String(item.id))).toEqual([
         visible.vacancyId
       ])
 
-      // A `hidden` rule replaces the implicit app blacklist exclusion.
       const previewShown = await presetPreview(tenant.userId, {
         rules: [...previewFilter.rules, { field: "hidden" as const, op: "not_in" as const, value: ["accounts"] }]
       })
