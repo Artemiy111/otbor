@@ -5,6 +5,7 @@ import { Effect, Layer } from "effect"
 import { Database } from "../../../src/db/Database.ts"
 import { AnalysisRunner } from "../../../src/services/AnalysisRunner.ts"
 import { ApplicationService } from "../../../src/services/ApplicationService.ts"
+import { BrowserApply } from "../../../src/services/BrowserApply.ts"
 import { ApplyFilterService } from "../../../src/services/ApplyFilterService.ts"
 import { AutoApplyRunner } from "../../../src/services/AutoApplyRunner.ts"
 import { AutoApplyViewService } from "../../../src/services/AutoApplyViewService.ts"
@@ -133,6 +134,7 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
     QueueService.layer.pipe(Layer.provide(shared)),
     NegotiationsSync.layer.pipe(Layer.provide(shared)),
     ApplicationService.layer.pipe(Layer.provide(shared)),
+    BrowserApply.layer.pipe(Layer.provide(shared)),
     InferenceService.layer.pipe(Layer.provide(shared)),
     LexiconService.layer.pipe(Layer.provide(shared)),
     PresetService.layer.pipe(Layer.provide(shared)),
@@ -148,6 +150,7 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
 type Requirements =
   | Database
   | ApplicationService
+  | BrowserApply
   | QueueService
   | NegotiationsSync
   | ResumeSync

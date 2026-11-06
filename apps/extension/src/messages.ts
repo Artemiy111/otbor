@@ -1,4 +1,4 @@
-import type { VacancyDraft, VacancyLookupItem } from "@otbor/contract"
+import type { FormAnswer, VacancyDraft, VacancyLookupItem } from "@otbor/contract"
 
 export interface Settings {
   /** The otbor RPC endpoint (`otbor up` serves it on 3001). */
@@ -24,6 +24,21 @@ export type Request =
     }
   | { readonly type: "lookup"; readonly externalIds: ReadonlyArray<string> }
   | { readonly type: "ping" }
+  /** Drafts of one hh vacancy, for its response form. */
+  | { readonly type: "drafts"; readonly externalId: string }
+  /** The operator pressed hh's button and hh confirmed. */
+  | { readonly type: "record"; readonly payload: RecordPayload }
+
+export interface RecordPayload {
+  readonly kind: "submit" | "letter"
+  readonly externalId: string
+  readonly resumeTitle: string | null
+  readonly letter: string | null
+  readonly answers: ReadonlyArray<FormAnswer>
+  readonly formHash: string | null
+  readonly url: string
+  readonly evidence: string
+}
 
 export type Reply<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string }
 

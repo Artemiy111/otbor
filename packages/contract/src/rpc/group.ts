@@ -20,7 +20,9 @@ import {
   VacancyLetterAttach,
   VacancyLetterAttachStatusGet,
   VacancyLetterDraftGet,
-  VacancyLetterDraftSave
+  VacancyLetterDraftSave,
+  VacancyBrowserDrafts,
+  ApplicationsRecordBrowserSubmit
 } from "./applications.ts"
 import {
   ApplyFilterFromPreset,
@@ -219,6 +221,8 @@ export const OtborRpcs = RpcGroup.make(
   VacancyLetterAttachStatusGet,
   VacancyLetterDraftGet,
   VacancyLetterDraftSave,
+  VacancyBrowserDrafts,
+  ApplicationsRecordBrowserSubmit,
   ApplicationsApprove,
   ApplicationsSkip,
   ApplicationsRetry,

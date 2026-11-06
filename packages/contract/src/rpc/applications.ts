@@ -2,9 +2,12 @@ import { Schema } from "effect"
 import { Rpc } from "effect/rpc"
 import { ApiError } from "../errors.ts"
 import { ApplicationId, HhAccountId, ResumeId, VacancyId } from "../ids.ts"
+import { FormAnswer } from "../form.ts"
 import {
   ApplicationDetail,
   ApplicationRecord,
+  BrowserDrafts,
+  BrowserSubmitResult,
   KitAnswer,
   KitRecord,
   LetterAttachStatus,
@@ -161,5 +164,37 @@ export const ApplicationsSetKit = Rpc.make("ApplicationsSetKit", {
     costUsd: Schema.optional(Schema.NullOr(Schema.Number))
   }),
   success: KitRecord,
+  error: ApiError
+})
+
+/**
+ * The drafts of one hh vacancy (by its hh id), for the extension to paste into
+ * the response form the operator opened on hh.ru. Read only.
+ */
+export const VacancyBrowserDrafts = Rpc.make("VacancyBrowserDrafts", {
+  payload: Schema.Struct({ externalId: Schema.String }),
+  success: BrowserDrafts,
+  error: ApiError
+})
+
+/**
+ * The operator pressed hh's own button in the browser and hh showed the
+ * result. `submit`: the response was sent; `letter`: a letter was added to a
+ * response hh already holds. The cloud checks `evidence` (the page markup after
+ * the click) itself and stores what was on the form. Never queues a browser job.
+ */
+export const ApplicationsRecordBrowserSubmit = Rpc.make("ApplicationsRecordBrowserSubmit", {
+  payload: Schema.Struct({
+    kind: Schema.Literals(["submit", "letter"]),
+    externalId: Schema.String,
+    /** The resume the form had selected, as hh titles it. */
+    resumeTitle: Schema.NullOr(Schema.String),
+    letter: Schema.NullOr(Schema.String),
+    answers: Schema.Array(FormAnswer),
+    formHash: Schema.NullOr(Schema.String),
+    url: Schema.String,
+    evidence: Schema.String
+  }),
+  success: BrowserSubmitResult,
   error: ApiError
 })

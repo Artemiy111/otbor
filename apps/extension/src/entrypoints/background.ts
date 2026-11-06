@@ -44,6 +44,10 @@ const handle = async (request: Request): Promise<unknown> => {
       return call((api) => api.SystemHealth())
     case "lookup":
       return lookup(request.externalIds)
+    case "drafts":
+      return call((api) => api.VacancyBrowserDrafts({ externalId: request.externalId }))
+    case "record":
+      return call((api) => api.ApplicationsRecordBrowserSubmit(request.payload))
     case "capture": {
       const result = await call((api) => api.VacanciesUpsert({ drafts: request.drafts }))
       if (request.evaluate) {

@@ -11,6 +11,7 @@ import {
 } from "@/overlay.ts"
 import { externalIdOf, pageKind, readSearch, readVacancy } from "@/page.ts"
 import { loadSettings } from "@/settings.ts"
+import { startResponseWatch } from "@/respond.ts"
 
 export default defineContentScript({
   matches: ["*://*.hh.ru/*"],
@@ -35,6 +36,7 @@ export default defineContentScript({
     }
 
     let lastUrl = ""
+    let responses: ReturnType<typeof startResponseWatch> | null = null
 
     const run = async (fresh: boolean): Promise<void> => {
       if (running) return
@@ -91,6 +93,7 @@ export default defineContentScript({
       new MutationObserver(() => {
         clearTimeout(repaint)
         repaint = setTimeout(() => {
+          responses?.check()
           if (running) return
           if (pageKind() === "search" && cards.size > 0 && hasUnpaintedCards()) paintCards(cards)
           if (pageKind() === "vacancy" && panel !== null && vacancyRowsMissing()) {
@@ -101,10 +104,14 @@ export default defineContentScript({
     }
 
     const start = () => {
+      responses = startResponseWatch(send)
+      responses.check()
       watch()
       void run(false)
       // hh moves between result pages and vacancies without a full reload.
       setInterval(() => {
+        // The response form appears without a navigation (a popup, a toggle).
+        responses?.check()
         if (location.href !== lastUrl && !running) void run(true)
       }, 1000)
     }

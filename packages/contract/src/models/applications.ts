@@ -233,3 +233,64 @@ export const LetterDraft = Schema.Struct({
 })
 
 export type LetterDraft = typeof LetterDraft.Type
+
+/* -------------------------------------------------------------------------- */
+/* The browser extension on hh's own response form                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One draft the extension can paste into hh's response form when the operator
+ * opens it by hand: the newest kit of an application to the vacancy. The
+ * extension matches it to the resume the form has selected.
+ */
+export const BrowserDraft = Schema.Struct({
+  applicationId: ApplicationId,
+  hhAccountId: HhAccountId,
+  accountName: Schema.NullOr(Schema.String),
+  resumeId: Schema.NullOr(ResumeId),
+  resumeTitle: Schema.NullOr(Schema.String),
+  state: ApplicationState,
+  /** The form the kit was written for; null without a kit. */
+  formHash: Schema.NullOr(Schema.String),
+  letter: Schema.NullOr(Schema.String),
+  answers: Schema.Array(FormAnswer),
+  /** The unsent letter for a response hh already holds (letter draft). */
+  pendingLetter: Schema.NullOr(Schema.String),
+  updatedAt: Schema.String
+})
+
+export type BrowserDraft = typeof BrowserDraft.Type
+
+export const BrowserDrafts = Schema.Struct({
+  /** null when the vacancy is not in the corpus. */
+  vacancyId: Schema.NullOr(VacancyId),
+  drafts: Schema.Array(BrowserDraft)
+})
+
+export type BrowserDrafts = typeof BrowserDrafts.Type
+
+/**
+ * `recorded`: the application is stored as submitted (or its letter stored).
+ * `already`: it was submitted before; nothing changed. `in_flight`: otbor's own
+ * submit is queued or running, so the cloud leaves it to the reconcile.
+ * `unconfirmed`: the evidence shows no response. `unknown_vacancy`: the
+ * vacancy is not in the corpus. `no_account`: the hh account is ambiguous.
+ */
+export const BrowserSubmitStatus = Schema.Literals([
+  "recorded",
+  "already",
+  "in_flight",
+  "unconfirmed",
+  "unknown_vacancy",
+  "no_account"
+])
+
+export type BrowserSubmitStatus = typeof BrowserSubmitStatus.Type
+
+export const BrowserSubmitResult = Schema.Struct({
+  status: BrowserSubmitStatus,
+  application: Schema.NullOr(ApplicationRecord),
+  message: Schema.NullOr(Schema.String)
+})
+
+export type BrowserSubmitResult = typeof BrowserSubmitResult.Type
