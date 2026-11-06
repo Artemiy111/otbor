@@ -363,7 +363,7 @@ describe("mergeTextFacts", () => {
 
   test("the merged result keeps the VacancyTextFacts shape", () => {
     const merged = merge("Расскажите о себе. Тестовое задание.", devops)
-    expect(Object.keys(merged).sort()).toEqual(["applicationRequests", "conditions", "coverLetter", "redFlags"])
+    expect(Object.keys(merged).sort()).toEqual(["applicationRequests", "conditions", "coverLetter", "redFlags", "salary"])
     expect(merged.conditions).not.toBeNull()
     expect(Object.keys(merged.conditions!).sort()).toEqual(
       Object.keys(detectVacancyTextFacts("Тестовое задание.").conditions!).sort()

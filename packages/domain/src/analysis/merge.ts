@@ -219,5 +219,5 @@ export const mergeTextFacts = (
     return flag === undefined ? [] : [flag]
   })
 
-  return { coverLetter, applicationRequests, conditions, redFlags }
+  return { coverLetter, applicationRequests, conditions, redFlags, salary: regexFacts.salary ?? null }
 }

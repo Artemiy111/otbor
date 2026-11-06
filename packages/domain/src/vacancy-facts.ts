@@ -14,6 +14,7 @@ import type {
   VacancyConditions,
   VacancyTextFacts
 } from "@otbor/contract"
+import { detectSalaryInText } from "./salary-text.ts"
 import { collapseWhitespace } from "./text.ts"
 
 type OvertimePolicy = NonNullable<VacancyConditions["overtime"]>
@@ -743,6 +744,7 @@ export const detectVacancyTextFacts = (text: string | null | undefined): Vacancy
     coverLetter: detectCoverLetter(text),
     applicationRequests: detectApplicationRequests(text),
     conditions,
-    redFlags: overtime === "paid" || overtime === "none" ? flags.filter((flag) => flag.code !== "overtime") : flags
+    redFlags: overtime === "paid" || overtime === "none" ? flags.filter((flag) => flag.code !== "overtime") : flags,
+    salary: detectSalaryInText(text)
   }
 }

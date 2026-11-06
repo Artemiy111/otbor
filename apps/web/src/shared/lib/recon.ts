@@ -291,8 +291,10 @@ export const buildRecon = (
 
   /* ---- pluses -------------------------------------------------------------- */
   const hasSalary = detail.vacancy.salaryFrom != null || detail.vacancy.salaryTo != null
+  const textSalary = text?.salary ?? null
   add("salary", "perk", "Зарплата указана", {
     hh: hasSalary ? yes() : no(),
+    text: textSalary === null ? NONE : yes(textSalary.evidence),
     ai: aiBool(a?.salaryInText)
   })
   add("bonus", "perk", "Премии", { ai: aiBool(a?.bonus) })

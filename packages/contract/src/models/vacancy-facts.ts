@@ -68,6 +68,17 @@ export const VacancyConditions = Schema.Struct({
 })
 export type VacancyConditions = typeof VacancyConditions.Type
 
+/** A monthly salary stated in the description text itself. */
+export const SalaryInText = Schema.Struct({
+  from: Schema.NullOr(Schema.Number),
+  to: Schema.NullOr(Schema.Number),
+  currency: Schema.Literals(["RUB", "USD", "EUR"]),
+  /** true = before tax, false = after tax, null = not said. */
+  gross: Schema.NullOr(Schema.Boolean),
+  evidence: Schema.String
+})
+export type SalaryInText = typeof SalaryInText.Type
+
 /** Facts found by deterministic detectors in the vacancy text. */
 export const VacancyTextFacts = Schema.Struct({
   coverLetter: Schema.Struct({
@@ -77,7 +88,8 @@ export const VacancyTextFacts = Schema.Struct({
   }),
   applicationRequests: Schema.Array(ApplicationRequest),
   conditions: Schema.NullOr(VacancyConditions),
-  redFlags: Schema.Array(RedFlag)
+  redFlags: Schema.Array(RedFlag),
+  salary: Schema.optional(Schema.NullOr(SalaryInText))
 })
 export type VacancyTextFacts = typeof VacancyTextFacts.Type
 
