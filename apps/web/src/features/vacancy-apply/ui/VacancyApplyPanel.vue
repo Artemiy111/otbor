@@ -633,6 +633,7 @@ const NO_FORM = "no-form"
       :account-id="accountId"
       :resume-id="resumeId"
       :applications="applications"
+      :sent-letter="state === 'submitted' ? (savedKit?.letter ?? null) : null"
     />
 
     <template v-else>

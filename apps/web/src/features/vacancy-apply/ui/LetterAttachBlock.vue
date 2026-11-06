@@ -16,6 +16,8 @@ const props = defineProps<{
   accountId: string
   resumeId: string
   applications: ReadonlyArray<ApplicationRecord>
+  /** The letter that went to hh with the response of this resume, when it had one. */
+  sentLetter?: string | null
 }>()
 
 const MAX_LETTER = 2000
@@ -93,6 +95,13 @@ const { query: statusQuery, status } = useLetterStatus(
 )
 const active = computed(() => status.value?.status === "pending" || status.value?.status === "running")
 
+/** What hh already holds: the letter added later, else the one sent with the response. */
+const sentText = computed(() => {
+  if (status.value?.status === "sent" && (status.value.letter ?? "").trim() !== "") return status.value.letter!.trim()
+  const withResponse = (props.sentLetter ?? "").trim()
+  return withResponse === "" ? null : withResponse
+})
+
 const busy = ref(false)
 const errorText = ref<string | null>(null)
 
@@ -117,7 +126,13 @@ const send = async () => {
 </script>
 
 <template>
-  <div v-if="status?.status !== 'sent'" class="space-y-2">
+  <div v-if="sentText !== null" class="space-y-1.5">
+    <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      Отправленное сопроводительное
+    </span>
+    <p class="whitespace-pre-line rounded-md border border-border bg-muted/30 p-3 leading-relaxed">{{ sentText }}</p>
+  </div>
+  <div v-else-if="status?.status !== 'sent'" class="space-y-2">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         Письмо к отправленному отклику
