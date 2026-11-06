@@ -58,8 +58,21 @@ type Field = HTMLTextAreaElement | HTMLElement
 /* Page reading                                                               */
 /* -------------------------------------------------------------------------- */
 
+/** The card whose "Откликнуться" opened the popup on a search page: the popup itself names no vacancy. */
+const SERP_CARD_SELECTOR = '[data-qa="vacancy-serp__vacancy"]'
+const SERP_RESPONSE_SELECTOR = '[data-qa*="vacancy_response"], [data-qa*="vacancy-response"]'
+let serpVacancyId: string | null = null
+
+const rememberSerpVacancy = (target: Element): void => {
+  if (target.closest(SERP_RESPONSE_SELECTOR) === null) return
+  const href = target.closest(SERP_CARD_SELECTOR)?.querySelector("a[data-qa='serp-item__title']")?.getAttribute("href") ?? ""
+  const id = /\/vacancy\/(\d+)/.exec(href)?.[1]
+  if (id !== undefined) serpVacancyId = id
+}
+
 const vacancyExternalId = (): string | null => {
   const url = new URL(location.href)
+  if (url.pathname.startsWith("/search/vacancy")) return serpVacancyId
   const fromUrl = url.searchParams.get("vacancyId") ?? /^\/vacancy\/(\d+)/.exec(url.pathname)?.[1] ?? null
   if (fromUrl !== null && /^\d+$/.test(fromUrl)) return fromUrl
   const input = document.querySelector<HTMLInputElement>('input[name="vacancyId"], input[name="vacancy_id"]')
@@ -567,6 +580,7 @@ export const startResponseWatch = (
     (event) => {
       const target = event.target instanceof Element ? event.target : null
       if (target === null) return
+      rememberSerpVacancy(target)
       const externalId = vacancyExternalId()
       if (externalId === null) return
       if (target.closest(SUBMIT_SELECTOR) !== null) {
