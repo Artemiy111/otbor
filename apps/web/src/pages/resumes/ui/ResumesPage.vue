@@ -82,6 +82,7 @@ const showFullText = ref(false)
 // The lexicon, counted over the vacancies of the chosen preset ("all" is the whole corpus).
 const highlightPresetId = ref("all")
 const skillThreshold = ref<string | number>(10)
+const keywordThreshold = ref<string | number>(20)
 const presetsQuery = useQuery({
   key: () => presetKeys.list("all"),
   query: () => presetApi.list({})
@@ -94,18 +95,27 @@ const keywordsQuery = useQuery({
       presetId: highlightPresetId.value === "all" ? undefined : highlightPresetId.value
     })
 })
+/** A threshold input as a whole number of at least `min`; an empty field is `min`. */
+const thresholdOf = (value: string | number, min: number): number => Math.max(min, Math.trunc(Number(value)) || min)
+const skillLimit = computed(() => thresholdOf(skillThreshold.value, 1))
+const keywordLimit = computed(() => thresholdOf(keywordThreshold.value, 0))
 /**
- * Yellow: a keyword that occurs in the text of at least one vacancy of the selection.
- * Red: a keyword that at least `skillThreshold` vacancies list among their hh skills.
+ * Red: a keyword that at least `skillLimit` vacancies list among their hh skills.
+ * Yellow: any other keyword that occurs in the text of at least `keywordLimit` vacancies
+ * (0 keeps every keyword of the lexicon, even one no vacancy mentions).
  */
-const highlightTerms = computed<ReadonlyArray<HighlightTerm>>(() => {
-  const threshold = Math.max(1, Math.trunc(Number(skillThreshold.value)) || 1)
-  return (keywordsQuery.data.value ?? []).flatMap((keyword) => {
-    const kind = keyword.skillVacancyCount >= threshold ? "skill" : keyword.vacancyCount > 0 ? "keyword" : null
+const highlightTerms = computed<ReadonlyArray<HighlightTerm>>(() =>
+  (keywordsQuery.data.value ?? []).flatMap((keyword) => {
+    const kind =
+      keyword.skillVacancyCount >= skillLimit.value
+        ? "skill"
+        : keyword.vacancyCount >= keywordLimit.value
+          ? "keyword"
+          : null
     if (kind === null) return []
     return [keyword.term, ...keyword.aliases.map((a) => a.alias)].map((text) => ({ text, kind }) as const)
   })
-})
+)
 
 const comment = ref("")
 /** "auto": work it out from the resume (the last job has no end date). */
@@ -365,13 +375,17 @@ const refresh = () => {
                 <Label for="highlight-threshold" class="text-xs text-muted-foreground">Навык красным от, вакансий</Label>
                 <Input id="highlight-threshold" v-model="skillThreshold" type="number" min="1" class="w-[120px]" />
               </div>
+              <div class="space-y-1.5">
+                <Label for="highlight-keyword-threshold" class="text-xs text-muted-foreground">Слово жёлтым от, вакансий</Label>
+                <Input id="highlight-keyword-threshold" v-model="keywordThreshold" type="number" min="0" class="w-[120px]" />
+              </div>
             </div>
             <div class="flex flex-wrap items-center justify-between gap-2">
               <h3 class="text-sm font-semibold">Что видит ИИ</h3>
               <p class="text-xs text-muted-foreground">
                 В тексте подсвечено:
-                <mark class="rounded-sm bg-yellow-200/80 px-1 text-foreground dark:bg-yellow-400/25">слово из текстов вакансий</mark>
-                <mark class="ml-1 rounded-sm bg-red-200/70 px-1 text-foreground dark:bg-red-500/30">навык hh из ≥ {{ Math.max(1, Math.trunc(Number(skillThreshold)) || 1) }} вакансий</mark>
+                <mark class="rounded-sm bg-yellow-200/80 px-1 text-foreground dark:bg-yellow-400/25">ключевое слово из ≥ {{ keywordLimit }} вакансий</mark>
+                <mark class="ml-1 rounded-sm bg-red-200/70 px-1 text-foreground dark:bg-red-500/30">навык hh из ≥ {{ skillLimit }} вакансий</mark>
               </p>
             </div>
             <dl class="grid gap-3 text-sm sm:grid-cols-[160px_1fr]">
