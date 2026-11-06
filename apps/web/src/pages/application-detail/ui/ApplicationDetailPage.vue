@@ -294,7 +294,7 @@ const cost = (value: number | null | undefined): string =>
               class="font-normal"
               :title="reason.code"
             >
-              {{ decisionReasonLabel(reason.code) }}<template v-if="reason.detail">: {{ decisionReasonDetail(reason.code, reason.detail) }}</template>
+              {{ decisionReasonLabel(reason.code) }}<template v-if="reason.detail">: {{ decisionReasonDetail(reason, data.decision.createdAt) }}</template>
             </Badge>
           </div>
         </CardContent>

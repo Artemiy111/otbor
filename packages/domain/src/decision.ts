@@ -58,7 +58,6 @@ export interface DecisionSettings {
  * (`livePriorityExpr` in the cloud's DecisionRepository); the stored value is
  * only a snapshot.
  */
-/** A vacancy age for people: "5ч" under a day, "7д 4ч" from a day on. */
 export const formatAgeHours = (hours: number): string => {
   const total = Math.max(0, Math.round(hours))
   if (total < 24) return `${total}ч`
@@ -205,6 +204,10 @@ export const decide = (input: DecideInput): DecisionResult => {
     settings.freshHalfLifeHours
   )
   const priority = Math.round(fit * freshness * 100) / 100
+  // The detail is the publication instant (ISO 8601); how old that is gets worked out where it is shown.
+  const publishedIso = ageHours === null || vacancy.publishedAt === null
+    ? undefined
+    : new Date(vacancy.publishedAt).toISOString()
 
   const fitSource = input.fitOverride !== undefined ? "llm" : "deterministic"
   const reasons: DecisionReason[] = [reason("fit", `${fitSource} ${fit}`, fit / 100)]
@@ -217,7 +220,7 @@ export const decide = (input: DecideInput): DecisionResult => {
   }
   if (levelDetail !== null) reasons.push(reason("seniority", levelDetail, 1))
   reasons.push(
-    reason("freshness", ageHours === null ? "unknown" : formatAgeHours(ageHours), freshness)
+    reason("freshness", publishedIso, freshness)
   )
 
   return {

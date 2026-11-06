@@ -58,6 +58,15 @@ export const formatAge = (seconds: number): string => {
   return `${Math.round(seconds / 86_400)} д`
 }
 
+/** A duration in hours as "5ч" under a day, "7д 4ч" from a day on. */
+export const formatAgeHours = (hours: number): string => {
+  const total = Math.max(0, Math.round(hours))
+  if (total < 24) return `${total}ч`
+  const days = Math.floor(total / 24)
+  const rest = total % 24
+  return rest === 0 ? `${days}д` : `${days}д ${rest}ч`
+}
+
 export const formatDuration = (seconds: number): string => {
   if (!Number.isFinite(seconds) || seconds <= 0) return "—"
   if (seconds < 60) return `${Math.round(seconds)} с`
