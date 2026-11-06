@@ -9,6 +9,7 @@ import { AccountChip, hhAccountApi, hhAccountKeys } from "@/entities/hh-account"
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { RefreshButton } from "@/features/refresh-button"
 import {
+  decisionReasonDetail,
   decisionReasonLabel,
   describeError,
   formatDate,
@@ -293,7 +294,7 @@ const cost = (value: number | null | undefined): string =>
               class="font-normal"
               :title="reason.code"
             >
-              {{ decisionReasonLabel(reason.code) }}<template v-if="reason.detail">: {{ reason.detail }}</template>
+              {{ decisionReasonLabel(reason.code) }}<template v-if="reason.detail">: {{ decisionReasonDetail(reason.code, reason.detail) }}</template>
             </Badge>
           </div>
         </CardContent>

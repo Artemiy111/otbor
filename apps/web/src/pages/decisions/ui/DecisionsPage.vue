@@ -13,6 +13,7 @@ import { decisionVerdictOptions } from "@/features/decision-filter"
 import { RefreshButton } from "@/features/refresh-button"
 import {
   applicationPath,
+  decisionReasonDetail,
   decisionReasonLabel,
   describeError,
   formatDate,
@@ -112,7 +113,7 @@ const columns: ColumnDef<DecisionRecord>[] = [
                   },
                   () => [
                     decisionReasonLabel(reason.code),
-                    reason.detail ? `: ${reason.detail}` : null,
+                    reason.detail ? `: ${decisionReasonDetail(reason.code, reason.detail)}` : null,
                     h("span", { class: "ml-1 font-mono text-[10px] opacity-60" }, reason.code)
                   ]
                 )

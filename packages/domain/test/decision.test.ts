@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { DEFAULT_APPLY_SETTINGS, DEFAULT_BOOSTS } from "../src/applyFilter.ts"
-import { decide } from "../src/decision.ts"
+import { decide, formatAgeHours } from "../src/decision.ts"
 import type { DecisionSettings, FilterOutcome, VacancySignal } from "../src/decision.ts"
 import { matchLexicon } from "../src/lexicon.ts"
 import type { LexiconEntryInput, LexiconMatch } from "../src/lexicon.ts"
@@ -198,5 +198,14 @@ describe("decide", () => {
     const result = run({ publishedAt: null })
     expect(result.verdict).toBe("apply")
     expect(result.reasons.find((r) => r.code === "freshness")?.detail).toBe("unknown")
+  })
+})
+
+describe("formatAgeHours", () => {
+  test("hours under a day, days and hours after", () => {
+    expect(formatAgeHours(5)).toBe("5ч")
+    expect(formatAgeHours(23.6)).toBe("1д")
+    expect(formatAgeHours(172)).toBe("7д 4ч")
+    expect(formatAgeHours(561)).toBe("23д 9ч")
   })
 })

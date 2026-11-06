@@ -1,3 +1,4 @@
+import { formatAgeHours } from "@otbor/domain"
 export type StatusTone = "success" | "info" | "warning" | "danger" | "neutral"
 
 const SUCCESS = new Set([
@@ -183,6 +184,13 @@ export const statusTone = (value: string): StatusTone => {
 }
 
 export const seniorityLabel = (value: string): string => LABELS[value] ?? value
+
+/** The reason detail as shown; decisions stored before the change hold "561h old". */
+export const decisionReasonDetail = (code: string, detail: string | null | undefined): string | null => {
+  if (detail === null || detail === undefined || detail === "") return null
+  const legacy = code === "freshness" ? /^(\d+)h old$/.exec(detail) : null
+  return legacy === null ? detail : formatAgeHours(Number(legacy[1]))
+}
 
 export const decisionReasonLabel = (value: string): string => LABELS[value] ?? value
 

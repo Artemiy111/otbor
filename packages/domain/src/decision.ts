@@ -58,6 +58,15 @@ export interface DecisionSettings {
  * (`livePriorityExpr` in the cloud's DecisionRepository); the stored value is
  * only a snapshot.
  */
+/** A vacancy age for people: "5ч" under a day, "7д 4ч" from a day on. */
+export const formatAgeHours = (hours: number): string => {
+  const total = Math.max(0, Math.round(hours))
+  if (total < 24) return `${total}ч`
+  const days = Math.floor(total / 24)
+  const rest = total % 24
+  return rest === 0 ? `${days}д` : `${days}д ${rest}ч`
+}
+
 export const APPLY_POLICY_VERSION = 5
 
 export interface DecideInput {
@@ -208,7 +217,7 @@ export const decide = (input: DecideInput): DecisionResult => {
   }
   if (levelDetail !== null) reasons.push(reason("seniority", levelDetail, 1))
   reasons.push(
-    reason("freshness", ageHours === null ? "unknown" : `${Math.round(ageHours)}h old`, freshness)
+    reason("freshness", ageHours === null ? "unknown" : formatAgeHours(ageHours), freshness)
   )
 
   return {
