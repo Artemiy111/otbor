@@ -281,35 +281,23 @@ const renderText = (parts: {
   return blocks.join("\n\n")
 }
 
-/** Every string leaf of a value, in order. */
-const leafStrings = (value: unknown, depth = 0): ReadonlyArray<string> => {
-  if (typeof value === "string") return [value]
-  if (depth > 4 || value === null || typeof value !== "object") return []
-  return Object.values(value as Obj).flatMap((item) => leafStrings(item, depth + 1))
-}
-
-const DEGREE_LABELS: Record<string, string> = {
-  l1: "A1", l2: "A2", l3: "B1", l4: "B2", l5: "C1", l6: "C2", native: "родной"
-}
+/** hh's id of English in the resume's language block (34 is Russian). */
+const HH_ENGLISH_ID = 57
 
 /**
- * The English entry of the resume's language block. hh states the degree as a
- * CEFR level or a word; the exact field names are not guaranteed, so every
- * string of the entry is inspected.
+ * The English entry of the resume's language block. hh sends
+ * `language: [{ id: 57, degree: "c1" }]`: a language id and a degree that is a
+ * CEFR level (`a1`..`c2`) or `l1` for a native speaker.
  */
 const readEnglishLevel = (language: unknown): string | null => {
-  const items = Array.isArray(language) ? language : language === undefined || language === null ? [] : [language]
-  for (const item of items) {
-    const leaves = leafStrings(item).map((leaf) => leaf.trim()).filter((leaf) => leaf !== "")
-    if (!leaves.some((leaf) => /^(eng|en|англ)/i.test(leaf) || /english|английск/i.test(leaf))) continue
-    for (const leaf of leaves) {
-      const cefr = leaf.match(/\b([abc][12])\b/i)?.[1]
-      if (cefr) return cefr.toUpperCase()
-      const code = DEGREE_LABELS[leaf.toLowerCase()]
-      if (code) return code
-    }
-    const word = leaves.find((leaf) => !/^(eng|en)$/i.test(leaf) && !/english|английск/i.test(leaf) && !/^\d+$/.test(leaf))
-    return word ?? null
+  if (!Array.isArray(language)) return null
+  for (const item of language) {
+    const entry = objectOf(item)
+    if (entry === null || Number(entry.id) !== HH_ENGLISH_ID) continue
+    const degree = readString(entry.degree)?.toLowerCase()
+    if (degree === undefined || degree === null) return null
+    if (degree === "l1") return "родной"
+    return /^[abc][12]$/.test(degree) ? degree.toUpperCase() : null
   }
   return null
 }
@@ -357,7 +345,7 @@ export const parseResumePage = (html: string): ParsedResume | null => {
     relocation: readStrings(resume.relocation)[0] ?? null,
     businessTripReadiness: readStrings(resume.businessTripReadiness)[0] ?? null,
     travelTime: readStrings(resume.travelTime)[0] ?? null,
-    englishLevel: readEnglishLevel(resume.language ?? resume.languages),
+    englishLevel: readEnglishLevel(resume.language),
     professionalRole: readString(role?.text) ?? readString(role?.string),
     updatedAt: toIso(attributes.updated)
   }

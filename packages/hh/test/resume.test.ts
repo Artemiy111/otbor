@@ -47,12 +47,12 @@ describe("parseResumePage", () => {
     expect(resume!.updatedAt).toBe("2023-11-14T22:13:20.000Z")
   })
 
-  test("reads the English level from the language block, whatever shape hh uses", () => {
+  test("reads the English level from the language block as hh sends it", () => {
     const level = (language: unknown) => parseResumePage(resumeHtml({ language }))?.englishLevel
-    expect(level([{ id: "rus", string: "Русский", degree: "native" }, { id: "eng", string: "Английский", degree: "b2" }])).toBe("B2")
-    expect(level([{ name: "Английский", degree: { id: "l4", string: "Средне-продвинутый" } }])).toBe("B2")
-    expect(level([{ string: "Английский — C1 — Продвинутый" }])).toBe("C1")
-    expect(level([{ string: "Немецкий", degree: "a2" }])).toBeNull()
+    // Shape taken from a live resume page: language ids, no names; 34 is Russian, 57 English.
+    expect(level([{ degree: "l1", id: 34 }, { degree: "b2", id: 57 }, { degree: "b1", id: 16 }])).toBe("B2")
+    expect(level([{ degree: "l1", id: 57 }])).toBe("родной")
+    expect(level([{ degree: "l1", id: 34 }, { degree: "b1", id: 16 }])).toBeNull()
     expect(level(undefined)).toBeNull()
   })
 
