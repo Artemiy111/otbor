@@ -85,7 +85,9 @@ export const AutoApplyProgress = Rpc.make("AutoApplyProgress", {
   payload: Schema.Struct({
     hhAccountId: Schema.optional(HhAccountId),
     limit: Schema.optional(Schema.Int),
-    activeOnly: Schema.optional(Schema.Boolean)
+    activeOnly: Schema.optional(Schema.Boolean),
+    /** One application (any age or state); the other filters are ignored. */
+    applicationId: Schema.optional(ApplicationId)
   }),
   success: AutoApplyProgressResult,
   error: ApiError

@@ -18,6 +18,7 @@ export interface AutoApplyProgressInput {
   readonly hhAccountId?: string
   readonly limit?: number
   readonly activeOnly?: boolean
+  readonly applicationId?: string
 }
 
 export interface AutoApplyRetryInput {
@@ -39,7 +40,8 @@ export const autoApplyApi = {
       client.AutoApplyProgress({
         hhAccountId: input.hhAccountId as HhAccountId | undefined,
         limit: input.limit,
-        activeOnly: input.activeOnly
+        activeOnly: input.activeOnly,
+        applicationId: input.applicationId as ApplicationId | undefined
       })
     ),
   retry: (input: AutoApplyRetryInput): Promise<AutoApplyRetryResult> =>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { autoRunLabel } from "@/entities/auto-apply"
-import { computed } from "vue"
+import { autoApplyApi, autoApplyStageMeta, autoRunLabel } from "@/entities/auto-apply"
+import { computed, onBeforeUnmount } from "vue"
 import { describeKitAnswer } from "@otbor/contract"
 import { useQuery } from "@pinia/colada"
 import { CircleAlert } from "@lucide/vue"
@@ -47,6 +47,19 @@ const query = useQuery({
 })
 
 const data = computed(() => query.data.value)
+
+const progressQuery = useQuery({
+  key: () => ["auto-apply", "application", props.id],
+  query: () => autoApplyApi.progress({ applicationId: props.id }),
+  enabled: () => data.value?.application.autoRun != null && !data.value?.kit
+})
+const progress = computed(() => progressQuery.data.value?.items[0] ?? null)
+const poll = setInterval(() => {
+  if (!document.hidden && progressQuery.asyncStatus.value === "idle" && data.value?.application.autoRun != null && !data.value?.kit) {
+    void progressQuery.refetch()
+  }
+}, 5000)
+onBeforeUnmount(() => clearInterval(poll))
 
 const accountsQuery = useQuery({
   key: () => hhAccountKeys.list(),
@@ -194,6 +207,21 @@ const cost = (value: number | null | undefined): string =>
             </div>
             <p v-else class="text-sm text-muted-foreground">Ответов на вопросы нет.</p>
           </template>
+          <div v-else-if="progress" class="space-y-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">{{ autoApplyStageMeta(progress.stage).label }}</Badge>
+              <span class="text-sm text-muted-foreground">{{ progress.stageDetail }}</span>
+            </div>
+            <p v-if="progress.lastError" class="text-sm text-destructive">{{ progress.lastError }}</p>
+            <template v-if="progress.writingJob?.resultText">
+              <h3 class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Ответ модели (не сохранён как письмо)
+              </h3>
+              <pre
+                class="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/30 p-4 text-xs leading-relaxed text-muted-foreground"
+              >{{ progress.writingJob.resultText }}</pre>
+            </template>
+          </div>
           <EmptyState
             v-else
             title="Комплект не подготовлен"

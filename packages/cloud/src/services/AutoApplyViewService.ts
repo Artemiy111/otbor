@@ -39,6 +39,7 @@ export interface AutoApplyViewServiceShape {
     readonly hhAccountId?: string | undefined
     readonly limit?: number | undefined
     readonly activeOnly?: boolean | undefined
+    readonly applicationId?: string | undefined
   }) => Effect.Effect<AutoApplyProgressResult, ApiError>
   /**
    * Gives a dead cover-letter job a way out: frees its idempotency slot and
@@ -78,6 +79,7 @@ interface ProgressRow {
   readonly write_created: Date | string | null
   readonly write_updated: Date | string | null
   readonly write_error: string | null
+  readonly write_text: string | null
   readonly submit_status: string | null
   readonly intent_at: Date | string | null
   readonly write_retries: number | null
@@ -187,6 +189,7 @@ const progressRows = (tx: Executor, userId: string, where: SQL) =>
         wj.id as write_id, wj.status as write_status, wj.attempts as write_attempts,
         wj.max_attempts as write_max, wj.created_at as write_created,
         wj.updated_at as write_updated, wj.last_error as write_error,
+        left(wj.result->>'text', 20000) as write_text,
         (select count(*)::int from harness_jobs rj2
           where rj2.idempotency_key like 'autoapply:writing:' || a.id::text || ':%:retried:%') as write_retries,
         sj.status as submit_status,
@@ -205,7 +208,7 @@ const progressRows = (tx: Executor, userId: string, where: SQL) =>
       -- the key is writingKey(application, formHash) of AutoApplyRunner; a replaced
       -- (retried) job keeps its history under '<key>:retried:<n>'
       left join lateral (
-        select j.id, j.status, j.attempts, j.max_attempts, j.created_at, j.updated_at, j.last_error
+        select j.id, j.status, j.attempts, j.max_attempts, j.created_at, j.updated_at, j.last_error, j.result
         from harness_jobs j
         where j.idempotency_key = 'autoapply:writing:' || a.id::text || ':' || ver.form_hash
       ) wj on true
@@ -346,9 +349,11 @@ export class AutoApplyViewService extends Context.Service<AutoApplyViewService, 
               progressRows(
                 tx,
                 userId,
-                sql`${accountFilter}
+                input.applicationId === undefined
+                  ? sql`${accountFilter}
                   and (a.state in ('draft', 'queued', 'submitting')
                     or a.updated_at > now() - ${`${RECENT_DAYS} days`}::interval)`
+                  : sql`a.id = ${input.applicationId}`
               )
             )
             .pipe(Effect.mapError(toStorageError("autoApply.progress")))
@@ -392,7 +397,8 @@ export class AutoApplyViewService extends Context.Service<AutoApplyViewService, 
                       maxAttempts: row.write_max ?? 3,
                       startedAt: iso(row.write_created),
                       finishedAt: ended ? iso(row.write_updated) : null,
-                      error: row.write_error
+                      error: row.write_error,
+                      resultText: row.kit_exists ? null : row.write_text
                     },
               formReadStatus: row.read_status,
               letter: row.kit_letter,

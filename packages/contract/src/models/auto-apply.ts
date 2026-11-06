@@ -92,7 +92,9 @@ export const AutoApplyWritingJob = Schema.Struct({
   startedAt: Schema.optional(Schema.NullOr(Schema.String)),
   /** Last update of a job that ended (done, failed, dead, cancelled). */
   finishedAt: Schema.optional(Schema.NullOr(Schema.String)),
-  error: Schema.optional(Schema.NullOr(Schema.String))
+  error: Schema.optional(Schema.NullOr(Schema.String)),
+  /** Raw text the model answered with (only when the job is done), trimmed. */
+  resultText: Schema.optional(Schema.NullOr(Schema.String))
 })
 
 export type AutoApplyWritingJob = typeof AutoApplyWritingJob.Type
