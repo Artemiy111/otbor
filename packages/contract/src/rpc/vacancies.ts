@@ -1,7 +1,8 @@
 import { Schema } from "effect"
 import { Rpc } from "effect/rpc"
 import { ApiError } from "../errors.ts"
-import { HhAccountId, VacancyId } from "../ids.ts"
+import { ApplicationState } from "../enums.ts"
+import { ApplicationId, HhAccountId, VacancyId } from "../ids.ts"
 import { DecisionRecord, PresetFilter, VacancyDetail, VacancySummary } from "../models/index.ts"
 
 export const IngestResult = Schema.Struct({
@@ -87,5 +88,34 @@ export const VacanciesEvaluate = Rpc.make("VacanciesEvaluate", {
     hhAccountId: Schema.optional(HhAccountId)
   }),
   success: DecisionRecord,
+  error: ApiError
+})
+
+/**
+ * What the browser extension paints over an hh.ru page: the stored vacancy,
+ * the newest decision and the applications that exist for it.
+ */
+export const VacancyLookupItem = Schema.Struct({
+  externalId: Schema.String,
+  vacancy: VacancySummary,
+  decision: Schema.NullOr(DecisionRecord),
+  applications: Schema.Array(
+    Schema.Struct({
+      id: ApplicationId,
+      hhAccountId: HhAccountId,
+      state: ApplicationState,
+      hhStatus: Schema.NullOr(Schema.String)
+    })
+  )
+})
+
+export type VacancyLookupItem = typeof VacancyLookupItem.Type
+
+/** Looks hh vacancies up by external id. Unknown ids are simply absent from the result. */
+export const VacanciesLookup = Rpc.make("VacanciesLookup", {
+  payload: Schema.Struct({
+    externalIds: Schema.Array(Schema.String)
+  }),
+  success: Schema.Array(VacancyLookupItem),
   error: ApiError
 })

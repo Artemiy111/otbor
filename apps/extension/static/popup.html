@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<style>
+  body { width: 300px; margin: 0; padding: 12px; font: 13px system-ui, sans-serif; color: #18181b; background: #fff; }
+  @media (prefers-color-scheme: dark) { body { color: #fafafa; background: #18181b; } input { background: #27272a; color: inherit; border-color: #3f3f46; } }
+  h1 { margin: 0 0 8px; font-size: 15px; } label { display: block; margin: 8px 0 2px; color: #71717a; }
+  input[type=text] { width: 100%; box-sizing: border-box; padding: 5px 8px; border: 1px solid #d4d4d8; border-radius: 6px; }
+  .check { display: flex; gap: 6px; align-items: center; margin: 10px 0; color: inherit; }
+  button { padding: 5px 12px; border-radius: 6px; border: 0; background: #18181b; color: #fff; cursor: pointer; }
+  #status.ok { color: #16a34a; } #status.bad { color: #dc2626; }
+</style>
+<h1>otbor</h1>
+<p id="status"></p>
+<form id="form">
+  <label for="apiUrl">Адрес API</label><input type="text" id="apiUrl">
+  <label for="webUrl">Адрес веб-приложения</label><input type="text" id="webUrl">
+  <label class="check"><input type="checkbox" id="autoCapture"> Сохранять страницы автоматически</label>
+  <button type="submit">Сохранить</button>
+</form>
+<script type="module" src="popup.js"></script>
+</html>

@@ -112,6 +112,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
       VacanciesGet: ({ id }) => corpus.get(id),
       VacancyAnalysisGet: ({ vacancyId }) => vacancyAnalysis.get(vacancyId),
       AnalysisRun: ({ limit, delayMs }) =>
+      VacanciesLookup: ({ externalIds }) => corpus.lookup(externalIds),
         analysisRunner.run({
           limit: Math.min(Math.max(limit ?? 20, 1), 500),
           delayMs: Math.min(Math.max(delayMs ?? 0, 0), 60_000)

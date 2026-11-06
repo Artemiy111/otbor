@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM"],
+    "types": ["bun", "chrome"],
+    "paths": {
+      "@otbor/contract": ["../../packages/contract/src/index.ts"],
+      "@otbor/hh": ["../../packages/hh/src/index.ts"],
+      "@otbor/domain": ["../../packages/domain/src/index.ts"],
+      "@otbor/crawler/search": ["../../packages/crawler/src/search.ts"],
+      "@otbor/crawler/drafts": ["../../packages/crawler/src/drafts.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "build.ts"]
+}

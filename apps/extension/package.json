@@ -1,0 +1,20 @@
+{
+  "name": "@otbor/extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@otbor/contract": "workspace:*",
+    "@otbor/crawler": "workspace:*",
+    "@otbor/hh": "workspace:*",
+    "effect": "4.1.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.0",
+    "typescript": "6.0.3"
+  }
+}

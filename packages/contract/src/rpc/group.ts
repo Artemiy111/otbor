@@ -126,7 +126,7 @@ import {
   TelegramLoginStatus,
   TelegramSyncNow
 } from "./telegram.ts"
-import { VacanciesEvaluate, VacanciesGet, VacanciesList } from "./vacancies.ts"
+import { VacanciesEvaluate, VacanciesGet, VacanciesList, VacanciesLookup } from "./vacancies.ts"
 import { WritingResume } from "./writing.ts"
 
 export const OtborRpcs = RpcGroup.make(
@@ -135,6 +135,7 @@ export const OtborRpcs = RpcGroup.make(
   VacanciesGet,
   VacancyAnalysisGet,
   AnalysisRun,
+  VacanciesLookup,
   AnalysisStatsGet,
   AnalysisInsightsGet,
   MarketAnalyticsGet,

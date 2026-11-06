@@ -8,6 +8,7 @@ import type {
   PresetFilter,
   VacancyDetail,
   VacancyDraft,
+  VacancyLookupItem,
   VacancySummary
 } from "@otbor/contract"
 import { NotFound, parsePresetFilter } from "@otbor/contract"
@@ -18,12 +19,14 @@ import {
   matchLexicon,
   mergeTextFacts
 } from "@otbor/domain"
+import { sql } from "drizzle-orm"
 import { Effect, Context, Layer } from "effect"
 import type { Executor } from "../db/Database.ts"
 import { Database } from "../db/Database.ts"
 import { CurrentUser } from "./CurrentUser.ts"
 import * as ContactRepository from "../repositories/ContactRepository.ts"
 import * as LexiconRepository from "../repositories/LexiconRepository.ts"
+import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
 import * as DecisionRepository from "../repositories/DecisionRepository.ts"
 import * as EmployerRepository from "../repositories/EmployerRepository.ts"
 import * as VacancyAnalysisRepository from "../repositories/VacancyAnalysisRepository.ts"
@@ -154,6 +157,9 @@ export interface CorpusServiceShape {
     ApiError
   >
   readonly get: (id: string) => Effect.Effect<VacancyDetail, ApiError>
+  readonly lookup: (
+    externalIds: ReadonlyArray<string>
+  ) => Effect.Effect<ReadonlyArray<VacancyLookupItem>, ApiError>
   readonly recomputeKeywords: (id: string) => Effect.Effect<number, ApiError>
   readonly rematchStart: () => Effect.Effect<
     { readonly started: boolean; readonly progress: RematchProgress },
@@ -264,6 +270,42 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
           }
         })
 
+      const lookup: CorpusServiceShape["lookup"] = (externalIds) =>
+        database
+          .asUser(currentUser.userId, (tx) =>
+            Effect.gen(function*() {
+              const items: Array<VacancyLookupItem> = []
+              const unique = [...new Set(externalIds)].slice(0, 100)
+              for (const externalId of unique) {
+                const row = yield* VacancyRepository.findByExternal(tx, "hh", externalId)
+                if (row === null) continue
+                const [decision] = yield* DecisionRepository.list(tx, currentUser.userId, {
+                  latestPerVacancy: true,
+                  sort: "priority",
+                  limit: 1,
+                  vacancyFilter: sql`vacancy.id = ${row.id}`
+                })
+                const applications = yield* ApplicationRepository.list(tx, currentUser.userId, {
+                  vacancyId: row.id,
+                  limit: 20
+                })
+                items.push({
+                  externalId,
+                  vacancy: VacancyRepository.toSummary(row),
+                  decision: decision ?? null,
+                  applications: applications.map((a) => ({
+                    id: a.id,
+                    hhAccountId: a.hhAccountId,
+                    state: a.state,
+                    hhStatus: a.hhStatus ?? null
+                  }))
+                })
+              }
+              return items
+            })
+          )
+          .pipe(Effect.mapError(toStorageError("vacancy.lookup")))
+
       const recomputeKeywords: CorpusServiceShape["recomputeKeywords"] = (id) =>
         Effect.gen(function*() {
           const count = yield* database
@@ -365,6 +407,7 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
         ingest,
         list,
         get,
+        lookup,
         recomputeKeywords,
         rematchStart,
         rematchStatus,
