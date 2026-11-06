@@ -21,6 +21,7 @@ import * as EmployerRepository from "../repositories/EmployerRepository.ts"
 import * as HydrationAttemptRepository from "../repositories/HydrationAttemptRepository.ts"
 import { HYDRATION_FORBIDDEN_ATTEMPTS, HYDRATION_FORBIDDEN_STREAK_STOP } from "./HydrationRunner.ts"
 import { PageFetch } from "./pageFetch.ts"
+import { proxyWorkerCount, withProxyWorker } from "./proxyPool.ts"
 import { ProxyRotator } from "./proxyRotator.ts"
 
 export type EmployerHydrationBlock = "captcha" | "auth" | "forbidden" | "geo" | "rate_limit"
@@ -441,12 +442,14 @@ export class EmployerHydrator extends Context.Service<
         // again; only a streak of different companies ending in 403 stops the pass.
         const queue = targets.map((target) => ({ target, forbidden: 0 }))
         let forbiddenStreak = 0
+        let stop = false
 
-        while (queue.length > 0) {
+        const drain = (worker: ProxyConfig | null) => Effect.gen(function*() {
+        while (!stop && queue.length > 0) {
           const entry = queue.shift()!
           const target = entry.target
 
-          const download = yield* downloadEmployer(target, config)
+          const download = yield* downloadEmployer(target, worker)
           rotations += download.rotations
           const outcome = download.outcome
 
@@ -468,6 +471,7 @@ export class EmployerHydrator extends Context.Service<
             yield* reportProgress(target.name)
             if (forbiddenStreak >= HYDRATION_FORBIDDEN_STREAK_STOP) {
               stoppedBy = "forbidden"
+              stop = true
               break
             }
             if (delayMs > 0 && queue.length > 0) yield* Effect.sleep(`${delayMs} millis`)
@@ -480,6 +484,7 @@ export class EmployerHydrator extends Context.Service<
             failed += 1
             pushError(outcome.message)
             stoppedBy = outcome.block
+            stop = true
             yield* rememberFailure(target, outcome.message)
             yield* reportProgress(target.name)
             break
@@ -506,6 +511,15 @@ export class EmployerHydrator extends Context.Service<
             yield* Effect.sleep(`${delayMs} millis`)
           }
         }
+        })
+
+        // One loop per worker; each has its own exit IP and rotates alone.
+        const lanes = Math.max(1, Math.min(proxyWorkerCount(config), queue.length))
+        yield* Effect.forEach(
+          Array.from({ length: lanes }),
+          () => withProxyWorker(config, drain),
+          { concurrency: "unbounded", discard: true }
+        )
 
         if (processed > 0) {
           yield* Effect.logInfo(

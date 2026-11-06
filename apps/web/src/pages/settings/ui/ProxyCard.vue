@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue"
 import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
-import type { ProxyRotate, ProxyStatus } from "@otbor/contract"
+import type { ProxyStatus } from "@otbor/contract"
 import { hydrationApi, hydrationKeys } from "@/entities/hydration"
 import { describeError } from "@/shared/lib"
 import {
@@ -34,8 +34,7 @@ const status = computed(() => statusQuery.data.value)
 
 const kind = ref<Kind>("subscription")
 const url = ref("")
-const rotate = ref<ProxyRotate>("captcha")
-const maxRotations = ref("3")
+const workers = ref("10")
 const error = ref<string | null>(null)
 const notice = ref<string | null>(null)
 
@@ -50,17 +49,16 @@ const busy = computed(() => configureMutation.isLoading.value || clearMutation.i
 const save = async () => {
   error.value = null
   notice.value = null
-  const count = Number(maxRotations.value)
-  if (!Number.isInteger(count) || count < 0 || count > 20) {
-    error.value = "Лимит смен IP: целое число 0–20."
+  const count = Number(workers.value)
+  if (!Number.isInteger(count) || count < 1 || count > 15) {
+    error.value = "Воркеры: целое число 1–15."
     return
   }
   try {
     const saved = await configureMutation.mutateAsync({
       kind: kind.value,
       ...(url.value.trim() === "" ? {} : { url: url.value.trim() }),
-      rotate: rotate.value,
-      maxRotations: count
+      workers: count
     })
     url.value = ""
     notice.value = saved.source === "subscription"
@@ -105,7 +103,7 @@ const clear = async () => {
       <p v-if="status?.configured" class="text-sm text-muted-foreground">
         {{ status.source === "subscription" ? `Подписка ${status.subscription ?? ""}` : "Готовый адрес" }}
         · {{ status.label }}
-        · ротация: {{ status.rotate === "captcha" ? `при капче, до ${status.maxRotations ?? 0}` : "выключена" }}
+        · воркеров: {{ status.workers ?? 1 }}
       </p>
       <Alert v-if="status?.origin === 'env'" variant="warning">
         <AlertDescription>
@@ -136,19 +134,12 @@ const clear = async () => {
             :placeholder="status?.configured ? 'Оставьте пустым, чтобы не менять' : kind === 'subscription' ? 'https://…' : 'http://127.0.0.1:7890'"
           />
         </div>
-        <div class="space-y-1.5">
-          <Label for="proxy-rotate" class="text-xs text-muted-foreground">Смена IP</Label>
-          <Select :model-value="rotate" @update:model-value="(value) => (rotate = value as ProxyRotate)">
-            <SelectTrigger id="proxy-rotate"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="captcha">При капче</SelectItem>
-              <SelectItem value="off">Выключена</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div class="space-y-1.5">
-          <Label for="proxy-max" class="text-xs text-muted-foreground">Смен IP за запуск (0–20)</Label>
-          <Input id="proxy-max" v-model="maxRotations" inputmode="numeric" :disabled="rotate === 'off'" />
+        <div v-if="kind === 'subscription'" class="space-y-1.5">
+          <Label for="proxy-workers" class="text-xs text-muted-foreground">Параллельных воркеров (1–15)</Label>
+          <Input id="proxy-workers" v-model="workers" inputmode="numeric" />
+          <p class="text-xs text-muted-foreground">
+            У каждого свой IP и свой порт, без кук. При блокировке hh.ru воркер сам меняет ноду.
+          </p>
         </div>
       </div>
 

@@ -178,7 +178,9 @@ export const ProxyStatus = Schema.Struct({
   rotate: Schema.NullOr(ProxyRotate),
   maxRotations: Schema.NullOr(Schema.Int),
   /** Subscription host only (no token path/query); null for a ready endpoint. */
-  subscription: Schema.NullOr(Schema.String)
+  subscription: Schema.NullOr(Schema.String),
+  /** Parallel workers, each with its own exit IP. */
+  workers: Schema.NullOr(Schema.Int)
 })
 export type ProxyStatus = typeof ProxyStatus.Type
 
@@ -191,6 +193,7 @@ export const ProxySettingsInput = Schema.Struct({
   /** Omit to keep the saved URL and change only rotation. */
   url: Schema.optional(Schema.String),
   rotate: Schema.optional(ProxyRotate),
-  maxRotations: Schema.optional(Schema.Int)
+  maxRotations: Schema.optional(Schema.Int),
+  workers: Schema.optional(Schema.Int)
 })
 export type ProxySettingsInput = typeof ProxySettingsInput.Type

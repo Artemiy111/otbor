@@ -17,7 +17,11 @@ import {
   DEFAULT_MAX_ROTATIONS,
   DEFAULT_PROXY_GROUP,
   DEFAULT_PROXY_PORT,
-  DEFAULT_PROXY_SECRET
+  DEFAULT_PROXY_SECRET,
+  DEFAULT_WORKERS,
+  HOST_WORKER_PORT_BASE,
+  MAX_WORKERS,
+  workerGroup
 } from "./constants"
 import { readProxyFile, type ProxyFileConfig } from "./store"
 
@@ -29,7 +33,8 @@ export {
   DEFAULT_MAX_ROTATIONS,
   DEFAULT_PROXY_GROUP,
   DEFAULT_PROXY_PORT,
-  DEFAULT_PROXY_SECRET
+  DEFAULT_PROXY_SECRET,
+  DEFAULT_WORKERS
 }
 
 export interface ProxyConfig {
@@ -45,6 +50,8 @@ export interface ProxyConfig {
   readonly group: string
   readonly rotate: ProxyRotate
   readonly maxRotations: number
+  /** Parallel workers, each with its own exit IP (subscription only). */
+  readonly workers: number
   /** Where the settings came from, for `otbor proxy status`. */
   readonly origin: "env" | "file"
 }
@@ -86,6 +93,7 @@ export const resolveProxyConfig = (
     envValue(env, "MAX_ROTATIONS") ?? numberText(file?.maxRotations),
     DEFAULT_MAX_ROTATIONS
   )
+  const workers = parseWorkers(envValue(env, "WORKERS") ?? numberText(file?.workers))
   const controller = envValue(env, "CONTROLLER") ?? text(file?.controller)
   const secret = envValue(env, "SECRET") ?? text(file?.secret)
   const controllerUrl =
@@ -101,6 +109,8 @@ export const resolveProxyConfig = (
       group,
       rotate,
       maxRotations,
+      // A ready endpoint is a single exit IP: more workers would share it.
+      workers: 1,
       origin: fromEnv ? "env" : "file"
     }
   }
@@ -126,7 +136,21 @@ export const resolveProxyConfig = (
     group,
     rotate,
     maxRotations,
+    workers,
     origin: fromEnv ? "env" : "file"
+  }
+}
+
+/**
+ * The same settings pointed at one worker's loopback listener and selector
+ * group. Rotation and node selection on the copy touch only that worker.
+ */
+export const workerProxyConfig = (config: ProxyConfig, index: number): ProxyConfig => {
+  if (config.source !== "subscription") return config
+  return {
+    ...config,
+    url: `http://127.0.0.1:${HOST_WORKER_PORT_BASE + index + 1}`,
+    group: workerGroup(index)
   }
 }
 
@@ -256,6 +280,15 @@ const parseCount = (raw: string | null, fallback: number): number => {
   const value = Number(raw)
   if (!Number.isInteger(value) || value < 0 || value > 20) {
     throw new Error(`Лимит смен IP: ожидается 0–20 (получено «${raw}»).`)
+  }
+  return value
+}
+
+const parseWorkers = (raw: string | null): number => {
+  if (raw === null) return DEFAULT_WORKERS
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value < 1 || value > MAX_WORKERS) {
+    throw new Error(`Воркеры: ожидается 1–${MAX_WORKERS} (получено «${raw}»).`)
   }
   return value
 }

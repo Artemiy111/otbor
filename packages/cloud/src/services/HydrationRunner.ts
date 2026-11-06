@@ -16,6 +16,7 @@ import * as HydrationAttemptRepository from "../repositories/HydrationAttemptRep
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
 import { CorpusService } from "./CorpusService.ts"
 import { PageFetch, type PageResponse } from "./pageFetch.ts"
+import { proxyWorkerCount, withProxyWorker } from "./proxyPool.ts"
 import { ProxyRotator } from "./proxyRotator.ts"
 import { externalIdFromReference, vacancyPageUrl } from "./vacancyReference.ts"
 
@@ -462,12 +463,14 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
         // geo, 429) or when several different vacancies in a row stay 403.
         const queue = targets.map((target) => ({ target, forbidden: 0 }))
         let forbiddenStreak = 0
+        let stop = false
 
-        while (queue.length > 0) {
+        const drain = (worker: ProxyConfig | null) => Effect.gen(function*() {
+        while (!stop && queue.length > 0) {
           const entry = queue.shift()!
           const target = entry.target
 
-          const download = yield* downloadVacancy(target, config)
+          const download = yield* downloadVacancy(target, worker)
           rotations += download.rotations
           const outcome = download.outcome
 
@@ -489,6 +492,7 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
             yield* rememberFailure(target, message)
             if (forbiddenStreak >= HYDRATION_FORBIDDEN_STREAK_STOP) {
               stoppedBy = "forbidden"
+              stop = true
               yield* reportProgress(target.title)
               break
             }
@@ -503,6 +507,7 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
             failed += 1
             pushError(outcome.message)
             stoppedBy = outcome.block
+            stop = true
             yield* rememberFailure(target, outcome.message)
             yield* reportProgress(target.title)
             break
@@ -544,6 +549,15 @@ export class HydrationRunner extends Context.Service<HydrationRunner, HydrationR
             yield* Effect.sleep(`${delayMs} millis`)
           }
         }
+        })
+
+        // One loop per worker; each has its own exit IP and rotates alone.
+        const lanes = Math.max(1, Math.min(proxyWorkerCount(config), queue.length))
+        yield* Effect.forEach(
+          Array.from({ length: lanes }),
+          () => withProxyWorker(config, drain),
+          { concurrency: "unbounded", discard: true }
+        )
 
         if (processed > 0) {
           yield* Effect.logInfo(

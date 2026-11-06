@@ -1,6 +1,6 @@
 /** mihomo REST API client: selector state, switching and latency probes. */
 
-import { pickNextNodes, type ProxyConfig } from "./config"
+import { pickNextNodes, workerProxyConfig, type ProxyConfig } from "./config"
 
 export interface SelectorState {
   readonly current: string | null
@@ -58,6 +58,31 @@ export const selectProxyNode = async (config: ProxyConfig, name: string): Promis
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name })
   })
+}
+
+/**
+ * Gives every worker its own node, so no two workers start on one exit IP.
+ * Nodes come from the selector list; dead ones are replaced on the first
+ * block by `rotateProxy`. Returns the node per worker (fewer nodes than
+ * workers means some workers share an IP, in list order).
+ */
+export const assignWorkerNodes = async (
+  config: ProxyConfig,
+  workers: number
+): Promise<ReadonlyArray<string>> => {
+  if (config.source !== "subscription") return []
+  const state = await proxyState(config)
+  const pool = pickNextNodes(state.all, null, state.all.length).filter(
+    (name) => !/авто|auto/i.test(name)
+  )
+  if (pool.length === 0) return []
+  const chosen: string[] = []
+  for (let index = 0; index < workers; index += 1) {
+    const node = pool[index % pool.length]!
+    await selectProxyNode(workerProxyConfig(config, index), node)
+    chosen.push(node)
+  }
+  return chosen
 }
 
 const CANARY_URL = "https://hh.ru/"

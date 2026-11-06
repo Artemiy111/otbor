@@ -12,6 +12,7 @@ import {
   type ProxyConfig,
   type ProxyFileConfig
 } from "@otbor/crawler"
+import { resetProxyWorkers } from "./proxyPool.ts"
 import { Context, Effect, Layer } from "effect"
 
 export interface ProxyServiceShape {
@@ -36,7 +37,8 @@ const toStatus = (config: ProxyConfig | null): ProxyStatus =>
         origin: null,
         rotate: null,
         maxRotations: null,
-        subscription: null
+        subscription: null,
+        workers: null
       }
     : {
         configured: true,
@@ -45,7 +47,8 @@ const toStatus = (config: ProxyConfig | null): ProxyStatus =>
         origin: config.origin,
         rotate: config.rotate,
         maxRotations: config.maxRotations,
-        subscription: maskSubscription(config.subscriptionUrl)
+        subscription: maskSubscription(config.subscriptionUrl),
+        workers: config.workers
       }
 
 export class ProxyService extends Context.Service<ProxyService, ProxyServiceShape>()(
@@ -80,6 +83,7 @@ export class ProxyService extends Context.Service<ProxyService, ProxyServiceShap
               }
               if (input.rotate !== undefined) next.rotate = input.rotate
               if (input.maxRotations !== undefined) next.maxRotations = input.maxRotations
+              if (input.workers !== undefined) next.workers = input.workers
               // Validate the resulting settings before touching the disk.
               if (resolveProxyConfig({}, next) === null) throw new Error("пустые настройки")
               return next
@@ -87,6 +91,7 @@ export class ProxyService extends Context.Service<ProxyService, ProxyServiceShap
             catch: invalid
           })
           yield* Effect.try({ try: () => writeProxyFile(file), catch: invalid })
+          resetProxyWorkers()
 
           const config = yield* Effect.try({ try: () => loadProxyConfig(), catch: invalid })
           // mihomo reads its config only at start; recreate it in the
@@ -105,6 +110,7 @@ export class ProxyService extends Context.Service<ProxyService, ProxyServiceShap
 
       const clear: ProxyServiceShape["clear"] = Effect.fn("ProxyService.clear")(function*() {
         yield* Effect.try({ try: () => clearProxyFile(), catch: invalid })
+        resetProxyWorkers()
         return yield* status()
       })
 

@@ -10,6 +10,7 @@ export const DEFAULT_MAX_ROTATIONS = 3
  * 27891–27905 range, and unused workers simply stay idle.
  */
 export const MAX_WORKERS = 15
+export const DEFAULT_WORKERS = 10
 export const HOST_WORKER_PORT_BASE = 27890
 export const CONTAINER_WORKER_PORT_BASE = 7900
 

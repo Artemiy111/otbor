@@ -5,6 +5,8 @@ export {
   DEFAULT_PROXY_GROUP,
   DEFAULT_PROXY_PORT,
   DEFAULT_PROXY_SECRET,
+  DEFAULT_WORKERS,
+  workerProxyConfig,
   fetchProxyUrl,
   loadProxyConfig,
   maskSubscription,
@@ -34,6 +36,7 @@ export {
 export {
   engineHealthy,
   probeThroughProxy,
+  assignWorkerNodes,
   proxyState,
   ProxyApiError,
   rotateProxy,

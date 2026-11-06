@@ -21,6 +21,7 @@ export interface ProxyFileConfig {
   group?: string
   rotate?: ProxyRotate
   maxRotations?: number
+  workers?: number
   port?: number
   controllerPort?: number
 }

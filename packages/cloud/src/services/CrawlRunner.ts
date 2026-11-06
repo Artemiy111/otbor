@@ -23,6 +23,7 @@ import {
 import { Context, Effect, Layer } from "effect"
 import { CorpusService } from "./CorpusService.ts"
 import { CrawlService } from "./CrawlService.ts"
+import { withProxyWorker } from "./proxyPool.ts"
 
 export interface CrawlRunnerInput {
   /** The schedule owner; the run records are shared corpus, this is for logs. */
@@ -104,8 +105,14 @@ export class CrawlRunner extends Context.Service<CrawlRunner, CrawlRunnerShape>(
             })
         })
 
-      const run = Effect.fn("CrawlRunner.run")(function*(input: CrawlRunnerInput) {
-        const config = yield* prepareProxy
+      const run = (input: CrawlRunnerInput) =>
+        Effect.flatMap(prepareProxy, (base) =>
+          withProxyWorker(base, (worker) => runOn(worker, input)))
+
+      const runOn = Effect.fn("CrawlRunner.run")(function*(
+        config: ProxyConfig | null,
+        input: CrawlRunnerInput
+      ) {
         const proxy = yield* proxyFor(config, input.url)
         const maxPages = Math.max(1, input.maxPages ?? 1)
         const delayMs = Math.max(0, input.delayMs ?? 750)
