@@ -68,6 +68,7 @@ const enrichmentQuery = useQuery({
   enabled: () => selectedResumeId.value !== ""
 })
 
+const showFullText = ref(false)
 const comment = ref("")
 /** "auto": work it out from the resume (the last job has no end date). */
 const employment = ref<"auto" | "employed" | "unemployed">("auto")
@@ -324,8 +325,13 @@ const refresh = () => {
             </dl>
           </div>
           <div class="space-y-2">
-            <h3 class="text-sm font-semibold">Полный текст резюме</h3>
-            <pre class="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-4 text-sm">{{ selectedResume.text }}</pre>
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-semibold">Полный текст резюме</h3>
+              <Button variant="outline" size="sm" @click="showFullText = !showFullText">
+                {{ showFullText ? "Скрыть" : "Показать" }}
+              </Button>
+            </div>
+            <pre v-if="showFullText" class="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-4 text-sm">{{ selectedResume.text }}</pre>
           </div>
           <div v-if="experienceItems.length" class="space-y-2">
             <h3 class="text-sm font-semibold">Опыт работы</h3>
