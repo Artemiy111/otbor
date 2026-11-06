@@ -1,9 +1,11 @@
+import { defineBackground } from "wxt/utils/define-background"
+import { browser } from "wxt/browser"
 import { OtborRpcs, type OtborApi } from "@otbor/contract"
 import { Context, Effect, Layer, ManagedRuntime } from "effect"
 import { FetchHttpClient } from "effect/http"
 import { RpcClient, RpcSerialization } from "effect/rpc"
-import type { CaptureReply, Reply, Request } from "./messages.ts"
-import { loadSettings } from "./settings.ts"
+import type { CaptureReply, Reply, Request } from "@/messages.ts"
+import { loadSettings } from "@/settings.ts"
 
 /**
  * Every request goes through here, so hh.ru pages never talk to localhost
@@ -67,10 +69,12 @@ const describe = (error: unknown): string => {
   return String(error)
 }
 
-chrome.runtime.onMessage.addListener((message: Request, _sender, sendResponse) => {
-  handle(message).then(
-    (value) => sendResponse({ ok: true, value } satisfies Reply<unknown>),
-    (error) => sendResponse({ ok: false, error: describe(error) } satisfies Reply<unknown>)
-  )
-  return true
+export default defineBackground(() => {
+  browser.runtime.onMessage.addListener((message: Request, _sender, sendResponse) => {
+    handle(message).then(
+      (value) => sendResponse({ ok: true, value } satisfies Reply<unknown>),
+      (error) => sendResponse({ ok: false, error: describe(error) } satisfies Reply<unknown>)
+    )
+    return true
+  })
 })

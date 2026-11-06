@@ -1,6 +1,7 @@
-import type { Reply, Request } from "./messages.ts"
-import { DEFAULT_SETTINGS } from "./messages.ts"
-import { loadSettings, saveSettings } from "./settings.ts"
+import { browser } from "wxt/browser"
+import type { Reply, Request } from "@/messages.ts"
+import { DEFAULT_SETTINGS } from "@/messages.ts"
+import { loadSettings, saveSettings } from "@/settings.ts"
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T
 
@@ -8,7 +9,7 @@ const ping = async () => {
   const status = $("status")
   status.textContent = "проверяю…"
   try {
-    const reply = (await chrome.runtime.sendMessage({ type: "ping" } satisfies Request)) as Reply<unknown>
+    const reply = (await browser.runtime.sendMessage({ type: "ping" } satisfies Request)) as Reply<unknown>
     status.textContent = reply.ok ? "сервер доступен" : `недоступен: ${reply.error}`
     status.className = reply.ok ? "ok" : "bad"
   } catch (error) {

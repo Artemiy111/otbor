@@ -4,8 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "bun build.ts",
-    "typecheck": "tsc -p tsconfig.json"
+    "dev": "wxt -b firefox",
+    "dev:chrome": "wxt -b chrome",
+    "build": "wxt build -b chrome && wxt build -b firefox",
+    "zip": "wxt zip -b firefox",
+    "postinstall": "wxt prepare",
+    "typecheck": "wxt prepare && tsc -p tsconfig.json"
   },
   "dependencies": {
     "@otbor/contract": "workspace:*",
@@ -15,6 +19,7 @@
   },
   "devDependencies": {
     "@types/chrome": "^0.1.0",
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "wxt": "^0.20.0"
   }
 }

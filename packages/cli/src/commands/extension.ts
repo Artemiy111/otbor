@@ -1,6 +1,6 @@
 import { Console, Effect } from "effect"
 import { Command, Flag } from "effect/cli"
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { isAbsolute, join, resolve } from "node:path"
 import { repoRoot } from "../stack.ts"
@@ -20,7 +20,8 @@ const run = (cmd: ReadonlyArray<string>, cwd: string): void => {
   if (result.exitCode !== 0) throw new Error(`${cmd.join(" ")} завершилась с кодом ${result.exitCode}`)
 }
 
-const build = (): void => run(["bun", "build.ts"], EXT_DIR)
+const OUTPUT = join(EXT_DIR, ".output")
+const build = (): void => run(["bun", "run", "build"], EXT_DIR)
 
 /* ------------------------------------ Zen ------------------------------------ */
 
@@ -96,11 +97,13 @@ const installZen = Effect.fn(function*(options: { profile?: string; restart: boo
   }
   yield* Console.log(`Профиль Zen: ${profile}`)
 
-  const source = join(EXT_DIR, "dist/firefox")
-  const xpi = join(EXT_DIR, "dist", `${ADDON_ID}.xpi`)
-  rmSync(xpi, { force: true })
-  // An XPI is a zip with manifest.json at its root.
-  run(["zip", "-qr", xpi, "."], source)
+  // `wxt zip` writes <name>-<version>-firefox.zip: an XPI is exactly that archive.
+  run(["bun", "run", "zip"], EXT_DIR)
+  const xpi = readdirSync(OUTPUT)
+    .filter((name) => name.endsWith("-firefox.zip"))
+    .map((name) => join(OUTPUT, name))
+    .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0]
+  if (xpi === undefined) return yield* Effect.fail(new Error(`В ${OUTPUT} нет firefox-архива.`))
 
   mkdirSync(join(profile, "extensions"), { recursive: true })
   const target = join(profile, "extensions", `${ADDON_ID}.xpi`)
@@ -130,7 +133,7 @@ const installZen = Effect.fn(function*(options: { profile?: string; restart: boo
 /* ----------------------------------- Chrome ---------------------------------- */
 
 const installChrome = Effect.fn(function*() {
-  const dir = join(EXT_DIR, "dist/chrome")
+  const dir = join(OUTPUT, "chrome-mv3")
   // Chrome 137+ ignores --load-extension and refuses a debug port on the
   // default profile, and a policy install needs MDM. "Load unpacked" is the one
   // manual step; Chrome remembers the folder, so rebuilding is enough afterwards.
@@ -180,7 +183,21 @@ const installCmd = Command.make(
   })
 ).pipe(Command.withDescription("Установить расширение в Zen автоматически, в Chrome — подготовить"))
 
+const devCmd = Command.make(
+  "dev",
+  {
+    browser: Flag.Literals("browser", ["zen", "chrome"]).pipe(
+      Flag.withDescription("zen | chrome"),
+      Flag.withDefault("zen")
+    )
+  },
+  Effect.fn(function*({ browser }) {
+    yield* Console.log("WXT dev: отдельный профиль, горячая перезагрузка. Ctrl+C — выход.")
+    yield* Effect.sync(() => run(["bun", "run", browser === "zen" ? "dev" : "dev:chrome"], EXT_DIR))
+  })
+).pipe(Command.withDescription("Запустить браузер с расширением и горячей перезагрузкой (WXT dev)"))
+
 export const extensionCommand = Command.make("extension").pipe(
-  Command.withSubcommands([buildCmd, installCmd]),
+  Command.withSubcommands([buildCmd, installCmd, devCmd]),
   Command.withDescription("Расширение браузера: сборка и установка")
 )

@@ -1,15 +1,40 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "./.wxt/tsconfig.json",
   "compilerOptions": {
-    "lib": ["ESNext", "DOM"],
-    "types": ["bun", "chrome"],
     "paths": {
-      "@otbor/contract": ["../../packages/contract/src/index.ts"],
-      "@otbor/hh": ["../../packages/hh/src/index.ts"],
-      "@otbor/domain": ["../../packages/domain/src/index.ts"],
-      "@otbor/crawler/search": ["../../packages/crawler/src/search.ts"],
-      "@otbor/crawler/drafts": ["../../packages/crawler/src/drafts.ts"]
-    }
+      "@otbor/contract": [
+        "../../packages/contract/src/index.ts"
+      ],
+      "@otbor/hh": [
+        "../../packages/hh/src/index.ts"
+      ],
+      "@otbor/domain": [
+        "../../packages/domain/src/index.ts"
+      ],
+      "@otbor/crawler/search": [
+        "../../packages/crawler/src/search.ts"
+      ],
+      "@otbor/crawler/drafts": [
+        "../../packages/crawler/src/drafts.ts"
+      ],
+      "@/*": [
+        "./src/*"
+      ]
+    },
+    "types": [
+      "bun"
+    ],
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noUncheckedIndexedAccess": true,
+    "lib": [
+      "ESNext",
+      "DOM"
+    ]
   },
-  "include": ["src/**/*.ts", "build.ts"]
+  "include": [
+    "src/**/*.ts",
+    "wxt.config.ts",
+    ".wxt/wxt.d.ts"
+  ]
 }

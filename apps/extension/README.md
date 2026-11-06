@@ -12,15 +12,19 @@
 - Все запросы идёт через background по тому же `RpcGroup`, что и веб и CLI; новый
   только `VacanciesLookup` (чтение).
 
-## Установка
+## Разработка и установка
+
+Сборка и dev — на WXT (`wxt.config.ts`), точки входа в `src/entrypoints`.
 
 ```bash
-bun run extension:build
+otbor extension dev                    # Zen с горячей перезагрузкой (отдельный профиль)
+otbor extension dev --browser chrome   # то же в Chrome
+otbor extension install                # собрать и поставить в Zen + подготовить Chrome
 ```
 
-- Chrome: `chrome://extensions` → режим разработчика → «Загрузить распакованное» → `apps/extension/dist/chrome`.
-- Zen/Firefox: `about:debugging#/runtime/this-firefox` → «Загрузить временное дополнение» →
-  `apps/extension/dist/firefox/manifest.json`. В MV3 Firefox доступ к сайтам не выдаётся сам:
-  `about:addons` → otbor → Разрешения → включить доступ к hh.ru и 127.0.0.1.
+- Zen: XPI кладётся в основной профиль, `user.js` разрешает неподписанные дополнения; нужен перезапуск Zen.
+  В MV3 Firefox доступ к сайтам не выдаётся сам: `about:addons` → otbor → Разрешения → hh.ru и 127.0.0.1.
+- Chrome основного профиля автоматически не ставится (Chrome 137+): один раз «Загрузить распакованное»
+  из `apps/extension/.output/chrome-mv3`, дальше Chrome помнит папку.
 
 Адрес API (по умолчанию `http://127.0.0.1:3001/rpc`) и веба меняются в popup.
