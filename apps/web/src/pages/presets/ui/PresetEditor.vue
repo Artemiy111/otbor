@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue"
 import { useDebounceFn } from "@vueuse/core"
+import { parsePresetFilter } from "@otbor/contract"
 import type { PresetFilter, PresetKind, PresetPreview, PresetRecord } from "@otbor/contract"
 import { CircleAlert, Save } from "@lucide/vue"
 import { presetApi } from "@/entities/preset"
@@ -13,7 +14,8 @@ import {
   Button,
   Card,
   CardContent,
-  Input
+  Input,
+  Textarea
 } from "@/shared/ui"
 import PresetPreviewPanel from "./PresetPreviewPanel.vue"
 
@@ -36,6 +38,33 @@ const title = ref(props.preset?.title ?? "")
 const kind: PresetKind = props.preset?.kind ?? "explore"
 const filter = ref(reactive(toEditable(props.preset?.filter)))
 const formError = ref<string | null>(null)
+
+/** "rules" is the builder; "json" shows and edits the very filter that is saved and sent to the server. */
+const mode = ref<"rules" | "json">("rules")
+const jsonText = ref("")
+const jsonError = ref<string | null>(null)
+
+const showJson = () => {
+  jsonText.value = JSON.stringify(buildFilter(filter.value), null, 2)
+  jsonError.value = null
+  mode.value = "json"
+}
+
+const showRules = () => {
+  if (jsonError.value !== null) return
+  mode.value = "rules"
+}
+
+/** Each valid edit replaces the builder state, so the preview and Save always follow the text. */
+const onJsonInput = (value: string | undefined) => {
+  jsonText.value = value ?? ""
+  try {
+    filter.value = reactive(toEditable(parsePresetFilter(JSON.parse(jsonText.value))))
+    jsonError.value = null
+  } catch (cause) {
+    jsonError.value = describeError(cause)
+  }
+}
 
 const incomplete = computed(() => allRules(filter.value).some((rule) => !isComplete(rule)))
 
@@ -68,6 +97,10 @@ const submit = () => {
   const trimmed = title.value.trim()
   if (trimmed === "") {
     formError.value = "Введите название пресета."
+    return
+  }
+  if (jsonError.value !== null) {
+    formError.value = "Исправьте JSON фильтра."
     return
   }
   formError.value = null
@@ -106,7 +139,27 @@ onMounted(() => {
           />
         </div>
 
-        <RuleBuilder v-model="filter" :disabled="props.saving" />
+        <div class="flex items-center gap-1">
+          <Button size="sm" :variant="mode === 'rules' ? 'secondary' : 'ghost'" :disabled="jsonError !== null" @click="showRules">
+            Правила
+          </Button>
+          <Button size="sm" :variant="mode === 'json' ? 'secondary' : 'ghost'" @click="showJson">JSON</Button>
+        </div>
+
+        <RuleBuilder v-if="mode === 'rules'" v-model="filter" :disabled="props.saving" />
+        <div v-else class="space-y-1.5">
+          <Textarea
+            :model-value="jsonText"
+            class="min-h-[320px] font-mono text-xs"
+            spellcheck="false"
+            :disabled="props.saving"
+            @update:model-value="onJsonInput"
+          />
+          <p v-if="jsonError" class="text-xs text-destructive">{{ jsonError }}</p>
+          <p v-else class="text-[11px] text-muted-foreground">
+            Это фильтр, который сохраняется. Неполные правила при разборе отбрасываются.
+          </p>
+        </div>
 
         <p
           v-if="filter.keywordIds !== undefined && filter.keywordIds.length > 0"
