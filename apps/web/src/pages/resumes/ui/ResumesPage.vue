@@ -23,6 +23,10 @@ import {
   AmountInput,
   Input,
   Label,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
   Textarea
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
@@ -292,7 +296,7 @@ const refresh = () => {
       :resumes="allResumes"
     />
 
-    <div>
+    <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_26rem]">
       <Card v-if="selectedResume">
         <CardHeader>
           <CardTitle>{{ selectedResume.title }}</CardTitle>
@@ -337,6 +341,22 @@ const refresh = () => {
               </li>
             </ul>
           </div>
+        </CardContent>
+      </Card>
+      <aside v-if="selectedResume" class="lg:sticky lg:top-4 lg:self-start">
+        <Card class="flex max-h-[calc(100vh-2rem)] flex-col">
+          <CardHeader class="pb-2">
+            <CardTitle class="text-base">Ответы агента</CardTitle>
+            <CardDescription>Что агент знает о вас сверх резюме.</CardDescription>
+          </CardHeader>
+          <CardContent class="min-h-0 flex-1 overflow-y-auto">
+            <Tabs default-value="main">
+              <TabsList class="w-full">
+                <TabsTrigger value="main">Основное</TabsTrigger>
+                <TabsTrigger value="faq">Вопросы</TabsTrigger>
+                <TabsTrigger value="notes">Заметки</TabsTrigger>
+              </TabsList>
+              <TabsContent value="main" class="space-y-4 pt-2">
           <div class="space-y-1.5">
             <h3 class="text-sm font-semibold">Зарплата</h3>
             <p class="text-xs text-muted-foreground">Пустая валюта — не рассматриваю. Сумма берётся в валюте вакансии, без пересчёта.</p>
@@ -351,6 +371,23 @@ const refresh = () => {
               </template>
             </div>
           </div>
+          <div class="space-y-1.5">
+            <Label for="employment">Работаю ли я сейчас</Label>
+            <select
+              id="employment"
+              v-model="employment"
+              class="h-9 w-full max-w-sm rounded-md border border-input bg-transparent px-3 text-sm"
+            >
+              <option value="auto">Определить по резюме</option>
+              <option value="employed">Работаю: «на текущем месте»</option>
+              <option value="unemployed">Не работаю: «на прошлом месте»</option>
+            </select>
+            <p class="text-xs text-muted-foreground">
+              По умолчанию: если у последнего места нет даты окончания, работаю. Это попадает в письмо.
+            </p>
+          </div>
+              </TabsContent>
+              <TabsContent value="faq" class="pt-2">
           <div class="space-y-3">
             <h3 class="text-sm font-semibold">Частые вопросы в тестах</h3>
             <p class="text-xs text-muted-foreground">Как отвечать на вопросы, которые встречаются в анкетах. Это подсказка агенту, а не готовый текст.</p>
@@ -369,25 +406,16 @@ const refresh = () => {
             </div>
             <Button variant="outline" size="sm" @click="addCustomFaq">Добавить свой вопрос</Button>
           </div>
-          <div class="space-y-1.5">
-            <Label for="employment">Работаю ли я сейчас</Label>
-            <select
-              id="employment"
-              v-model="employment"
-              class="h-9 w-full max-w-sm rounded-md border border-input bg-transparent px-3 text-sm"
-            >
-              <option value="auto">Определить по резюме</option>
-              <option value="employed">Работаю: «на текущем месте»</option>
-              <option value="unemployed">Не работаю: «на прошлом месте»</option>
-            </select>
-            <p class="text-xs text-muted-foreground">
-              По умолчанию: если у последнего места нет даты окончания, работаю. Это попадает в письмо.
-            </p>
-          </div>
+              </TabsContent>
+              <TabsContent value="notes" class="pt-2">
           <div class="space-y-1.5">
             <Label>Общие заметки о резюме</Label>
             <Textarea v-model="comment" rows="4" />
           </div>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+          <div class="space-y-2 border-t p-4">
           <div class="flex gap-2">
             <Button :disabled="saveMutation.isLoading.value" @click="save">
               {{ saveMutation.isLoading.value ? "Сохраняю…" : "Сохранить" }}
@@ -398,9 +426,10 @@ const refresh = () => {
             <AlertTitle>Не удалось сохранить</AlertTitle>
             <AlertDescription>{{ describeError(saveMutation.error.value) }}</AlertDescription>
           </Alert>
-        </CardContent>
-      </Card>
-      <EmptyState v-else title="Резюме не найдено" description="Создайте резюме в hh.ru и импортируйте." />
+          </div>
+        </Card>
+      </aside>
+      <EmptyState v-if="!selectedResume" class="lg:col-span-2" title="Резюме не найдено" description="Создайте резюме в hh.ru и импортируйте." />
     </div>
   </section>
 </template>
