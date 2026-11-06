@@ -102,6 +102,7 @@ const HH_STATUS: Record<string, Omit<Status, "pending">> = {
   INTERVIEW: { text: "приглашение", color: "#1a8f4d" },
   OFFER: { text: "оффер", color: "#0d6b36" },
   DISCARD: { text: "отказ", color: "#d63a3a" },
+  DISCARD_BY_APPLICANT: { text: "вы отказались", color: "#6b7280" },
   DISCARD_AFTER_INTERVIEW: { text: "отказ после собеседования", color: "#d63a3a" },
   HIDDEN: { text: "скрыт", color: "#6b7280" }
 }

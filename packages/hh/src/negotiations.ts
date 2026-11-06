@@ -163,6 +163,20 @@ const idOf = (value: unknown): string | null => {
 const resumeOf = (topic: HhNegotiationTopic): string | null =>
   idOf(topic.resumeId) ?? idOf(topic.resume?.id ?? topic.resume?.resumeId)
 
+/**
+ * The topic's state. hh reports a refusal as `DISCARD` and says who made it in
+ * `discardReason`; a refusal the applicant sent themselves must not read as the
+ * employer's, so it becomes its own state `DISCARD_BY_APPLICANT` (also hh's id
+ * for it in the API).
+ */
+const stateOf = (topic: HhNegotiationTopic): string | null => {
+  const state = text(topic.lastState) ?? text(topic.initialState)
+  if (state === "DISCARD" && /APPLICANT/i.test(text(topic.discardReason) ?? "")) {
+    return "DISCARD_BY_APPLICANT"
+  }
+  return state
+}
+
 const decodeTopic = Schema.decodeUnknownOption(HhNegotiationTopic)
 
 export const parseNegotiations = (html: string): NegotiationsPage => {
@@ -185,7 +199,7 @@ export const parseNegotiations = (html: string): NegotiationsPage => {
     if (vacancyId === null) return unreadable
     topics.push({
       vacancyId,
-      state: text(topic.lastState) ?? text(topic.initialState),
+      state: stateOf(topic),
       employerState: text(topic.lastEmployerState),
       substate: text(topic.lastSubState),
       discardReason: text(topic.discardReason),

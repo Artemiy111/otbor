@@ -27,6 +27,21 @@ describe("parseNegotiations", () => {
     expect(page.topics[1]).toMatchObject({ state: "DISCARD", discardReason: "no_match", archived: true })
   })
 
+  test("a refusal sent by the applicant is its own state", () => {
+    const html = `<template id="HH-Lux-InitialState">${JSON.stringify({
+      applicantNegotiations: {
+        topicList: [
+          { vacancyId: 1, lastState: "DISCARD", discardReason: "DISCARD_BY_APPLICANT" },
+          { vacancyId: 2, lastState: "DISCARD", discardReason: "DISCARD_BY_EMPLOYER" }
+        ]
+      }
+    })}</template>`
+    expect(parseNegotiations(html).topics.map((topic) => topic.state)).toEqual([
+      "DISCARD_BY_APPLICANT",
+      "DISCARD"
+    ])
+  })
+
   test("an empty list is readable and empty", () => {
     expect(parseNegotiations(fixture("synthetic-negotiations-empty.html"))).toEqual({
       readable: true,

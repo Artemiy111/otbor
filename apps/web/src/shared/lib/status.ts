@@ -266,6 +266,7 @@ const HH_STATUS: Record<string, { label: string; tone: StatusTone }> = {
   INTERVIEW: { label: "Приглашение", tone: "success" },
   OFFER: { label: "Оффер", tone: "success" },
   DISCARD: { label: "Отказ", tone: "danger" },
+  DISCARD_BY_APPLICANT: { label: "Вы отказались", tone: "neutral" },
   DISCARD_AFTER_INTERVIEW: { label: "Отказ после собеседования", tone: "danger" },
   HIDDEN: { label: "Скрыт", tone: "neutral" }
 }
