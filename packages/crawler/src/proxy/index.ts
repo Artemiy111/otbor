@@ -38,6 +38,8 @@ export {
   probeThroughProxy,
   assignWorkerNodes,
   proxyState,
+  providerInfo,
+  type ProviderInfo,
   ProxyApiError,
   rotateProxy,
   selectProxyNode,

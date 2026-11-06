@@ -2,8 +2,10 @@ import type { ApiError, ProxySettingsInput, ProxyStatus } from "@otbor/contract"
 import { InvalidInput } from "@otbor/contract"
 import {
   clearProxyFile,
+  engineHealthy,
   loadProxyConfig,
   maskSubscription,
+  providerInfo,
   proxyLabel,
   readProxyFile,
   resolveProxyConfig,
@@ -28,7 +30,10 @@ const invalid = (error: unknown) =>
     message: `proxy config: ${error instanceof Error ? error.message : String(error)}`
   })
 
-const toStatus = (config: ProxyConfig | null): ProxyStatus =>
+const toStatus = (
+  config: ProxyConfig | null,
+  engine: ProxyStatus["engine"] = null
+): ProxyStatus =>
   config === null
     ? {
         configured: false,
@@ -38,7 +43,8 @@ const toStatus = (config: ProxyConfig | null): ProxyStatus =>
         rotate: null,
         maxRotations: null,
         subscription: null,
-        workers: null
+        workers: null,
+        engine: null
       }
     : {
         configured: true,
@@ -48,8 +54,40 @@ const toStatus = (config: ProxyConfig | null): ProxyStatus =>
         rotate: config.rotate,
         maxRotations: config.maxRotations,
         subscription: maskSubscription(config.subscriptionUrl),
-        workers: config.workers
+        workers: config.workers,
+        engine
       }
+
+/** Node counts and quota from mihomo; never fails, an unreachable engine is a status. */
+const readEngine = (config: ProxyConfig | null): Effect.Effect<ProxyStatus["engine"]> => {
+  if (config === null || config.source !== "subscription") return Effect.succeed(null)
+  return Effect.promise(async () => {
+    const unreachable = {
+      reachable: false,
+      nodes: 0,
+      alive: 0,
+      checked: 0,
+      usedBytes: null,
+      totalBytes: null,
+      expiresAt: null
+    }
+    if (!(await engineHealthy(config, 1500))) return unreachable
+    try {
+      const info = await providerInfo(config)
+      return {
+        reachable: true,
+        nodes: info.nodes.length,
+        alive: info.nodes.filter((node) => node.alive === true).length,
+        checked: info.nodes.filter((node) => node.alive !== null).length,
+        usedBytes: info.usedBytes,
+        totalBytes: info.totalBytes,
+        expiresAt: info.expiresAt
+      }
+    } catch {
+      return { ...unreachable, reachable: true }
+    }
+  })
+}
 
 export class ProxyService extends Context.Service<ProxyService, ProxyServiceShape>()(
   "otbor/cloud/ProxyService"
@@ -58,7 +96,11 @@ export class ProxyService extends Context.Service<ProxyService, ProxyServiceShap
     ProxyService,
     Effect.sync(() => {
       const status: ProxyServiceShape["status"] = () =>
-        Effect.try({ try: () => loadProxyConfig(), catch: invalid }).pipe(Effect.map(toStatus))
+        Effect.try({ try: () => loadProxyConfig(), catch: invalid }).pipe(
+          Effect.flatMap((config) =>
+            Effect.map(readEngine(config), (engine) => toStatus(config, engine))
+          )
+        )
 
       const configure: ProxyServiceShape["configure"] = Effect.fn("ProxyService.configure")(
         function*(input) {

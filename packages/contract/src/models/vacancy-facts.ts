@@ -170,6 +170,21 @@ export type HydrationStats = typeof HydrationStats.Type
  * Local proxy state for hh requests. Contains only safe display fields: never
  * the subscription URL or credentials.
  */
+/** What the local mihomo engine reports about the subscription. */
+export const ProxyEngineStatus = Schema.Struct({
+  reachable: Schema.Boolean,
+  /** All nodes in the subscription. */
+  nodes: Schema.Int,
+  /** Nodes whose last health-check passed. */
+  alive: Schema.Int,
+  /** Nodes with a known health result (the rest are not checked yet). */
+  checked: Schema.Int,
+  usedBytes: Schema.NullOr(Schema.Number),
+  totalBytes: Schema.NullOr(Schema.Number),
+  expiresAt: Schema.NullOr(Schema.String)
+})
+export type ProxyEngineStatus = typeof ProxyEngineStatus.Type
+
 export const ProxyStatus = Schema.Struct({
   configured: Schema.Boolean,
   source: Schema.NullOr(ProxySource),
@@ -180,7 +195,9 @@ export const ProxyStatus = Schema.Struct({
   /** Subscription host only (no token path/query); null for a ready endpoint. */
   subscription: Schema.NullOr(Schema.String),
   /** Parallel workers, each with its own exit IP. */
-  workers: Schema.NullOr(Schema.Int)
+  workers: Schema.NullOr(Schema.Int),
+  /** Null for a ready endpoint or when no engine is configured. */
+  engine: Schema.NullOr(ProxyEngineStatus)
 })
 export type ProxyStatus = typeof ProxyStatus.Type
 

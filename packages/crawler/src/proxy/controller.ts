@@ -85,6 +85,51 @@ export const assignWorkerNodes = async (
   return chosen
 }
 
+export interface ProviderInfo {
+  readonly nodes: ReadonlyArray<{ readonly name: string; readonly alive: boolean | null }>
+  /** From the subscription's `subscription-userinfo`; null when the provider omits it. */
+  readonly usedBytes: number | null
+  readonly totalBytes: number | null
+  readonly expiresAt: string | null
+}
+
+/** Provider health-check results and subscription quota, without touching hh.ru. */
+export const providerInfo = async (
+  config: ProxyConfig,
+  provider = "otbor-sub"
+): Promise<ProviderInfo> => {
+  const response = await api(config, `/providers/proxies/${encodeURIComponent(provider)}`)
+  const data = (await response.json()) as { proxies?: unknown; subscriptionInfo?: unknown }
+  const nodes = Array.isArray(data.proxies)
+    ? data.proxies.flatMap((item) => {
+        if (item === null || typeof item !== "object") return []
+        const name = (item as { name?: unknown }).name
+        if (typeof name !== "string") return []
+        const alive = (item as { alive?: unknown }).alive
+        return [{ name, alive: typeof alive === "boolean" ? alive : null }]
+      })
+    : []
+
+  const info = (data.subscriptionInfo ?? {}) as Record<string, unknown>
+  const num = (...keys: ReadonlyArray<string>): number | null => {
+    for (const key of keys) {
+      const value = info[key]
+      if (typeof value === "number" && Number.isFinite(value)) return value
+    }
+    return null
+  }
+  const upload = num("Upload", "upload")
+  const download = num("Download", "download")
+  const total = num("Total", "total")
+  const expire = num("Expire", "expire")
+  return {
+    nodes,
+    usedBytes: upload === null && download === null ? null : (upload ?? 0) + (download ?? 0),
+    totalBytes: total === null || total === 0 ? null : total,
+    expiresAt: expire === null || expire === 0 ? null : new Date(expire * 1000).toISOString()
+  }
+}
+
 const CANARY_URL = "https://hh.ru/"
 
 /**
