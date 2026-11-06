@@ -67,7 +67,7 @@ const comment = ref("")
 /** "auto": work it out from the resume (the last job has no end date). */
 const employment = ref<"auto" | "employed" | "unemployed">("auto")
 
-interface SalaryDraft { min: string; expectation: string }
+interface SalaryDraft { min: string | number; expectation: string | number }
 const emptySalaries = (): Record<SalaryCurrency, SalaryDraft> =>
   Object.fromEntries(SALARY_CURRENCIES.map((c) => [c, { min: "", expectation: "" }])) as Record<SalaryCurrency, SalaryDraft>
 const salaries = ref<Record<SalaryCurrency, SalaryDraft>>(emptySalaries())
@@ -133,9 +133,11 @@ const resumeHint = (key: string): string | null => {
 const emptyHint = (key: string, value: string | undefined): string | null =>
   (value ?? "").trim() === "" ? resumeHint(key) : null
 
-const toAmount = (value: string): number | null => {
-  const n = Number(value.replace(/\s+/g, ""))
-  return value.trim() !== "" && Number.isInteger(n) && n > 0 ? n : null
+/** `type="number"` inputs make v-model hand over a number, not a string. */
+const toAmount = (value: string | number | null | undefined): number | null => {
+  const text = String(value ?? "").replace(/\s+/g, "")
+  const n = Number(text)
+  return text !== "" && Number.isInteger(n) && n > 0 ? n : null
 }
 
 const queryCache = useQueryCache()
@@ -334,17 +336,17 @@ const refresh = () => {
               </li>
             </ul>
           </div>
-          <div class="space-y-2">
+          <div class="space-y-1.5">
             <h3 class="text-sm font-semibold">Зарплата</h3>
-            <p class="text-xs text-muted-foreground">Оставьте валюту пустой, если не рассматриваете её. Агент берёт сумму в валюте вакансии и не пересчитывает.</p>
-            <div class="grid grid-cols-[4rem_1fr_1fr] items-center gap-2 text-sm">
+            <p class="text-xs text-muted-foreground">Пустая валюта — не рассматриваю. Сумма берётся в валюте вакансии, без пересчёта.</p>
+            <div class="grid max-w-md grid-cols-[2rem_1fr_1fr] items-center gap-x-2 gap-y-1 text-sm">
               <span />
-              <span class="text-muted-foreground">Минимум</span>
-              <span class="text-muted-foreground">Ожидаемая</span>
+              <span class="text-xs text-muted-foreground">Минимум</span>
+              <span class="text-xs text-muted-foreground">Ожидаемая</span>
               <template v-for="currency in SALARY_CURRENCIES" :key="currency">
                 <Label :for="`min-${currency}`" class="font-medium">{{ currencySymbol(currency) }}</Label>
-                <Input :id="`min-${currency}`" v-model="salaries[currency].min" type="number" min="0" />
-                <Input v-model="salaries[currency].expectation" type="number" min="0" />
+                <Input :id="`min-${currency}`" v-model="salaries[currency].min" class="h-8" type="number" min="0" />
+                <Input v-model="salaries[currency].expectation" class="h-8" type="number" min="0" />
               </template>
             </div>
           </div>
