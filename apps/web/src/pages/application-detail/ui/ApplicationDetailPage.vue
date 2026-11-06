@@ -71,6 +71,36 @@ const kitAnswers = computed(() =>
   (data.value?.kit?.answers ?? []).map((raw) => describeKitAnswer(raw, data.value?.form?.form))
 )
 
+const num = (value: number | null | undefined): string | null =>
+  value === null || value === undefined ? null : value.toLocaleString("ru-RU")
+
+/** Who wrote the letter and what it took; only the facts that are known. */
+const writingFacts = computed(() => {
+  const kit = data.value?.kit
+  const writing = data.value?.writing
+  if (!kit) return []
+  const facts: Array<{ label: string; value: string }> = []
+  const add = (label: string, value: string | null | undefined) => {
+    if (value !== null && value !== undefined && value !== "") facts.push({ label, value })
+  }
+  add("Харнис", writing?.harness)
+  const alias = writing?.model ?? kit.model
+  add("Модель", writing?.modelId && alias && writing.modelId !== alias ? `${alias} (${writing.modelId})` : (writing?.modelId ?? alias))
+  add("Effort", writing?.effort)
+  if (writing) {
+    add("Токены", num(writing.totalTokens))
+    const parts = [
+      writing.inputTokens !== null ? `вход ${num(writing.inputTokens)}` : null,
+      writing.outputTokens !== null ? `выход ${num(writing.outputTokens)}` : null,
+      writing.cachedReadTokens ? `из кэша ${num(writing.cachedReadTokens)}` : null,
+      writing.cachedWriteTokens ? `в кэш ${num(writing.cachedWriteTokens)}` : null
+    ].filter((part) => part !== null)
+    add("Из них", parts.join(" · "))
+    add("Время", writing.durationMs === null ? null : `${(writing.durationMs / 1000).toFixed(1)} с`)
+  }
+  return facts
+})
+
 const subtitle = computed(() => {
   const application = data.value?.application
   if (application === undefined) return undefined
@@ -181,9 +211,18 @@ const cost = (value: number | null | undefined): string =>
           <template v-if="data.kit">
             <div class="mb-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <Badge variant="outline" class="font-mono">форма {{ data.kit.formHash }}</Badge>
-              <Badge variant="outline" class="font-mono">модель {{ data.kit.model ?? "—" }}</Badge>
               <Badge variant="outline" class="font-mono">стоимость {{ cost(data.kit.costUsd) }}</Badge>
             </div>
+
+            <dl
+              v-if="writingFacts.length > 0"
+              class="mb-4 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 rounded-md border border-border bg-muted/20 p-3 text-xs"
+            >
+              <template v-for="fact in writingFacts" :key="fact.label">
+                <dt class="text-muted-foreground">{{ fact.label }}</dt>
+                <dd class="font-mono">{{ fact.value }}</dd>
+              </template>
+            </dl>
 
             <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Письмо

@@ -147,9 +147,29 @@ export const AttemptRecord = Schema.Struct({
 
 export type AttemptRecord = typeof AttemptRecord.Type
 
+/** How the letter was written: from the inference job behind the kit. Every field may be unknown. */
+export const KitWriting = Schema.Struct({
+  harness: Schema.NullOr(Schema.String),
+  /** The alias the job asked for ("haiku"). */
+  model: Schema.NullOr(Schema.String),
+  /** The provider's full model id ("claude-haiku-5-5"), when it reported one. */
+  modelId: Schema.NullOr(Schema.String),
+  effort: Schema.NullOr(Schema.String),
+  inputTokens: Schema.NullOr(Schema.Int),
+  outputTokens: Schema.NullOr(Schema.Int),
+  cachedReadTokens: Schema.NullOr(Schema.Int),
+  cachedWriteTokens: Schema.NullOr(Schema.Int),
+  totalTokens: Schema.NullOr(Schema.Int),
+  durationMs: Schema.NullOr(Schema.Int),
+  finishedAt: Schema.NullOr(Schema.String)
+})
+
+export type KitWriting = typeof KitWriting.Type
+
 export const ApplicationDetail = Schema.Struct({
   application: ApplicationRecord,
   kit: Schema.optional(Schema.NullOr(KitRecord)),
+  writing: Schema.optional(Schema.NullOr(KitWriting)),
   form: Schema.optional(Schema.NullOr(StoredForm)),
   attempts: Schema.Array(AttemptRecord),
   decision: Schema.optional(Schema.NullOr(DecisionRecord))

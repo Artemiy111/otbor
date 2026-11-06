@@ -172,6 +172,49 @@ export interface ApplicationServiceOptions {
   readonly dailyApplyLimit: number
 }
 
+const asInt = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : null
+const asString = (value: unknown): string | null => (typeof value === "string" && value !== "" ? value : null)
+const asRecord = (value: unknown): Record<string, unknown> =>
+  typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {}
+
+/** The writing job of an auto application (key of AutoApplyRunner.writingKey), read for the kit's page. */
+const writingOf = (tx: Executor, applicationId: string, formHash: string) =>
+  tx
+    .execute(sql`
+      select payload->>'harness' as harness, payload->>'model' as model, payload->>'effort' as effort,
+        result, updated_at
+      from harness_jobs
+      where idempotency_key = ${`autoapply:writing:${applicationId}:${formHash}`} and status = 'done'
+      limit 1
+    `)
+    .pipe(
+      Effect.map((result) => {
+        const row = result.rows[0] as
+          | { harness: string | null; model: string | null; effort: string | null; result: unknown; updated_at: Date | string }
+          | undefined
+        if (row === undefined) return null
+        const out = asRecord(row.result)
+        const usage = asRecord(out.usage)
+        const quota = asRecord(asRecord(asRecord(out.providerResponse)._meta).quota)
+        const modelUsage = quota["model_usage"]
+        const firstModel = Array.isArray(modelUsage) ? asRecord(modelUsage[0]) : {}
+        return {
+          harness: row.harness,
+          model: asString(out.model) ?? row.model,
+          modelId: asString(firstModel.model),
+          effort: asString(out.effort) ?? row.effort,
+          inputTokens: asInt(usage.inputTokens),
+          outputTokens: asInt(usage.outputTokens),
+          cachedReadTokens: asInt(usage.cachedReadTokens),
+          cachedWriteTokens: asInt(usage.cachedWriteTokens),
+          totalTokens: asInt(usage.totalTokens),
+          durationMs: asInt(out.durationMs),
+          finishedAt: new Date(row.updated_at).toISOString()
+        }
+      })
+    )
+
 export class ApplicationService extends Context.Service<ApplicationService, ApplicationServiceShape>()(
   "otbor/cloud/ApplicationService"
 ) {
@@ -208,7 +251,8 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                     ? null
                     : yield* DecisionRepository.findById(tx, base.application.decisionId)
                 const form = yield* currentFormFor(tx, base.application)
-                return { ...base, form, decision } satisfies ApplicationDetail
+                const writing = form === null || base.kit == null ? null : yield* writingOf(tx, id, base.kit.formHash)
+                return { ...base, form, decision, writing } satisfies ApplicationDetail
               })
             )
             .pipe(Effect.mapError(toStorageError("application.get")))
