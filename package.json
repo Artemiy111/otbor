@@ -13,6 +13,8 @@
     "cli": "bun packages/cli/src/main.ts",
     "web": "bun run --cwd apps/web dev",
     "extension:build": "bun run --cwd apps/extension build",
+    "extension:install": "bun packages/cli/src/main.ts extension install --browser zen",
+    "extension:dev": "bun packages/cli/src/main.ts extension dev",
     "web:build": "bun run --cwd apps/web build",
     "mcp": "bun packages/mcp/src/main.ts",
     "dev": "bun packages/cli/src/main.ts up",

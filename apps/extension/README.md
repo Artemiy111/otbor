@@ -39,6 +39,7 @@
 otbor extension dev                    # Zen с горячей перезагрузкой (отдельный профиль)
 otbor extension dev --browser chrome   # то же в Chrome
 otbor extension install                # собрать и поставить в Zen + подготовить Chrome
+bun run extension:install              # то же из корня, только Zen (с перезапуском)
 ```
 
 - Zen: XPI кладётся в основной профиль, `user.js` разрешает неподписанные дополнения; нужен перезапуск Zen.
