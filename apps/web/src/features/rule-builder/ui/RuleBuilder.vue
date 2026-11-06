@@ -67,11 +67,6 @@ const onLocation = (value: unknown) => {
   const next = value as KeywordMatchLocation
   state.value.location = PRESET_LOCATION_OPTIONS.some((option) => option.value === next) ? next : "any"
 }
-const toggleFlag = (key: "includeArchived") => {
-  state.value[key] = !state.value[key]
-}
-const flagClass = (on: boolean) =>
-  on ? "border-primary bg-primary/15 text-foreground" : "border-border text-muted-foreground hover:bg-accent"
 </script>
 
 <template>
@@ -159,17 +154,7 @@ const flagClass = (on: boolean) =>
       </template>
 
       <template v-if="props.flags">
-        <span class="mx-1 hidden h-4 w-px bg-border sm:block" />
-        <button
-          type="button"
-          class="inline-flex h-7 items-center rounded-full border px-2.5 text-xs transition-colors disabled:opacity-50"
-          :class="flagClass(state.includeArchived)"
-          :disabled="props.disabled"
-          @click="toggleFlag('includeArchived')"
-        >
-          Архивные
-        </button>
-
+        <span v-if="hasKeywordRule" class="mx-1 hidden h-4 w-px bg-border sm:block" />
         <Select v-if="hasKeywordRule" :model-value="state.location" :disabled="props.disabled" @update:model-value="onLocation">
           <SelectTrigger class="h-7 w-[170px] text-xs" title="Где искать ключевые слова">
             <SelectValue />
