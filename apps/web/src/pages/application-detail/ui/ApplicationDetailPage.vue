@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { autoApplyApi, autoApplyStageMeta, autoRunLabel } from "@/entities/auto-apply"
 import { computed, onBeforeUnmount } from "vue"
-import { describeKitAnswer } from "@otbor/contract"
+import { decisionReasonDetail, describeKitAnswer } from "@otbor/contract"
 import { useQuery } from "@pinia/colada"
 import { CircleAlert } from "@lucide/vue"
 import { applicationApi, applicationKeys } from "@/entities/application"
@@ -9,7 +9,6 @@ import { AccountChip, hhAccountApi, hhAccountKeys } from "@/entities/hh-account"
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { RefreshButton } from "@/features/refresh-button"
 import {
-  decisionReasonDetail,
   decisionReasonLabel,
   describeError,
   formatDate,

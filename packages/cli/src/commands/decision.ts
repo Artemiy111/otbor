@@ -1,4 +1,4 @@
-import type { VacancyId } from "@otbor/contract"
+import { decisionReasonDetail, type VacancyId } from "@otbor/contract"
 import { Console, Effect, Option } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { Api } from "../client.ts"
@@ -88,7 +88,9 @@ const evaluate = Command.make(
         `reasons: ${decision.reasons
           .map((reason) =>
             `${reason.code}${reason.weight === undefined ? "" : `(${reason.weight})`}${
-              reason.code === "blocked_filter" && reason.detail ? `: ${reason.detail}` : ""
+              reason.code === "blocked_filter" || reason.code === "freshness"
+                ? `: ${decisionReasonDetail(reason, decision.createdAt) ?? ""}`.replace(/: $/, "")
+                : ""
             }`
           )
           .join(", ")}`

@@ -2,6 +2,7 @@
 import { computed, h, ref } from "vue"
 import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
 import type { DecisionRecord, HhAccountRecord } from "@otbor/contract"
+import { decisionReasonDetail } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert, FilePlus2 } from "@lucide/vue"
 import { applicationApi } from "@/entities/application"
@@ -13,7 +14,6 @@ import { decisionVerdictOptions } from "@/features/decision-filter"
 import { RefreshButton } from "@/features/refresh-button"
 import {
   applicationPath,
-  decisionReasonDetail,
   decisionReasonLabel,
   describeError,
   formatDate,

@@ -8,6 +8,7 @@ import type {
   VacancyAnalysis,
   VacancySummary
 } from "@otbor/contract"
+import { decisionReasonDetail } from "@otbor/contract"
 import { describeGroup, describeRule } from "@otbor/domain"
 import { Schema } from "effect"
 
@@ -39,13 +40,14 @@ export const formatSalary = (
 /** `code: detail (weight)` strongest first, so "top reasons" is just a slice. */
 export const humanReasons = (
   reasons: DecisionRecord["reasons"],
-  top: number
+  top: number,
+  decidedAt: string
 ): ReadonlyArray<string> =>
   [...reasons]
     .sort((a, b) => Math.abs(b.weight ?? 0) - Math.abs(a.weight ?? 0))
     .slice(0, top)
     .map((r) =>
-      `${r.code.replaceAll("_", " ")}${r.detail ? `: ${r.detail}` : ""}${r.weight === undefined ? "" : ` (${r.weight})`}`
+      `${r.code.replaceAll("_", " ")}${decisionReasonDetail(r, decidedAt) === null ? "" : `: ${decisionReasonDetail(r, decidedAt)}`}${r.weight === undefined ? "" : ` (${r.weight})`}`
     )
 
 /* ---------------------------------- account -------------------------------- */
@@ -130,7 +132,7 @@ export const decisionBrief = (
   fit: d.fit,
   priority: d.priority,
   account: d.hhAccountId == null ? null : accountRef(accounts, d.hhAccountId),
-  reasons: humanReasons(d.reasons, topReasons),
+  reasons: humanReasons(d.reasons, topReasons, d.createdAt),
   decidedAt: d.createdAt
 })
 

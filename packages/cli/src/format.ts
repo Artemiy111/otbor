@@ -4,6 +4,7 @@ import type {
   HarnessJob,
   VacancySummary
 } from "@otbor/contract"
+import { decisionReasonDetail } from "@otbor/contract"
 
 export const shortId = (id: string): string => id.slice(0, 8)
 
@@ -43,7 +44,11 @@ export const formatDecision = (decision: DecisionRecord): Array<string> => [
   `${decision.fit}`,
   `${decision.priority}`,
   decision.vacancyTitle ?? shortId(decision.vacancyId),
-  decision.reasons.map((reason) => reason.code).join(",")
+  decision.reasons
+    .map((reason) =>
+      reason.code === "freshness" ? `${reason.code} ${decisionReasonDetail(reason, decision.createdAt) ?? ""}`.trim() : reason.code
+    )
+    .join(",")
 ]
 
 export const formatApplication = (application: ApplicationRecord): Array<string> => [

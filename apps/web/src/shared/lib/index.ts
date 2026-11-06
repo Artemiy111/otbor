@@ -37,7 +37,6 @@ export {
   contactKindLabel,
   contactSourceLabel,
   conversationChannelLabel,
-  decisionReasonDetail,
   decisionReasonLabel,
   jobKindLabel,
   jobStageLabel,

@@ -1,4 +1,3 @@
-import { formatAgeHours } from "./format"
 export type StatusTone = "success" | "info" | "warning" | "danger" | "neutral"
 
 const SUCCESS = new Set([
@@ -184,17 +183,6 @@ export const statusTone = (value: string): StatusTone => {
 }
 
 export const seniorityLabel = (value: string): string => LABELS[value] ?? value
-
-/** The reason detail as shown: a freshness detail is the publication instant, shown as the age at the decision. */
-export const decisionReasonDetail = (
-  reason: { readonly code: string; readonly detail?: string | undefined },
-  decidedAt: string
-): string | null => {
-  if (reason.detail === undefined || reason.detail === "") return null
-  if (reason.code !== "freshness") return reason.detail
-  const hours = (Date.parse(decidedAt) - Date.parse(reason.detail)) / 3_600_000
-  return Number.isFinite(hours) ? formatAgeHours(hours) : reason.detail
-}
 
 export const decisionReasonLabel = (value: string): string => LABELS[value] ?? value
 

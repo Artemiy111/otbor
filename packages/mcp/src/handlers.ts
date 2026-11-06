@@ -245,7 +245,7 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
         priority: d.priority,
         verdict: d.verdict,
         account: d.hhAccountId == null ? null : accountRef(directory, d.hhAccountId),
-        reasons: humanReasons(d.reasons, 4),
+        reasons: humanReasons(d.reasons, 4, d.createdAt),
         seniority: v?.seniority ?? null,
         experience: v?.experienceCode ?? null,
         skills: (detail?.skills ?? []).slice(0, 6),
