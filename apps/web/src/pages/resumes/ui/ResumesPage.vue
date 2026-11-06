@@ -113,7 +113,7 @@ const highlightTerms = computed<ReadonlyArray<HighlightTerm>>(() =>
           ? "keyword"
           : null
     if (kind === null) return []
-    return [keyword.term, ...keyword.aliases.map((a) => a.alias)].map((text) => ({ text, kind }) as const)
+    return [keyword.term, ...keyword.aliases.map((a) => a.alias)].map((text) => ({ text, kind, vacancies: keyword.vacancyCount, skillVacancies: keyword.skillVacancyCount }) as const)
   })
 )
 
