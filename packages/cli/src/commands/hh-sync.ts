@@ -29,7 +29,7 @@ const printOutcome = (status: NegotiationsSyncStatus) =>
     yield* Console.log(`unknown vacancy: ${counts.unknownVacancy}`)
     if (counts.unknownVacancyIds !== undefined && counts.unknownVacancyIds.length > 0) {
       yield* Console.log(
-        `  not in the corpus yet (crawl or hydrate them, then sync again): ${counts.unknownVacancyIds.join(", ")}`
+        `  not in the corpus yet (could not fetch them; run the sync again): ${counts.unknownVacancyIds.join(", ")}`
       )
     }
   })
@@ -51,17 +51,42 @@ export const hhSyncCommand = Command.make(
       hhAccountId = accounts[0]!.id
     }
 
-    const queued = yield* api.NegotiationsSyncRun({ hhAccountId })
-    yield* Console.log(`negotiations sync queued for ${hhAccountId} (job ${queued.jobId ?? "?"})`)
+    const syncOnce = Effect.fn(function*() {
+      const queued = yield* api.NegotiationsSyncRun({ hhAccountId })
+      yield* Console.log(`negotiations sync queued for ${hhAccountId} (job ${queued.jobId ?? "?"})`)
+      if (wait <= 0) return queued
+      yield* Console.log("waiting for the harness (is `otbor harness` running?)...")
+      const deadline = Date.now() + wait * 1_000
+      let status = queued
+      while (!TERMINAL.includes(status.status) && Date.now() < deadline) {
+        yield* Effect.sleep("2 seconds")
+        status = yield* api.NegotiationsSyncStatus({ hhAccountId })
+      }
+      return status
+    })
+
+    let status = yield* syncOnce()
     if (wait <= 0) return
 
-    yield* Console.log("waiting for the harness (is `otbor harness` running?)...")
-    const deadline = Date.now() + wait * 1_000
-    let status = queued
-    while (!TERMINAL.includes(status.status) && Date.now() < deadline) {
-      yield* Effect.sleep("2 seconds")
-      status = yield* api.NegotiationsSyncStatus({ hhAccountId })
+    // Responses to vacancies that are not in the corpus yet cannot be imported.
+    // Fetch those vacancy pages and read the list again, once.
+    const unknown = status.status === "done" ? (status.counts?.unknownVacancyIds ?? []) : []
+    if (unknown.length > 0) {
+      yield* Console.log(`fetching ${unknown.length} vacancies that are not in the corpus yet...`)
+      let fetched = 0
+      for (const reference of unknown) {
+        const result = yield* api.VacancyFetch({ reference }).pipe(Effect.result)
+        if (result._tag === "Success") {
+          fetched += 1
+        } else {
+          const reason = (result.failure as { message?: unknown }).message
+          yield* Console.log(`  ${reference}: could not fetch${typeof reason === "string" ? ` (${reason.slice(0, 160)})` : ""}`)
+        }
+      }
+      yield* Console.log(`fetched ${fetched} of ${unknown.length}; syncing again`)
+      status = yield* syncOnce()
     }
+
     yield* printOutcome(status)
     if (!TERMINAL.includes(status.status)) {
       yield* Console.log("not finished yet; run `otbor hh sync` again to keep waiting on the same job")
