@@ -5,7 +5,7 @@
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import type { HarnessExit } from "@otbor/contract"
-import * as support from "./support.ts"
+import * as support from "./support/index.ts"
 
 const enabled = support.integrationEnabled
 const serverUrl = support.serverUrl

@@ -14,7 +14,7 @@ import { join } from "node:path"
 import { Database } from "../../src/db/Database.ts"
 import { CurrentUser } from "../../src/services/CurrentUser.ts"
 import { ApplicationService, DEFAULT_DAILY_APPLY_LIMIT } from "../../src/services/ApplicationService.ts"
-import * as support from "./support.ts"
+import * as support from "./support/index.ts"
 
 const enabled = support.integrationEnabled
 const serverUrl = support.serverUrl

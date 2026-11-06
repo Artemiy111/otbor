@@ -9,7 +9,7 @@ import { Effect } from "effect"
 import { sql } from "drizzle-orm"
 import { Database } from "../../src/db/Database.ts"
 import * as VacancyRepository from "../../src/repositories/VacancyRepository.ts"
-import * as support from "./support.ts"
+import * as support from "./support/index.ts"
 
 const enabled = support.integrationEnabled
 const serverUrl = support.serverUrl

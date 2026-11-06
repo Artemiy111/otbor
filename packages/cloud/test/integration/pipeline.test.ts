@@ -10,7 +10,7 @@ import { DecisionService } from "../../src/services/DecisionService.ts"
 import { runDueSchedules } from "../../src/services/ScheduleWorker.ts"
 import { DEFAULT_SEARCH_CRAWL_PAGES } from "../../src/services/ScheduleDispatcher.ts"
 import { ScheduleService } from "../../src/services/ScheduleService.ts"
-import * as support from "./support.ts"
+import * as support from "./support/index.ts"
 
 const enabled = support.integrationEnabled
 const serverUrl = support.serverUrl

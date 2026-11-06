@@ -14,7 +14,7 @@ import { Database } from "../../src/db/Database.ts"
 import { AutoApplyRunner } from "../../src/services/AutoApplyRunner.ts"
 import { AutoApplyViewService } from "../../src/services/AutoApplyViewService.ts"
 import { ResumeService } from "../../src/services/ResumeService.ts"
-import * as support from "./support.ts"
+import * as support from "./support/index.ts"
 
 const enabled = support.integrationEnabled
 const serverUrl = support.serverUrl

@@ -13,7 +13,7 @@ import { ResumeService } from "../../src/services/ResumeService.ts"
 import { ApplicationService } from "../../src/services/ApplicationService.ts"
 import { CurrentUser } from "../../src/services/CurrentUser.ts"
 import { HydrationRunner, VacancyPageFetch } from "../../src/services/HydrationRunner.ts"
-import * as support from "./support.ts"
+import * as support from "./support/index.ts"
 
 const enabled = support.integrationEnabled
 const serverUrl = support.serverUrl

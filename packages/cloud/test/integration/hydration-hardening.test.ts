@@ -14,7 +14,7 @@ import { EmployerHydrator } from "../../src/services/EmployerHydrator.ts"
 import { HydrationRunner } from "../../src/services/HydrationRunner.ts"
 import { PageFetch } from "../../src/services/pageFetch.ts"
 import { ProxyRotator } from "../../src/services/proxyRotator.ts"
-import * as support from "./support.ts"
+import * as support from "./support/index.ts"
 
 const enabled = support.integrationEnabled
 const serverUrl = support.serverUrl

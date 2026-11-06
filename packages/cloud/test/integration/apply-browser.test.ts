@@ -8,7 +8,7 @@ import { AnswersInvalid, Conflict, type FormAnswer, type HarnessExit } from "@ot
 import { parseResponseForm } from "@otbor/hh"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import * as support from "./support.ts"
+import * as support from "./support/index.ts"
 
 const enabled = support.integrationEnabled
 const serverUrl = support.serverUrl

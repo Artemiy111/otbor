@@ -11,7 +11,7 @@ import { Database } from "../../src/db/Database.ts"
 import * as VacancyAnalysisRepository from "../../src/repositories/VacancyAnalysisRepository.ts"
 import { AnalysisRunner, analysisInputHash } from "../../src/services/AnalysisRunner.ts"
 import { SystemOneClient, SystemOneError } from "../../src/services/SystemOneClient.ts"
-import * as support from "./support.ts"
+import * as support from "./support/index.ts"
 
 const enabled = support.integrationEnabled
 const serverUrl = support.serverUrl

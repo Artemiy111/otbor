@@ -10,7 +10,7 @@ import { Effect } from "effect"
 import { Database } from "../../src/db/Database.ts"
 import * as VacancyAnalysisRepository from "../../src/repositories/VacancyAnalysisRepository.ts"
 import { DecisionService } from "../../src/services/DecisionService.ts"
-import * as support from "./support.ts"
+import * as support from "./support/index.ts"
 
 const enabled = support.integrationEnabled
 const serverUrl = support.serverUrl

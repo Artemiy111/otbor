@@ -6,7 +6,7 @@ import { Database } from "../../src/db/Database.ts"
 import { schedule, scheduleRun, searchRun } from "../../src/db/tables.ts"
 import { recoverInterruptedRuns } from "../../src/services/recovery.ts"
 import * as ScheduleRunRepository from "../../src/repositories/ScheduleRunRepository.ts"
-import * as support from "./support.ts"
+import * as support from "./support/index.ts"
 
 const enabled = support.integrationEnabled
 const serverUrl = support.serverUrl

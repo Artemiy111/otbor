@@ -11,7 +11,7 @@ import { InferenceService } from "../../src/services/InferenceService.ts"
 import { ResumeService } from "../../src/services/ResumeService.ts"
 import { ScheduleService } from "../../src/services/ScheduleService.ts"
 import { runDueSchedules } from "../../src/services/ScheduleWorker.ts"
-import * as support from "./support.ts"
+import * as support from "./support/index.ts"
 
 const enabled = support.integrationEnabled
 const serverUrl = support.serverUrl
