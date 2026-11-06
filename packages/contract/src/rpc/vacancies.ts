@@ -108,6 +108,8 @@ export const VacancyLookupItem = Schema.Struct({
       hhAccountColor: Schema.NullOr(Schema.String),
       resumeId: Schema.NullOr(Schema.String),
       resumeTitle: Schema.NullOr(Schema.String),
+      /** Short code among the account's resumes: first letter, numbered on a clash (D1, D2). */
+      resumeCode: Schema.NullOr(Schema.String),
       state: ApplicationState,
       hhStatus: Schema.NullOr(Schema.String)
     })

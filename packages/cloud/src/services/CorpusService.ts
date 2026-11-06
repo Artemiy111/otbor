@@ -41,6 +41,7 @@ interface LookupApplicationRow {
   readonly account_name: string | null
   readonly account_color: string | null
   readonly resume_title: string | null
+  readonly resume_code: string | null
 }
 
 const toKeywordMatch = (match: LexiconRepository.StoredMatch): KeywordMatchRecord => ({
@@ -298,10 +299,18 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
                 const applications = yield* tx.execute(sql`
                   select a.id, a.hh_account_id, a.state, a.hh_status, a.resume_id::text as resume_id,
                     coalesce(h.label, nullif(btrim(concat_ws(' ', h.first_name, h.last_name)), '')) as account_name,
-                    h.color as account_color, r.title as resume_title
+                    h.color as account_color, r.title as resume_title, rc.code as resume_code
                   from application a
                   join hh_account h on h.id = a.hh_account_id
                   left join resume r on r.id = a.resume_id
+                  left join lateral (
+                    select letter || case when count(*) over () > 1 then (row_number() over (order by created_at desc))::text else '' end as code, id
+                    from (
+                      select id, created_at, upper(left(btrim(title), 1)) as letter from resume
+                      where hh_account_id = a.hh_account_id
+                    ) same
+                    where r.id is not null and same.letter = upper(left(btrim(r.title), 1))
+                  ) rc on rc.id = a.resume_id
                   where a.user_id = ${currentUser.userId} and a.vacancy_id = ${row.id}
                   order by h.created_at, r.title nulls last, a.updated_at desc
                   limit 40`)
@@ -316,6 +325,7 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
                     hhAccountColor: a.account_color,
                     resumeId: a.resume_id,
                     resumeTitle: a.resume_title,
+                    resumeCode: a.resume_code,
                     state: a.state as VacancyLookupItem["applications"][number]["state"],
                     hhStatus: a.hh_status
                   }))

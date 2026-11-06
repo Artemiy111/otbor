@@ -1,4 +1,4 @@
-import type { VacancyLookupItem } from "@otbor/contract"
+import { defaultHhAccountColor, hhAccountInitials, type VacancyLookupItem } from "@otbor/contract"
 import type { Settings } from "@/messages.ts"
 
 /**
@@ -89,7 +89,7 @@ export const factsFor = (item: VacancyLookupItem): ReadonlyArray<Fact> => {
 interface Status {
   readonly text: string
   readonly color: string
-  /** Not sent yet: drawn as a ring instead of a filled dot. */
+  /** Not sent yet: drawn as a dashed ring instead of a filled bubble. */
   readonly pending: boolean
 }
 
@@ -124,38 +124,107 @@ const statusOf = (a: LookupApplication): Status => {
   }
 }
 
-const whoOf = (a: LookupApplication): string =>
-  [a.hhAccountName ?? "аккаунт", a.resumeTitle ?? "без резюме"].join(" · ")
-
-const makeDot = (a: LookupApplication, size = 12): HTMLElement => {
-  const status = statusOf(a)
-  const dot = document.createElement("span")
-  dot.setAttribute(MARK, "")
-  dot.title = `${whoOf(a)}: ${status.text}`
-  const account = a.hhAccountColor ?? "transparent"
-  dot.style.cssText = [
-    "display:inline-block",
-    "flex:none",
-    `width:${size}px`,
-    `height:${size}px`,
-    "border-radius:50%",
-    "box-sizing:border-box",
-    status.pending ? `border:2px solid ${status.color}` : `background:${status.color}`,
-    // The account's colour as a thin halo, so two accounts read apart.
-    `box-shadow:0 0 0 2px #fff,0 0 0 3.5px ${account}`,
-    "cursor:help"
-  ].join(";")
-  return dot
+/** What the employer decided, as a mark on the resume code: the part worth seeing without hovering. */
+const GLYPH: Record<string, string> = {
+  INVITATION: "✓",
+  INTERVIEW: "✓",
+  OFFER: "★",
+  DISCARD: "✕",
+  DISCARD_AFTER_INTERVIEW: "✕"
 }
 
-/** One dot per (account, resume): the newest application of each pair. */
-const latestPerResume = (applications: ReadonlyArray<LookupApplication>): ReadonlyArray<LookupApplication> => {
-  const seen = new Map<string, LookupApplication>()
+interface AccountResponses {
+  readonly id: string
+  readonly name: string
+  readonly color: string
+  /** The newest application per resume of this account. */
+  readonly responses: ReadonlyArray<LookupApplication>
+}
+
+/** Applications grouped by account (in the server's order), one per resume. */
+const byAccount = (applications: ReadonlyArray<LookupApplication>): ReadonlyArray<AccountResponses> => {
+  const groups = new Map<string, { name: string; color: string; responses: Map<string, LookupApplication> }>()
   for (const a of applications) {
-    const key = `${a.hhAccountId}:${a.resumeId ?? ""}`
-    if (!seen.has(key)) seen.set(key, a)
+    let group = groups.get(a.hhAccountId)
+    if (group === undefined) {
+      group = {
+        name: a.hhAccountName ?? a.hhAccountId.slice(0, 8),
+        color: a.hhAccountColor ?? defaultHhAccountColor(a.hhAccountId),
+        responses: new Map()
+      }
+      groups.set(a.hhAccountId, group)
+    }
+    const key = a.resumeId ?? ""
+    if (!group.responses.has(key)) group.responses.set(key, a)
   }
-  return [...seen.values()]
+  return [...groups].map(([id, g]) => ({ id, name: g.name, color: g.color, responses: [...g.responses.values()] }))
+}
+
+const el = (tag: string, css: string, text?: string): HTMLElement => {
+  const node = document.createElement(tag)
+  node.style.cssText = css
+  if (text !== undefined) node.textContent = text
+  return node
+}
+
+/** The resume code bubble, painted by the response status: filled once sent, a ring while not. */
+const resumeBubble = (a: LookupApplication, size: number): HTMLElement => {
+  const status = statusOf(a)
+  const glyph = a.hhStatus === null ? "" : (GLYPH[a.hhStatus] ?? "")
+  const bubble = el(
+    "span",
+    [
+      "display:inline-flex",
+      "align-items:center",
+      "justify-content:center",
+      "gap:1px",
+      "box-sizing:border-box",
+      `height:${size}px`,
+      `min-width:${size}px`,
+      "padding:0 5px",
+      "border-radius:999px",
+      `font:700 ${Math.round(size * 0.6)}px/1 system-ui,sans-serif`,
+      status.pending
+        ? `background:#fff;color:${status.color};border:1.5px dashed ${status.color}`
+        : `background:${status.color};color:#fff`
+    ].join(";"),
+    `${a.resumeCode ?? "?"}${glyph}`
+  )
+  bubble.title = `${a.resumeTitle ?? "резюме неизвестно"}: ${status.text}`
+  return bubble
+}
+
+/**
+ * The web app's account chip, ported: a coloured circle with initials that
+ * continues into a capsule of resume codes, each coloured by its response.
+ */
+const accountChip = (group: AccountResponses, size = 24): HTMLElement => {
+  const chip = el(
+    "span",
+    `display:inline-flex;align-items:center;gap:3px;height:${size}px;padding-right:3px;border-radius:999px;background:${group.color}2e;cursor:help;vertical-align:middle`
+  )
+  chip.setAttribute(MARK, "")
+  const circle = el(
+    "span",
+    [
+      "display:inline-flex",
+      "align-items:center",
+      "justify-content:center",
+      "flex:none",
+      `width:${size}px`,
+      `height:${size}px`,
+      "border-radius:50%",
+      `background:${group.color}`,
+      "color:#fff",
+      `font:700 ${Math.round(size * 0.42)}px/1 system-ui,sans-serif`,
+      "letter-spacing:.02em"
+    ].join(";"),
+    hhAccountInitials(group.name)
+  )
+  chip.append(circle)
+  for (const a of group.responses) chip.append(resumeBubble(a, size - 6))
+  chip.title = [group.name, ...group.responses.map((a) => `${a.resumeTitle ?? "резюме неизвестно"} — ${statusOf(a).text}`)].join("\n")
+  return chip
 }
 
 /* ------------------------------ search cards ------------------------------ */
@@ -202,21 +271,15 @@ const paintCard = (card: Element, item: VacancyLookupItem | undefined, template:
   card.setAttribute(DONE, "")
   if (item === undefined) return
   const tags = cardTags(item)
-  const responses = latestPerResume(item.applications)
-  if (tags.length === 0 && responses.length === 0) return
+  const accounts = byAccount(item.applications)
+  if (tags.length === 0 && accounts.length === 0) return
 
   const row = document.createElement("div")
   row.setAttribute(MARK, "")
   row.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0"
 
   const own = template ?? card.querySelector("[class*='magritte-tag']:not([data-otbor])")
-  if (responses.length > 0) {
-    const dots = document.createElement("span")
-    dots.setAttribute(MARK, "")
-    dots.style.cssText = "display:inline-flex;align-items:center;gap:7px;padding:0 4px"
-    for (const a of responses) dots.append(makeDot(a))
-    row.append(dots)
-  }
+  for (const group of accounts) row.append(accountChip(group))
   for (const tag of tags) row.append(makeTag(own, tag.text, tag.tone))
 
   const hhTags = card.querySelector("[class*='compensation-labels']")
@@ -305,22 +368,24 @@ const makeRow = (
   return row
 }
 
-/** "● Аккаунт · Резюме — статус", one line per (account, resume). */
-const responseList = (responses: ReadonlyArray<LookupApplication>): HTMLElement => {
-  const list = document.createElement("span")
-  list.style.cssText = "display:inline-flex;flex-direction:column;gap:2px;vertical-align:top"
-  for (const a of responses) {
-    const status = statusOf(a)
-    const line = document.createElement("span")
-    line.style.cssText = "display:inline-flex;align-items:center;gap:8px"
-    const text = document.createElement("span")
-    text.append(document.createTextNode(`${whoOf(a)} — `))
-    const verdict = document.createElement("b")
-    verdict.textContent = status.text
-    verdict.style.color = status.color
-    text.append(verdict)
-    line.append(makeDot(a, 10), text)
-    list.append(line)
+/** One block per account: its chip, then its name and a "резюме — статус" line per resume. */
+const responseList = (accounts: ReadonlyArray<AccountResponses>): HTMLElement => {
+  const list = el("span", "display:inline-flex;flex-direction:column;gap:8px;vertical-align:top")
+  for (const group of accounts) {
+    const block = el("span", "display:inline-flex;align-items:flex-start;gap:8px")
+    const lines = el("span", "display:inline-flex;flex-direction:column")
+    lines.append(el("span", "font-weight:600", group.name))
+    for (const a of group.responses) {
+      const status = statusOf(a)
+      const line = el("span", "")
+      line.append(
+        document.createTextNode(`${a.resumeTitle ?? "резюме неизвестно"} — `),
+        el("b", `color:${status.color}`, status.text)
+      )
+      lines.append(line)
+    }
+    block.append(accountChip(group, 22), lines)
+    list.append(block)
   }
   return list
 }
@@ -345,8 +410,8 @@ export const renderVacancy = (state: PanelState, settings: Settings): void => {
     const href = `${settings.webUrl}/vacancies/${state.item.vacancy.id}`
     rows.push(makeRow(template, "otbor", state.saved === "inserted" ? "сохранено, открыть" : "в базе, открыть", "muted", href))
     for (const fact of factsFor(state.item)) rows.push(makeRow(template, fact.label, fact.value, fact.tone))
-    const responses = latestPerResume(state.item.applications)
-    if (responses.length > 0) rows.push(makeRow(template, "Отклики", responseList(responses), "muted"))
+    const accounts = byAccount(state.item.applications)
+    if (accounts.length > 0) rows.push(makeRow(template, "Отклики", responseList(accounts), "muted"))
   } else {
     rows.push(makeRow(template, "otbor", "вакансии нет в базе", "muted"))
   }
