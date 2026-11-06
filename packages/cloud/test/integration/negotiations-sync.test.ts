@@ -5,6 +5,7 @@
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import type { HarnessExit } from "@otbor/contract"
+import { sql } from "drizzle-orm"
 import * as support from "./support/index.ts"
 
 const enabled = support.integrationEnabled
@@ -159,6 +160,36 @@ if (!enabled || serverUrl === null) {
       const after = await support.applicationRowsFor(accountId)
       expect(after.find((row) => row.vacancyId === known)).toMatchObject({ hhStatus: "INVITATION" })
       expect(after.find((row) => row.id === ownApplication)).toMatchObject({ origin: "otbor", state: "queued" })
+    })
+
+    test("a resume-less row is merged into the row of the resume hh names", async () => {
+      const ctx = await setup("sync-merge")
+      const { userId, accountId } = ctx.tenant
+      const vacancyId = await support.seedVacancyWithExternal("9100050", "Merge vacancy")
+      const resumeId = await support.seedResume({ userId, accountId, title: "DevOps" })
+      await support.runAs(userId, support.ownerTx((tx) => tx.execute(sql`update resume set external_id = '7700050' where id = ${resumeId}`)))
+      const own = await support.seedApplication({ userId, accountId, vacancyId, resumeId, state: "draft" })
+      const dup = await support.runAs(
+        userId,
+        support.ownerTx((tx) =>
+          tx.execute(sql`insert into application (user_id, hh_account_id, vacancy_id, state, origin)
+            values (${userId}, ${accountId}, ${vacancyId}, 'submitted', 'imported') returning id`)
+        )
+      )
+      const dupId = dup.rows[0]!.id as string
+      await support.seedKit({ userId, applicationId: dupId })
+
+      await support.negotiationsRun(userId, accountId)
+      await ctx.finish(syncExit(listHtml([{ vacancyId: 9100050, resumeId: 7700050, lastState: "RESPONSE" }])))
+
+      const rows = (await support.applicationRowsFor(accountId)).filter((row) => row.vacancyId === vacancyId)
+      expect(rows.map((row) => row.id)).toEqual([own])
+      expect(rows[0]).toMatchObject({ state: "submitted", hhStatus: "RESPONSE" })
+      const kits = await support.runAs(
+        userId,
+        support.ownerTx((tx) => tx.execute(sql`select letter from application_kit where application_id = ${own}`))
+      )
+      expect(kits.rows.map((row) => row.letter)).toEqual(["integration test"])
     })
 
     test("imported applications count as already applied and can never be applied to again", async () => {

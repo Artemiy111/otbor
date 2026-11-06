@@ -118,6 +118,35 @@ export const importTopics = (
             )
         `)
       }
+      if (resumeId !== null) {
+        // A resume-less row (made when the resume could not be told) is a
+        // duplicate once the resume has its own row: its kits move there and
+        // it goes away.
+        yield* tx.execute(sql`
+          update application_kit k
+          set application_id = own.id
+          from application dup, application own
+          where k.application_id = dup.id
+            and dup.hh_account_id = ${input.hhAccountId} and dup.vacancy_id = ${vacancyId}
+            and dup.origin = 'imported' and dup.resume_id is null
+            and own.hh_account_id = ${input.hhAccountId} and own.vacancy_id = ${vacancyId}
+            and own.resume_id = ${resumeId}
+            and not exists (
+              select 1 from application_kit o where o.application_id = own.id and o.form_hash = k.form_hash
+            )
+        `)
+        yield* tx.execute(sql`
+          delete from application dup
+          where dup.hh_account_id = ${input.hhAccountId} and dup.vacancy_id = ${vacancyId}
+            and dup.origin = 'imported' and dup.resume_id is null
+            and exists (
+              select 1 from application own
+              where own.hh_account_id = dup.hh_account_id and own.vacancy_id = dup.vacancy_id
+                and own.resume_id = ${resumeId}
+            )
+            and not exists (select 1 from harness_jobs j where j.application_id = dup.id)
+        `)
+      }
       // hh holds a response, so an otbor draft (or a stuck attempt) for it is
       // wrong: hh is the authority. The row keeps its origin and its kit.
       const settled = yield* tx.execute(sql`

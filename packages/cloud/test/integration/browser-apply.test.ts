@@ -160,6 +160,29 @@ if (!enabled || serverUrl === null) {
       expect(draft).toMatchObject({ state: "submitted", letter: null, pendingLetter: "integration test" })
     })
 
+    test("the same resume title on two accounts goes to the one whose application is open", async () => {
+      const tenant = await support.seedTenant("browser-twins")
+      const other = await support.addAccount(tenant.userId, "second")
+      await support.setDefaultAccount(tenant.userId, other)
+      const externalId = String(9_300_000 + Math.floor(Math.random() * 90_000))
+      const vacancyId = await support.seedVacancyWithExternal(externalId, "Browser twins")
+      const mine = await support.seedResume({ userId: tenant.userId, accountId: tenant.accountId, title: "DevOps" })
+      const theirs = await support.seedResume({ userId: tenant.userId, accountId: other, title: "DevOps" })
+      await support.seedApplication({ userId: tenant.userId, accountId: other, vacancyId, resumeId: theirs, state: "submitted" })
+      const open = await support.seedApplication({
+        userId: tenant.userId,
+        accountId: tenant.accountId,
+        vacancyId,
+        resumeId: mine,
+        state: "draft"
+      })
+
+      const result = await record(tenant.userId, input(externalId, { resumeTitle: "DevOps" }))
+      expect(result.status).toBe("recorded")
+      expect(result.application?.id).toBe(open as never)
+      expect(result.application?.resumeId).toBe(mine as never)
+    })
+
     test("an otbor submit in flight is left to the reconcile", async () => {
       const tenant = await support.seedTenant("browser-inflight")
       const externalId = String(9_500_000 + Math.floor(Math.random() * 400_000))

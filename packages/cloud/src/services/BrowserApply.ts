@@ -76,10 +76,15 @@ interface Target {
   readonly resumeId: string | null
 }
 
+/** An application in one of these states is the one the operator is sending now. */
+const OPEN_STATES = new Set(["draft", "needs_human", "failed", "queued"])
+
 /**
  * Which account and resume the browser responded with. The form names the
- * resume by title; an application already waiting for the vacancy, the only
- * account and the default account are the fallbacks, in that order.
+ * resume only by title, and two accounts may hold resumes with the same title,
+ * so a tie goes to the resume whose application is still open for this
+ * vacancy, then to one that has not responded yet, then to the default account.
+ * Without a title: the only waiting application, the only account, the default one.
  */
 const resolveTarget = (
   tx: Executor,
@@ -89,32 +94,44 @@ const resolveTarget = (
   Effect.gen(function*() {
     if (resumeTitle !== null) {
       const byTitle = yield* tx.execute(sql`
-        select id, hh_account_id from resume
-        where btrim(title) = ${resumeTitle}
-        order by is_active desc, updated_at desc`)
-      const rows = byTitle.rows as unknown as ReadonlyArray<{ id: string; hh_account_id: string }>
-      if (rows.length === 1) return { hhAccountId: rows[0]!.hh_account_id, resumeId: rows[0]!.id }
-      if (rows.length > 1) {
-        // Same title on several resumes: the one that already has an application wins.
-        const ids = rows.map((row) => row.id)
-        const withApp = yield* tx.execute(sql`
-          select hh_account_id, resume_id from application
-          where vacancy_id = ${vacancyId} and resume_id in (${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)})`)
-        const found = withApp.rows as unknown as ReadonlyArray<{ hh_account_id: string; resume_id: string }>
-        if (found.length === 1) return { hhAccountId: found[0]!.hh_account_id, resumeId: found[0]!.resume_id }
-      }
+        select r.id, r.hh_account_id, h.is_default,
+          (select a.state from application a
+           where a.vacancy_id = ${vacancyId} and a.hh_account_id = r.hh_account_id and a.resume_id = r.id
+           limit 1) as app_state
+        from resume r join hh_account h on h.id = r.hh_account_id
+        where btrim(r.title) = ${resumeTitle}
+        order by r.is_active desc, r.updated_at desc`)
+      const rows = byTitle.rows as unknown as ReadonlyArray<{
+        id: string
+        hh_account_id: string
+        is_default: boolean
+        app_state: string | null
+      }>
+      const only = (list: ReadonlyArray<(typeof rows)[number]>) =>
+        list.length === 1 ? { hhAccountId: list[0]!.hh_account_id, resumeId: list[0]!.id } : null
+      const chosen =
+        only(rows) ??
+        only(rows.filter((row) => row.app_state !== null && OPEN_STATES.has(row.app_state))) ??
+        only(rows.filter((row) => row.app_state !== "submitted" && row.app_state !== "submitting")) ??
+        only(rows.filter((row) => row.is_default))
+      if (chosen !== null) return chosen
     }
 
     const waiting = yield* tx.execute(sql`
       select hh_account_id, resume_id from application
-      where vacancy_id = ${vacancyId} and state <> 'skipped'`)
+      where vacancy_id = ${vacancyId} and state in ('draft', 'needs_human', 'failed', 'queued')`)
     const apps = waiting.rows as unknown as ReadonlyArray<{ hh_account_id: string; resume_id: string | null }>
     if (apps.length === 1) return { hhAccountId: apps[0]!.hh_account_id, resumeId: apps[0]!.resume_id }
 
     const accounts = yield* tx.execute(sql`select id, is_default from hh_account order by is_default desc, created_at asc`)
     const all = accounts.rows as unknown as ReadonlyArray<{ id: string; is_default: boolean }>
-    if (all.length === 1 || all[0]?.is_default === true) return { hhAccountId: all[0]!.id, resumeId: null }
-    return null
+    if (!(all.length === 1 || all[0]?.is_default === true)) return null
+    const hhAccountId = all[0]!.id
+    if (resumeTitle === null) return { hhAccountId, resumeId: null }
+    // The account is known; its resume by that title is the one, when it has exactly one.
+    const own = yield* tx.execute(sql`
+      select id from resume where hh_account_id = ${hhAccountId} and btrim(title) = ${resumeTitle}`)
+    return { hhAccountId, resumeId: own.rows.length === 1 ? (own.rows[0]!.id as string) : null }
   })
 
 export class BrowserApply extends Context.Service<BrowserApply, BrowserApplyShape>()(
