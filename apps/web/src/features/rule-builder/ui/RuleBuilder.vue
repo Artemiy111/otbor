@@ -89,15 +89,39 @@ const flagClass = (on: boolean) =>
     <div
       v-for="group in state.groups"
       :key="group.id"
-      class="space-y-1.5 rounded-md border border-l-2 border-l-violet-400/70 bg-muted/20 p-2"
+      class="space-y-1.5 border-l-2 border-l-violet-400/70 pl-2"
     >
-      <div class="flex items-center justify-between">
-        <span class="text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
-          Любой из вариантов
-        </span>
+      <template v-for="(branch, index) in group.branches" :key="branch.id">
+        <div v-if="index > 0" class="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground">
+          или<span class="h-px flex-1 bg-border" />
+        </div>
+        <RuleRow
+          v-for="rule in branch.rules"
+          :key="rule.id"
+          :rule="rule"
+          :disabled="props.disabled"
+          @remove="removeBranchRule(group.id, branch.id, rule.id)"
+        />
+        <FieldPicker
+          label="и"
+          :disabled="props.disabled"
+          @pick="(field) => addBranchRule(group.id, branch.id, field)"
+        />
+      </template>
+
+      <div class="flex items-center gap-1.5">
         <button
           type="button"
-          class="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+          class="inline-flex h-7 items-center gap-1 rounded-md border border-dashed border-border px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+          :disabled="props.disabled"
+          @click="addBranch(group.id)"
+        >
+          <Plus class="h-3.5 w-3.5" />
+          или
+        </button>
+        <button
+          type="button"
+          class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
           title="Удалить группу"
           :disabled="props.disabled"
           @click="removeGroup(group.id)"
@@ -105,47 +129,6 @@ const flagClass = (on: boolean) =>
           <X class="h-3.5 w-3.5" />
         </button>
       </div>
-
-      <template v-for="(branch, index) in group.branches" :key="branch.id">
-        <div v-if="index > 0" class="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground">
-          <span class="h-px flex-1 bg-border" />или<span class="h-px flex-1 bg-border" />
-        </div>
-        <div class="space-y-1.5 rounded-md border border-dashed border-border p-1.5">
-          <RuleRow
-            v-for="rule in branch.rules"
-            :key="rule.id"
-            :rule="rule"
-            :disabled="props.disabled"
-            @remove="removeBranchRule(group.id, branch.id, rule.id)"
-          />
-          <div class="flex items-center gap-1.5">
-            <FieldPicker
-              label="и ещё условие"
-              :disabled="props.disabled"
-              @pick="(field) => addBranchRule(group.id, branch.id, field)"
-            />
-            <button
-              v-if="group.branches.length > 1"
-              type="button"
-              class="inline-flex h-7 items-center rounded-md px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-              :disabled="props.disabled"
-              @click="removeBranch(group.id, branch.id)"
-            >
-              убрать вариант
-            </button>
-          </div>
-        </div>
-      </template>
-
-      <button
-        type="button"
-        class="inline-flex h-7 items-center gap-1 rounded-md border border-dashed border-border px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-        :disabled="props.disabled"
-        @click="addBranch(group.id)"
-      >
-        <Plus class="h-3.5 w-3.5" />
-        или вариант
-      </button>
     </div>
 
     <div class="flex flex-wrap items-center gap-1.5">
