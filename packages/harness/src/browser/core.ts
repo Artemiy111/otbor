@@ -2,6 +2,7 @@ import type {
   FormAnswer,
   HarnessExit,
   NegotiationsSyncEvidence,
+  ChatReadEvidence,
   ResumeSyncEvidence,
   PrepareArtifacts,
   ReconcileEvidence,
@@ -470,5 +471,30 @@ export const resumeSyncExit = (
       html: resumeStateFragment(page.html) ?? page.html.slice(0, 20_000)
     }))
   }
+  return { tag: "reconciled", artifacts: { ...evidence } }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Chat read                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/** hh serves chats from its own host; `chatik.hh.ru` unless the base is a test host. */
+export const chatDataUrl = (baseUrl: string, chatId: string): string => {
+  const host = new URL(baseUrl).hostname
+  const chatHost = host === "hh.ru" || host.endsWith(".hh.ru") ? "chatik.hh.ru" : host
+  const origin = host === chatHost ? baseUrl.replace(/\/+$/, "") : `https://${chatHost}`
+  return `${origin}/chatik/api/chat_data?chatId=${encodeURIComponent(chatId)}&do_not_track_session_events=true`
+}
+
+/**
+ * The chat read exit. 401/403 mean the session is gone; anything but 200 is a
+ * transport problem the cloud retries. The body is evidence, not a verdict.
+ */
+export const chatReadExit = (chatId: string, status: number, body: string): HarnessExit => {
+  if (status === 401 || status === 403) {
+    return { tag: "session_expired", message: `hh answered ${status} for the chat` }
+  }
+  if (status !== 200) return { tag: "transport", message: `hh answered ${status} for the chat` }
+  const evidence: ChatReadEvidence = { chatId, status, body: body.slice(0, 2_000_000) }
   return { tag: "reconciled", artifacts: { ...evidence } }
 }

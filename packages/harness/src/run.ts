@@ -8,6 +8,7 @@ import {
   LetterAttachJobPayload,
   PrepareJobPayload,
   NegotiationsSyncJobPayload,
+  ChatReadJobPayload,
   ResumeSyncJobPayload,
   ReconcileJobPayload,
   SubmitJobPayload
@@ -213,6 +214,18 @@ const runBrowserExit = (
               message: `invalid resume_sync payload: ${error.message}`
             }),
           onSuccess: (payload) => executor.resumeSync(payload)
+        })
+      )
+    case "chat_read":
+      return Schema.decodeUnknownEffect(ChatReadJobPayload)(job.payload).pipe(
+        Effect.matchEffect({
+          // Read-only, so a bad payload touched nothing.
+          onFailure: (error) =>
+            Effect.succeed<HarnessExit>({
+              tag: "permanent",
+              message: `invalid chat_read payload: ${error.message}`
+            }),
+          onSuccess: (payload) => executor.chatRead(payload)
         })
       )
     default:

@@ -70,7 +70,8 @@ export const JobStage = Schema.Literals([
   "negotiations_sync",
   "resume_sync",
   "form_read",
-  "letter_attach"
+  "letter_attach",
+  "chat_read"
 ])
 
 export type JobStage = typeof JobStage.Type

@@ -37,6 +37,8 @@ import {
   ContactsExtract,
   ContactsList,
   ConversationGet,
+  VacancyChatGet,
+  VacancyChatRefresh,
   ConversationsList
 } from "./contacts.ts"
 import { CrawlFinish, CrawlRunsList, CrawlSavePage, CrawlStart, CrawlStatus } from "./crawl.ts"
@@ -133,9 +135,9 @@ export const OtborRpcs = RpcGroup.make(
   SystemHealth,
   VacanciesList,
   VacanciesGet,
+  VacanciesLookup,
   VacancyAnalysisGet,
   AnalysisRun,
-  VacanciesLookup,
   AnalysisStatsGet,
   AnalysisInsightsGet,
   MarketAnalyticsGet,
@@ -176,6 +178,8 @@ export const OtborRpcs = RpcGroup.make(
   ContactsExtract,
   ConversationsList,
   ConversationGet,
+  VacancyChatGet,
+  VacancyChatRefresh,
   MailAccountsList,
   MailAccountUpsert,
   MailAccountRemove,

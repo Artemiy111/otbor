@@ -199,3 +199,26 @@ export const ResumeSyncEvidence = Schema.Struct({
 })
 
 export type ResumeSyncEvidence = typeof ResumeSyncEvidence.Type
+
+/**
+ * `chat_read`: fetch the JSON of one hh chat (`chatik.hh.ru/chatik/api/chat_data`)
+ * with the account's session cookies. No page is opened and nothing is clicked.
+ * One chat per response, so one job per vacancy and resume.
+ */
+export const ChatReadJobPayload = Schema.Struct({
+  hhAccountId: Schema.String,
+  vacancyId: Schema.String,
+  chatId: Schema.String,
+  sessionProfile: Schema.optional(Schema.NullOr(Schema.String))
+})
+
+export type ChatReadJobPayload = typeof ChatReadJobPayload.Type
+
+/** `chat_read` artifacts: the response body as hh sent it. The cloud parses it. */
+export const ChatReadEvidence = Schema.Struct({
+  chatId: Schema.String,
+  status: Schema.Int,
+  body: Schema.String
+})
+
+export type ChatReadEvidence = typeof ChatReadEvidence.Type

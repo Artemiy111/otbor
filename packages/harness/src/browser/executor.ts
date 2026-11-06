@@ -1,4 +1,4 @@
-import type { FormReadJobPayload, LetterAttachJobPayload, HarnessExit, NegotiationsSyncJobPayload, ResumeSyncJobPayload, ReconcileJobPayload, SubmitJobPayload } from "@otbor/contract"
+import type { ChatReadJobPayload, FormReadJobPayload, LetterAttachJobPayload, HarnessExit, NegotiationsSyncJobPayload, ResumeSyncJobPayload, ReconcileJobPayload, SubmitJobPayload } from "@otbor/contract"
 import { Context, Effect, Layer } from "effect"
 
 /**
@@ -43,6 +43,11 @@ export interface BrowserExecutorShape {
    * returns them as evidence. Navigation only; the cloud parses and stores.
    */
   readonly resumeSync: (payload: ResumeSyncJobPayload) => Effect.Effect<HarnessExit>
+  /**
+   * Fetches the JSON of one hh chat with the account's cookies. No page is
+   * navigated and nothing is clicked; the cloud parses the body.
+   */
+  readonly chatRead: (payload: ChatReadJobPayload) => Effect.Effect<HarnessExit>
 }
 
 export class BrowserExecutor extends Context.Service<BrowserExecutor, BrowserExecutorShape>()(
@@ -70,7 +75,10 @@ export class BrowserExecutor extends Context.Service<BrowserExecutor, BrowserExe
             Effect.succeed<HarnessExit>({ tag: "blocked", message: "fake executor: negotiations sync" })),
         resumeSync:
           handlers.resumeSync ??
-          (() => Effect.succeed<HarnessExit>({ tag: "blocked", message: "fake executor: resume sync" }))
+          (() => Effect.succeed<HarnessExit>({ tag: "blocked", message: "fake executor: resume sync" })),
+        chatRead:
+          handlers.chatRead ??
+          (() => Effect.succeed<HarnessExit>({ tag: "blocked", message: "fake executor: chat read" }))
       })
     )
 }

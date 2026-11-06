@@ -26,6 +26,7 @@ import {
   checkKit,
   judgePrepare,
   judgeReconcile,
+  judgeChatRead,
   judgeLetterAttach,
   judgeNegotiationsSync,
   judgeResumeSync,
@@ -36,6 +37,7 @@ import { completeFitInference } from "./fitJudge.ts"
 import * as VacancyFormRepository from "../repositories/VacancyFormRepository.ts"
 import { hintsFor } from "./formHints.ts"
 import { importTopics } from "./NegotiationsSync.ts"
+import { importChat } from "./ChatSync.ts"
 import { importResumes } from "./ResumeSync.ts"
 import { negotiationsSyncJob, nextSequence, reconcileJob, submitJob, targetFor } from "./jobs.ts"
 import { toStorageError } from "./support.ts"
@@ -774,6 +776,42 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                       status = "pending"
                       runAt = retryLater(exit, 120)
                       message = `resume sync retry ${job.attempts + 1}/${job.maxAttempts}: ${verdict.reason}`
+                    }
+                    break
+                  }
+
+                  case "chat_read": {
+                    // The harness only delivers the JSON; the cloud parses it and
+                    // stores the messages. Read-only, so a retry is always safe.
+                    const payload = job.payload as { vacancyId?: string; chatId?: string }
+                    const verdict =
+                      typeof payload.chatId === "string"
+                        ? judgeChatRead(exit, payload.chatId)
+                        : ({ _tag: "human", reason: "job has no chat id" } as const)
+                    if (
+                      verdict._tag === "read" &&
+                      ctx.hhAccountId !== null &&
+                      typeof payload.vacancyId === "string"
+                    ) {
+                      const counts = yield* importChat(tx, {
+                        userId: ctx.userId,
+                        hhAccountId: ctx.hhAccountId,
+                        vacancyId: payload.vacancyId,
+                        chat: verdict.chat
+                      })
+                      status = "done"
+                      jobResult = { counts }
+                      message = `chat read: ${counts.inserted} new, ${counts.updated} known messages`
+                    } else if (verdict._tag === "human") {
+                      status = "needs_human"
+                      message = `chat read needs a human: ${verdict.reason}`
+                    } else if (verdict._tag === "read" || job.attempts >= job.maxAttempts) {
+                      status = "dead"
+                      message = `chat read gave up: ${verdict._tag === "read" ? "job has no account or vacancy" : verdict.reason}`
+                    } else {
+                      status = "pending"
+                      runAt = retryLater(exit, 30)
+                      message = `chat read retry ${job.attempts + 1}/${job.maxAttempts}: ${verdict.reason}`
                     }
                     break
                   }

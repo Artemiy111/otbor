@@ -2,6 +2,7 @@
 import type { VacancyPage } from "../model"
 import ResponseRows from "./response/ResponseRows.vue"
 import VacancyApply from "./VacancyApply.vue"
+import VacancyChat from "./VacancyChat.vue"
 import VacancyDecision from "./VacancyDecision.vue"
 import VacancyDescription from "./VacancyDescription.vue"
 import VacancyPassport from "./VacancyPassport.vue"
@@ -35,6 +36,9 @@ const h2 = "mb-2 text-sm font-semibold"
     <div class="min-w-0 xl:border-l xl:border-border xl:pl-6">
     <div class="space-y-5 xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:self-start xl:overflow-y-auto">
       <VacancyApply :page="page" />
+      <div class="border-t border-border pt-5">
+        <VacancyChat :page="page" />
+      </div>
       <div class="border-t border-border pt-5">
         <VacancyDecision
           :decisions="page.decisions.value"

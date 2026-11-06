@@ -319,3 +319,36 @@ export const letterAttachJob = (
     },
     idempotencyKey: `vacancy:${input.vacancyId}:account:${input.hhAccountId}:chat:${input.chatId ?? "none"}:letter_attach:${input.letterHash}:${input.sequence}`
   })
+
+/**
+ * Reads one hh chat (the chat of one response). Read-only and repeatable: a
+ * caller passes a fresh `sequence` for every explicit refresh.
+ */
+export const chatReadJob = (
+  tx: Executor,
+  input: {
+    readonly userId: string
+    readonly hhAccountId: string
+    readonly vacancyId: string
+    readonly chatId: string
+    readonly sessionProfile: string | null
+    readonly sequence: number
+  }
+) =>
+  QueueRepository.enqueue(tx, {
+    userId: input.userId,
+    hhAccountId: input.hhAccountId,
+    applicationId: null,
+    stage: "chat_read",
+    kind: "browser",
+    // The operator is looking at the page: ahead of background bookkeeping.
+    priority: 5,
+    maxAttempts: 3,
+    payload: {
+      hhAccountId: input.hhAccountId,
+      vacancyId: input.vacancyId,
+      chatId: input.chatId,
+      sessionProfile: input.sessionProfile
+    },
+    idempotencyKey: `vacancy:${input.vacancyId}:account:${input.hhAccountId}:chat:${input.chatId}:chat_read:${input.sequence}`
+  })

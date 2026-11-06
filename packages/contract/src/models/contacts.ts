@@ -80,3 +80,19 @@ export const ConversationDetail = Schema.Struct({
 export type ConversationDetail = typeof ConversationDetail.Type
 
 /* -------------------------------------------------------------------------- */
+
+/**
+ * The hh chat of a vacancy for one resume (hh keeps one chat per response).
+ * `fetch` is the state of the newest `chat_read` job; `detail` is what is
+ * stored, so the page can show the last known messages while a refresh runs.
+ */
+export const VacancyChat = Schema.Struct({
+  /** `null`: there is no response with this resume, or its chat id is unknown. */
+  chatId: Schema.NullOr(Schema.String),
+  fetch: Schema.Literals(["none", "pending", "running", "done", "failed", "needs_human"]),
+  message: Schema.NullOr(Schema.String),
+  fetchedAt: Schema.NullOr(Schema.String),
+  detail: Schema.NullOr(ConversationDetail)
+})
+
+export type VacancyChat = typeof VacancyChat.Type

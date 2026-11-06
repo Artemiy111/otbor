@@ -4,6 +4,7 @@ import type {
   FormReadJobPayload,
   LetterAttachJobPayload,
   ReconcileJobPayload,
+  ChatReadJobPayload,
   ResumeSyncJobPayload,
   ReconcilePage,
   SubmitEvidence
@@ -32,6 +33,8 @@ import {
   negotiationsUrl,
   postClickExit,
   profileUrl,
+  chatDataUrl,
+  chatReadExit,
   resumeSyncExit,
   resumeUrl,
   prepareExit,
@@ -700,7 +703,33 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
       )
     )
 
-  return BrowserExecutor.of({ prepare, submit, attachLetter, reconcile, negotiationsSync, resumeSync })
+  /**
+   * One authenticated GET through the profile's cookie jar. A blank page is
+   * only the handle to the context; it is never navigated.
+   */
+  const chatRead = (payload: ChatReadJobPayload): Effect.Effect<HarnessExit> =>
+    withPage(payload.sessionProfile, (page) =>
+      Effect.gen(function*() {
+        const response = yield* attempt(() =>
+          page.context().request.get(chatDataUrl(baseUrl, payload.chatId), {
+            headers: { accept: "application/json" },
+            timeout: config.navigationTimeoutMs
+          })
+        )
+        const body = yield* attempt(() => response.text())
+        return chatReadExit(payload.chatId, response.status(), body)
+      }),
+      { parallel: true }
+    ).pipe(
+      Effect.catch((error) =>
+        Effect.succeed<HarnessExit>({ tag: "transport", message: error.message })
+      ),
+      Effect.catchDefect((defect) =>
+        Effect.succeed<HarnessExit>({ tag: "transport", message: String(defect) })
+      )
+    )
+
+  return BrowserExecutor.of({ prepare, submit, attachLetter, reconcile, negotiationsSync, resumeSync, chatRead })
 }
 
 export const PlaywrightBrowserExecutor = {

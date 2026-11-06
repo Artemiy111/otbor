@@ -30,6 +30,7 @@ import { MailService } from "../services/MailService.ts"
 import { MailSync } from "../services/MailSync.ts"
 import { LetterAttach } from "../services/LetterAttach.ts"
 import { NegotiationsSync } from "../services/NegotiationsSync.ts"
+import { ChatSync } from "../services/ChatSync.ts"
 import { ResumeSync } from "../services/ResumeSync.ts"
 import { PresetService } from "../services/PresetService.ts"
 import { QueueService } from "../services/QueueService.ts"
@@ -83,6 +84,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const resumes = yield* ResumeService
     const negotiations = yield* NegotiationsSync
     const letters = yield* LetterAttach
+    const chats = yield* ChatSync
     const resumeSync = yield* ResumeSync
 
     /**
@@ -110,9 +112,9 @@ export const OtborHandlers = OtborRpcs.toLayer(
 
       VacanciesList: (payload) => corpus.list(payload),
       VacanciesGet: ({ id }) => corpus.get(id),
+      VacanciesLookup: ({ externalIds }) => corpus.lookup(externalIds),
       VacancyAnalysisGet: ({ vacancyId }) => vacancyAnalysis.get(vacancyId),
       AnalysisRun: ({ limit, delayMs }) =>
-      VacanciesLookup: ({ externalIds }) => corpus.lookup(externalIds),
         analysisRunner.run({
           limit: Math.min(Math.max(limit ?? 20, 1), 500),
           delayMs: Math.min(Math.max(delayMs ?? 0, 0), 60_000)
@@ -231,6 +233,8 @@ export const OtborHandlers = OtborRpcs.toLayer(
       ApplicationsCreateManual: (payload) => applications.createManual(payload),
       VacancyFormGet: (payload) => applications.formGet(payload.vacancyId),
       VacancyFormRefresh: (payload) => applications.formRefresh(payload),
+      VacancyChatGet: (payload) => chats.get(payload),
+      VacancyChatRefresh: (payload) => chats.refresh(payload),
       VacancyLetterAttach: (payload) => letters.attach(payload),
       VacancyLetterAttachStatus: (payload) => letters.status(payload),
       VacancyLetterDraftGet: (payload) => letters.draftGet(payload),
@@ -345,5 +349,6 @@ export const OtborServices = Layer.mergeAll(
   ),
   NegotiationsSync.layer,
   LetterAttach.layer,
+  ChatSync.layer,
   QueueService.layer
 )

@@ -2,8 +2,8 @@ import { Schema } from "effect"
 import { Rpc } from "effect/rpc"
 import { ContactKind, ContactSource, ConversationChannel } from "../enums.ts"
 import { ApiError } from "../errors.ts"
-import { ContactId, ConversationId, VacancyId } from "../ids.ts"
-import { ContactRecord, ConversationDetail, ConversationSummary } from "../models/index.ts"
+import { ContactId, ConversationId, HhAccountId, ResumeId, VacancyId } from "../ids.ts"
+import { ContactRecord, ConversationDetail, ConversationSummary, VacancyChat } from "../models/index.ts"
 
 export const ContactsList = Rpc.make("ContactsList", {
   payload: Schema.Struct({
@@ -49,5 +49,25 @@ export const ConversationsList = Rpc.make("ConversationsList", {
 export const ConversationGet = Rpc.make("ConversationGet", {
   payload: Schema.Struct({ id: ConversationId }),
   success: ConversationDetail,
+  error: ApiError
+})
+
+const VacancyChatKey = Schema.Struct({
+  vacancyId: VacancyId,
+  hhAccountId: HhAccountId,
+  resumeId: Schema.optional(Schema.NullOr(ResumeId))
+})
+
+/** The stored hh chat of a vacancy for a resume. Never waits for hh.ru. */
+export const VacancyChatGet = Rpc.make("VacancyChatGet", {
+  payload: VacancyChatKey,
+  success: VacancyChat,
+  error: ApiError
+})
+
+/** Queues one `chat_read` job (unless one is running) and returns at once. */
+export const VacancyChatRefresh = Rpc.make("VacancyChatRefresh", {
+  payload: VacancyChatKey,
+  success: VacancyChat,
   error: ApiError
 })

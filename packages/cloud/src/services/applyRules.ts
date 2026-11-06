@@ -2,6 +2,7 @@ import {
   type FormAnswer,
   type HarnessExit,
   type HarnessExitTag,
+  ChatReadEvidence,
   type KitAnswer,
   LetterAttachEvidence,
   NegotiationsSyncEvidence,
@@ -18,6 +19,8 @@ import {
   isSubmitSuccess,
   type NegotiationTopic,
   pageExcerpt,
+  parseChatData,
+  type ParsedChat,
   parseNegotiations,
   type ParsedResume,
   parseResumePage,
@@ -725,4 +728,28 @@ export const judgeLetterAttach = (exit: HarnessExit): LetterAttachVerdict => {
     _tag: "human",
     reason: exit.message ?? "the letter may have been sent; check the response on hh"
   }
+}
+
+export type ChatReadVerdict =
+  | { readonly _tag: "read"; readonly chat: ParsedChat }
+  | { readonly _tag: "human"; readonly reason: string }
+  | { readonly _tag: "retry"; readonly reason: string }
+
+/**
+ * Reads a `chat_read` exit. The harness delivers the response body; the cloud
+ * parses it. A body that is not a chat is a retry: nothing is stored.
+ */
+export const judgeChatRead = (exit: HarnessExit, chatId: string): ChatReadVerdict => {
+  if (exit.tag === "session_expired") {
+    return { _tag: "human", reason: "hh session expired; log in again" }
+  }
+  if (exit.tag !== "reconciled") {
+    return { _tag: "retry", reason: `chat read came without evidence (${exit.tag})` }
+  }
+  const decoded = Schema.decodeUnknownOption(ChatReadEvidence)(exit.artifacts)
+  if (Option.isNone(decoded)) return { _tag: "retry", reason: "chat read evidence is not readable" }
+  const chat = parseChatData(decoded.value.body)
+  if (chat === null) return { _tag: "retry", reason: "hh sent something that is not a chat" }
+  if (chat.chatId !== chatId) return { _tag: "retry", reason: "hh sent a different chat" }
+  return { _tag: "read", chat }
 }
