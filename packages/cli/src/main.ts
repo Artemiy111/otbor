@@ -21,6 +21,7 @@ import { lexiconCommand } from "./commands/lexicon.ts"
 import { mailCommand } from "./commands/mail.ts"
 import { mcpCommand } from "./commands/mcp.ts"
 import { presetCommand } from "./commands/preset.ts"
+import { extensionCommand } from "./commands/extension.ts"
 import { proxyCommand } from "./commands/proxy.ts"
 import { queueCommand } from "./commands/queue.ts"
 import { scheduleCommand } from "./commands/schedule.ts"
@@ -98,6 +99,7 @@ root
       mailCommand,
       telegramCommand,
       proxyCommand,
+      extensionCommand,
       acpCommand,
       inferenceCommand,
       writeCommand,
