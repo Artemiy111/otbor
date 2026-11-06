@@ -597,7 +597,8 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
           if (!wantsMoreNegotiations(read.html, payload.externalId)) break
         }
         return reconcileExit(payload.externalId, { vacancy, negotiations })
-      })
+      }),
+      { parallel: true }
     ).pipe(
       // Reading failed: nothing was sent, and the cloud retries the reconcile.
       Effect.catch((error) =>
@@ -641,7 +642,8 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
           if (!wantsMoreSyncPages(html, index)) break
         }
         return negotiationsSyncExit(pages)
-      })
+      }),
+      { parallel: true }
     ).pipe(
       Effect.catch((error) =>
         Effect.succeed<HarnessExit>({ tag: "transport", message: error.message })
@@ -687,7 +689,8 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
           resumes.push(yield* read(resumeUrl(baseUrl, ref.hash), (html) => html.includes("HH-Lux-InitialState")))
         }
         return resumeSyncExit(profile, resumes)
-      })
+      }),
+      { parallel: true }
     ).pipe(
       Effect.catch((error) =>
         Effect.succeed<HarnessExit>({ tag: "transport", message: error.message })
