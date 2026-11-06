@@ -1,0 +1,127 @@
+import { Schema } from "effect"
+import { JobKind, JobStage, JobStatus } from "../enums.ts"
+import { HarnessId, HarnessJobId, HhAccountId, LeaseId } from "../ids.ts"
+
+export const HarnessJob = Schema.Struct({
+  id: HarnessJobId,
+  kind: JobKind,
+  stage: JobStage,
+  status: JobStatus,
+  priority: Schema.Int,
+  payload: Schema.Unknown,
+  /** Inference output, filled by the harness on completion. */
+  result: Schema.optional(Schema.NullOr(Schema.Unknown)),
+  attempts: Schema.Int,
+  maxAttempts: Schema.Int,
+  leaseId: Schema.NullOr(LeaseId),
+  leaseEpoch: Schema.Int,
+  leaseUntil: Schema.optional(Schema.NullOr(Schema.String)),
+  runAt: Schema.String,
+  createdAt: Schema.String
+})
+
+export type HarnessJob = typeof HarnessJob.Type
+
+/**
+ * An ACP prompt carried inside the job envelope. The cloud never sends free
+ * text to a model directly: it enqueues this payload, and an inference
+ * harness runs it through `opencode acp` or another ACP agent.
+ */
+export const InferencePayload = Schema.Struct({
+  prompt: Schema.String,
+  system: Schema.optional(Schema.String),
+  model: Schema.optional(Schema.String),
+  /** Optional JSON schema the agent should satisfy with its answer. */
+  jsonSchema: Schema.optional(Schema.Unknown),
+  /** ACP agent id from the harness catalog (`opencode`, `claude`). Default: the harness default. */
+  harness: Schema.optional(Schema.String),
+  /** Reasoning effort / thinking level, one of the model's `efforts`. */
+  effort: Schema.optional(Schema.String)
+})
+
+export type InferencePayload = typeof InferencePayload.Type
+
+/**
+ * What a harness can run: ACP agents (OpenCode, Claude Code ...), their models
+ * and the effort levels each model accepts. Probed by the harness itself and
+ * reported to the cloud; the cloud never starts an agent.
+ */
+export const AgentModel = Schema.Struct({
+  id: Schema.String,
+  label: Schema.String,
+  /** Allowed effort values; empty: the model has no effort choice. */
+  efforts: Schema.Array(Schema.String),
+  defaultEffort: Schema.optional(Schema.NullOr(Schema.String)),
+  /** Shown under the name, e.g. subscription vs API credits. */
+  variant: Schema.optional(Schema.NullOr(Schema.String))
+})
+
+export type AgentModel = typeof AgentModel.Type
+
+export const AgentHarness = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  /** False when the agent could not be started or is not signed in. */
+  available: Schema.Boolean,
+  error: Schema.NullOr(Schema.String),
+  models: Schema.Array(AgentModel),
+  defaultModel: Schema.NullOr(Schema.String)
+})
+
+export type AgentHarness = typeof AgentHarness.Type
+
+export const AgentCatalog = Schema.Struct({
+  harnesses: Schema.Array(AgentHarness),
+  /** When the harness last probed its agents; null if none ever reported. */
+  reportedAt: Schema.NullOr(Schema.String)
+})
+
+export type AgentCatalog = typeof AgentCatalog.Type
+
+export const InferenceResult = Schema.Struct({
+  text: Schema.String,
+  model: Schema.optional(Schema.NullOr(Schema.String)),
+  usage: Schema.optional(Schema.Unknown),
+  providerResponse: Schema.optional(Schema.Unknown),
+  durationMs: Schema.optional(Schema.Int)
+})
+
+export type InferenceResult = typeof InferenceResult.Type
+
+export const HarnessRegistration = Schema.Struct({
+  id: HarnessId,
+  name: Schema.String,
+  kinds: Schema.Array(JobKind),
+  accounts: Schema.Array(HhAccountId),
+  /**
+   * The device token in plaintext. It is present only in the `HarnessRegister`
+   * response and is never stored or returned again.
+   */
+  token: Schema.NullOr(Schema.String),
+  lastSeenAt: Schema.String
+})
+
+export type HarnessRegistration = typeof HarnessRegistration.Type
+
+export const QueueStats = Schema.Struct({
+  pending: Schema.Int,
+  leased: Schema.Int,
+  running: Schema.Int,
+  done: Schema.Int,
+  failed: Schema.Int,
+  dead: Schema.Int,
+  needsHuman: Schema.Int,
+  needsReconcile: Schema.Int,
+  oldestPendingAgeSeconds: Schema.Int
+})
+
+export type QueueStats = typeof QueueStats.Type
+
+export const HeartbeatResult = Schema.Struct({
+  ok: Schema.Boolean,
+  reason: Schema.optional(Schema.NullOr(Schema.String))
+})
+
+export type HeartbeatResult = typeof HeartbeatResult.Type
+
+/* -------------------------------------------------------------------------- */

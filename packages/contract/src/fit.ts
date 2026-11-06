@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import { HarnessJobId, PresetId, ResumeId, VacancyId } from "./ids.ts"
-import { DecisionRecord } from "./models.ts"
+import { DecisionRecord } from "./models/index.ts"
 
 /**
  * The model's (or an external agent's) verdict on how well one resume fits one
