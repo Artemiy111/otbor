@@ -12,6 +12,7 @@ import {
 import { externalIdOf, pageKind, readSearch, readVacancy } from "@/page.ts"
 import { loadSettings } from "@/settings.ts"
 import { startResponseWatch } from "@/respond.ts"
+import { installPerf, lazyImages } from "@/perf.ts"
 
 export default defineContentScript({
   matches: ["*://*.hh.ru/*"],
@@ -95,6 +96,7 @@ export default defineContentScript({
         clearTimeout(repaint)
         repaint = setTimeout(() => {
           responses?.check()
+          if (pageKind() === "search") lazyImages()
           if (running) return
           if (pageKind() === "search" && cards.size > 0 && hasUnpaintedCards()) paintCards(cards)
           if (pageKind() === "vacancy" && panel !== null && vacancyRowsMissing()) {
@@ -105,6 +107,7 @@ export default defineContentScript({
     }
 
     const start = () => {
+      installPerf()
       responses = startResponseWatch(send)
       responses.check()
       watch()

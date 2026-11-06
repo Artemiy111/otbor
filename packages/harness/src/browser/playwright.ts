@@ -9,6 +9,7 @@ import type {
   ReconcilePage,
   SubmitEvidence
 } from "@otbor/contract"
+import { isTrackerUrl } from "./trackers.ts"
 import { classifyResponsePage, parseResumeRefs } from "@otbor/hh"
 import { Effect, Layer, Schema, Semaphore } from "effect"
 import { existsSync } from "node:fs"
@@ -123,12 +124,19 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
   const closing = new Map<string, Promise<void>>()
   const exclusive = new Map<string, Semaphore.Semaphore>()
 
-  const launch = (dir: string) =>
-    chromium.launchPersistentContext(dir, {
+  const launch = async (dir: string) => {
+    const context = await chromium.launchPersistentContext(dir, {
       headless: config.headless ?? true,
       ...(executablePath === undefined ? {} : { executablePath }),
       ignoreDefaultArgs: ["--no-sandbox"]
     })
+    // Analytics and ad beacons only slow hh's pages down.
+    await context.route(
+      (url) => isTrackerUrl(url.href),
+      (route) => route.abort()
+    )
+    return context
+  }
 
   const joinContext = async (dir: string): Promise<BrowserContext> => {
     await closing.get(dir)
