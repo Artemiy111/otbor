@@ -1,8 +1,14 @@
 import { defineContentScript } from "wxt/utils/define-content-script"
 import { browser } from "wxt/browser"
-import type { VacancyDraft } from "@otbor/contract"
+import type { VacancyDraft, VacancyLookupItem } from "@otbor/contract"
 import type { CaptureReply, Reply, Request, Settings } from "@/messages.ts"
-import { paintBadges, renderPanel } from "@/overlay.ts"
+import {
+  hasUnpaintedCards,
+  paintCards,
+  renderVacancy,
+  vacancyRowsMissing,
+  type PanelState
+} from "@/overlay.ts"
 import { externalIdOf, pageKind, readSearch, readVacancy } from "@/page.ts"
 import { loadSettings } from "@/settings.ts"
 
@@ -20,6 +26,14 @@ export default defineContentScript({
     const isOffline = (message: string): boolean => /fetch|network|ECONNREFUSED|Failed to|RpcClientError|Transport/i.test(message)
 
     let running = false
+    let cards: ReadonlyMap<string, VacancyLookupItem> = new Map()
+    let panel: { readonly state: PanelState; readonly settings: Settings } | null = null
+
+    const show = (state: PanelState, settings: Settings): void => {
+      panel = { state, settings }
+      renderVacancy(state, settings)
+    }
+
     let lastUrl = ""
 
     const run = async (fresh: boolean): Promise<void> => {
@@ -30,7 +44,7 @@ export default defineContentScript({
       const kind = pageKind()
       try {
         if (kind === "vacancy") {
-          renderPanel({ status: "loading" }, settings)
+          show({ status: "loading" }, settings)
           const externalId = externalIdOf()
           if (externalId === null) return
           let reply: CaptureReply | null = null
@@ -42,7 +56,7 @@ export default defineContentScript({
           }
           const items = reply?.items ?? (await send<CaptureReply["items"]>({ type: "lookup", externalIds: [externalId] }))
           const item = items.find((i) => i.externalId === externalId)
-          renderPanel({ status: "ok", item, saved }, settings)
+          show({ status: "ok", item, saved }, settings)
         } else if (kind === "search") {
           const drafts = await readSearch(fresh)
           if (drafts.length === 0) return
@@ -50,12 +64,13 @@ export default defineContentScript({
           const items = settings.autoCapture
             ? (await send<CaptureReply>({ type: "capture", drafts, evaluate: false })).items
             : await send<CaptureReply["items"]>({ type: "lookup", externalIds: ids })
-          paintBadges(new Map(items.map((i) => [i.externalId, i])))
+          cards = new Map(items.map((i) => [i.externalId, i]))
+        paintCards(cards)
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         if (kind === "vacancy") {
-          renderPanel(
+          show(
             isOffline(message)
               ? { status: "offline", message: "Запустите `otbor up` или проверьте адрес в настройках расширения." }
               : { status: "error", message },
@@ -69,7 +84,24 @@ export default defineContentScript({
       }
     }
 
+    // hh is a React app: it re-renders cards and the header block after we paint.
+    // Repaint from the cached data (no requests) whenever our markup is gone.
+    let repaint: ReturnType<typeof setTimeout> | undefined
+    const watch = () => {
+      new MutationObserver(() => {
+        clearTimeout(repaint)
+        repaint = setTimeout(() => {
+          if (running) return
+          if (pageKind() === "search" && cards.size > 0 && hasUnpaintedCards()) paintCards(cards)
+          if (pageKind() === "vacancy" && panel !== null && vacancyRowsMissing()) {
+            renderVacancy(panel.state, panel.settings)
+          }
+        }, 300)
+      }).observe(document.body, { childList: true, subtree: true })
+    }
+
     const start = () => {
+      watch()
       void run(false)
       // hh moves between result pages and vacancies without a full reload.
       setInterval(() => {
