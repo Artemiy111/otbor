@@ -21,6 +21,7 @@ import {
   CardHeader,
   CardTitle,
   AmountInput,
+  HighlightedText,
   Input,
   Label,
   Tabs,
@@ -320,7 +321,7 @@ const refresh = () => {
                 <span v-if="!selectedResume.skills.length">не указаны</span>
               </dd>
               <dt class="text-muted-foreground">О себе</dt>
-              <dd class="whitespace-pre-wrap">{{ selectedResume.about || "нет" }}</dd>
+              <dd class="whitespace-pre-wrap"><HighlightedText v-if="selectedResume.about" :text="selectedResume.about" :terms="selectedResume.skills" /><template v-else>нет</template></dd>
               <dt class="text-muted-foreground">Заметки оператора</dt>
               <dd class="whitespace-pre-wrap">{{ comment || "нет" }}</dd>
             </dl>
@@ -332,7 +333,7 @@ const refresh = () => {
                 {{ showFullText ? "Скрыть" : "Показать" }}
               </Button>
             </div>
-            <pre v-if="showFullText" class="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-4 text-sm">{{ selectedResume.text }}</pre>
+            <pre v-if="showFullText" class="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-4 text-sm"><HighlightedText :text="selectedResume.text" :terms="selectedResume.skills" /></pre>
           </div>
           <div v-if="experienceItems.length" class="space-y-2">
             <h3 class="text-sm font-semibold">Опыт работы</h3>
@@ -340,7 +341,7 @@ const refresh = () => {
               <li v-for="item in experienceItems" :key="item.key" class="rounded-md border p-3 text-sm">
                 <div class="font-medium">{{ item.title }}</div>
                 <div v-if="item.period" class="text-muted-foreground">{{ item.period }}</div>
-                <p v-if="item.description" class="mt-1 whitespace-pre-wrap">{{ item.description }}</p>
+                <p v-if="item.description" class="mt-1 whitespace-pre-wrap"><HighlightedText :text="item.description" :terms="selectedResume.skills" /></p>
                 <div class="mt-2 space-y-1.5">
                   <Label>Заметка для агента</Label>
                   <Textarea v-model="jobNotes[item.key]" rows="2" placeholder="Формат работы, причина ухода, что подчеркнуть" />
