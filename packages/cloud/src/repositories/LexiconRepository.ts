@@ -136,6 +136,47 @@ const numberFieldSql = (field: PresetRule["field"]): SQL | null => {
   }
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * `applied` selectors: `any`, `account:<id>`, `resume:<id>`. Unknown or stale
+ * selectors match nothing, so they never hide a company by accident.
+ */
+const appliedSelectorSql = (selector: string): SQL | null => {
+  const [kind, id] = selector.split(":", 2) as [string, string | undefined]
+  switch (kind) {
+    case "any":
+      return sql`true`
+    case "account":
+      return id !== undefined && UUID.test(id) ? sql`ap.hh_account_id = ${id}::uuid` : null
+    case "resume":
+      return id !== undefined && UUID.test(id) ? sql`ap.resume_id = ${id}::uuid` : null
+    default:
+      return null
+  }
+}
+
+/** `true` when a sent application from any selector exists to a vacancy of this employer. */
+const appliedBySelectorsSql = (input: {
+  readonly userId: string | undefined
+  readonly selectors: ReadonlyArray<string>
+  readonly employerId: SQL
+}): SQL => {
+  const layers = input.selectors.flatMap((selector) => {
+    const clause = appliedSelectorSql(selector)
+    return clause === null ? [] : [clause]
+  })
+  if (input.userId === undefined || layers.length === 0) return sql`false`
+  return sql`(${input.employerId} is not null and exists (
+    select 1 from application ap
+    join vacancy v_ap on v_ap.id = ap.vacancy_id
+    where ap.user_id = ${input.userId}
+      and ap.state = 'submitted'
+      and v_ap.employer_id = ${input.employerId}
+      and (${sql.join(layers, sql` or `)})
+  ))`
+}
+
 const ruleClause = (rule: PresetRule, filter: PresetFilter, context: VacancyFilterContext = {}): SQL => {
   const op = rule.op
   const value = rule.value
@@ -152,6 +193,15 @@ const ruleClause = (rule: PresetRule, filter: PresetFilter, context: VacancyFilt
       vacancyExternalId: sql`vacancy.external_id`
     })
     return op === "not_in" || op === "neq" ? sql`not (${hidden})` : hidden
+  }
+
+  if (rule.field === "applied") {
+    const applied = appliedBySelectorsSql({
+      userId: context.userId,
+      selectors: stringList(value),
+      employerId: sql`vacancy.employer_id`
+    })
+    return op === "not_in" || op === "neq" ? sql`not (${applied})` : applied
   }
 
   if (rule.field === "salary") {

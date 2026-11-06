@@ -127,6 +127,22 @@ export const hiddenAccountOptions = (
     { value: `hh:${account.id}`, label: `На hh у аккаунта ${account.name}` }
   ])
 
+/** Static selector of the `applied` rule; per-account and per-resume ones come from the lists. */
+export const APPLIED_OPTIONS = OPTIONS(["any", "Любым аккаунтом и резюме"])
+
+export const appliedAccountOptions = (
+  accounts: ReadonlyArray<{ readonly id: string; readonly name: string }>
+): ReadonlyArray<PresetFieldOption> =>
+  accounts.map((account) => ({ value: `account:${account.id}`, label: `Аккаунтом ${account.name}` }))
+
+export const appliedResumeOptions = (
+  resumes: ReadonlyArray<{ readonly id: string; readonly title: string; readonly accountName: string }>
+): ReadonlyArray<PresetFieldOption> =>
+  resumes.map((resume) => ({
+    value: `resume:${resume.id}`,
+    label: `Резюме «${resume.title}» (${resume.accountName})`
+  }))
+
 export const PRESET_FIELDS: ReadonlyArray<PresetFieldMeta> = [
   {
     field: "title",
@@ -336,6 +352,15 @@ export const PRESET_FIELDS: ReadonlyArray<PresetFieldMeta> = [
     ops: ["in", "not_in"],
     options: HIDDEN_OPTIONS,
     hint: "Вакансия или её компания в чёрном списке: в приложении, у аккаунта или на hh."
+  },
+  {
+    field: "applied",
+    label: "Откликался в компанию",
+    group: "Прочее",
+    kind: "select",
+    ops: ["in", "not_in"],
+    options: APPLIED_OPTIONS,
+    hint: "Отправленный отклик на любую вакансию этой компании: любым аккаунтом, конкретным аккаунтом или резюме. Несколько правил складываются через И."
   },
   {
     field: "archived",

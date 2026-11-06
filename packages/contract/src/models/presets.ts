@@ -68,7 +68,15 @@ export const PresetField = Schema.Literals([
    * `any`, `app`, `accounts`, `hh`, `account:<hh account id>`, `hh:<hh account id>`.
    * `in` matches when at least one selector hides it, `not_in` when none does.
    */
-  "hidden"
+  "hidden",
+  /**
+   * Whether a sent application (state `submitted`, imported ones included)
+   * exists to any vacancy of the vacancy's employer. Values are selectors:
+   * `any`, `account:<hh account id>`, `resume:<resume id>`. `in` matches when
+   * at least one selector has an application, `not_in` when none does.
+   * Rules are ANDed, so "applied with resume A but not with resume B" is two rules.
+   */
+  "applied"
 ])
 
 export type PresetField = typeof PresetField.Type

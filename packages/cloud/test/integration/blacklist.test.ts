@@ -19,6 +19,8 @@ import {
   migrateTestDatabase,
   presetPreview,
   seedTenant,
+  seedApplication,
+  seedResume,
   seedVacancyForEmployer,
   serverUrl,
   testDatabaseUrl
@@ -285,6 +287,73 @@ if (!integrationEnabled || serverUrl === null) {
       expect(await matching("in", [`hh:${second}`])).toEqual([])
       expect(await matching("in", ["any"])).toEqual(ids(byApp, byList, byHh, bySecond))
       expect(await matching("not_in", ["accounts"])).toEqual(ids(byApp, clean))
+    })
+
+    test("the applied rule hides companies by sent applications of any account or resume, ANDed", async () => {
+      const tenant = await seedTenant("applied-rule")
+      const second = await addAccount(tenant.userId, "applied-second")
+      const suffix = tag()
+      const resumeA = await seedResume({ userId: tenant.userId, accountId: tenant.accountId, title: "A" })
+      const resumeB = await seedResume({ userId: tenant.userId, accountId: tenant.accountId, title: "B" })
+      const resumeC = await seedResume({ userId: tenant.userId, accountId: second, title: "C" })
+
+      const make = async (name: string) => {
+        const row = await seedVacancyForEmployer({
+          label: `${name}-${suffix}`,
+          title: `Appliedrule ${name} ${suffix}`,
+          employerExternalId: `ap-${name}-${suffix}`,
+          employerName: `Applied ${name} ${suffix}`
+        })
+        // A second vacancy of the same company: the rule works per company.
+        const sibling = await seedVacancyForEmployer({
+          label: `${name}-sib-${suffix}`,
+          title: `Appliedrule ${name} sibling ${suffix}`,
+          employerExternalId: `ap-${name}-${suffix}`,
+          employerName: `Applied ${name} ${suffix}`
+        })
+        return { ...row, siblingId: sibling.vacancyId }
+      }
+      const onlyA = await make("a")
+      const aAndB = await make("ab")
+      const onlyC = await make("c")
+      const draftOnly = await make("draft")
+      const clean = await make("clean")
+
+      const apply = (vacancyId: string, accountId: string, resumeId: string, state: "submitted" | "draft" = "submitted") =>
+        seedApplication({ userId: tenant.userId, accountId, vacancyId, resumeId, state })
+      await apply(onlyA.vacancyId, tenant.accountId, resumeA)
+      await apply(aAndB.vacancyId, tenant.accountId, resumeA)
+      await apply(aAndB.siblingId, tenant.accountId, resumeB)
+      await apply(onlyC.vacancyId, second, resumeC)
+      await apply(draftOnly.vacancyId, tenant.accountId, resumeA, "draft")
+
+      const matching = async (...rules: ReadonlyArray<{ op: "in" | "not_in"; value: ReadonlyArray<string> }>) => {
+        const preview = await presetPreview(tenant.userId, {
+          rules: [
+            { field: "title", op: "contains", value: `Appliedrule` },
+            { field: "title", op: "contains", value: suffix },
+            ...rules.map((rule) => ({ field: "applied" as const, ...rule }))
+          ]
+        })
+        return preview.vacancies.map((item) => String(item.id)).sort()
+      }
+      const ids = (...rows: ReadonlyArray<{ readonly vacancyId: string; readonly siblingId: string }>) =>
+        rows.flatMap((row) => [row.vacancyId, row.siblingId]).map(String).sort()
+
+      expect(await matching({ op: "in", value: ["any"] })).toEqual(ids(onlyA, aAndB, onlyC))
+      expect(await matching({ op: "not_in", value: ["any"] })).toEqual(ids(draftOnly, clean))
+      expect(await matching({ op: "not_in", value: [`account:${tenant.accountId}`] })).toEqual(ids(onlyC, draftOnly, clean))
+      expect(await matching({ op: "in", value: [`account:${second}`] })).toEqual(ids(onlyC))
+      expect(await matching({ op: "in", value: [`resume:${resumeA}`] })).toEqual(ids(onlyA, aAndB))
+      // Applied with resume A but not with resume B.
+      expect(
+        await matching(
+          { op: "in", value: [`resume:${resumeA}`] },
+          { op: "not_in", value: [`resume:${resumeB}`] }
+        )
+      ).toEqual(ids(onlyA))
+      // A stale selector matches nothing.
+      expect(await matching({ op: "in", value: [`resume:${randomUUID()}`] })).toEqual([])
     })
 
     test("hh-native import is idempotent, updates names and never deletes absent entries", async () => {

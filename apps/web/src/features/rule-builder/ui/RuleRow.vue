@@ -5,6 +5,7 @@ import { useQuery } from "@pinia/colada"
 import type { PresetField, PresetOperator } from "@otbor/contract"
 import { ChevronDown, X } from "@lucide/vue"
 import { keywordApi, keywordKeys } from "@/entities/keyword"
+import { resumeApi, resumeKeys } from "@/entities/resume"
 import { hhAccountApi, hhAccountKeys, hhAccountName } from "@/entities/hh-account"
 import {
   Input,
@@ -20,6 +21,8 @@ import {
 import {
   PRESET_FIELD_GROUPS,
   SALARY_CURRENCIES,
+  appliedAccountOptions,
+  appliedResumeOptions,
   hiddenAccountOptions,
   isMultiValueOperator,
   presetFieldMeta,
@@ -46,7 +49,13 @@ const lexicon = computed(() => lexiconQuery.data.value ?? [])
 const accountsQuery = useQuery({
   key: () => hhAccountKeys.list(),
   query: () => hhAccountApi.list(),
-  enabled: () => props.rule.field === "hidden"
+  enabled: () => props.rule.field === "hidden" || props.rule.field === "applied"
+})
+
+const resumesQuery = useQuery({
+  key: () => resumeKeys.list(),
+  query: () => resumeApi.list(),
+  enabled: () => props.rule.field === "applied"
 })
 
 const options = computed(() => {
@@ -55,6 +64,20 @@ const options = computed(() => {
     base.push(
       ...hiddenAccountOptions(
         (accountsQuery.data.value ?? []).map((account) => ({ id: account.id, name: hhAccountName(account) }))
+      )
+    )
+  }
+  if (props.rule.field === "applied") {
+    const accounts = accountsQuery.data.value ?? []
+    const accountNames = new Map(accounts.map((account) => [account.id as string, hhAccountName(account)]))
+    base.push(
+      ...appliedAccountOptions(accounts.map((account) => ({ id: account.id, name: hhAccountName(account) }))),
+      ...appliedResumeOptions(
+        (resumesQuery.data.value ?? []).map((resume) => ({
+          id: resume.id,
+          title: resume.title,
+          accountName: accountNames.get(resume.hhAccountId) ?? "?"
+        }))
       )
     )
   }

@@ -11,6 +11,7 @@ import {
   keyword,
   keywordAlias,
   preset,
+  resume,
   users,
   vacancy,
   vacancyKeyword,
@@ -315,11 +316,37 @@ export const seedPreset = async (
   return row!.id
 }
 
+export const seedResume = async (input: {
+  readonly userId: string
+  readonly accountId: string
+  readonly title: string
+}): Promise<string> =>
+  runAs(
+    input.userId,
+    ownerTx((tx) =>
+      Effect.gen(function*() {
+        const [row] = yield* tx
+          .insert(resume)
+          .values({
+            userId: input.userId,
+            hhAccountId: input.accountId,
+            externalId: unique("resume"),
+            hash: randomUUID(),
+            title: input.title,
+            text: input.title
+          })
+          .returning({ id: resume.id })
+        return row!.id
+      })
+    )
+  )
+
 export const seedApplication = async (input: {
   readonly userId: string
   readonly accountId: string
   readonly vacancyId: string
-  readonly state?: "draft" | "queued"
+  readonly state?: "draft" | "queued" | "submitted"
+  readonly resumeId?: string
 }): Promise<string> =>
   runAs(
     input.userId,
@@ -331,6 +358,7 @@ export const seedApplication = async (input: {
             userId: input.userId,
             hhAccountId: input.accountId,
             vacancyId: input.vacancyId,
+            resumeId: input.resumeId ?? null,
             state: input.state ?? "queued"
           })
           .returning({ id: application.id })
