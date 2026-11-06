@@ -308,14 +308,6 @@ export const PRESET_FIELDS: ReadonlyArray<PresetFieldMeta> = [
     ops: NUMBER_OPS
   },
   {
-    field: "description_length",
-    label: "Длина описания",
-    group: "Зарплата и метрики",
-    kind: "number",
-    ops: NUMBER_OPS,
-    hint: "Число символов в описании вакансии."
-  },
-  {
     field: "skills_count",
     label: "Навыков в вакансии",
     group: "Зарплата и метрики",

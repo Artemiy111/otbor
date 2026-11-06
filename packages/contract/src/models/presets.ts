@@ -51,7 +51,6 @@ export const PresetField = Schema.Literals([
   "archived",
   "source",
   "responses_total",
-  "description_length",
   "skills_count",
   /** Open (non-archived) vacancies of the same employer in the corpus; a company-size proxy. */
   "employer_vacancies",
@@ -142,12 +141,7 @@ export const PresetFilter = Schema.Struct({
   text: Schema.optional(Schema.String),
   keywordIds: Schema.optional(Schema.Array(KeywordId)),
   /** Where a keyword must appear: title, body, HH skills, or text+skills. */
-  location: Schema.optional(KeywordMatchLocation),
-  /**
-   * By default a preset excludes app-level blacklisted companies; `true`
-   * explicitly includes them so the preset can drive auto-applies.
-   */
-  includeBlacklisted: Schema.optional(Schema.Boolean)
+  location: Schema.optional(KeywordMatchLocation)
 })
 
 export type PresetFilter = typeof PresetFilter.Type
@@ -225,8 +219,7 @@ export const parsePresetFilter = (input: unknown): PresetFilter => {
     ...(keywordIds.length === 0 ? {} : { keywordIds }),
     ...(decoded.location === undefined || decoded.location === "any"
       ? {}
-      : { location: decoded.location }),
-    ...(decoded.includeBlacklisted === true ? { includeBlacklisted: true } : {})
+      : { location: decoded.location })
   }
 }
 

@@ -139,9 +139,9 @@ if (!integrationEnabled || serverUrl === null) {
         visible.vacancyId
       ])
 
+      // A `hidden` rule replaces the implicit app blacklist exclusion.
       const previewShown = await presetPreview(tenant.userId, {
-        ...previewFilter,
-        includeBlacklisted: true
+        rules: [...previewFilter.rules, { field: "hidden" as const, op: "not_in" as const, value: ["accounts"] }]
       })
       expect(previewShown.count).toBe(3)
       expect(previewShown.vacancies.find((item) => item.id === blocked.vacancyId)?.blacklisted)
@@ -268,7 +268,6 @@ if (!integrationEnabled || serverUrl === null) {
 
       const matching = async (op: "in" | "not_in", value: ReadonlyArray<string>) => {
         const preview = await presetPreview(tenant.userId, {
-          includeBlacklisted: true,
           rules: [
             { field: "title", op: "contains", value: `Hiddenrule` },
             { field: "title", op: "contains", value: suffix },
@@ -468,7 +467,7 @@ if (!integrationEnabled || serverUrl === null) {
       })
       expect(blocked.verdict).toBe("skip")
       expect(blocked.reasons[0]!.code).toBe("blocked_filter")
-      expect(blocked.reasons[0]!.detail).toBe("not blacklisted")
+      expect(blocked.reasons[0]!.detail).toContain("hidden not_in")
 
       const included = await evaluateVacancy(tenant.userId, {
         vacancyId: target.vacancyId,

@@ -221,13 +221,12 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
                     // The filter owns archive state; the blacklist toggle of the
                     // list stays in charge of account and hh layers.
                     extraWhere: LexiconRepository.vacancyFilterSql(
-                      parsePresetFilter({
-                        ...ruleFilter,
+                      parsePresetFilter(ruleFilter),
+                      {
+                        userId: currentUser.userId,
+                        includeArchived: filter.includeArchived === true,
                         includeBlacklisted: filter.includeBlacklisted === true
-                          ? true
-                          : ruleFilter.includeBlacklisted
-                      }),
-                      { userId: currentUser.userId, includeArchived: filter.includeArchived === true }
+                      }
                     )
                   })
             })

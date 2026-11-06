@@ -67,10 +67,7 @@ const ruleFilter = computed(() => {
   const built = buildFilter(rules.value)
   if (built.rules === undefined && built.groups === undefined) return undefined
   // The header toggles own archive and blacklist visibility.
-  return {
-    ...built,
-    ...(includeBlacklisted.value ? { includeBlacklisted: true } : {})
-  }
+  return built
 })
 
 const presetsQuery = useQuery({ key: () => presetKeys.list("all"), query: () => presetApi.list({}) })
@@ -85,7 +82,6 @@ const applyPreset = (id: unknown) => {
   rules.value.groups = next.groups
   rules.value.location = next.location
   rules.value.keywordIds = next.keywordIds
-  includeBlacklisted.value = next.includeBlacklisted
   rulesOpen.value = true
 }
 

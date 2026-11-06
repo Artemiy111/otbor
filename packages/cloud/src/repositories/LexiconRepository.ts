@@ -121,8 +121,6 @@ const numberFieldSql = (field: PresetRule["field"]): SQL | null => {
       return sql`vacancy.salary_to`
     case "responses_total":
       return sql`vacancy.responses_total`
-    case "description_length":
-      return sql`length(coalesce(vacancy.description_text, ''))`
     case "skills_count":
       return sql`(select count(*)::int from vacancy_skill vs where vs.vacancy_id = vacancy.id)`
     case "employer_vacancies":
@@ -360,6 +358,12 @@ export interface VacancyFilterContext {
    * excludes archived vacancies unless one of its rules is about `archived`.
    */
   readonly includeArchived?: boolean
+  /**
+   * The list's own toggle and the evaluator's override, not part of a stored
+   * filter: a stored filter excludes app-blacklisted companies unless one of
+   * its rules is about `hidden`.
+   */
+  readonly includeBlacklisted?: boolean
 }
 
 /** One AND clause of a filter with a readable name, as `vacancyFilterSql` joins them. */
@@ -384,27 +388,49 @@ const listHitsSql = (rule: PresetRule): SQL | undefined => {
 }
 
 /**
+ * `includeBlacklisted` lifts the app-wide blacklist even where a `hidden`
+ * rule names it: the `app` selector is dropped and `any` narrows to `accounts`.
+ */
+const liftAppBlacklist = (filter: PresetFilter): PresetFilter => {
+  const lift = (rule: PresetRule): PresetRule => {
+    if (rule.field !== "hidden" || !Array.isArray(rule.value)) return rule
+    const value = rule.value.filter((selector) => selector !== "app").map((selector) => (selector === "any" ? "accounts" : selector))
+    return { ...rule, value }
+  }
+  return {
+    ...filter,
+    ...(filter.rules === undefined ? {} : { rules: filter.rules.map(lift) }),
+    ...(filter.groups === undefined
+      ? {}
+      : { groups: filter.groups.map((group) => ({ branches: group.branches.map((branch) => ({ rules: branch.rules.map(lift) })) })) })
+  }
+}
+
+/**
  * The clauses of a filter in evaluation order: the implicit ones
  * (archived, app blacklist, legacy `text`), every rule, every OR group.
  * `vacancyFilterSql` ANDs them; `evaluateFilter` reports each separately.
  */
 const filterParts = (
-  filter: PresetFilter,
+  source: PresetFilter,
   context: VacancyFilterContext
 ): ReadonlyArray<FilterPart> => {
   const parts: Array<FilterPart> = []
+  const filter = context.includeBlacklisted === true ? liftAppBlacklist(source) : source
 
-  const hasArchivedRule = [
+  const allRules = [
     ...(filter.rules ?? []),
     ...(filter.groups ?? []).flatMap((group) => group.branches.flatMap((branch) => branch.rules))
-  ].some((rule) => rule.field === "archived")
+  ]
+  const hasArchivedRule = allRules.some((rule) => rule.field === "archived")
+  const hasHiddenRule = allRules.some((rule) => rule.field === "hidden")
   if (context.includeArchived !== true && !hasArchivedRule) {
     parts.push({ label: "not archived", clause: sql`not vacancy.archived` })
   }
 
-  // A preset hides app-level blacklisted companies unless it opts in. Account
-  // and hh-native layers stay out of a shared preset preview.
-  if (filter.includeBlacklisted !== true && context.userId !== undefined) {
+  // A preset hides app-level blacklisted companies unless a `hidden` rule says
+  // otherwise. Account and hh-native layers stay out of a shared preset preview.
+  if (context.includeBlacklisted !== true && !hasHiddenRule && context.userId !== undefined) {
     parts.push({
       label: "not blacklisted",
       clause: sql`not ${BlacklistRepository.appBlacklistExistsSql({
@@ -449,20 +475,16 @@ export const vacancyFilterSql = (
  * Evaluates a filter against one vacancy with the very SQL search uses: one
  * query, one boolean per clause. `failed` names every clause that did not
  * hold, so a skip can say which rules cost the vacancy. A missing vacancy
- * fails. `includeBlacklisted` lifts the app blacklist exclusion like the
- * filter's own flag does.
+ * fails. `includeBlacklisted` lifts the implicit app blacklist exclusion.
  */
 export const evaluateFilter = (
   tx: Executor,
   filter: PresetFilter,
   vacancyId: string,
-  context: VacancyFilterContext & { readonly includeBlacklisted?: boolean } = {}
+  context: VacancyFilterContext = {}
 ): RepoEffect<{ readonly passed: boolean; readonly failed: ReadonlyArray<string> }> =>
   Effect.gen(function*() {
-    const effective: PresetFilter = context.includeBlacklisted === true
-      ? { ...filter, includeBlacklisted: true }
-      : filter
-    const parts = filterParts(effective, context)
+    const parts = filterParts(filter, context)
     if (parts.length === 0) return { passed: true, failed: [] }
 
     const columns = sql.join(

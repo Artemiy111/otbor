@@ -154,7 +154,7 @@ export const VacanciesTop = readTool("vacancies_top", {
 const SEARCH_DESCRIPTION = `Search the vacancy corpus with ad-hoc filters, for chat requests like "take 10 mediocre vacancies, around middle level, with Kubernetes, not big companies". Returns vacancies that have a decision (the pipeline makes decisions), joined with seniority, experience, top skills, employer, salary, fit, priority, account and hh url, so you can explain each choice. All criteria are ANDed. Filtering runs server-side in SQL with the same engine presets use (see presets_list / preset_preview). \`presetId\` and \`filter\` can be combined: the ad-hoc rules extend the preset's.
 
 PARAMETERS
-- filter: { rules?: [{field, op, value?}], text?, location?, includeBlacklisted? }. Blacklisted vacancies are excluded unless included explicitly; archived ones are excluded unless a rule on the archived field is given. Prefer rules.
+- filter: { rules?: [{field, op, value?}], text?, location? }. Blacklisted vacancies are excluded unless a rule on the hidden field is given; archived ones are excluded unless a rule on the archived field is given. Prefer rules.
 - verdict: apply (default) | draft | skip. The default "apply" only sees vacancies the policy would apply to; for "mediocre" or lower-fit requests pass verdict "draft" or "skip" and bound the score with minFit / maxFit (roughly 40-70 for mediocre).
 - minFit / maxFit: fit score bounds, 0-100.
 - account: hh account id, prefix or name. limit (default 10, max 50), offset.
@@ -167,7 +167,7 @@ RULE FIELDS, operators and value shapes
 - location: in / not_in with hh area ids as strings (country, region or city; a country covers all its cities, e.g. Россия 113, Беларусь 16, Казахстан 40, Москва 1, Санкт-Петербург 2). Vacancies without an area match only not_in.
 - work_format: in / not_in with a string array of remote, hybrid, onsite, field.
 - Salary: field "salary" with ops gt, gte, lt, lte, eq, neq and optional rule keys currency (RUB, USD, EUR, ...) and orMissing (true: vacancies without a salary pass too). It compares the vacancy's range: gt/gte look at its upper end, lt/lte at its lower end, eq means the number lies inside the range. A range is two rules. OR is a group: {"groups":[{"branches":[{"rules":[...]},{"rules":[...]}]}]} passes when all rules of any one branch hold, e.g. 300000+ RUB or 4000+ USD. Top-level rules are ANDed.
-- Number fields: salary_from, salary_to (in the vacancy's own currency; vacancies without a salary never match), published_days (published within N days: use lte), responses_total, description_length, skills_count, employer_vacancies, employer_rating, employer_reviews. Operators: gte, lte, gt, lt, eq, neq with a number. A null value (no rating, no reviews, no salary) never matches a number rule.
+- Number fields: salary_from, salary_to (in the vacancy's own currency; vacancies without a salary never match), published_days (published within N days: use lte), responses_total, skills_count, employer_vacancies, employer_rating, employer_reviews. Operators: gte, lte, gt, lt, eq, neq with a number. A null value (no rating, no reviews, no salary) never matches a number rule.
 - archived: is_true / is_false.
 - analysis_role, analysis_level (from the local vacancy analysis model, only where it was confident; otherwise empty, which matches nothing for eq/in): eq / neq / in / not_in. analysis_role: devops, sre, platform, sysadmin, security, backend, frontend, fullstack, mobile, qa, data, analyst, dba, support, manager, other. analysis_level (the level the text requires): intern, junior, middle, senior, staff, tech_lead, team_lead, head. Useful to see through an "unknown" seniority, e.g. {field:"analysis_level",op:"in",value:["middle","senior"]}.
 
@@ -185,7 +185,7 @@ export const VacanciesSearch = readTool("vacancies_search", {
   description: SEARCH_DESCRIPTION,
   parameters: Schema.Struct({
     filter: Schema.optional(PresetFilter).annotate({
-      description: "Ad-hoc vacancy filter {rules:[{field,op,value}], text?, location?, includeBlacklisted?}. See the tool description."
+      description: "Ad-hoc vacancy filter {rules:[{field,op,value}], text?, location?}. See the tool description."
     }),
     presetId: text("Also require this saved preset's filter (see presets_list); ANDed with `filter`"),
     verdict: Schema.optional(Schema.Literals(["apply", "draft", "skip"])).annotate({

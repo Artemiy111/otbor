@@ -28,10 +28,7 @@ describe("preset filter parsing", () => {
     expect(parsePresetFilter({ location: "text_or_skills" })).toEqual({
       location: "text_or_skills"
     })
-    expect(parsePresetFilter({ includeBlacklisted: true })).toEqual({
-      includeBlacklisted: true
-    })
-    expect(parsePresetFilter({ includeBlacklisted: false })).toEqual({})
+    expect(parsePresetFilter({ includeBlacklisted: true })).toEqual({})
   })
 
   test("a legacy gate key and gate / role_family rules are silently dropped", () => {

@@ -202,10 +202,10 @@ if (!enabled || serverUrl === null) {
       })
       const second = await support.applyFilterSet(tenant.userId, {
         hhAccountId: tenant.accountId,
-        filter: { includeBlacklisted: true }
+        filter: { text: "x" }
       })
       expect(second.id).toBe(first.id)
-      expect(second).toMatchObject({ minFit: 20, tests: "allow", filter: { includeBlacklisted: true } })
+      expect(second).toMatchObject({ minFit: 20, tests: "allow", filter: { text: "x" } })
     })
 
     test("changing the filter makes decisions stale; a repeated save does not", async () => {
@@ -280,7 +280,7 @@ if (!enabled || serverUrl === null) {
 
       await support.applyFilterSet(tenant.userId, {
         hhAccountId: tenant.accountId,
-        filter: { includeBlacklisted: true }
+        filter: { rules: [{ field: "hidden", op: "not_in", value: ["accounts"] }] }
       })
       expect((await evaluate(tenant.userId, { vacancyId: target.vacancyId })).verdict).toBe("apply")
     })
