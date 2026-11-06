@@ -20,6 +20,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  AmountInput,
   Input,
   Label,
   Textarea
@@ -345,8 +346,8 @@ const refresh = () => {
               <span class="text-xs text-muted-foreground">Ожидаемая</span>
               <template v-for="currency in SALARY_CURRENCIES" :key="currency">
                 <Label :for="`min-${currency}`" class="font-medium">{{ currencySymbol(currency) }}</Label>
-                <Input :id="`min-${currency}`" v-model="salaries[currency].min" class="h-8" type="number" min="0" />
-                <Input v-model="salaries[currency].expectation" class="h-8" type="number" min="0" />
+                <AmountInput :id="`min-${currency}`" v-model="salaries[currency].min" class="h-8" placeholder="0" />
+                <AmountInput v-model="salaries[currency].expectation" class="h-8" placeholder="0" />
               </template>
             </div>
           </div>
