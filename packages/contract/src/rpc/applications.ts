@@ -193,7 +193,7 @@ export const ApplicationsRecordBrowserSubmit = Rpc.make("ApplicationsRecordBrows
     externalId: Schema.String,
     /** hh's id of the user logged in on the page; names the account when otbor knows it. */
     hhid: Schema.optional(Schema.NullOr(Schema.String)),
-    /** The resume the form had selected, as hh titles it. */
+    /** @deprecated The resume the form had selected, as hh titles it. Use `resumeExternalId`: ids, not titles. */
     resumeTitle: Schema.NullOr(Schema.String),
     /**
      * hh's id of the resume the response was sent with, read from hh's own list

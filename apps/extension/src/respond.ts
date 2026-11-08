@@ -117,6 +117,7 @@ const pageHhid = (): Promise<string | null> => {
 const norm = (text: string | null | undefined): string =>
   (text ?? "").replace(/\s+/g, " ").trim().toLowerCase()
 
+/** @deprecated hh's form shows only a title; prefer hh's resume id from its response list (`resumeFromNegotiations`). */
 const selectedResumeTitle = (): string | null => {
   const text = document.querySelector<HTMLElement>(RESUME_SELECTED_SELECTOR)?.innerText?.replace(/\s+/g, " ").trim()
   return text === undefined || text === "" ? null : text

@@ -34,6 +34,7 @@ export interface BrowserSubmitInput {
   readonly externalId: string
   /** hh's id of the user logged in on the page. */
   readonly hhid?: string | null | undefined
+  /** @deprecated Resolve by `resumeExternalId`; titles are ambiguous. */
   readonly resumeTitle: string | null
   /** hh's id of the resume the response used, when the page's response list told. */
   readonly resumeExternalId?: string | null | undefined
@@ -108,7 +109,11 @@ const resumeByExternalId = (tx: Executor, externalId: string | null | undefined,
     } satisfies Target
   })
 
-/** The account is known: its resume by that title, else its one application to the vacancy. */
+/**
+ * @deprecated Title matching is a stopgap: titles repeat, ids do not. Resolve by
+ * hh's resume id (`resumeExternalId`, `resumeByExternalId`) and drop this.
+ *
+ * The account is known: its resume by that title, else its one application to the vacancy. */
 const targetInAccount = (tx: Executor, hhAccountId: string, vacancyId: string, resumeTitle: string | null) =>
   Effect.gen(function*() {
     if (resumeTitle !== null) {
@@ -134,6 +139,9 @@ interface Target {
 const OPEN_STATES = new Set(["draft", "needs_human", "failed", "queued"])
 
 /**
+ * @deprecated Title matching is a stopgap: titles repeat, ids do not. Use hh's
+ * resume id (`resumeExternalId`) and drop the title branches.
+ *
  * Which account and resume the browser responded with. The form names the
  * resume only by title, and two accounts may hold resumes with the same title,
  * so a tie goes to the resume whose application is still open for this
