@@ -359,8 +359,13 @@ export const vacancyUrl = (baseUrl: string, externalId: string): string =>
 export const negotiationsUrl = (baseUrl: string, page: number): string =>
   `${baseUrl.replace(/\/+$/, "")}/applicant/negotiations?page=${page}`
 
-/** Negotiation pages read at most; a longer list is not exhausted, and the cloud knows. */
-export const MAX_NEGOTIATION_PAGES = 8
+/**
+ * Сколько страниц списка откликов читает сверка (по 20 на странице). Облако
+ * признаёт «отклика нет» только по списку, дочитанному до конца, а при восьми
+ * страницах аккаунт с 300+ откликами никогда не дочитывался и каждая сверка
+ * заканчивалась «inconclusive». Найденный отклик останавливает чтение раньше.
+ */
+export const MAX_NEGOTIATION_PAGES = 25
 
 /**
  * Whether another negotiations page is worth opening. This only saves
