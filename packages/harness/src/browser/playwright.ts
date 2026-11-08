@@ -75,7 +75,7 @@ export interface PlaywrightOptions {
   readonly syncDelayMs?: number
   /**
    * Сколько действующих задач (submit, letter_attach) профиль выполняет разом.
-   * По умолчанию 2, как потолок облака `OTBOR_ACCOUNT_SUBMIT_CONCURRENCY`;
+   * По умолчанию 1, как потолок облака `OTBOR_ACCOUNT_SUBMIT_CONCURRENCY`;
    * облако остаётся главным, это страховка на стороне харнесса.
    */
   readonly accountActingConcurrency?: number
@@ -86,7 +86,7 @@ const defaults = {
   navigationTimeoutMs: 30_000,
   settleMs: 12_000,
   afterClickMs: 25_000,
-  accountActingConcurrency: 2
+  accountActingConcurrency: 1
 }
 
 const attempt = <A>(use: () => Promise<A>) =>

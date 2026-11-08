@@ -8,6 +8,9 @@ import { AnswersInvalid, Conflict, type FormAnswer, type HarnessExit } from "@ot
 import { parseResponseForm } from "@otbor/hh"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import { sql } from "drizzle-orm"
+import { Effect } from "effect"
+import { AutoApplyRunner } from "../../src/services/AutoApplyRunner.ts"
 import * as support from "./support/index.ts"
 
 const enabled = support.integrationEnabled
@@ -550,6 +553,112 @@ if (!enabled || serverUrl === null) {
       const third = await support.applicationApproveFailure(ctx.tenant.userId, ctx.applicationId)
       expect(third).toBeInstanceOf(Conflict)
       expect(await support.countJobs(ctx.applicationId, "submit")).toBe(2)
+    })
+
+    /** Submit, на который hh ответил капчей после клика: в сверку, аккаунт на паузе. */
+    const captchaSubmit = async (ctx: Ctx) => {
+      const { job } = await readyToSubmit(ctx)
+      await ctx.complete(job, {
+        tag: "captcha",
+        message: "hh asked for a captcha",
+        artifacts: { clicked: true, url: urlFor(ctx.externalId), marker: "captcha" }
+      })
+      expect(await stateOf(ctx)).toBe("submitting")
+      return leaseReconcile(ctx)
+    }
+
+    const accountPause = (ctx: Ctx) =>
+      support.runAs(
+        "owner",
+        support.ownerTx((tx) =>
+          tx
+            .execute(sql`select submit_paused_until, submit_pause_reason from hh_account where id = ${ctx.tenant.accountId}`)
+            .pipe(Effect.map((r) => r.rows[0] as { submit_paused_until: Date | null; submit_pause_reason: string | null }))
+        )
+      )
+
+    test("a captcha after the click pauses the account; a manual application goes back to draft", async () => {
+      const ctx = await setup("cap-manual")
+      const job = await captchaSubmit(ctx)
+      const pause = await accountPause(ctx)
+      expect(pause.submit_pause_reason).toBe("captcha")
+      expect(new Date(pause.submit_paused_until!).getTime()).toBeGreaterThan(Date.now() + 4 * 60_000)
+
+      await ctx.complete(job, reconciled(ctx, { vacancy: vacancyPage(ctx, false), negotiations: [] }))
+      expect(await stateOf(ctx)).toBe("draft")
+      expect((await support.findApplication(ctx.applicationId))?.blockedReason).toBeNull()
+    })
+
+    test("an auto application unsent after a captcha waits in preparing until the pause ends, then goes out once more", async () => {
+      const ctx = await setup("cap-auto", "preparing", "auto")
+      // Автозаявке нужно резюме, иначе раннер отдаёт её человеку (no_resume).
+      resumeCounter += 2
+      const resumeId = await support.seedResume({
+        userId: ctx.tenant.userId,
+        accountId: ctx.tenant.accountId,
+        title: "A",
+        externalId: String(resumeCounter)
+      })
+      await support.runAs(
+        "owner",
+        support.ownerTx((tx) => tx.execute(sql`update application set resume_id = ${resumeId} where id = ${ctx.applicationId}`))
+      )
+      await prepare(ctx, responseHtml)
+      const form = (await detail(ctx)).form!.form
+      await support.applicationSetKit(
+        ctx.tenant.userId,
+        { applicationId: ctx.applicationId, formHash: form.formHash, letter: "x", answers: fullAnswers() },
+        { runner: true }
+      )
+      const submit = await ctx.lease()
+      expect(submit.job?.stage).toBe("submit")
+      await ctx.complete(submit.job!, {
+        tag: "captcha",
+        message: "hh asked for a captcha",
+        artifacts: { clicked: true, url: urlFor(ctx.externalId), marker: "captcha" }
+      })
+      const job = await leaseReconcile(ctx)
+      const pause = await accountPause(ctx)
+      await ctx.complete(job, reconciled(ctx, { vacancy: vacancyPage(ctx, false), negotiations: [] }))
+
+      expect(await stateOf(ctx)).toBe("preparing")
+      const row = await support.runAs(
+        "owner",
+        support.ownerTx((tx) =>
+          tx
+            .execute(sql`select blocked_reason, retry_at, auto_retries from application where id = ${ctx.applicationId}`)
+            .pipe(Effect.map((r) => r.rows[0] as { blocked_reason: string; retry_at: Date; auto_retries: number }))
+        )
+      )
+      expect(row.blocked_reason).toBe("captcha")
+      expect(new Date(row.retry_at).getTime()).toBe(new Date(pause.submit_paused_until!).getTime())
+      expect(row.auto_retries).toBe(0)
+
+      // Пока пауза идёт, раннер ничего не отправляет.
+      const tick = () =>
+        support.runAs(
+          ctx.tenant.userId,
+          Effect.gen(function*() {
+            return yield* (yield* AutoApplyRunner).run(ctx.tenant.userId, {})
+          })
+        )
+      await tick()
+      expect(await support.countJobs(ctx.applicationId, "submit")).toBe(1)
+
+      // Пауза вышла: заявка дождалась retry_at, и шлюз ставит новую задачу (один раз).
+      await support.runAs(
+        "owner",
+        support.ownerTx((tx) =>
+          Effect.gen(function*() {
+            yield* tx.execute(sql`update hh_account set submit_paused_until = now() - interval '1 second' where id = ${ctx.tenant.accountId}`)
+            yield* tx.execute(sql`update application set retry_at = now() - interval '1 second' where id = ${ctx.applicationId}`)
+          })
+        )
+      )
+      await tick()
+      await tick()
+      expect(await support.countJobs(ctx.applicationId, "submit")).toBe(2)
+      expect(await stateOf(ctx)).toBe("queued")
     })
 
     test("an inconclusive reconcile retries a bounded number of times and then needs a human, never a second submit", async () => {

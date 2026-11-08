@@ -13,6 +13,7 @@ import { Effect } from "effect"
 import type { DatabaseError, Executor } from "../db/Database.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
 import * as ApplyFilterRepository from "../repositories/ApplyFilterRepository.ts"
+import * as SubmitPacingRepository from "../repositories/SubmitPacingRepository.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
 import { FORM_TTL_MS } from "../repositories/VacancyFormRepository.ts"
 import { waitForSlot } from "./blocked.ts"
@@ -175,6 +176,22 @@ export const trySubmit = Effect.fnUntraced(function*(
 
   const target = yield* targetFor(tx, application)
   if (target === null) return refused("no_vacancy", `vacancy ${application.vacancyId} is gone`)
+
+  // Пауза после капчи: автоотклик не ставим в очередь, он ждёт её конец в
+  // preparing (код captcha). Одобрение оператором ставит submit как обычно:
+  // задача стоит в очереди, пока claim не снимет паузу.
+  if (trigger === "auto") {
+    const pause = yield* SubmitPacingRepository.activePause(tx, application.hhAccountId)
+    if (pause !== null) {
+      const resetsAt = pause.until.toISOString()
+      const message = `hh asked for a captcha; submits of the account are paused until ${resetsAt}`
+      yield* ApplicationRepository.transition(tx, input.userId, application.id, "preparing", {
+        from: ["preparing"],
+        patch: { lastError: message, blockedReason: "captcha", retryAt: pause.until }
+      })
+      return { _tag: "parked", message, limit: 0, used: 0, resetsAt }
+    }
+  }
 
   // Жёсткий лимит на аккаунт за скользящие 24 часа: считаем все отклики
   // аккаунта и занимаем слот под одной блокировкой.

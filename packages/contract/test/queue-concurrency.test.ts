@@ -4,7 +4,8 @@ import { Schema } from "effect"
 
 const base = {
   browserCap: 4,
-  actingCap: 2,
+  actingCap: 1,
+  submitIntervalSeconds: 75,
   actingStages: ["submit", "letter_attach"],
   harnesses: [],
   accounts: [],

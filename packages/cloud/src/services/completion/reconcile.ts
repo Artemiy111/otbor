@@ -1,5 +1,7 @@
 import { Effect } from "effect"
 import * as ApplicationRepository from "../../repositories/ApplicationRepository.ts"
+import * as ApplyFilterRepository from "../../repositories/ApplyFilterRepository.ts"
+import * as SubmitPacingRepository from "../../repositories/SubmitPacingRepository.ts"
 import * as ResumeRepository from "../../repositories/ResumeRepository.ts"
 import * as VacancyRepository from "../../repositories/VacancyRepository.ts"
 import { judgeReconcile, reconcileArtifacts } from "../applyRules.ts"
@@ -44,9 +46,53 @@ export const completeReconcile: StageHandler = (tx, ctx, exit) =>
       })
     }
     if (verdict._tag === "unsent") {
-      // Provably no response: back to draft so a person looks
-      // again and approves again. Nothing is queued here.
+      // Provably no response. Ручная заявка возвращается в draft: человек
+      // смотрит и одобряет заново. Автозаявка, чей режим всё ещё auto, уходит
+      // в preparing и уйдёт снова сама (через шлюз, не здесь): после паузы
+      // капчи, иначе с обычным автоповтором. Здесь ничего не ставится в очередь.
       const message = `reconciled: ${verdict.reason}`
+      const settled = { status: "failed", result: { clicked: false, reconciled: true }, message } as const
+      if (application.autoRun === "auto") {
+        const mode = yield* ApplyFilterRepository.governingAutoMode(
+          tx,
+          application.userId,
+          application.hhAccountId,
+          application.resumeId ?? null
+        )
+        if (mode === "auto") {
+          const pause = yield* SubmitPacingRepository.activePause(tx, application.hhAccountId)
+          const spent = application.autoRetries ?? 0
+          if (pause !== null) {
+            return outcome("done", message, {
+              appState: "preparing",
+              appPatch: {
+                lastError: "hh asked for a captcha; the response did not go out, it will be sent after the pause",
+                blockedReason: "captcha",
+                retryAt: pause.until
+              },
+              jobResult: { found: false, reading: verdict.reading },
+              reconcileKept,
+              settle: settled
+            })
+          }
+          if (spent < ApplicationRepository.MAX_AUTO_RETRIES) {
+            const wait =
+              ApplicationRepository.AUTO_RETRY_BACKOFF_MS[spent] ?? ApplicationRepository.AUTO_RETRY_BACKOFF_MS.at(-1)!
+            return outcome("done", message, {
+              appState: "preparing",
+              appPatch: {
+                lastError: "the response did not reach hh; it will be sent again automatically",
+                blockedReason: "submit_not_sent",
+                retryAt: new Date(Date.now() + wait),
+                autoRetries: spent + 1
+              },
+              jobResult: { found: false, reading: verdict.reading },
+              reconcileKept,
+              settle: settled
+            })
+          }
+        }
+      }
       return outcome("done", message, {
         appState: "draft",
         appPatch: { lastError: "the response did not reach hh; approve again to send it" },

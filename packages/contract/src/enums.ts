@@ -51,6 +51,7 @@ export const BlockedReason = Schema.Literals([
   "kit_refused",
   "writing_failed",
   "daily_cap",
+  "captcha",
   "submit_not_sent",
   "reconcile_unclear",
   "operator"
@@ -68,6 +69,7 @@ export const BLOCKED_REASON_LABELS: Readonly<Record<BlockedReason, string>> = {
   kit_refused: "письмо или ответы не прошли проверку",
   writing_failed: "письмо не написано",
   daily_cap: "дневной лимит откликов",
+  captcha: "hh попросил капчу, отправки аккаунта на паузе",
   submit_not_sent: "отклик не был отправлен",
   reconcile_unclear: "не удалось установить, ушёл ли отклик",
   operator: "нужно решение человека"

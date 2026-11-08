@@ -171,6 +171,8 @@ export const claimAsHolder = async (input: {
   readonly leaseSeconds?: number
   readonly browserConcurrency?: number
   readonly actingConcurrency?: number
+  /** Темп отправок в секундах; по умолчанию 0, чтобы старые тесты не ждали. */
+  readonly submitIntervalSeconds?: number
 }) =>
   runAs(
     "owner",
@@ -180,6 +182,7 @@ export const claimAsHolder = async (input: {
         accounts: input.accounts,
         kinds: input.kinds ?? ["browser"],
         leaseSeconds: input.leaseSeconds,
+        submitIntervalSeconds: input.submitIntervalSeconds ?? 0,
         ...(input.browserConcurrency === undefined ? {} : { browserConcurrency: input.browserConcurrency }),
         ...(input.actingConcurrency === undefined ? {} : { actingConcurrency: input.actingConcurrency })
       })

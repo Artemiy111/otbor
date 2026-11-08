@@ -115,10 +115,19 @@ export interface ClaimInput {
   readonly browserConcurrency?: number
   /** Из них задач, действующих от имени аккаунта (`ACTING_STAGES`). */
   readonly actingConcurrency?: number
+  /**
+   * Минимум секунд между двумя действующими задачами одного аккаунта; к нему
+   * добавляется случайная надбавка до 50%. 0 выключает темп.
+   */
+  readonly submitIntervalSeconds?: number
 }
 
 export const DEFAULT_ACCOUNT_BROWSER_CONCURRENCY = 4
-export const DEFAULT_ACCOUNT_SUBMIT_CONCURRENCY = 2
+export const DEFAULT_ACCOUNT_SUBMIT_CONCURRENCY = 1
+/** Темп отправок аккаунта по умолчанию (`OTBOR_ACCOUNT_SUBMIT_INTERVAL_SECONDS`). */
+export const DEFAULT_ACCOUNT_SUBMIT_INTERVAL_SECONDS = 75
+/** Верхняя граница случайной надбавки к интервалу, доля от него. */
+export const SUBMIT_INTERVAL_JITTER = 0.5
 
 /**
  * Стадии, которые действуют от имени аккаунта (клик «откликнуться», письмо в
@@ -188,6 +197,7 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
       browserCap,
       Math.max(1, input.actingConcurrency ?? DEFAULT_ACCOUNT_SUBMIT_CONCURRENCY)
     )
+    const intervalSeconds = Math.max(0, input.submitIntervalSeconds ?? DEFAULT_ACCOUNT_SUBMIT_INTERVAL_SECONDS)
     const rejectedAccounts: Array<string> = []
 
     for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt++) {
@@ -238,6 +248,17 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
                     and r.status in ('leased', 'running')
                     and r.locked_by = ${input.holder}
                 ) < ${browserCap}::int
+                and (
+                  harness_jobs.stage not in (${actingList})
+                  or exists (
+                    -- Темп и пауза после капчи: действующую задачу аккаунт принимает
+                    -- не раньше submit_next_at и не во время submit_paused_until.
+                    select 1 from hh_account pa
+                    where pa.id = harness_jobs.hh_account_id
+                      and (pa.submit_next_at is null or pa.submit_next_at <= now())
+                      and (pa.submit_paused_until is null or pa.submit_paused_until <= now())
+                  )
+                )
                 and (
                   harness_jobs.stage not in (${actingList})
                   or (
@@ -293,6 +314,24 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
         if (total >= browserCap || (isActing && acting >= actingCap)) {
           rejectedAccounts.push(hhAccountId)
           continue
+        }
+
+        if (isActing) {
+          // Темп проверяем и назначаем под той же блокировкой account_lease:
+          // параллельный claim этого аккаунта видит уже сдвинутый submit_next_at.
+          const jitter = intervalSeconds * SUBMIT_INTERVAL_JITTER * Math.random()
+          const paced = yield* tx.execute(sql`
+            update hh_account
+            set submit_next_at = now() + make_interval(secs => ${intervalSeconds + jitter})
+            where id = ${hhAccountId}
+              and (submit_next_at is null or submit_next_at <= now())
+              and (submit_paused_until is null or submit_paused_until <= now())
+            returning id
+          `)
+          if (paced.rows.length === 0) {
+            rejectedAccounts.push(hhAccountId)
+            continue
+          }
         }
       }
 
@@ -476,6 +515,7 @@ export const stats = (tx: Executor, kind?: string): RepoEffect<QueueStats> =>
 interface ConcurrencyCaps {
   readonly browserCap: number
   readonly actingCap: number
+  readonly submitIntervalSeconds?: number
 }
 
 const stageCounts = (rows: ReadonlyArray<Record<string, unknown>>) =>
@@ -515,7 +555,10 @@ export const concurrency = (
                nullif(a.label, ''),
                a.id::text
              ) as name,
-             l.holder, h.name as holder_name
+             l.holder, h.name as holder_name,
+             case when a.submit_next_at > now() then a.submit_next_at end as next_submit_at,
+             case when a.submit_paused_until > now() then a.submit_paused_until end as paused_until,
+             case when a.submit_paused_until > now() then a.submit_pause_reason end as pause_reason
       from hh_account a
       left join account_lease l on l.hh_account_id = a.id and l.expires_at > now()
       left join harness h on h.id::text = l.holder and h.user_id = a.user_id
@@ -552,6 +595,7 @@ export const concurrency = (
     return {
       browserCap: caps.browserCap,
       actingCap: caps.actingCap,
+      submitIntervalSeconds: caps.submitIntervalSeconds ?? DEFAULT_ACCOUNT_SUBMIT_INTERVAL_SECONDS,
       actingStages: ACTING_STAGES,
       harnesses: harnesses.map((row) => ({
         id: String(row.id),
@@ -569,6 +613,9 @@ export const concurrency = (
           name: String(row.name),
           holderHarnessId: row.holder === null ? null : String(row.holder),
           holderHarnessName: row.holder_name === null ? null : String(row.holder_name),
+          nextSubmitAt: row.next_submit_at == null ? null : new Date(String(row.next_submit_at)).toISOString(),
+          submitPausedUntil: row.paused_until == null ? null : new Date(String(row.paused_until)).toISOString(),
+          submitPauseReason: row.pause_reason == null ? null : String(row.pause_reason),
           running: run,
           browserRunning: sum(run),
           actingRunning: sum(run.filter((c) => ACTING_STAGES.includes(c.stage))),

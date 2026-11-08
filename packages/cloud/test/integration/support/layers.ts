@@ -53,6 +53,8 @@ export interface LayerOptions {
    * тесты сами вызывают проходы и ждут точные счётчики.
    */
   readonly advanceOnComplete?: boolean
+  /** Темп отправок аккаунта в секундах; по умолчанию 0 (выключен). */
+  readonly submitIntervalSeconds?: number
 }
 
 /**
@@ -136,7 +138,11 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
     VacancyAnalysisService.layer.pipe(Layer.provide(shared)),
     DecisionService.layer.pipe(Layer.provide(shared)),
     FitJudgeService.layer.pipe(Layer.provide(shared)),
-    QueueService.layerConfigured({ advanceOnComplete: options.advanceOnComplete === true }).pipe(
+    QueueService.layerConfigured({
+      advanceOnComplete: options.advanceOnComplete === true,
+      // Тесты по умолчанию без темпа отправок; темп проверяют отдельные тесты.
+      accountSubmitIntervalSeconds: options.submitIntervalSeconds ?? 0
+    }).pipe(
       Layer.provide(shared)
     ),
     NegotiationsSync.layer.pipe(Layer.provide(shared)),

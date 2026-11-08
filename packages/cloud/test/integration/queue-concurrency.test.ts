@@ -1,5 +1,6 @@
 /** Integration: queue-concurrency. See README.md for how to run. */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import { QueueService } from "../../src/services/QueueService.ts"
 import {
@@ -9,6 +10,7 @@ import {
   enqueueJob,
   integrationEnabled,
   migrateTestDatabase,
+  ownerTx,
   registerHarness,
   runAs,
   seedTenant,
@@ -78,7 +80,8 @@ if (!integrationEnabled || serverUrl === null) {
 
       const view = await snapshot(tenant.userId)
       expect(view.browserCap).toBe(4)
-      expect(view.actingCap).toBe(2)
+      expect(view.actingCap).toBe(1)
+      expect(view.submitIntervalSeconds).toBe(0)
       expect(view.harnesses[0]).toMatchObject({ name: "mac", slots: 6, busy: 2 })
       const account = view.accounts.find((a) => a.id === tenant.accountId)!
       expect(account.holderHarnessName).toBe("mac")
@@ -87,6 +90,28 @@ if (!integrationEnabled || serverUrl === null) {
       expect(account.pendingTotal).toBe(2)
       expect(account.running.reduce((n, c) => n + c.count, 0)).toBe(2)
       expect(view.inference.pending).toBe(1)
+      expect(account.nextSubmitAt).toBeNull()
+      expect(account.submitPausedUntil).toBeNull()
+    })
+
+    test("shows the next allowed submit time and the captcha pause of an account", async () => {
+      const tenant = await seedTenant("conc-pause")
+      await runAs(
+        "owner",
+        ownerTx((tx) =>
+          tx.execute(sql`
+            update hh_account
+            set submit_next_at = now() + interval '80 seconds',
+                submit_paused_until = now() + interval '5 minutes',
+                submit_pause_reason = 'captcha'
+            where id = ${tenant.accountId}
+          `)
+        )
+      )
+      const account = (await snapshot(tenant.userId)).accounts.find((a) => a.id === tenant.accountId)!
+      expect(account.submitPauseReason).toBe("captcha")
+      expect(Date.parse(account.submitPausedUntil!)).toBeGreaterThan(Date.now() + 4 * 60_000)
+      expect(Date.parse(account.nextSubmitAt!)).toBeGreaterThan(Date.now() + 60_000)
     })
 
     test("does not show another user's harnesses or accounts", async () => {

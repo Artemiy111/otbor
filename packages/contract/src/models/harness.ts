@@ -141,6 +141,12 @@ export const ConcurrencyAccount = Schema.Struct({
   /** Держатель неистёкшего `account_lease`. */
   holderHarnessId: Schema.NullOr(HarnessId),
   holderHarnessName: Schema.NullOr(Schema.String),
+  /** Раньше этого момента следующая отправка аккаунта не выдастся (темп); null, если можно сейчас. */
+  nextSubmitAt: Schema.NullOr(Schema.String),
+  /** Отправки на паузе до этого момента; null, если пауза не действует. */
+  submitPausedUntil: Schema.NullOr(Schema.String),
+  /** Почему пауза: `captcha` - hh попросил капчу. */
+  submitPauseReason: Schema.NullOr(Schema.String),
   /** Браузерные задачи в `leased`/`running` по стадиям. */
   running: Schema.Array(StageCount),
   browserRunning: Schema.Int,
@@ -156,6 +162,8 @@ export const QueueConcurrency = Schema.Struct({
   browserCap: Schema.Int,
   /** Из них действующих: submit, letter_attach (`OTBOR_ACCOUNT_SUBMIT_CONCURRENCY`). */
   actingCap: Schema.Int,
+  /** Минимум секунд между отправками одного аккаунта (`OTBOR_ACCOUNT_SUBMIT_INTERVAL_SECONDS`), без надбавки до 50%. */
+  submitIntervalSeconds: Schema.Int,
   actingStages: Schema.Array(JobStage),
   harnesses: Schema.Array(ConcurrencyHarness),
   accounts: Schema.Array(ConcurrencyAccount),

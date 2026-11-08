@@ -32,6 +32,11 @@ export const hhAccount = pgTable(
     areaName: text("area_name"),
     sessionProfile: text("session_profile"),
     color: text("color"),
+    /** Раньше этого момента claim не выдаёт действующую задачу аккаунта (темп отправок). */
+    submitNextAt: timestamp("submit_next_at", { withTimezone: true }),
+    /** Пауза отправок после капчи; пока не вышла, действующие задачи не выдаются. */
+    submitPausedUntil: timestamp("submit_paused_until", { withTimezone: true }),
+    submitPauseReason: text("submit_pause_reason"),
     createdAt: createdAt(),
     updatedAt: updatedAt()
   },

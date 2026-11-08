@@ -17,6 +17,7 @@ import { Database } from "../db/Database.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
 import * as HhAccountRepository from "../repositories/HhAccountRepository.ts"
 import * as HarnessRepository from "../repositories/HarnessRepository.ts"
+import * as SubmitPacingRepository from "../repositories/SubmitPacingRepository.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
 import { AutoApplyRunner } from "./AutoApplyRunner.ts"
 import { CurrentUser } from "./CurrentUser.ts"
@@ -72,7 +73,7 @@ const transitionFrom = (
         ? ["draft", "queued", "submitting", "needs_human", "failed"]
         : to === "failed"
           ? ["draft", "queued", "submitting", "needs_human", "failed"]
-          : to === "draft" && stage === "reconcile"
+          : (to === "draft" || to === "preparing") && stage === "reconcile"
             ? ["submitting", "needs_human", "failed"]
             : ["draft", "queued"]
 
@@ -152,8 +153,15 @@ export interface QueueServiceOptions {
   readonly advanceOnComplete?: boolean
   /** Браузерных задач одного аккаунта у одного харнесса разом (`OTBOR_ACCOUNT_BROWSER_CONCURRENCY`, 4). */
   readonly accountBrowserConcurrency?: number
-  /** Из них действующих, submit и letter_attach (`OTBOR_ACCOUNT_SUBMIT_CONCURRENCY`, 2). */
+  /** Из них действующих, submit и letter_attach (`OTBOR_ACCOUNT_SUBMIT_CONCURRENCY`, 1). */
   readonly accountSubmitConcurrency?: number
+  /**
+   * Минимум секунд между двумя действующими задачами аккаунта, плюс случайная
+   * надбавка до 50% (`OTBOR_ACCOUNT_SUBMIT_INTERVAL_SECONDS`, 75). 0 - без темпа.
+   */
+  readonly accountSubmitIntervalSeconds?: number
+  /** Пауза отправок аккаунта после капчи, секунд (`OTBOR_ACCOUNT_CAPTCHA_PAUSE_SECONDS`, 300). */
+  readonly accountCaptchaPauseSeconds?: number
 }
 
 export class QueueService extends Context.Service<QueueService, QueueServiceShape>()(
@@ -172,10 +180,18 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
         const accountSubmitConcurrency = yield* Config.Int("OTBOR_ACCOUNT_SUBMIT_CONCURRENCY").pipe(
           Config.withDefault(QueueRepository.DEFAULT_ACCOUNT_SUBMIT_CONCURRENCY)
         )
+        const accountSubmitIntervalSeconds = yield* Config.Int("OTBOR_ACCOUNT_SUBMIT_INTERVAL_SECONDS").pipe(
+          Config.withDefault(QueueRepository.DEFAULT_ACCOUNT_SUBMIT_INTERVAL_SECONDS)
+        )
+        const accountCaptchaPauseSeconds = yield* Config.Int("OTBOR_ACCOUNT_CAPTCHA_PAUSE_SECONDS").pipe(
+          Config.withDefault(SubmitPacingRepository.DEFAULT_CAPTCHA_PAUSE_SECONDS)
+        )
         return QueueService.layerWith({
+          accountCaptchaPauseSeconds,
           dailyApplyLimit,
           accountBrowserConcurrency,
           accountSubmitConcurrency,
+          accountSubmitIntervalSeconds,
           ...overrides
         })
       })
@@ -218,7 +234,9 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
           .asOwner((tx) =>
             QueueRepository.concurrency(tx, currentUser.userId, {
               browserCap: options.accountBrowserConcurrency ?? QueueRepository.DEFAULT_ACCOUNT_BROWSER_CONCURRENCY,
-              actingCap: options.accountSubmitConcurrency ?? QueueRepository.DEFAULT_ACCOUNT_SUBMIT_CONCURRENCY
+              actingCap: options.accountSubmitConcurrency ?? QueueRepository.DEFAULT_ACCOUNT_SUBMIT_CONCURRENCY,
+              submitIntervalSeconds:
+                options.accountSubmitIntervalSeconds ?? QueueRepository.DEFAULT_ACCOUNT_SUBMIT_INTERVAL_SECONDS
             })
           )
           .pipe(Effect.mapError(toStorageError("queue.concurrency")))
@@ -306,7 +324,10 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                   : { browserConcurrency: options.accountBrowserConcurrency }),
                 ...(options.accountSubmitConcurrency === undefined
                   ? {}
-                  : { actingConcurrency: options.accountSubmitConcurrency })
+                  : { actingConcurrency: options.accountSubmitConcurrency }),
+                ...(options.accountSubmitIntervalSeconds === undefined
+                  ? {}
+                  : { submitIntervalSeconds: options.accountSubmitIntervalSeconds })
               })
               if (claimed === null) return null
 
@@ -491,6 +512,21 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                       state: "expired",
                       error: exit.message ?? "hh redirected to the login page"
                     })
+                  }
+                }
+
+                // Капча от hh: отправки аккаунта встают на фиксированную паузу
+                // (по умолчанию 5 минут). Читающие задачи идут.
+                if (ctx.hhAccountId !== null) {
+                  if (exit.tag === "captcha") {
+                    const pause = yield* SubmitPacingRepository.recordCaptcha(
+                      tx,
+                      ctx.hhAccountId,
+                      options.accountCaptchaPauseSeconds ?? SubmitPacingRepository.DEFAULT_CAPTCHA_PAUSE_SECONDS
+                    )
+                    yield* Effect.logWarning(
+                      `hh asked for a captcha (${job.stage}); submits of the account are paused until ${pause.until.toISOString()}`
+                    )
                   }
                 }
 

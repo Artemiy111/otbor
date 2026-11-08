@@ -393,7 +393,13 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                 (app.autoRun === "drafts" && current.state === "draft")
               if (!mine) return idle
               // A submit job exists: the submit path owns it from here.
-              if (submit !== null) return idle
+              // Исключение: сверка доказала, что клика не было (failed, clicked: false),
+              // - заявка вернулась в preparing, и шлюз вправе поставить новую задачу.
+              const submitUnsent =
+                submit !== null &&
+                submit.status === "failed" &&
+                (submit.result as { clicked?: unknown } | null)?.clicked === false
+              if (submit !== null && !submitUnsent) return idle
 
               // Заявка ещё ждёт `retry_at` (дневной лимит, автоповтор): не трогаем.
               if (!due) return waiting
