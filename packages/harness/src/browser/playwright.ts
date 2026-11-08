@@ -17,6 +17,7 @@ import { chromium, type BrowserContext, type Page } from "playwright"
 import {
   CHAT_INPUT_SELECTOR,
   RESUME_CHOSEN_OPTION_SELECTOR,
+  RESUME_OPTION_SELECTOR,
   RESUME_SELECTED_SELECTOR,
   isResumeHash,
   resumeOptionSelector,
@@ -491,7 +492,24 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
             }
             return false
           })
-          const openSelect = attempt(() => page.locator(RESUME_SELECTED_SELECTOR).first().click({ timeout: 5_000 }))
+          const clickCard = attempt(() => page.locator(RESUME_SELECTED_SELECTOR).first().click({ timeout: 5_000 }))
+          /**
+           * Форма видна в HTML раньше, чем React навесит обработчики, и первый
+           * клик по карточке резюме может ничего не открыть. Кликаем заново,
+           * только если за ~2 с вариантов так и не появилось (открытый список
+           * повторный клик закрыл бы).
+           */
+          const openSelect = Effect.gen(function*() {
+            for (let tries = 0; tries < 4; tries++) {
+              yield* clickCard
+              for (let waited = 0; waited < 2_000; waited += 250) {
+                if ((yield* attempt(() => page.locator(RESUME_OPTION_SELECTOR).count()).pipe(Effect.orElseSucceed(() => 0))) > 0) {
+                  return
+                }
+                yield* sleep(250)
+              }
+            }
+          })
           const closeSelect = attempt(() => page.keyboard.press("Escape")).pipe(Effect.ignore)
           const blockedWith = (message: string) =>
             ({ tag: "blocked", message, ...unclicked(lastUrl) }) satisfies HarnessExit

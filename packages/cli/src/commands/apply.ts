@@ -152,6 +152,23 @@ const approve = Command.make(
   })
 ).pipe(Command.withDescription("Approve a prepared draft and queue the submit job"))
 
+const form = Command.make(
+  "form",
+  { id: idArgument },
+  Effect.fn(function*({ id }) {
+    const api = yield* Api
+    const applicationId = yield* resolveApplicationId(api, id)
+    const { application } = yield* api.ApplicationsGet({ id: applicationId })
+    // Перечитывает форму вакансии этим аккаунтом, даже если сохранённая ещё свежая.
+    const state = yield* api.VacancyFormRefresh({
+      vacancyId: application.vacancyId,
+      hhAccountId: application.hhAccountId,
+      force: true
+    })
+    yield* Console.log(`${application.id}  form ${state.reading ? "read queued" : state.status}`)
+  })
+).pipe(Command.withDescription("Re-read the response form of an application's vacancy (before approve)"))
+
 const skip = Command.make(
   "skip",
   {
@@ -286,6 +303,6 @@ const run = Command.make(
 ).pipe(Command.withDescription("Run the auto-apply schedule once and print the counts (modes off do nothing)"))
 
 export const applyCommand = Command.make("apply").pipe(
-  Command.withSubcommands([create, list, get, approve, skip, retry, kit, run]),
+  Command.withSubcommands([create, list, get, approve, form, skip, retry, kit, run]),
   Command.withDescription("Applications: create, review, approve, retry")
 )
