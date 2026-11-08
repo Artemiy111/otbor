@@ -29,7 +29,20 @@ export const ownerTx = <A, E>(
 ): Effect.Effect<A, E | DatabaseError, Database> =>
   Effect.gen(function*() {
     const database = yield* Database
-    return yield* database.asOwner((tx) => run(tx))
+    return yield* database.asOwner((tx) =>
+      Effect.gen(function*() {
+        // Защита от записи в боевую базу: если подмена DATABASE_URL не сработала,
+        // помощники вроде archiveAllVacancies испортили бы настоящий корпус.
+        const result = yield* tx.execute(sql`select current_database() as name`)
+        const name = (result.rows[0] as { readonly name: string } | undefined)?.name ?? ""
+        if (!name.startsWith("otbor_it_")) {
+          return yield* Effect.die(
+            new Error(`интеграционный тест подключён к базе «${name}», а не к временной otbor_it_*`)
+          )
+        }
+        return yield* run(tx)
+      })
+    )
   })
 
 export interface Tenant {
