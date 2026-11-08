@@ -24,6 +24,9 @@ export type WorkFormat = typeof WorkFormat.Type
 
 export const ApplicationState = Schema.Literals([
   "draft",
+  /** Автоотклик без слота: ждёт форму, письмо, кит или повтор. */
+  "preparing",
+  /** Слот занят, submit поставлен в очередь. */
   "queued",
   "submitting",
   "submitted",
@@ -33,6 +36,42 @@ export const ApplicationState = Schema.Literals([
 ])
 
 export type ApplicationState = typeof ApplicationState.Type
+
+/**
+ * Замкнутый набор причин, по которым заявка стоит или ждёт человека.
+ * Транзиентные (`daily_cap`, `writing_failed`, `form_read_failed`) у автоотклика
+ * сначала оставляют `preparing` с `retryAt`; остальные ведут в `needs_human`.
+ */
+export const BlockedReason = Schema.Literals([
+  "no_resume",
+  "form_unreadable",
+  "form_gone",
+  "form_read_failed",
+  "form_hint_blocked",
+  "kit_refused",
+  "writing_failed",
+  "daily_cap",
+  "submit_not_sent",
+  "reconcile_unclear",
+  "operator"
+])
+
+export type BlockedReason = typeof BlockedReason.Type
+
+/** Смысл кода по-русски: для веба, CLI и описаний прогресса. */
+export const BLOCKED_REASON_LABELS: Readonly<Record<BlockedReason, string>> = {
+  no_resume: "не выбрано резюме для откликов",
+  form_unreadable: "форма отклика не распознана",
+  form_gone: "вакансия больше не принимает отклики",
+  form_read_failed: "форму отклика не удалось прочитать",
+  form_hint_blocked: "подсказка ответа заблокирована",
+  kit_refused: "письмо или ответы не прошли проверку",
+  writing_failed: "письмо не написано",
+  daily_cap: "дневной лимит откликов",
+  submit_not_sent: "отклик не был отправлен",
+  reconcile_unclear: "не удалось установить, ушёл ли отклик",
+  operator: "нужно решение человека"
+}
 
 /** Who made the application: otbor, or the operator by hand on hh.ru (read back by the sync). */
 export const ApplicationOrigin = Schema.Literals(["otbor", "imported"])

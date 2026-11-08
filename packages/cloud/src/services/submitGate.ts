@@ -15,6 +15,7 @@ import * as ApplicationRepository from "../repositories/ApplicationRepository.ts
 import * as ApplyFilterRepository from "../repositories/ApplyFilterRepository.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
 import { FORM_TTL_MS } from "../repositories/VacancyFormRepository.ts"
+import { waitForSlot } from "./blocked.ts"
 import { checkKit, type KitProblem } from "./applyRules.ts"
 import { DAY_MS, dailyLimitFor, lockAccountSlots, recentSubmits } from "./dailyLimit.ts"
 import { nextSequence, submitJob, targetFor } from "./jobs.ts"
@@ -57,8 +58,9 @@ export type SubmitOutcome =
       readonly problems: ReadonlyArray<KitProblem>
     }
   /**
-   * Упёрлись в дневной лимит. Для `auto` заявка уже переведена в `needs_human`
-   * с причиной; для `approve` ничего не менялось.
+   * Упёрлись в дневной лимит. Для `auto` заявка осталась `preparing` с
+   * `blocked_reason = 'daily_cap'` и `retry_at = resetsAt`; для `approve`
+   * ничего не менялось.
    */
   | {
       readonly _tag: "parked"
@@ -92,9 +94,10 @@ const APPROVABLE = ["draft", "needs_human", "failed"] as const
  * внутри транзакции: шлюз берёт advisory-блокировку аккаунта до конца этой
  * транзакции, поэтому подсчёт лимита и захват слота не гоняются между собой.
  *
- * `trigger: "auto"` отправляет только `queued` заявку с `auto_run = 'auto'`,
+ * `trigger: "auto"` отправляет только `preparing` заявку с `auto_run = 'auto'`,
  * чья управляющая строка apply filter сейчас в режиме `auto`.
  * `trigger: "approve"` переводит draft / needs_human / failed в `queued`.
+ * Занятый слот (`intent_at`) и состояние `queued` значат одно: submit поставлен.
  */
 export const trySubmit = Effect.fnUntraced(function*(
   tx: Executor,
@@ -112,7 +115,7 @@ export const trySubmit = Effect.fnUntraced(function*(
     if (application.autoRun !== "auto") {
       return refused("not_auto", "the application is not an auto application; only an operator sends it")
     }
-    if (application.state !== "queued") {
+    if (application.state !== "preparing") {
       return refused("state", `cannot auto-submit from state ${application.state}`)
     }
     const mode = yield* ApplyFilterRepository.governingAutoMode(
@@ -182,16 +185,13 @@ export const trySubmit = Effect.fnUntraced(function*(
     const resetsAt = new Date((recent.oldest?.getTime() ?? Date.now()) + DAY_MS).toISOString()
     const message = `daily limit ${limit} reached; a slot frees at ${resetsAt}`
     if (trigger === "auto") {
-      yield* ApplicationRepository.transition(tx, input.userId, application.id, "needs_human", {
-        from: ["queued"],
-        patch: { lastError: message }
-      })
+      yield* waitForSlot(tx, input.userId, application.id, message, resetsAt)
     }
     return { _tag: "parked", message, limit, used: recent.used, resetsAt }
   }
 
   const updated = yield* ApplicationRepository.transition(tx, input.userId, application.id, "queued", {
-    from: trigger === "auto" ? ["queued"] : [...APPROVABLE],
+    from: trigger === "auto" ? ["preparing"] : [...APPROVABLE],
     patch: { intentAt: new Date(), lastError: null }
   })
   if (updated === null) return refused("state", `cannot submit from state ${application.state}`)

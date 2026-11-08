@@ -16,6 +16,7 @@ const SUCCESS = new Set([
 const INFO = new Set([
   "unknown",
   "draft",
+  "preparing",
   "queued",
   "pending",
   "leased",
@@ -81,6 +82,7 @@ const LABELS: Record<string, string> = {
   draft: "Черновик",
   skip: "Пропуск",
 
+  preparing: "Готовится",
   queued: "В очереди",
   submitting: "Отправляется",
   submitted: "Отправлен",

@@ -343,7 +343,7 @@ export const seedApplication = async (input: {
   readonly userId: string
   readonly accountId: string
   readonly vacancyId: string
-  readonly state?: "draft" | "queued" | "submitted" | "needs_human" | "failed"
+  readonly state?: "draft" | "preparing" | "queued" | "submitted" | "needs_human" | "failed"
   readonly resumeId?: string
   /** Заявка автозапуска: раннер ведёт её, а режим auto разрешает отправку. */
   readonly autoRun?: "drafts" | "auto"

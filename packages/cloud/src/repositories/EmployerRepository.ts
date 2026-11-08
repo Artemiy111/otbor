@@ -44,7 +44,7 @@ export const toSummary = (row: EmployerRow): EmployerSummary => {
 }
 
 /** Application states that count as "the account responded". */
-const RESPONDED_STATES = "'submitted', 'submitting', 'queued'"
+const RESPONDED_STATES = "'submitted', 'submitting', 'queued', 'preparing'"
 
 /**
  * Employer blocks are shown across every layer and every hh account, so the

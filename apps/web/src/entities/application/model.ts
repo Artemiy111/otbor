@@ -13,7 +13,7 @@ export const applicationKeys = {
 }
 
 /** Applications that count as "this account responded to the vacancy". */
-const RESPONDED_STATES = new Set(["submitted", "submitting", "queued"])
+const RESPONDED_STATES = new Set(["submitted", "submitting", "queued", "preparing"])
 
 export interface RespondedAccount {
   readonly accountId: string

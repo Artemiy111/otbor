@@ -297,7 +297,7 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                   })
                 }
 
-                const state = input.mode === "auto" ? "queued" : "draft"
+                const state = input.mode === "auto" ? "preparing" : "draft"
                 const created = yield* ApplicationRepository.create(tx, {
                   userId: currentUser.userId,
                   hhAccountId: input.hhAccountId,
@@ -435,7 +435,7 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                   input.id,
                   "skipped",
                   {
-                    from: ["draft", "queued", "submitting", "needs_human", "failed"],
+                    from: ["draft", "preparing", "queued", "submitting", "needs_human", "failed"],
                     patch: { lastError: input.reason ?? null }
                   }
                 )
@@ -526,7 +526,7 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                 // новая, и кит надо одобрить заново. Заявка без auto_run тоже
                 // возвращается в draft: иначе следующее чтение формы отправило бы её
                 // без одобрения. Только автоотклик, чей режим всё ещё auto, снова
-                // отдаётся раннеру (`queued`, intent_at пуст).
+                // отдаётся раннеру (`preparing`, слота ещё нет).
                 const governedByAuto =
                   !unsent &&
                   application.autoRun === "auto" &&
@@ -540,10 +540,13 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                   tx,
                   currentUser.userId,
                   id,
-                  governedByAuto ? "queued" : "draft",
+                  governedByAuto ? "preparing" : "draft",
                   {
-                    from: ["needs_human", "failed", "draft"],
-                    patch: governedByAuto ? { lastError: null, intentAt: null } : { lastError: null }
+                    from: ["needs_human", "failed", "draft", "preparing"],
+                    // Оператор сбрасывает и причину, и счётчик автоповторов.
+                    patch: governedByAuto
+                      ? { lastError: null, intentAt: null, autoRetries: 0 }
+                      : { lastError: null, autoRetries: 0 }
                   }
                 )
                 return updated === null
@@ -594,11 +597,11 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                   costUsd: input.costUsd ?? null
                 })
 
-                // Автоотклик ждёт в `queued` именно этот кит. Когда он подходит к
+                // Автоотклик ждёт в `preparing` именно этот кит. Когда он подходит к
                 // сохранённой форме, шлюз сам проверит всё и поставит единственную
                 // submit-задачу; иначе кит просто сохранён, решает человек.
                 // Заявки без auto_run шлюз по триггеру auto не отправляет.
-                if (application.state === "queued") {
+                if (application.state === "preparing") {
                   yield* trySubmit(tx, {
                     userId: currentUser.userId,
                     application,

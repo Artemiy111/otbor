@@ -547,7 +547,7 @@ application (
   vacancy_id uuid not null references vacancy(id) on delete cascade,
   resume_id uuid references resume(id) on delete set null,
   stream_id uuid references stream(id) on delete set null,
-  state text not null,               -- draft | queued | submitting | submitted
+  state text not null,               -- draft | preparing | queued | submitting | submitted
                                      -- | skipped | needs_human | failed
   decision jsonb not null default '{}',
   created_at timestamptz not null, updated_at timestamptz not null

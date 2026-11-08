@@ -86,7 +86,7 @@ if (!enabled || serverUrl === null) {
     owner((tx) =>
       tx
         .execute(
-          sql`select id, vacancy_id, state, auto_run, intent_at, last_error from application where hh_account_id = ${accountId} order by created_at, id`
+          sql`select id, vacancy_id, state, auto_run, intent_at, last_error, blocked_reason, retry_at, auto_retries from application where hh_account_id = ${accountId} order by created_at, id`
         )
         .pipe(
           Effect.map(
@@ -98,6 +98,9 @@ if (!enabled || serverUrl === null) {
                 auto_run: string | null
                 intent_at: Date | null
                 last_error: string | null
+                blocked_reason: string | null
+                retry_at: Date | null
+                auto_retries: number
               }>
           )
         )
@@ -445,8 +448,8 @@ if (!enabled || serverUrl === null) {
       expect(await tick(ctx.tenant.userId)).toMatchObject({ created: 2 })
       const queued = await applicationsOf(ctx.tenant.accountId)
       expect(queued.map((row) => [row.state, row.auto_run])).toEqual([
-        ["queued", "auto"],
-        ["queued", "auto"]
+        ["preparing", "auto"],
+        ["preparing", "auto"]
       ])
       // nothing goes out before the kit exists
       for (const row of queued) expect(await submitCount(row.id)).toBe(0)
@@ -801,6 +804,7 @@ if (!enabled || serverUrl === null) {
       expect(app!.state).toBe("needs_human")
       expect(app!.resume_id).toBeNull()
       expect(app!.last_error).toContain("не выбрано резюме для откликов")
+      expect((await applicationsOf(ctx.tenant.accountId))[0]!.blocked_reason).toBe("no_resume")
       await readForms(ctx, responseHtml)
       expect(await tick(ctx.tenant.userId)).toMatchObject({ writingEnqueued: 0 })
       expect(await writingJobs(ctx.tenant.accountId)).toHaveLength(0)
@@ -1029,7 +1033,8 @@ if (!enabled || serverUrl === null) {
       await tick(ctx.tenant.userId)
       view = await progressOf(ctx)
       expect(view.items[0]).toMatchObject({ state: "needs_human", stage: "needs_human" })
-      expect(view.items[0]!.stageDetail).toContain("Нужен человек: ")
+      expect(view.items[0]!.stageDetail).toContain("Нужен человек (письмо не написано): ")
+      expect(view.items[0]!.blockedReason).toBe("writing_failed")
       expect(view.items[0]!.lastError).toContain("writing job")
       expect(view.summary.needs_human).toBe(1)
       expect((await progressOf(ctx, { activeOnly: true })).items).toHaveLength(0)
@@ -1063,7 +1068,8 @@ if (!enabled || serverUrl === null) {
       await killWriting(ctx.tenant.accountId)
       await tick(ctx.tenant.userId)
       const [row] = await applicationsOf(ctx.tenant.accountId)
-      expect(row!.state).toBe("needs_human")
+      // Автоотклик сначала ждёт автоповтор, черновик сразу у человека.
+      expect(row!.state).toBe(mode === "auto" ? "preparing" : "needs_human")
       return { ctx, id: row!.id }
     }
 
@@ -1106,12 +1112,21 @@ if (!enabled || serverUrl === null) {
       expect((await progressOf(ctx)).items[0]).toMatchObject({ stage: "kit_ready", retryable: false })
     }, 120_000)
 
-    test("retry: all stopped ones of an account at once; a failed-but-not-yet-parked one too; auto goes back to queued", async () => {
+    test("retry: all stopped ones of an account at once; a failed-but-not-yet-parked one too; auto goes back to preparing", async () => {
       const { ctx, id } = await parkedByDeadJob("aa-retry-auto", "auto")
-      expect((await applicationsOf(ctx.tenant.accountId))[0]!.state).toBe("needs_human")
+      expect((await applicationsOf(ctx.tenant.accountId))[0]).toMatchObject({
+        state: "preparing",
+        blocked_reason: "writing_failed"
+      })
       const result = await retryOf(ctx, { hhAccountId: ctx.tenant.accountId })
       expect(result).toEqual({ retried: 1, skipped: [] })
-      expect((await applicationsOf(ctx.tenant.accountId))[0]).toMatchObject({ state: "queued", last_error: null })
+      expect((await applicationsOf(ctx.tenant.accountId))[0]).toMatchObject({
+        state: "preparing",
+        last_error: null,
+        blocked_reason: null,
+        retry_at: null,
+        auto_retries: 0
+      })
       expect(await tick(ctx.tenant.userId)).toMatchObject({ writingEnqueued: 1 })
       await writeLetters(ctx, GOOD_DRAFT)
       expect(await tick(ctx.tenant.userId)).toMatchObject({ kitsSet: 1, submitQueued: 1 })
@@ -1170,5 +1185,320 @@ if (!enabled || serverUrl === null) {
       expect(view.items).toHaveLength(0)
       expect(Object.values(view.summary).reduce((a, b) => a + b, 0)).toBe(0)
     }, 60_000)
+  })
+
+  /* ------------------------------------------------------------------------ */
+  /* Preparing and blocked reasons                                            */
+  /* ------------------------------------------------------------------------ */
+
+  describe("preparing and blocked reasons", () => {
+    const HOUR = 3_600_000
+
+    const rowOfApp = async (accountId: string) => (await applicationsOf(accountId))[0]!
+
+    /** The retry moment is in the past: the next pass picks the application up. */
+    const dueNow = (id: string) =>
+      owner((tx) => tx.execute(sql`update application set retry_at = now() - interval '1 minute' where id = ${id}`))
+
+    const killLatestWriting = (accountId: string) =>
+      owner((tx) =>
+        tx.execute(
+          sql`update harness_jobs set status = 'dead', last_error = 'harness offline'
+              where stage = 'inference' and hh_account_id = ${accountId}
+                and idempotency_key like 'autoapply:writing:%' and idempotency_key not like '%:retried:%'`
+        )
+      )
+
+    test("the migration moves waiting auto applications to preparing and keeps the rest", async () => {
+      const ctx = await setup("aa-mig")
+      const migration = readFileSync(
+        join(import.meta.dir, "../../migrations/0046_application_preparing.sql"),
+        "utf8"
+      )
+      const statement = /(update application\s+set state = 'preparing'[^;]*;)/.exec(migration)![1]!
+      const make = async (label: string, input: { autoRun?: "auto" | "drafts"; intentAt?: Date }) =>
+        support.seedApplication({
+          userId: ctx.tenant.userId,
+          accountId: ctx.tenant.accountId,
+          vacancyId: await support.seedVacancy(label),
+          state: "queued",
+          ...(input.autoRun === undefined ? {} : { autoRun: input.autoRun }),
+          ...(input.intentAt === undefined ? {} : { intentAt: input.intentAt })
+        })
+      const waiting = await make("aa-mig-waiting", { autoRun: "auto" })
+      const holding = await make("aa-mig-holding", { autoRun: "auto", intentAt: new Date() })
+      const manual = await make("aa-mig-manual", {})
+      await owner((tx) => tx.execute(sql.raw(statement)))
+      const states = new Map((await applicationsOf(ctx.tenant.accountId)).map((row) => [row.id, row.state]))
+      expect(states.get(waiting)).toBe("preparing")
+      expect(states.get(holding)).toBe("queued")
+      expect(states.get(manual)).toBe("queued")
+      // The closed set of codes is enforced by the database.
+      await expect(
+        owner((tx) => tx.execute(sql`update application set blocked_reason = 'nonsense' where id = ${waiting}`))
+      ).rejects.toThrow()
+    }, 60_000)
+
+    test("an auto application is preparing until the gate claims a slot, then queued without a reason", async () => {
+      const ctx = await setup("aa-prep")
+      await configure(ctx, { autoMode: "auto" })
+      await decided(ctx, "aa-prep-1", 90)
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ created: 1 })
+      expect(await rowOfApp(ctx.tenant.accountId)).toMatchObject({
+        state: "preparing",
+        intent_at: null,
+        blocked_reason: null
+      })
+
+      await readForms(ctx, responseHtml)
+      await tick(ctx.tenant.userId)
+      expect((await rowOfApp(ctx.tenant.accountId)).state).toBe("preparing")
+      await writeLetters(ctx, GOOD_DRAFT)
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ kitsSet: 1, submitQueued: 1 })
+      const row = await rowOfApp(ctx.tenant.accountId)
+      expect(row).toMatchObject({ state: "queued", blocked_reason: null, retry_at: null })
+      expect(row.intent_at).not.toBeNull()
+    }, 120_000)
+
+    test("the daily cap keeps an auto application preparing with retry_at; the runner resumes it once a slot frees", async () => {
+      const ctx = await setup("aa-cap")
+      await configure(ctx, { autoMode: "auto" })
+      await decided(ctx, "aa-cap-1", 90)
+      await tick(ctx.tenant.userId)
+      await readForms(ctx, responseHtml)
+      await tick(ctx.tenant.userId)
+
+      // Лимит 1, и слот уже занят чужим откликом аккаунта.
+      await configure(ctx, { autoMode: "auto", dailyLimit: 1 })
+      const holder = await support.seedApplication({
+        userId: ctx.tenant.userId,
+        accountId: ctx.tenant.accountId,
+        vacancyId: await support.seedVacancy("aa-cap-holder"),
+        state: "queued",
+        intentAt: new Date()
+      })
+      await writeLetters(ctx, GOOD_DRAFT)
+      const parked = await tick(ctx.tenant.userId)
+      expect(parked).toMatchObject({ kitsSet: 0, submitQueued: 0, needsHuman: 0 })
+      const id = (await rowOfApp(ctx.tenant.accountId)).id
+      const waiting = (await applicationsOf(ctx.tenant.accountId)).find((row) => row.id === id)!
+      expect(waiting).toMatchObject({ state: "preparing", blocked_reason: "daily_cap" })
+      expect(waiting.last_error).toContain("daily limit 1 reached")
+      expect(waiting.retry_at!.getTime()).toBeGreaterThan(Date.now() + 20 * HOUR)
+      expect(await submitCount(id)).toBe(0)
+
+      // retry_at в будущем: проход заявку не трогает.
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ waiting: 0, submitQueued: 0, needsHuman: 0 })
+
+      // Слот освободился, время пришло: раннер сам ставит отправку и снимает причину.
+      await owner((tx) =>
+        tx.execute(sql`update application set intent_at = now() - interval '25 hours' where id = ${holder}`)
+      )
+      await dueNow(id)
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ kitsSet: 1, submitQueued: 1 })
+      const sent = (await applicationsOf(ctx.tenant.accountId)).find((row) => row.id === id)!
+      expect(sent).toMatchObject({ state: "queued", blocked_reason: null, retry_at: null })
+      expect(await submitCount(id)).toBe(1)
+    }, 120_000)
+
+    test("a failed writing job is retried with a new job after 1h, 4h and 12h, then goes to needs_human", async () => {
+      const ctx = await setup("aa-wretry")
+      await configure(ctx, { autoMode: "auto" })
+      await decided(ctx, "aa-wretry-1", 90)
+      await tick(ctx.tenant.userId)
+      await readForms(ctx, responseHtml)
+      await tick(ctx.tenant.userId)
+      expect(await writingJobs(ctx.tenant.accountId)).toHaveLength(1)
+
+      const expectedWaits = [1, 4, 12]
+      for (let n = 0; n < 3; n++) {
+        await killLatestWriting(ctx.tenant.accountId)
+        const before = Date.now()
+        await tick(ctx.tenant.userId)
+        const row = await rowOfApp(ctx.tenant.accountId)
+        expect(row).toMatchObject({ state: "preparing", blocked_reason: "writing_failed", auto_retries: n + 1 })
+        expect(row.last_error).toContain("harness offline")
+        const wait = row.retry_at!.getTime() - before
+        expect(wait).toBeGreaterThan((expectedWaits[n]! - 0.1) * HOUR)
+        expect(wait).toBeLessThan((expectedWaits[n]! + 0.1) * HOUR)
+
+        // Пока ждёт - новых задач нет.
+        expect(await tick(ctx.tenant.userId)).toMatchObject({ writingEnqueued: 0 })
+        expect(await writingJobs(ctx.tenant.accountId)).toHaveLength(n + 1)
+
+        await dueNow(row.id)
+        expect(await tick(ctx.tenant.userId)).toMatchObject({ writingEnqueued: 1 })
+        expect(await writingJobs(ctx.tenant.accountId)).toHaveLength(n + 2)
+        expect(await rowOfApp(ctx.tenant.accountId)).toMatchObject({ blocked_reason: null, retry_at: null })
+      }
+
+      // Четвёртый сбой: автоповторы кончились.
+      await killLatestWriting(ctx.tenant.accountId)
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ needsHuman: 1 })
+      expect(await rowOfApp(ctx.tenant.accountId)).toMatchObject({
+        state: "needs_human",
+        blocked_reason: "writing_failed",
+        retry_at: null
+      })
+    }, 180_000)
+
+    test("a retried writing job still produces a kit and the submit", async () => {
+      const ctx = await setup("aa-wok")
+      await configure(ctx, { autoMode: "auto" })
+      await decided(ctx, "aa-wok-1", 90)
+      await tick(ctx.tenant.userId)
+      await readForms(ctx, responseHtml)
+      await tick(ctx.tenant.userId)
+      await killLatestWriting(ctx.tenant.accountId)
+      await tick(ctx.tenant.userId)
+      const id = (await rowOfApp(ctx.tenant.accountId)).id
+      await dueNow(id)
+      await tick(ctx.tenant.userId)
+      await writeLetters(ctx, GOOD_DRAFT)
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ kitsSet: 1, submitQueued: 1 })
+      expect(await submitCount(id)).toBe(1)
+    }, 120_000)
+
+    test("an unrecognized form layout is permanent: needs_human with form_unreadable", async () => {
+      const ctx = await setup("aa-unreadable")
+      await configure(ctx, { autoMode: "auto" })
+      await decided(ctx, "aa-unreadable-1", 90)
+      await tick(ctx.tenant.userId)
+      // Вопросы формы нечитаемы: вся форма считается незнакомой раскладкой.
+      await readForms(ctx, responseHtml.replaceAll("task-question", "task-q"))
+      expect(await rowOfApp(ctx.tenant.accountId)).toMatchObject({
+        state: "needs_human",
+        blocked_reason: "form_unreadable"
+      })
+    }, 120_000)
+
+    test("a kit the check refuses is permanent: needs_human with kit_refused", async () => {
+      const ctx = await setup("aa-refused")
+      await configure(ctx, { autoMode: "auto" })
+      await decided(ctx, "aa-refused-1", 90)
+      await tick(ctx.tenant.userId)
+      await readForms(ctx, responseHtml)
+      await tick(ctx.tenant.userId)
+      await writeLetters(ctx, INCOMPLETE_DRAFT)
+      await tick(ctx.tenant.userId)
+      expect(await rowOfApp(ctx.tenant.accountId)).toMatchObject({
+        state: "needs_human",
+        blocked_reason: "kit_refused"
+      })
+    }, 120_000)
+
+    test("a failed form read waits for an automatic re-read, then goes to needs_human", async () => {
+      const ctx = await setup("aa-readretry")
+      await configure(ctx, { autoMode: "auto" })
+      await decided(ctx, "aa-readretry-1", 90)
+      await tick(ctx.tenant.userId)
+      const failRead = () =>
+        leaseAndComplete(ctx, "browser", { tag: "internal_error", message: "navigation timeout" } as never)
+      // Харнесс сдаётся на всех попытках чтения.
+      const exhaust = async () => {
+        for (let attempt = 0; attempt < 5; attempt++) {
+          const job = await failRead()
+          if (job === null) break
+          await owner((tx) => tx.execute(sql`update harness_jobs set run_at = now() where stage = 'form_read'`))
+        }
+      }
+      await exhaust()
+      const first = await rowOfApp(ctx.tenant.accountId)
+      expect(first).toMatchObject({ state: "preparing", blocked_reason: "form_read_failed", auto_retries: 1 })
+      expect(first.retry_at!.getTime()).toBeGreaterThan(Date.now() + 0.9 * HOUR)
+
+      // Ждёт: проход ничего не делает.
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ waiting: 0, needsHuman: 0 })
+
+      // Время пришло: ставится новое чтение, и оно удаётся.
+      await dueNow(first.id)
+      await tick(ctx.tenant.userId)
+      expect(await readForms(ctx, responseHtml)).toBe(1)
+      await tick(ctx.tenant.userId)
+      expect(await writingJobs(ctx.tenant.accountId)).toHaveLength(1)
+      expect(await rowOfApp(ctx.tenant.accountId)).toMatchObject({ state: "preparing", blocked_reason: null })
+    }, 180_000)
+
+    test("operator approve clears the reason and the retry time", async () => {
+      const ctx = await setup("aa-approve")
+      await configure(ctx, { autoMode: "auto" })
+      await decided(ctx, "aa-approve-1", 90)
+      await tick(ctx.tenant.userId)
+      await readForms(ctx, responseHtml)
+      await tick(ctx.tenant.userId)
+      // Кит сохранён, а слот занят: заявка ждёт в preparing.
+      await configure(ctx, { autoMode: "auto", dailyLimit: 1 })
+      const holder = await support.seedApplication({
+        userId: ctx.tenant.userId,
+        accountId: ctx.tenant.accountId,
+        vacancyId: await support.seedVacancy("aa-approve-holder"),
+        state: "queued",
+        intentAt: new Date()
+      })
+      await writeLetters(ctx, GOOD_DRAFT)
+      await tick(ctx.tenant.userId)
+      const id = (await rowOfApp(ctx.tenant.accountId)).id
+      const held = (await applicationsOf(ctx.tenant.accountId)).find((row) => row.id === id)!
+      expect(held).toMatchObject({ state: "preparing", blocked_reason: "daily_cap" })
+
+      // Оператор забирает заявку себе (needs_human с кодом) и одобряет, когда слот свободен.
+      await owner((tx) =>
+        tx.execute(sql`update application set state = 'needs_human' where id = ${id}`)
+      )
+      await owner((tx) =>
+        tx.execute(sql`update application set intent_at = now() - interval '25 hours' where id = ${holder}`)
+      )
+      const approved = await support.applicationApprove(ctx.tenant.userId, id)
+      expect(approved.state).toBe("queued")
+      const after = (await applicationsOf(ctx.tenant.accountId)).find((row) => row.id === id)!
+      expect(after).toMatchObject({ state: "queued", blocked_reason: null, retry_at: null, last_error: null })
+    }, 120_000)
+
+    test("operator retry clears the reason, the retry time and the auto-retry count", async () => {
+      const ctx = await setup("aa-opretry")
+      await configure(ctx, { autoMode: "auto" })
+      await decided(ctx, "aa-opretry-1", 90)
+      await tick(ctx.tenant.userId)
+      await readForms(ctx, responseHtml)
+      await tick(ctx.tenant.userId)
+      await killLatestWriting(ctx.tenant.accountId)
+      await tick(ctx.tenant.userId)
+      const id = (await rowOfApp(ctx.tenant.accountId)).id
+      await owner((tx) =>
+        tx.execute(sql`update application set state = 'needs_human', auto_retries = 3 where id = ${id}`)
+      )
+      const retried = await support.applicationRetry(ctx.tenant.userId, id)
+      expect(retried.state).toBe("preparing")
+      expect(await rowOfApp(ctx.tenant.accountId)).toMatchObject({
+        state: "preparing",
+        blocked_reason: null,
+        retry_at: null,
+        auto_retries: 0,
+        last_error: null
+      })
+    }, 120_000)
+
+    test("progress shows the code, the Russian meaning and the resume time of a waiting application", async () => {
+      const ctx = await setup("aa-view")
+      await configure(ctx, { autoMode: "auto" })
+      await decided(ctx, "aa-view-1", 90)
+      await tick(ctx.tenant.userId)
+      const id = (await rowOfApp(ctx.tenant.accountId)).id
+      await owner((tx) =>
+        tx.execute(sql`update application
+          set blocked_reason = 'daily_cap', retry_at = now() + interval '5 hours', last_error = 'daily limit reached'
+          where id = ${id}`)
+      )
+      const view = await support.runAs(
+        ctx.tenant.userId,
+        Effect.gen(function*() {
+          return yield* (yield* AutoApplyViewService).progress({ hhAccountId: ctx.tenant.accountId })
+        })
+      )
+      expect(view.items[0]).toMatchObject({ state: "preparing", stage: "blocked", blockedReason: "daily_cap" })
+      expect(view.items[0]!.retryAt).not.toBeNull()
+      expect(view.items[0]!.stageDetail).toContain("дневной лимит откликов")
+      expect(view.summary.blocked).toBe(1)
+    }, 120_000)
   })
 }

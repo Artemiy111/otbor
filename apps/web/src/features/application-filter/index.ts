@@ -3,6 +3,7 @@ import type { HeaderFilterOption } from "@/shared/ui"
 export const applicationStateOptions: ReadonlyArray<HeaderFilterOption> = [
   { value: "all", label: "Все состояния" },
   { value: "draft", label: "Черновик (draft)" },
+  { value: "preparing", label: "Готовится (preparing)" },
   { value: "queued", label: "В очереди (queued)" },
   { value: "submitting", label: "Отправляется (submitting)" },
   { value: "submitted", label: "Отправлен (submitted)" },

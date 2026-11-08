@@ -147,6 +147,10 @@ export const ApplicationBrief = Schema.Struct({
   account: AccountRef,
   decisionId: NullableString,
   resumeId: NullableString,
+  /** Why it waits or needs a person (no_resume, daily_cap, writing_failed, ...); absent when nothing blocks it. */
+  blockedReason: Schema.optional(Schema.String),
+  /** When the runner resumes a waiting (preparing) auto application; absent without a wait. */
+  retryAt: Schema.optional(Schema.String),
   updatedAt: Schema.String
 })
 export type ApplicationBrief = typeof ApplicationBrief.Type
@@ -160,6 +164,8 @@ export const applicationBrief = (a: ApplicationRecord, accounts: AccountDirector
   account: accountRef(accounts, a.hhAccountId),
   decisionId: a.decisionId ?? null,
   resumeId: a.resumeId ?? null,
+  ...(a.blockedReason == null ? {} : { blockedReason: a.blockedReason }),
+  ...(a.retryAt == null ? {} : { retryAt: a.retryAt }),
   updatedAt: a.updatedAt
 })
 

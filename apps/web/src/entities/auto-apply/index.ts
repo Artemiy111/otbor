@@ -4,5 +4,6 @@ export {
   autoApplyStageMeta,
   autoApplyStages,
   autoRunLabel,
+  blockedReasonLabel,
   type AutoApplyStageTone
 } from "./model"

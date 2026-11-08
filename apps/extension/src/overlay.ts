@@ -34,6 +34,7 @@ const VERDICT: Record<string, { readonly text: string; readonly tone: Tone }> = 
 
 const STATE: Record<string, string> = {
   draft: "черновик",
+  preparing: "готовится",
   queued: "в очереди",
   submitting: "отправляется",
   submitted: "отправлен",

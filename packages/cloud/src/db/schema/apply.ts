@@ -299,6 +299,12 @@ export const application = pgTable(
     lastError: text("last_error"),
     /** Set only when AutoApplyRunner created the row: `drafts` or `auto`. Manual rows stay null. */
     autoRun: text("auto_run"),
+    /** Код причины остановки из замкнутого набора (check в миграции 0046); текст - в `last_error`. */
+    blockedReason: text("blocked_reason"),
+    /** Когда раннер возобновит ждущий автоотклик (`preparing`). */
+    retryAt: timestamp("retry_at", { withTimezone: true }),
+    /** Потраченные автоповторы (письмо, чтение формы). */
+    autoRetries: integer("auto_retries").notNull().default(0),
     createdAt: createdAt(),
     updatedAt: updatedAt()
   },

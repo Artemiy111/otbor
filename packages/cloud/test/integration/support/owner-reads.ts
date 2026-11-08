@@ -83,6 +83,7 @@ export const findApplication = async (applicationId: string) =>
         .select({
           id: application.id,
           state: application.state,
+          blockedReason: application.blockedReason,
           submittedAt: application.submittedAt
         })
         .from(application)

@@ -7,8 +7,10 @@ import type {
   AutoApplyProgressResult,
   AutoApplyProgressSummary,
   AutoApplyRetryResult,
-  AutoApplyStage
+  AutoApplyStage,
+  BlockedReason
 } from "@otbor/contract"
+import { BLOCKED_REASON_LABELS } from "@otbor/contract"
 import { ANALYSIS_PROMPT_VERSION, APPLY_POLICY_VERSION } from "@otbor/domain"
 import { sql, type SQL } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
@@ -63,6 +65,8 @@ interface ProgressRow {
   readonly auto_run: "drafts" | "auto"
   readonly state: ApplicationState
   readonly last_error: string | null
+  readonly blocked_reason?: BlockedReason | null
+  readonly retry_at?: Date | string | null
   readonly created_at: Date | string
   readonly updated_at: Date | string
   readonly submitted_at: Date | string | null
@@ -103,12 +107,22 @@ export const deriveStage = (
       return { stage: "submitted", detail: "Отправлено" }
     case "failed":
       return { stage: "failed", detail: `Ошибка отправки: ${reason(row.last_error)}` }
-    case "needs_human":
-      return { stage: "needs_human", detail: `Нужен человек: ${reason(row.last_error)}` }
+    case "needs_human": {
+      const code = row.blocked_reason == null ? "" : ` (${BLOCKED_REASON_LABELS[row.blocked_reason]})`
+      return { stage: "needs_human", detail: `Нужен человек${code}: ${reason(row.last_error)}` }
+    }
     case "submitting":
       return { stage: "submitting", detail: "Отправляется" }
     default:
       break
+  }
+
+  // Автоотклик ждёт повтор: раннер вернётся к нему сам.
+  if (row.state === "preparing" && row.blocked_reason != null && row.retry_at != null) {
+    return {
+      stage: "blocked",
+      detail: `${BLOCKED_REASON_LABELS[row.blocked_reason]}: продолжит автоматически`
+    }
   }
 
   if (row.submit_status !== null) {
@@ -155,7 +169,7 @@ export const deriveStage = (
 }
 
 const FAILED_JOB = new Set(["failed", "dead", "cancelled"])
-const RETRY_STATES = new Set<ApplicationState>(["needs_human", "draft", "queued"])
+const RETRY_STATES = new Set<ApplicationState>(["needs_human", "draft", "preparing"])
 
 /**
  * Why the cover letter of this auto application cannot be retried, or null when
@@ -181,7 +195,7 @@ const progressRows = (tx: Executor, userId: string, where: SQL) =>
   tx
     .execute(sql`
       select a.id, a.vacancy_id, v.title, e.name as employer_name, r.title as resume_title, a.auto_run, a.state,
-        a.last_error, a.created_at, a.updated_at, a.submitted_at, a.intent_at,
+        a.last_error, a.blocked_reason, a.retry_at, a.created_at, a.updated_at, a.submitted_at, a.intent_at,
         fs.status as form_status, fs.checked_at as form_checked_at, ver.form_hash,
         kit.letter as kit_letter,
         case when kit.id is null then null else jsonb_array_length(kit.answers) end as kit_answers,
@@ -351,7 +365,7 @@ export class AutoApplyViewService extends Context.Service<AutoApplyViewService, 
                 userId,
                 input.applicationId === undefined
                   ? sql`${accountFilter}
-                  and (a.state in ('draft', 'queued', 'submitting')
+                  and (a.state in ('draft', 'preparing', 'queued', 'submitting')
                     or a.updated_at > now() - ${`${RECENT_DAYS} days`}::interval)`
                   : sql`a.id = ${input.applicationId}`
               )
@@ -366,7 +380,8 @@ export class AutoApplyViewService extends Context.Service<AutoApplyViewService, 
             submitted: 0,
             needs_human: 0,
             failed: 0,
-            waiting: 0
+            waiting: 0,
+            blocked: 0
           }
           const now = Date.now()
           const items: Array<AutoApplyProgressItem> = []
@@ -404,6 +419,8 @@ export class AutoApplyViewService extends Context.Service<AutoApplyViewService, 
               letter: row.kit_letter,
               answersCount: row.kit_answers ?? 0,
               lastError: row.last_error,
+              blockedReason: row.blocked_reason ?? null,
+              retryAt: iso(row.retry_at ?? null),
               createdAt: new Date(row.created_at).toISOString(),
               updatedAt: new Date(row.updated_at).toISOString(),
               submittedAt: iso(row.submitted_at),
@@ -436,15 +453,15 @@ export class AutoApplyViewService extends Context.Service<AutoApplyViewService, 
                 returning id
               `)
               if (freed.rows.length === 0) return "задача письма уже изменилась"
-              // Only a state the runner owns; intent_at stays untouched and null.
+              // Only a state the runner owns; intent_at stays untouched and null. The reason and the auto-retry count are reset.
               yield* tx.execute(sql`
                 update application
                 set state = case when state = 'needs_human'
-                      then (case when auto_run = 'auto' and ${ApplyFilterRepository.governingAutoModeSql("application")} = 'auto' then 'queued' else 'draft' end)
+                      then (case when auto_run = 'auto' and ${ApplyFilterRepository.governingAutoModeSql("application")} = 'auto' then 'preparing' else 'draft' end)
                       else state end,
-                    last_error = null, updated_at = now()
+                    last_error = null, blocked_reason = null, retry_at = null, auto_retries = 0, updated_at = now()
                 where id = ${applicationId} and user_id = ${userId} and intent_at is null
-                  and auto_run is not null and state in ('needs_human', 'draft', 'queued')
+                  and auto_run is not null and state in ('needs_human', 'draft', 'preparing')
               `)
               return null
             })
@@ -463,7 +480,7 @@ export class AutoApplyViewService extends Context.Service<AutoApplyViewService, 
               input.hhAccountId === undefined ? sql`true` : sql`a.hh_account_id = ${input.hhAccountId}`
             const rows = yield* database
               .asUser(userId, (tx) =>
-                progressRows(tx, userId, sql`${accountFilter} and a.state in ('needs_human', 'draft', 'queued')`)
+                progressRows(tx, userId, sql`${accountFilter} and a.state in ('needs_human', 'draft', 'preparing')`)
               )
               .pipe(Effect.mapError(toStorageError("autoApply.retryScan")))
             // Only applications whose writing job died; the others are not "stopped" ones.

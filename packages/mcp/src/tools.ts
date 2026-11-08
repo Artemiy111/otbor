@@ -481,11 +481,14 @@ export const ResumeGet = readTool("resume_get", {
 
 export const ApplicationsList = readTool("applications_list", {
   description:
-    "Applications and their state (draft, queued, submitting, submitted, skipped, needs_human, failed). " +
-    "\"Waiting\" applications are usually draft or needs_human.",
+    "Applications and their state (draft, preparing, queued, submitting, submitted, skipped, needs_human, failed). " +
+    "preparing: an auto application still waiting for its form, letter or a free daily slot (blockedReason and retryAt say why and until when); " +
+    "queued: the slot is taken and the submit is queued. \"Waiting\" applications are usually draft or needs_human; " +
+    "needs_human carries a blockedReason code.",
   parameters: Schema.Struct({
     state: Schema.optional(Schema.Literals([
       "draft",
+      "preparing",
       "queued",
       "submitting",
       "submitted",
@@ -718,7 +721,7 @@ Domain model, in pipeline order:
 - vacancy: a job posting crawled from hh.ru (title, employer, salary, description, skills).
 - apply filter: per (hh account, resume) hard rules (apply_filter_get) that a vacancy must pass (the title check is just rules on \`title\`). A vacancy that fails them is skipped with reason \`blocked_filter\`, whose detail lists the failed rules. The filter also holds minFit, the tests policy and the freshness half-life, and the auto-apply settings: autoMode off (default) / drafts (the scheduled runner creates applications, reads forms and writes letters; the operator sends) / auto (the runner also sends finished applications for real, within the daily limit of 200 per hh account, tracked in \`usage\`), batchSize, sort, sortDirection (desc/asc), minPriority and scoring boosts. Without a stored row the account-wide row, then a built-in default, applies. Rules are edited in the web UI.
 - decision: the policy result for a vacancy: verdict (apply / draft / skip), fit (0-100 against the resume), priority (ranking score) and reasons (why). A vacancy is applicable when its verdict is apply. Reasons starting with "blocked_" explain a skip; \`blocked_filter\` lists the failed apply-filter rules. The "fit" reason says whether the number is "deterministic" (keyword rules, saturates near 95-100) or "llm" (a personal judgement, see fit_get).
-- application: created from an apply/draft decision; states draft, queued, submitting, submitted, skipped, needs_human, failed. Submit is at-most-once; "waiting" usually means draft or needs_human. Applications the operator made by hand on hh.ru are imported by the operator CLI command "otbor hh sync" as state submitted with origin "imported" (and hh's own status); they count as already applied (blocked_applied), cannot be approved or prepared again, and are not otbor submits. This server has no tool to run or change the sync.
+- application: created from an apply/draft decision; states draft, preparing (auto application waiting for form, letter or a daily slot; blockedReason/retryAt say why), queued (slot taken, submit queued), submitting, submitted, skipped, needs_human (with a blockedReason code), failed. Submit is at-most-once; "waiting" usually means draft or needs_human. Applications the operator made by hand on hh.ru are imported by the operator CLI command "otbor hh sync" as state submitted with origin "imported" (and hh's own status); they count as already applied (blocked_applied), cannot be approved or prepared again, and are not otbor submits. This server has no tool to run or change the sync.
 - kit: the cover letter and form answers prepared for an application.
 Also: hh accounts (accounts_list; several can exist), presets (saved filters), employers (with blacklist state), resumes (with operator enrichment), conversations and contacts (replies from recruiters), schedules (crawls) and the harness queue.
 

@@ -161,12 +161,12 @@ if (!enabled || serverUrl === null) {
         userId: tenant.userId,
         accountId: tenant.accountId,
         vacancyId,
-        state: "queued",
+        state: "preparing",
         autoRun: "auto"
       })
       // Кит есть, формы ещё нет: заявка ждёт чтения.
       await setFullKit(tenant.userId, id, vacancyId)
-      expect((await rowOf(id)).state).toBe("queued")
+      expect((await rowOf(id)).state).toBe("preparing")
 
       await support.applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter: {}, autoMode: "off" })
       const demoted = await rowOf(id)
@@ -206,12 +206,12 @@ if (!enabled || serverUrl === null) {
         userId: tenant.userId,
         accountId: tenant.accountId,
         vacancyId: await support.seedVacancy("gate-pair"),
-        state: "queued",
+        state: "preparing",
         autoRun: "auto",
         resumeId
       })
       await support.applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter: {}, autoMode: "off" })
-      expect((await rowOf(id)).state).toBe("queued")
+      expect((await rowOf(id)).state).toBe("preparing")
       await support.applyFilterSet(tenant.userId, {
         hhAccountId: tenant.accountId,
         resumeId,
@@ -247,10 +247,10 @@ if (!enabled || serverUrl === null) {
       await autoOn(tenant, other)
       const vacancyId = await support.seedVacancy("gate-any")
       const mine = await support.seedApplication({
-        userId: tenant.userId, accountId: tenant.accountId, vacancyId, state: "queued", autoRun: "auto"
+        userId: tenant.userId, accountId: tenant.accountId, vacancyId, state: "preparing", autoRun: "auto"
       })
       const theirs = await support.seedApplication({
-        userId: tenant.userId, accountId: other, vacancyId, state: "queued", autoRun: "auto"
+        userId: tenant.userId, accountId: other, vacancyId, state: "preparing", autoRun: "auto"
       })
       await setFullKit(tenant.userId, mine, vacancyId)
       await setFullKit(tenant.userId, theirs, vacancyId)
@@ -270,15 +270,15 @@ if (!enabled || serverUrl === null) {
       await autoOn(tenant, other)
       const vacancyId = await support.seedVacancy("gate-park")
       const a = await support.seedApplication({
-        userId: tenant.userId, accountId: tenant.accountId, vacancyId, state: "queued", autoRun: "auto"
+        userId: tenant.userId, accountId: tenant.accountId, vacancyId, state: "preparing", autoRun: "auto"
       })
       const b = await support.seedApplication({
-        userId: tenant.userId, accountId: other, vacancyId, state: "queued", autoRun: "auto"
+        userId: tenant.userId, accountId: other, vacancyId, state: "preparing", autoRun: "auto"
       })
 
       await readForm(tenant, harness, accounts, { accountId: tenant.accountId, vacancyId, exit: "session_expired" })
       expect((await rowOf(a)).state).toBe("needs_human")
-      expect((await rowOf(b)).state).toBe("queued")
+      expect((await rowOf(b)).state).toBe("preparing")
       expect((await rowOf(b)).last_error).toBeNull()
     }, 60_000)
 
@@ -288,7 +288,7 @@ if (!enabled || serverUrl === null) {
       await autoOn(tenant)
       const vacancyId = await support.seedVacancy("gate-stale")
       const id = await support.seedApplication({
-        userId: tenant.userId, accountId: tenant.accountId, vacancyId, state: "queued", autoRun: "auto"
+        userId: tenant.userId, accountId: tenant.accountId, vacancyId, state: "preparing", autoRun: "auto"
       })
       await readForm(tenant, harness, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
       await support.ageVacancyForm(vacancyId, 25)
@@ -296,10 +296,10 @@ if (!enabled || serverUrl === null) {
       await setFullKit(tenant.userId, id, vacancyId)
       expect(await support.countJobs(id, "submit")).toBe(0)
       const waiting = await rowOf(id)
-      expect(waiting.state).toBe("queued")
+      expect(waiting.state).toBe("preparing")
       expect(waiting.intent_at).toBeNull()
 
-      // Форму перечитали: заявка, ждавшая в queued, уходит.
+      // Форму перечитали: заявка, ждавшая в preparing, уходит.
       await readForm(tenant, harness, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
       expect(await support.countJobs(id, "submit")).toBe(1)
     }, 60_000)
@@ -416,7 +416,7 @@ if (!enabled || serverUrl === null) {
         })
       )
       const on = await support.applicationRetry(tenant.userId, id)
-      expect(on.state).toBe("queued")
+      expect(on.state).toBe("preparing")
       expect((await rowOf(id)).intent_at).toBeNull()
     }, 60_000)
   })

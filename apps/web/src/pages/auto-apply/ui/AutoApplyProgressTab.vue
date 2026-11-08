@@ -4,9 +4,16 @@ import { useMutation, useQuery } from "@pinia/colada"
 import type { AutoApplyProgressItem, AutoApplyRetryResult, AutoApplyStage } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert, Copy, RotateCcw } from "@lucide/vue"
-import { autoApplyApi, autoApplyKeys, autoApplyStageMeta, autoApplyStages, autoRunLabel } from "@/entities/auto-apply"
+import {
+  autoApplyApi,
+  autoApplyKeys,
+  autoApplyStageMeta,
+  autoApplyStages,
+  autoRunLabel,
+  blockedReasonLabel
+} from "@/entities/auto-apply"
 import { RefreshButton } from "@/features/refresh-button"
-import { applicationPath, describeError, formatAge, vacancyPath } from "@/shared/lib"
+import { applicationPath, describeError, formatAge, formatDate, vacancyPath } from "@/shared/lib"
 import {
   Alert,
   AlertDescription,
@@ -144,7 +151,11 @@ const columns: ColumnDef<AutoApplyProgressItem>[] = [
     accessorFn: (row) => row.stageDetail,
     enableSorting: false,
     header: "Детали",
-    cell: ({ row }) => h("span", { class: "text-sm" }, row.original.stageDetail)
+    cell: ({ row }) =>
+      h("span", { class: "text-sm" }, [
+        row.original.stageDetail,
+        row.original.retryAt !== null ? ` — продолжит ${formatDate(row.original.retryAt)}` : null
+      ])
   },
   {
     id: "attempts",
@@ -320,6 +331,10 @@ const error = computed(() => (query.error.value === null ? null : describeError(
               </Badge>
               <span class="text-muted-foreground">{{ selected.stageDetail }}</span>
             </div>
+            <p v-if="selected.blockedReason" class="text-xs text-muted-foreground">
+              Причина: {{ blockedReasonLabel(selected.blockedReason) }}
+              <template v-if="selected.retryAt">· раннер продолжит {{ formatDate(selected.retryAt) }}</template>
+            </p>
             <p v-if="selected.writingJob" class="text-xs text-muted-foreground">
               Письмо: задача {{ selected.writingJob.status }}, попытка {{ selected.writingJob.attempts }} из
               {{ selected.writingJob.maxAttempts }}

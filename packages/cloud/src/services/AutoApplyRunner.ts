@@ -1,6 +1,7 @@
 import type {
   ApiError,
   ApplicationRecord,
+  BlockedReason,
   ApplyFilterRecord,
   FormAnswer,
   ResponseForm,
@@ -23,6 +24,7 @@ import * as QueueRepository from "../repositories/QueueRepository.ts"
 import * as VacancyFormRepository from "../repositories/VacancyFormRepository.ts"
 import { DRAFT_PROMPT_VERSION } from "../writing/prompts.ts"
 import { ApplicationService } from "./ApplicationService.ts"
+import { deferOrPark, retireWritingJob } from "./blocked.ts"
 import { NO_RESUME_MESSAGE, resolveApplyResume } from "./applyResume.ts"
 import { checkKit, type KitProblem } from "./applyRules.ts"
 import { CurrentUser } from "./CurrentUser.ts"
@@ -85,7 +87,11 @@ type Mode = "drafts" | "auto"
 /** Режим, который сейчас ведёт заявку с этим резюме (парная строка, иначе строка аккаунта). */
 type ModeOf = (resumeId: string | null) => ApplyFilterRecord["autoMode"]
 
-/** The idempotency key of the one writing job of (application, form). */
+/**
+ * The idempotency key of the one writing job of (application, form). A dead job
+ * gives the key up (`<key>:retried:<n>`) when it is retried, so the next job
+ * takes the plain key again.
+ */
 export const writingKey = (applicationId: string, formHash: string): string =>
   `autoapply:writing:${applicationId}:${formHash}`
 
@@ -95,13 +101,17 @@ type Step =
   | { readonly tag: "idle" }
   | { readonly tag: "writing_enqueued" }
   | { readonly tag: "kit_set"; readonly submitQueued: boolean }
-  | { readonly tag: "needs_human"; readonly reason: string }
-  /** `setKit` already parked it (daily cap) and wrote the reason. */
+  | { readonly tag: "needs_human"; readonly reason: string; readonly code: BlockedReason }
+  /** Транзиентный сбой исчерпал автоповторы: заявка уже у человека с кодом. */
   | { readonly tag: "parked" }
 
 const waiting: Step = { tag: "waiting" }
 const idle: Step = { tag: "idle" }
-const human = (reason: string): Step => ({ tag: "needs_human", reason: reason.slice(0, 500) })
+const human = (reason: string, code: BlockedReason): Step => ({
+  tag: "needs_human",
+  reason: reason.slice(0, 500),
+  code
+})
 
 const describeProblems = (problems: ReadonlyArray<KitProblem>): string =>
   `kit refused: ${problems.map((problem) => problem.code).join(", ")}`
@@ -157,12 +167,17 @@ export const kitAnswers = (
  * Reasons that make a model call pointless: the form can never be sent without
  * a person, whatever the model writes.
  */
-const blockedBeforeWriting = (stored: StoredForm): string | null => {
+const blockedBeforeWriting = (stored: StoredForm): { readonly reason: string; readonly code: BlockedReason } | null => {
   const form: ResponseForm = stored.form
-  if (form.layout !== "known") return "the form layout was not recognized; a human must fill it in"
+  if (form.layout !== "known") {
+    return { reason: "the form layout was not recognized; a human must fill it in", code: "form_unreadable" }
+  }
   const blocked = stored.hints.find((hint) => hint.blockers.length > 0)
   if (blocked !== undefined) {
-    return `the answer hint is blocked (${blocked.questionId}): ${blocked.blockers.join(", ")}`
+    return {
+      reason: `the answer hint is blocked (${blocked.questionId}): ${blocked.blockers.join(", ")}`,
+      code: "form_hint_blocked"
+    }
   }
   return null
 }
@@ -256,12 +271,12 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
           /* One application                                                   */
           /* ---------------------------------------------------------------- */
 
-          const parkForHuman = (applicationId: string, reason: string) =>
+          const parkForHuman = (applicationId: string, reason: string, code: BlockedReason) =>
             database
               .asUser(userId, (tx) =>
                 ApplicationRepository.transition(tx, userId, applicationId, "needs_human", {
-                  from: ["queued", "draft"],
-                  patch: { lastError: reason }
+                  from: ["preparing", "draft"],
+                  patch: { lastError: reason, blockedReason: code }
                 })
               )
               .pipe(Effect.mapError(toStorageError("autoApply.park")), Effect.asVoid)
@@ -300,6 +315,26 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
               )
               .pipe(Effect.mapError(toStorageError("autoApply.resume")))
 
+          /**
+           * Транзиентный сбой: автоотклик остаётся `preparing` и ждёт повтор;
+           * когда автоповторы кончились - он у человека с тем же кодом.
+           */
+          const transient = (
+            app: RunnerApplication,
+            current: ApplicationRecord,
+            code: BlockedReason,
+            message: string
+          ): Effect.Effect<Step, ApiError> =>
+            // Черновик (`drafts`) повторов не получает: письмо и форма ждут человека сразу.
+            app.autoRun === "drafts"
+              ? Effect.succeed(human(message, code))
+              : database
+                  .asUser(userId, (tx) => deferOrPark(tx, userId, current, code, message.slice(0, 500)))
+                  .pipe(
+                    Effect.mapError(toStorageError("autoApply.defer")),
+                    Effect.map((outcome): Step => (outcome === "deferred" ? waiting : { tag: "parked" }))
+                  )
+
           const progress = (app: RunnerApplication, modeOf: ModeOf): Effect.Effect<Step, ApiError> =>
             Effect.gen(function*() {
               const snapshot = yield* database
@@ -335,11 +370,12 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                 .pipe(Effect.mapError(toStorageError("autoApply.snapshot")))
 
               if (snapshot === null) return idle
-              const { current, form, stored, kit, job, jobError, submit } = snapshot
+              const { current, form, stored, kit, jobError, submit } = snapshot
+              let job = snapshot.job
 
               // Only the two states the runner owns; a person changed anything else.
               const mine =
-                (app.autoRun === "auto" && current.state === "queued") ||
+                (app.autoRun === "auto" && current.state === "preparing") ||
                 (app.autoRun === "drafts" && current.state === "draft")
               if (!mine) return idle
               // A submit job exists: the submit path owns it from here.
@@ -349,24 +385,74 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
               let effectiveResumeId: string | null = current.resumeId ?? null
               if (effectiveResumeId === null) {
                 const filled = yield* backfillResume(app)
-                if (filled.reason !== null || filled.resumeId === null) return human(filled.reason ?? NO_RESUME_MESSAGE)
+                if (filled.reason !== null || filled.resumeId === null) {
+                  return human(filled.reason ?? NO_RESUME_MESSAGE, "no_resume")
+                }
                 effectiveResumeId = filled.resumeId
               }
               // Режим мог смениться; решает строка, которая ведёт заявку с учётом
               // дозаполненного резюме, а не то, что было в строке до дозаполнения.
               if (modeOf(effectiveResumeId) !== app.autoRun) return idle
 
+              /*
+               * Заявка дождалась `retry_at` (иначе запрос её не отдал бы): причину
+               * ожидания снимаем, раннер идёт дальше. Что именно ждало, помним для
+               * повтора ниже.
+               */
+              const resumed = current.blockedReason ?? null
+              if (resumed !== null) {
+                yield* database
+                  .asUser(userId, (tx) =>
+                    tx.execute(sql`
+                      update application set blocked_reason = null, retry_at = null, updated_at = now()
+                      where id = ${app.id} and user_id = ${userId} and state = 'preparing'
+                    `)
+                  )
+                  .pipe(Effect.mapError(toStorageError("autoApply.resume")))
+              }
+
+              // Повтор письма: мёртвая задача отдаёт ключ, ниже ставится новая.
+              if (resumed === "writing_failed" && job !== null && job.status !== "done" &&
+                !(job.status === "pending" || job.status === "leased" || job.status === "running")) {
+                const dead = job
+                yield* database
+                  .asUser(userId, (tx) => retireWritingJob(tx, app.id, dead.id))
+                  .pipe(Effect.mapError(toStorageError("autoApply.retire")))
+                job = null
+              }
+
               /* The form must be read and fresh before anything is written. */
               if (form.reading) return waiting
               if (form.lastError !== null) {
-                return human(`the response form could not be read: ${form.lastError}`)
+                if (resumed === "form_read_failed") {
+                  // Автоповтор: читаем форму заново, а не доверяем прошлому сбою.
+                  yield* database
+                    .asUser(userId, (tx) =>
+                      requestFormRead(tx, {
+                        userId,
+                        hhAccountId: current.hhAccountId,
+                        vacancyId: current.vacancyId,
+                        force: true,
+                        priority: 0
+                      })
+                    )
+                    .pipe(Effect.mapError(toStorageError("autoApply.formRead")))
+                  return waiting
+                }
+                // Сбой чтения оставил чужой аккаунт: у этого он такой же транзиентный.
+                return yield* transient(
+                  app,
+                  current,
+                  "form_read_failed",
+                  `the response form could not be read: ${form.lastError}`
+                )
               }
               if (form.status === "gone") {
-                return human("the vacancy no longer takes responses (the response form is gone)")
+                return human("the vacancy no longer takes responses (the response form is gone)", "form_gone")
               }
               if (stored === null || form.stale) {
                 if (stored === null && !form.stale) {
-                  return human("the response form is not available")
+                  return human("the response form is not available", "form_unreadable")
                 }
                 // Reuses a read that is already queued; never forced.
                 yield* database
@@ -385,7 +471,7 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
               /* A kit for the current form: judge it, never write a second one. */
               if (kit !== null) {
                 const problems = checkKit({ form: stored.form, hints: stored.hints, kit })
-                if (problems.length > 0) return human(describeProblems(problems))
+                if (problems.length > 0) return human(describeProblems(problems), "kit_refused")
                 if (app.autoRun === "drafts") return idle
                 // Автоотклик, кит проходит, submit ещё нет: отправку решает общий
                 // шлюз (режим auto, свежесть формы, дневной лимит, at-most-once).
@@ -402,20 +488,21 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                 return Match.value(gate).pipe(
                   Match.tagsExhaustive({
                     queued: (queued): Step => ({ tag: "kit_set", submitQueued: queued.jobQueued }),
-                    parked: (): Step => ({ tag: "parked" }),
+                    // Дневной лимит: заявка осталась `preparing` с `retry_at`, шлюз всё записал.
+                    parked: (): Step => waiting,
                     not_ready: (): Step => waiting,
                     refused: (refused): Step =>
                       refused.reason === "kit_refused"
-                        ? human(describeProblems(refused.problems))
+                        ? human(describeProblems(refused.problems), "kit_refused")
                         : refused.reason === "no_vacancy"
-                        ? human(refused.message)
+                        ? human(refused.message, "operator")
                         : idle
                   })
                 )
               }
 
               const blocked = blockedBeforeWriting(stored)
-              if (blocked !== null) return human(blocked)
+              if (blocked !== null) return human(blocked.reason, blocked.code)
 
               /* No kit yet: one writing job per (application, form hash). */
               if (job === null) {
@@ -455,7 +542,12 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                 return waiting
               }
               if (job.status !== "done") {
-                return human(
+                // Харнесс мог быть недоступен: письмо повторяется само (1 ч, 4 ч, 12 ч),
+                // потом заявка уходит человеку с кодом writing_failed.
+                return yield* transient(
+                  app,
+                  current,
+                  "writing_failed",
                   `the writing job ${job.status}; no letter was produced${
                     jobError === null || jobError === "" ? "" : `: ${jobError}`
                   }`
@@ -464,12 +556,12 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
 
               const decoded = Schema.decodeUnknownOption(InferenceResultSchema)(job.result)
               if (Option.isNone(decoded) || decoded.value.text.trim() === "") {
-                return human("the writing job finished without a text")
+                return human("the writing job finished without a text", "writing_failed")
               }
               const draft = parseGeneratedDraft(decoded.value.text, stored.form.questions)
               if (draft.letter === null && draft.answers.length === 0 && draft.problems.length > 0 &&
                 draft.problems.some((problem) => problem.includes("did not return JSON"))) {
-                return human("the writing result is not a JSON draft")
+                return human("the writing result is not a JSON draft", "writing_failed")
               }
               const letter = stored.form.coverLetter === "absent" ? null : draft.letter
               const payload = job.payload as { prompt?: unknown; system?: unknown } | null
@@ -511,8 +603,10 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                 .pipe(Effect.mapError(toStorageError("autoApply.settle")))
               if (after === null || after.stored === null || after.kit === null) return idle
               if (after.current.state === "needs_human") return { tag: "parked" } as const
+              // Дневной лимит: кит есть, заявка ждёт слот в `preparing`.
+              if (after.current.state === "preparing" && after.current.blockedReason === "daily_cap") return waiting
               const problems = checkKit({ form: after.stored.form, hints: after.stored.hints, kit: after.kit })
-              if (problems.length > 0) return human(describeProblems(problems))
+              if (problems.length > 0) return human(describeProblems(problems), "kit_refused")
               return { tag: "kit_set", submitQueued: after.submit !== null } as const
             })
 
@@ -520,7 +614,7 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
             progress(app, modeOf).pipe(
               Effect.flatMap((step): Effect.Effect<Step, ApiError> =>
                 step.tag === "needs_human"
-                  ? parkForHuman(app.id, step.reason).pipe(Effect.as(step))
+                  ? parkForHuman(app.id, step.reason, step.code).pipe(Effect.as(step))
                   : Effect.succeed(step)
               ),
               Effect.tap((step) => {
@@ -542,7 +636,7 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                     return Effect.logInfo(`autoapply ${app.id}: needs a human: ${step.reason}`)
                   case "parked":
                     counts.needsHuman += 1
-                    return Effect.logInfo(`autoapply ${app.id}: parked by the daily cap`)
+                    return Effect.logInfo(`autoapply ${app.id}: retries exhausted, needs a human`)
                   default:
                     return Effect.void
                 }
@@ -626,7 +720,7 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                 counts.created += 1
                 if (resolved === null && made.success.id !== undefined) {
                   // Never send with the resume hh happens to preselect.
-                  yield* parkForHuman(made.success.id, NO_RESUME_MESSAGE)
+                  yield* parkForHuman(made.success.id, NO_RESUME_MESSAGE, "no_resume")
                   counts.needsHuman += 1
                 }
               }
@@ -641,7 +735,8 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                     from application
                     where user_id = ${userId} and hh_account_id = ${hhAccountId}
                       and auto_run is not null
-                      and ((auto_run = 'auto' and state = 'queued' and intent_at is null)
+                      and ((auto_run = 'auto' and state = 'preparing'
+                          and (retry_at is null or retry_at <= now()))
                         or (auto_run = 'drafts' and state = 'draft'
                           and not exists (select 1 from application_kit k where k.application_id = application.id)))
                     order by created_at asc

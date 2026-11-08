@@ -55,7 +55,7 @@ const list = Command.make(
   "list",
   {
     state: Flag.String("state").pipe(
-      Flag.withDescription("Filter by state (draft, queued, submitting, submitted, ...)"),
+      Flag.withDescription("Filter by state (draft, preparing, queued, submitting, submitted, ...)"),
       Flag.optional
     ),
     limit: Flag.Int("limit").pipe(Flag.withDefault(20)),
@@ -94,6 +94,10 @@ const get = Command.make(
     yield* Console.log(`${detail.application.vacancyTitle ?? detail.application.vacancyId}`)
     yield* Console.log(`id:       ${detail.application.id}`)
     yield* Console.log(`state:    ${detail.application.state}`)
+    if (detail.application.blockedReason != null) {
+      const retry = detail.application.retryAt == null ? "" : `  (retry at ${detail.application.retryAt})`
+      yield* Console.log(`blocked:  ${detail.application.blockedReason}${retry}`)
+    }
     yield* Console.log(`employer: ${detail.application.employerName ?? "-"}`)
     yield* Console.log(`account:  ${detail.application.hhAccountId}`)
     yield* Console.log(`resume:   ${detail.application.resumeId ?? "-"}`)

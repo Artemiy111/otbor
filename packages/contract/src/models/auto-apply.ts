@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { ApplicationState, ApplySort, AutoMode, SortDirection } from "../enums.ts"
+import { ApplicationState, BlockedReason, ApplySort, AutoMode, SortDirection } from "../enums.ts"
 import { ApplicationId, DecisionId, ResumeId, VacancyId } from "../ids.ts"
 
 /** One vacancy the auto-apply runner would take (or take later). */
@@ -78,7 +78,9 @@ export const AutoApplyStage = Schema.Literals([
   "submitted",
   "needs_human",
   "failed",
-  "waiting"
+  "waiting",
+  /** Автоотклик ждёт повтора: дневной лимит или сбой, который раннер повторит сам. */
+  "blocked"
 ])
 
 export type AutoApplyStage = typeof AutoApplyStage.Type
@@ -118,6 +120,10 @@ export const AutoApplyProgressItem = Schema.Struct({
   letter: Schema.NullOr(Schema.String),
   answersCount: Schema.Int,
   lastError: Schema.NullOr(Schema.String),
+  /** Типизированная причина остановки или ожидания, null когда всё идёт. */
+  blockedReason: Schema.NullOr(BlockedReason),
+  /** Когда раннер возобновит ждущую заявку; null без ожидания. */
+  retryAt: Schema.NullOr(Schema.String),
   createdAt: Schema.String,
   updatedAt: Schema.String,
   submittedAt: Schema.NullOr(Schema.String),
@@ -135,7 +141,8 @@ export const AutoApplyProgressSummary = Schema.Struct({
   submitted: Schema.Int,
   needs_human: Schema.Int,
   failed: Schema.Int,
-  waiting: Schema.Int
+  waiting: Schema.Int,
+  blocked: Schema.Int
 })
 
 export type AutoApplyProgressSummary = typeof AutoApplyProgressSummary.Type

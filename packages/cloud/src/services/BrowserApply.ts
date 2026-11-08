@@ -136,7 +136,7 @@ interface Target {
 }
 
 /** An application in one of these states is the one the operator is sending now. */
-const OPEN_STATES = new Set(["draft", "needs_human", "failed", "queued"])
+const OPEN_STATES = new Set(["draft", "needs_human", "failed", "preparing", "queued"])
 
 /**
  * @deprecated Title matching is a stopgap: titles repeat, ids do not. Use hh's
@@ -181,7 +181,7 @@ const resolveTarget = (
 
     const waiting = yield* tx.execute(sql`
       select hh_account_id, resume_id from application
-      where vacancy_id = ${vacancyId} and state in ('draft', 'needs_human', 'failed', 'queued')`)
+      where vacancy_id = ${vacancyId} and state in ('draft', 'needs_human', 'failed', 'preparing', 'queued')`)
     const apps = waiting.rows as unknown as ReadonlyArray<{ hh_account_id: string; resume_id: string | null }>
     if (apps.length === 1) return { hhAccountId: apps[0]!.hh_account_id, resumeId: apps[0]!.resume_id }
 
@@ -330,8 +330,8 @@ export class BrowserApply extends Context.Service<BrowserApply, BrowserApplyShap
                   yield* tx.execute(sql`
                     update application
                     set state = 'submitted', submitted_at = coalesce(submitted_at, now()),
-                        hh_responded_at = coalesce(hh_responded_at, now()), last_error = null, updated_at = now()
-                    where id = ${applicationId} and state in ('draft', 'needs_human', 'failed', 'skipped', 'queued')`)
+                        hh_responded_at = coalesce(hh_responded_at, now()), last_error = null, blocked_reason = null, retry_at = null, updated_at = now()
+                    where id = ${applicationId} and state in ('draft', 'needs_human', 'failed', 'skipped', 'preparing', 'queued')`)
                 }
 
                 // What was on the form when the button was pressed is what hh holds.

@@ -9,7 +9,7 @@ import type {
   JobStatus,
   QueueStats
 } from "@otbor/contract"
-import { HarnessRejected, NotFound } from "@otbor/contract"
+import { type BlockedReason, HarnessRejected, NotFound } from "@otbor/contract"
 import { parseResponseForm } from "@otbor/hh"
 import { sql } from "drizzle-orm"
 import { Config, Context, Effect, Layer } from "effect"
@@ -41,6 +41,7 @@ import { negotiationsSyncJob, nextSequence, reconcileJob, targetFor } from "./jo
 import { toStorageError } from "./support.ts"
 import { DEFAULT_DAILY_APPLY_LIMIT } from "./dailyLimit.ts"
 import { trySubmit } from "./submitGate.ts"
+import { deferOrPark, parkWithCode } from "./blocked.ts"
 
 /* -------------------------------------------------------------------------- */
 /* Outcomes                                                                   */
@@ -416,6 +417,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                 let runAt: Date | null | undefined
                 let appState:
                   | "draft"
+                  | "preparing"
                   | "queued"
                   | "submitting"
                   | "submitted"
@@ -453,7 +455,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                       typeof wanted === "string"
                         ? yield* VacancyRepository.findById(tx, wanted)
                         : null
-                    // Заявки этой вакансии, ждущие формы: `queued` и без submit-задачи
+                    // Заявки этой вакансии, ждущие формы: `preparing` и без submit-задачи
                     // (с задачей отправка уже идёт, форма ей не нужна). Форма у вакансии
                     // общая, а сбои чтения привязаны к аккаунту харнесса.
                     const waiting =
@@ -461,7 +463,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                         ? []
                         : yield* Effect.filter(
                             yield* ApplicationRepository.list(tx, ctx.userId, {
-                              state: "queued",
+                              state: "preparing",
                               vacancyId: vacancy.id
                             }),
                             (application) =>
@@ -474,18 +476,29 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                     const park = (
                       targets: typeof waiting,
                       state: "needs_human" | "skipped",
-                      reason: string
+                      reason: string,
+                      code: BlockedReason
                     ) =>
                       Effect.forEach(targets, (application) =>
                         ApplicationRepository.transition(tx, ctx.userId, application.id, state, {
-                          from: ["queued"],
-                          patch: { lastError: reason }
+                          from: ["preparing"],
+                          patch: state === "needs_human" ? { lastError: reason, blockedReason: code } : { lastError: reason }
                         })
                       )
-                    /** Сбой, зависящий от аккаунта (чужая вакансия, human, failed, исчерпанные повторы): паркуем только его заявки. */
-                    const parkOwn = (state: "needs_human" | "skipped", reason: string) => park(own, state, reason)
+                    /** Сбой, зависящий от аккаунта (чужая вакансия, human, failed): паркуем только его заявки. */
+                    const parkOwn = (state: "needs_human" | "skipped", reason: string, code: BlockedReason) =>
+                      park(own, state, reason, code)
                     /** Вердикт про саму вакансию (архив, нераспознанная раскладка): касается всех аккаунтов. */
-                    const parkAll = (state: "needs_human" | "skipped", reason: string) => park(waiting, state, reason)
+                    const parkAll = (state: "needs_human" | "skipped", reason: string, code: BlockedReason) =>
+                      park(waiting, state, reason, code)
+                    /**
+                     * Транзиентный сбой чтения: заявки аккаунта остаются `preparing` и ждут
+                     * повтор (1 ч, 4 ч, 12 ч); когда повторы кончились - `needs_human`.
+                     */
+                    const deferOwn = (reason: string) =>
+                      Effect.forEach(own, (application) =>
+                        deferOrPark(tx, ctx.userId, application, "form_read_failed", reason)
+                      )
 
                     if (vacancy === null) {
                       status = "failed"
@@ -499,7 +512,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                           vacancyId: vacancy.id,
                           message
                         })
-                        yield* parkOwn("needs_human", message)
+                        yield* parkOwn("needs_human", message, "form_unreadable")
                       } else if (form.layout === "unknown") {
                         status = "needs_human"
                         message = "the response form layout was not recognized"
@@ -508,7 +521,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                           accountId: ctx.hhAccountId,
                           message
                         })
-                        yield* parkAll("needs_human", message)
+                        yield* parkAll("needs_human", message, "form_unreadable")
                       } else {
                         const recorded = yield* VacancyFormRepository.recordRead(tx, {
                           vacancyId: vacancy.id,
@@ -530,10 +543,14 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                             fallbackLimit: options.dailyApplyLimit
                           })
                           if (outcome._tag === "refused" && outcome.reason === "kit_refused") {
-                            yield* ApplicationRepository.transition(tx, ctx.userId, application.id, "needs_human", {
-                              from: ["queued"],
-                              patch: { lastError: outcome.message }
-                            })
+                            yield* parkWithCode(
+                              tx,
+                              ctx.userId,
+                              application.id,
+                              ["preparing"],
+                              "kit_refused",
+                              outcome.message
+                            )
                           }
                         }
                       }
@@ -555,8 +572,8 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                         })
                       }
                       // Архив - свойство вакансии; «hh уже держит отклик» - только этого аккаунта.
-                      if (verdict.reason.includes("archived")) yield* parkAll("skipped", verdict.reason)
-                      else yield* parkOwn("skipped", verdict.reason)
+                      if (verdict.reason.includes("archived")) yield* parkAll("skipped", verdict.reason, "form_gone")
+                      else yield* parkOwn("skipped", verdict.reason, "operator")
                       if (exit.tag === "already_responded" && ctx.hhAccountId !== null) {
                         // hh knows a response otbor does not: import it, so the
                         // vacancy shows "responded" instead of a form error.
@@ -580,12 +597,12 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                       status = "needs_human"
                       message = `form read needs a human: ${verdict.reason}`
                       yield* VacancyFormRepository.recordFailure(tx, { vacancyId: vacancy.id, message })
-                      yield* parkOwn("needs_human", verdict.reason)
+                      yield* parkOwn("needs_human", verdict.reason, "form_read_failed")
                     } else if (verdict._tag === "failed") {
                       status = "failed"
                       message = verdict.reason
                       yield* VacancyFormRepository.recordFailure(tx, { vacancyId: vacancy.id, message })
-                      yield* parkOwn("needs_human", verdict.reason)
+                      yield* deferOwn(verdict.reason)
                     } else if (job.attempts < job.maxAttempts) {
                       status = "pending"
                       runAt = retryLater(exit, 30)
@@ -594,7 +611,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                       status = "dead"
                       message = `form read exhausted retries: ${exit.tag}`
                       yield* VacancyFormRepository.recordFailure(tx, { vacancyId: vacancy.id, message })
-                      yield* parkOwn("needs_human", message)
+                      yield* deferOwn(message)
                     }
                     break
                   }
@@ -614,7 +631,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                     } else if (verdict._tag === "not_sent") {
                       status = verdict.app === "failed" ? "failed" : "needs_human"
                       appState = verdict.app
-                      appPatch = { lastError: verdict.reason }
+                      appPatch = { lastError: verdict.reason, blockedReason: "submit_not_sent" }
                       message = `submit not sent: ${verdict.tag}`
                       jobResult = { clicked: false, tag: verdict.tag }
                     } else {
@@ -687,7 +704,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                       status = "needs_human"
                       appState = "needs_human"
                       message = `reconcile needs a human: ${verdict.reason}`
-                      appPatch = { lastError: verdict.reason }
+                      appPatch = { lastError: verdict.reason, blockedReason: "reconcile_unclear" }
                     } else if (job.attempts < job.maxAttempts) {
                       status = "pending"
                       runAt = retryLater(exit, 60)
@@ -697,6 +714,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                       appState = "needs_human"
                       message = `reconcile exhausted retries: ${verdict.reason}`
                       appPatch = {
+                        blockedReason: "reconcile_unclear",
                         lastError: `could not confirm whether the response was sent: ${verdict.reason}`
                       }
                     }

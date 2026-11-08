@@ -257,7 +257,7 @@ if (!enabled || serverUrl === null) {
         userId: tenant.userId,
         accountId: tenant.accountId,
         vacancyId,
-        state: "queued",
+        state: "preparing",
         autoRun: "auto"
       })
       const form = parseResponseForm(
@@ -302,9 +302,14 @@ if (!enabled || serverUrl === null) {
         Effect.gen(function*() {
           const database = yield* Database
           const result = yield* database.asOwner((tx) =>
-            tx.execute(sql`select intent_at, last_error from application where id = ${applicationId}`)
+            tx.execute(sql`select intent_at, last_error, blocked_reason, retry_at from application where id = ${applicationId}`)
           )
-          return result.rows[0] as unknown as { intent_at: Date | null; last_error: string | null }
+          return result.rows[0] as unknown as {
+            intent_at: Date | null
+            last_error: string | null
+            blocked_reason: string | null
+            retry_at: Date | null
+          }
         })
       )
 
@@ -325,17 +330,20 @@ if (!enabled || serverUrl === null) {
       )
     }
 
-    test("an auto-queued application whose form is re-read at the cap goes to needs_human", async () => {
+    test("an auto-queued application whose form is re-read at the cap keeps waiting with daily_cap and retry_at", async () => {
       const tenant = await support.seedTenant("limit-auto-full")
       await support.applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter: {}, dailyLimit: 1 })
       await occupySlot(tenant, "auto-full-held")
 
       const id = await autoQueuedReread(tenant, "auto-full")
-      expect((await support.findApplication(id))?.state).toBe("needs_human")
+      // Лимит не приговор: заявка остаётся preparing и ждёт первого освободившегося слота.
+      expect((await support.findApplication(id))?.state).toBe("preparing")
       expect(await support.countJobs(id, "submit")).toBe(0)
       const row = await intentAtOf(id)
       expect(row.intent_at).toBeNull()
       expect(row.last_error).toContain("daily limit 1 reached")
+      expect(row.blocked_reason).toBe("daily_cap")
+      expect(row.retry_at!.getTime()).toBeGreaterThan(Date.now())
     }, 60_000)
 
     test("an auto-queued application whose form is re-read with a free slot submits and stamps intent_at", async () => {

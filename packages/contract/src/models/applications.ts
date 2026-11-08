@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { ApplicationOrigin, ApplicationState, AttemptStage, HarnessExitTag } from "../enums.ts"
+import { ApplicationOrigin, ApplicationState, BlockedReason, AttemptStage, HarnessExitTag } from "../enums.ts"
 import { FormAnswer, ResponseForm, StoredForm } from "../form.ts"
 import {
   ApplicationId,
@@ -38,6 +38,12 @@ export const ApplicationRecord = Schema.Struct({
   hhRespondedAt: Schema.optional(Schema.NullOr(Schema.String)),
   /** `drafts` / `auto` when the auto-apply runner made this application; null for a manual one. */
   autoRun: Schema.optional(Schema.NullOr(Schema.Literals(["drafts", "auto"]))),
+  /** Типизированная причина остановки; текст для человека лежит в `lastError`. */
+  blockedReason: Schema.optional(Schema.NullOr(BlockedReason)),
+  /** Когда раннер возобновит ждущий автоотклик (`preparing`). */
+  retryAt: Schema.optional(Schema.NullOr(Schema.String)),
+  /** Сколько автоповторов уже потрачено (письмо, чтение формы). */
+  autoRetries: Schema.optional(Schema.Int),
   createdAt: Schema.String,
   updatedAt: Schema.String
 })

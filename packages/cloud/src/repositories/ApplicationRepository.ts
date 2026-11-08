@@ -14,6 +14,12 @@ import * as ApplyFilterRepository from "./ApplyFilterRepository.ts"
 
 export const APPLICABLE_STATES = ["draft", "needs_human", "failed"] as const
 
+/** Сколько автоповторов получает транзиентная остановка автоотклика до `needs_human`. */
+export const MAX_AUTO_RETRIES = 3
+
+/** Ожидание перед автоповтором n-го по счёту (0, 1, 2): 1 ч, 4 ч, 12 ч. */
+export const AUTO_RETRY_BACKOFF_MS = [1, 4, 12].map((hours) => hours * 3_600_000) as ReadonlyArray<number>
+
 export interface ApplicationRow {
   readonly id: string
   readonly user_id: string
@@ -29,6 +35,9 @@ export interface ApplicationRow {
   readonly hh_status?: string | null
   readonly hh_responded_at?: Date | null
   readonly auto_run?: string | null
+  readonly blocked_reason?: string | null
+  readonly retry_at?: Date | null
+  readonly auto_retries?: number
   readonly created_at: Date
   readonly updated_at: Date
 }
@@ -55,6 +64,9 @@ export const toRecord = (row: ApplicationRow): ApplicationRecord => ({
   hhStatus: row.hh_status ?? null,
   hhRespondedAt: row.hh_responded_at?.toISOString() ?? null,
   autoRun: (row.auto_run ?? null) as ApplicationRecord["autoRun"],
+  blockedReason: (row.blocked_reason ?? null) as ApplicationRecord["blockedReason"],
+  retryAt: row.retry_at == null ? null : new Date(row.retry_at).toISOString(),
+  autoRetries: row.auto_retries ?? 0,
   createdAt: row.created_at.toISOString(),
   updatedAt: row.updated_at.toISOString()
 })
@@ -68,7 +80,7 @@ export const create = (
     readonly resumeId: string | null
     readonly streamId: string | null
     readonly decisionId: string | null
-    readonly state: "draft" | "queued"
+    readonly state: "draft" | "preparing"
     /** Only AutoApplyRunner sets this; it marks the row as the runner's to progress. */
     readonly autoRun?: "drafts" | "auto"
   }
@@ -177,7 +189,14 @@ export const list = (
       )
     )
 
-/** Transition with an explicit guard, so a stale actor cannot resurrect a submit. */
+/**
+ * Transition with an explicit guard, so a stale actor cannot resurrect a submit.
+ *
+ * Причина остановки (`blocked_reason`, `retry_at`) идёт вместе с состоянием:
+ * без явного `blockedReason` в `patch` переход в `needs_human` / `failed` ставит
+ * код `operator`, любой другой переход (approve, retry, claim, skip) снимает
+ * причину и время повтора.
+ */
 export const transition = (
   tx: Executor,
   userId: string,
@@ -187,7 +206,15 @@ export const transition = (
 ): RepoEffect<ApplicationRecord | null> =>
   Effect.gen(function*() {
     const from = sql.join(guard.from.map((state) => sql`${state}`), sql`, `)
-    const patch = guard.patch ?? {}
+    const given = guard.patch ?? {}
+    const patch: Record<string, unknown> =
+      "blockedReason" in given
+        ? { retryAt: null, ...given }
+        : {
+            ...given,
+            blockedReason: to === "needs_human" || to === "failed" ? "operator" : null,
+            ...("retryAt" in given ? {} : { retryAt: null })
+          }
     const patchSql =
       Object.keys(patch).length === 0
         ? sql``
@@ -438,8 +465,8 @@ export const openAttempt = (
 
 /**
  * Auto applications of one account that already hold (or will hold) a daily
- * slot but have not claimed it yet: `queued`, kit not submitted (`intent_at`
- * null). The runner and its preview subtract them from the budget in `auto`.
+ * slot but have not claimed it yet: `preparing` (form, letter or kit still
+ * missing, or waiting for a retry). The runner and its preview subtract them from the budget in `auto`.
  */
 export const pendingAutoSlots = (
   tx: Executor,
@@ -450,12 +477,12 @@ export const pendingAutoSlots = (
     .execute(sql`
       select count(*)::int as n from application
       where user_id = ${userId} and hh_account_id = ${hhAccountId}
-        and auto_run = 'auto' and state = 'queued' and intent_at is null
+        and auto_run = 'auto' and state = 'preparing'
     `)
     .pipe(Effect.map((result) => Number((result.rows[0] as { n?: number } | undefined)?.n ?? 0)))
 
 /**
- * Автоотклики аккаунта, которые ждут в `queued` кит или форму, но чья
+ * Автоотклики аккаунта, которые ждут в `preparing` кит или форму, но чья
  * управляющая строка apply filter больше не `auto`: они возвращаются в `draft`
  * с причиной, их никто не отправит, и они перестают резервировать слоты.
  * Возвращает, сколько строк сдвинуто. Вызывать в транзакции, менявшей режим.
@@ -468,9 +495,10 @@ export const demoteUngovernedAuto = (
   tx
     .execute(sql`
       update application a
-      set state = 'draft', last_error = 'auto mode was turned off; nothing was sent', updated_at = now()
+      set state = 'draft', last_error = 'auto mode was turned off; nothing was sent',
+          blocked_reason = null, retry_at = null, updated_at = now()
       where a.user_id = ${userId} and a.hh_account_id = ${hhAccountId}
-        and a.auto_run = 'auto' and a.state = 'queued' and a.intent_at is null
+        and a.auto_run = 'auto' and a.state = 'preparing'
         and ${ApplyFilterRepository.governingAutoModeSql("a")} <> 'auto'
       returning a.id
     `)

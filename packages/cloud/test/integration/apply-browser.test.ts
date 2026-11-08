@@ -74,7 +74,7 @@ if (!enabled || serverUrl === null) {
     }, 60_000)
 
     /** A tenant with one account, a registered browser harness and one application. */
-    const setup = async (label: string, state: "draft" | "queued" = "draft", autoRun?: "auto") => {
+    const setup = async (label: string, state: "draft" | "preparing" | "queued" = "draft", autoRun?: "auto") => {
       const tenant = await support.seedTenant(label)
       if (autoRun === "auto") {
         await support.applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter: {}, autoMode: "auto" })
@@ -205,7 +205,7 @@ if (!enabled || serverUrl === null) {
       expect(respondedForm.lastError).toContain("already holds a response")
       expect(respondedForm.form).toBeNull()
 
-      const auto = await setup("prep-responded-auto", "queued")
+      const auto = await setup("prep-responded-auto", "preparing")
       await prepare(auto, '<div data-qa="responded-success-attach-cover-letter">Вы откликнулись</div>')
       expect(await stateOf(auto)).toBe("skipped")
 
@@ -293,9 +293,9 @@ if (!enabled || serverUrl === null) {
     })
 
     test("an auto-mode application waits for a kit and queues its submit when one arrives", async () => {
-      const ctx = await setup("auto-kit", "queued", "auto")
+      const ctx = await setup("auto-kit", "preparing", "auto")
       await prepare(ctx, responseHtml)
-      expect(await stateOf(ctx)).toBe("queued")
+      expect(await stateOf(ctx)).toBe("preparing")
       expect(await support.countJobs(ctx.applicationId, "submit")).toBe(0)
 
       const form = (await detail(ctx)).form!.form
@@ -599,6 +599,7 @@ if (!enabled || serverUrl === null) {
       })
       expect(result).toMatchObject({ accepted: true, status: "needs_human" })
       expect(await stateOf(ctx)).toBe("needs_human")
+      expect((await support.findApplication(ctx.applicationId))?.blockedReason).toBe("submit_not_sent")
       expect(await support.countJobs(ctx.applicationId, "reconcile")).toBe(0)
       expect((await support.findJob(job.id))?.result).toMatchObject({ clicked: false })
 
@@ -608,6 +609,7 @@ if (!enabled || serverUrl === null) {
       expect(await support.countJobs(ctx.applicationId, "reconcile")).toBe(0)
       // The new form needs a new approval.
       expect(await stateOf(ctx)).toBe("draft")
+      expect((await support.findApplication(ctx.applicationId))?.blockedReason).toBeNull()
 
       // The site changed a question: the new form has a new hash.
       const changed = responseHtml.replace("В каком городе проживаете?", "В какой стране проживаете?")

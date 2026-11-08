@@ -421,7 +421,7 @@ export const rowSelection = {
     from (
       select ap.hh_account_id, json_agg(distinct ap.resume_id) as resume_ids
       from application ap
-      where ap.vacancy_id = ${vacancy.id} and ap.state in ('submitted', 'submitting', 'queued')
+      where ap.vacancy_id = ${vacancy.id} and ap.state in ('submitted', 'submitting', 'queued', 'preparing')
       group by ap.hh_account_id
     ) r
   ), '[]'::json)`,
@@ -627,7 +627,7 @@ export const list = (tx: Executor, filter: VacancyFilter = {}) => {
           select 1 from application ap
           where ap.vacancy_id = vacancy.id
             and ap.hh_account_id = ${filter.respondedAccountId}
-            and ap.state in ('submitted', 'submitting', 'queued')
+            and ap.state in ('submitted', 'submitting', 'queued', 'preparing')
         )`
 
   const searchTerm = filter.search?.trim() ?? ""

@@ -257,6 +257,8 @@ export const OtborWriteHandlers = OtborWriteToolkit.toLayer(Effect.gen(function*
           ? "an application for this vacancy exists in state skipped and cannot be prepared again from here; tell the user"
           : state === "queued" || state === "submitting"
           ? "the application is already being sent; do not change it, check application_get"
+          : state === "preparing"
+          ? "the auto-apply runner is preparing this application (form, letter, daily slot); do not change it, check application_get"
           : "already exists; call application_form to see its form and kit"
       }
     }),
