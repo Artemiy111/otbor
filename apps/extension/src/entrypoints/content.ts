@@ -4,6 +4,7 @@ import type { VacancyDraft, VacancyLookupItem } from "@otbor/contract"
 import type { CaptureReply, Reply, Request, Settings } from "@/messages.ts"
 import {
   hasUnpaintedCards,
+  onVacancySync,
   paintCards,
   renderVacancy,
   vacancyRowsMissing,
@@ -39,7 +40,8 @@ export default defineContentScript({
     let lastUrl = ""
     let responses: ReturnType<typeof startResponseWatch> | null = null
 
-    const run = async (fresh: boolean): Promise<void> => {
+    /** `force`: the operator pressed the sync button, so save the page even when auto-capture is off. */
+    const run = async (fresh: boolean, force = false): Promise<void> => {
       if (running) return
       running = true
       lastUrl = location.href
@@ -52,7 +54,7 @@ export default defineContentScript({
           if (externalId === null) return
           let reply: CaptureReply | null = null
           let saved: "inserted" | "updated" | "skipped" = "skipped"
-          if (settings.autoCapture) {
+          if (settings.autoCapture || force) {
             const draft: VacancyDraft = await readVacancy(fresh)
             reply = await send<CaptureReply>({ type: "capture", drafts: [draft], evaluate: true })
             saved = reply.inserted > 0 ? "inserted" : reply.updated > 0 ? "updated" : "skipped"
@@ -105,6 +107,8 @@ export default defineContentScript({
         }, 300)
       }).observe(document.body, { childList: true, subtree: true })
     }
+
+    onVacancySync(() => void run(true, true))
 
     const start = () => {
       installPerf()

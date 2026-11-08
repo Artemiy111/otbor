@@ -391,6 +391,29 @@ const responseList = (accounts: ReadonlyArray<AccountResponses>): HTMLElement =>
   return list
 }
 
+let syncHandler: (() => void) | null = null
+
+/** The page controller's "sync this vacancy now"; the button on the vacancy page calls it. */
+export const onVacancySync = (handler: () => void): void => {
+  syncHandler = handler
+}
+
+const syncButton = (): HTMLElement => {
+  const button = document.createElement("button")
+  button.type = "button"
+  button.textContent = "Синхронизировать вакансию"
+  button.setAttribute(
+    "style",
+    "cursor:pointer;border:1px solid currentColor;border-radius:8px;padding:2px 10px;background:transparent;color:inherit;font:inherit"
+  )
+  button.addEventListener("click", (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    syncHandler?.()
+  })
+  return button
+}
+
 export const renderVacancy = (state: PanelState, settings: Settings): void => {
   document.querySelectorAll(`[${MARK}]`).forEach((node) => node.remove())
   const template = rowTemplate()
@@ -416,6 +439,7 @@ export const renderVacancy = (state: PanelState, settings: Settings): void => {
   } else {
     rows.push(makeRow(template, "otbor", "вакансии нет в базе", "muted"))
   }
+  if (state.status !== "loading") rows.push(makeRow(template, "otbor", syncButton(), "muted"))
 
   if (anchor !== null) anchor.after(...rows)
   else fallbackHost?.append(...rows)
