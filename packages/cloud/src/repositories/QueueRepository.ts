@@ -499,6 +499,12 @@ export const concurrency = (
                  and j.status in ('leased', 'running')) as busy
       from harness h
       where h.user_id = ${userId}
+        -- Только живые: не отозванные и выходившие на связь за 10 минут (или с
+        -- задачами в работе). Старые и тестовые регистрации не показываются.
+        and h.token_hash is not null
+        and (h.last_seen_at > now() - interval '10 minutes'
+          or exists (select 1 from harness_jobs j
+                      where j.locked_by = h.id::text and j.status in ('leased', 'running')))
       order by h.name
     `)).rows as ReadonlyArray<Record<string, unknown>>
 
