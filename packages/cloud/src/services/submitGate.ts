@@ -61,7 +61,9 @@ export type SubmitOutcome =
   /**
    * Упёрлись в дневной лимит. Для `auto` заявка осталась `preparing` с
    * `blocked_reason = 'daily_cap'` и `retry_at = resetsAt`; для `approve`
-   * ничего не менялось.
+   * ничего не менялось. Капча аккаунта даёт тот же исход (`auto`): заявка
+   * `preparing` с `blocked_reason = 'captcha'` без `retry_at`, а `resetsAt` -
+   * момент остановки.
    */
   | {
       readonly _tag: "parked"
@@ -177,19 +179,19 @@ export const trySubmit = Effect.fnUntraced(function*(
   const target = yield* targetFor(tx, application)
   if (target === null) return refused("no_vacancy", `vacancy ${application.vacancyId} is gone`)
 
-  // Пауза после капчи: автоотклик не ставим в очередь, он ждёт её конец в
-  // preparing (код captcha). Одобрение оператором ставит submit как обычно:
-  // задача стоит в очереди, пока claim не снимет паузу.
+  // Блокировка после капчи: автоотклик не ставим в очередь, он ждёт оператора в
+  // preparing (код captcha, без retry_at). Одобрение оператором ставит submit
+  // как обычно: задача стоит в очереди, пока claim не увидит снятую блокировку.
   if (trigger === "auto") {
-    const pause = yield* SubmitPacingRepository.activePause(tx, application.hhAccountId)
-    if (pause !== null) {
-      const resetsAt = pause.until.toISOString()
-      const message = `hh asked for a captcha; submits of the account are paused until ${resetsAt}`
+    const block = yield* SubmitPacingRepository.activeBlock(tx, application.hhAccountId)
+    if (block !== null) {
+      const message = "hh asked for a captcha; submits of the account are stopped until the operator resumes them"
       yield* ApplicationRepository.transition(tx, input.userId, application.id, "preparing", {
         from: ["preparing"],
-        patch: { lastError: message, blockedReason: "captcha", retryAt: pause.until }
+        patch: { lastError: message, blockedReason: "captcha", retryAt: null }
       })
-      return { _tag: "parked", message, limit: 0, used: 0, resetsAt }
+      // `resetsAt` у капчи - момент остановки: срока у неё нет.
+      return { _tag: "parked", message, limit: 0, used: 0, resetsAt: block.since.toISOString() }
     }
   }
 

@@ -476,6 +476,8 @@ export const harnessJob = pgTable(
     leaseId: uuid("lease_id"),
     leaseEpoch: integer("lease_epoch").notNull().default(0),
     leaseUntil: timestamp("lease_until", { withTimezone: true }),
+    /** Когда задачу выдали харнессу в последний раз (часовой лимит отправок). */
+    leasedAt: timestamp("leased_at", { withTimezone: true }),
     lockedBy: text("locked_by"),
     lastError: text("last_error"),
     createdAt: createdAt(),

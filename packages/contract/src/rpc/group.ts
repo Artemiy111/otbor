@@ -50,8 +50,10 @@ import { FitJudgeEnqueue, FitJudgementGet, FitJudgementSave, FitJudgementsList }
 import {
   HhAccountRemove,
   HhAccountSessionSet,
+  HhAccountSubmitResume,
   HhAccountUpsert,
-  HhAccountsList
+  HhAccountsList,
+  HhCaptchaEpisodesList
 } from "./hh-accounts.ts"
 import {
   EmployersHydrateOne,
@@ -101,6 +103,7 @@ import {
   PersonSplit,
   PersonUpdate
 } from "./people.ts"
+import { SettingsGet, SettingsUpdate } from "./settings.ts"
 import { PresetsList, PresetsPreview, PresetsRemove, PresetsUpsert } from "./presets.ts"
 import {
   HarnessComplete,
@@ -216,6 +219,10 @@ export const OtborRpcs = RpcGroup.make(
   HhAccountUpsert,
   HhAccountSessionSet,
   HhAccountRemove,
+  HhAccountSubmitResume,
+  HhCaptchaEpisodesList,
+  SettingsGet,
+  SettingsUpdate,
   LexiconList,
   LexiconUpsert,
   LexiconRematch,

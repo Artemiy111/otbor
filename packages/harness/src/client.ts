@@ -62,7 +62,10 @@ export interface ReportCatalogInput {
 export interface HarnessGatewayShape {
   readonly leaseNext: (
     input: LeaseNextInput
-  ) => Effect.Effect<{ readonly job: HarnessJob | null }, HarnessGatewayError>
+  ) => Effect.Effect<
+    { readonly job: HarnessJob | null; readonly harnessSlots?: number | undefined },
+    HarnessGatewayError
+  >
   readonly heartbeat: (
     input: HeartbeatInput
   ) => Effect.Effect<HeartbeatResult, HarnessGatewayError>

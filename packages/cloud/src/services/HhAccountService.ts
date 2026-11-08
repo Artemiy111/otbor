@@ -1,8 +1,9 @@
-import type { ApiError, HhAccountId, HhAccountRecord, HhSessionState } from "@otbor/contract"
+import type { ApiError, CaptchaEpisode, HhAccountId, HhAccountRecord, HhSessionState } from "@otbor/contract"
 import { InvalidInput, NotFound } from "@otbor/contract"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "../db/Database.ts"
 import * as HhAccountRepository from "../repositories/HhAccountRepository.ts"
+import * as SubmitPacingRepository from "../repositories/SubmitPacingRepository.ts"
 import { CurrentUser } from "./CurrentUser.ts"
 import { toStorageError } from "./support.ts"
 
@@ -29,6 +30,19 @@ export interface HhAccountServiceShape {
     id: string
   ) => Effect.Effect<{ readonly id: HhAccountId; readonly deleted: boolean }, ApiError>
   readonly findById: (id: string) => Effect.Effect<HhAccountRecord | null, ApiError>
+  /**
+   * Оператор решил капчу: снимает блокировку отправок и освобождает автозаявки,
+   * ждавшие её. `applicationIds` раннер двигает сразу.
+   */
+  readonly resumeSubmits: (id: string) => Effect.Effect<
+    { readonly account: HhAccountRecord; readonly applicationIds: ReadonlyArray<string> },
+    ApiError
+  >
+  /** Последние эпизоды капчи, новые первыми. */
+  readonly captchaEpisodes: (input: {
+    readonly hhAccountId?: string | undefined
+    readonly limit?: number | undefined
+  }) => Effect.Effect<ReadonlyArray<CaptchaEpisode>, ApiError>
 }
 
 export class HhAccountService extends Context.Service<HhAccountService, HhAccountServiceShape>()(
@@ -119,7 +133,34 @@ export class HhAccountService extends Context.Service<HhAccountService, HhAccoun
           )
           .pipe(Effect.mapError(toStorageError("hhAccount.findById")))
 
-      return HhAccountService.of({ list, upsert, setSession, remove, findById })
+      const resumeSubmits: HhAccountServiceShape["resumeSubmits"] = (id) =>
+        Effect.gen(function*() {
+          const outcome = yield* database
+            .asUser(currentUser.userId, (tx) =>
+              Effect.gen(function*() {
+                const existing = yield* HhAccountRepository.findById(tx, currentUser.userId, id)
+                if (existing === null) return null
+                const applicationIds = yield* SubmitPacingRepository.resume(tx, currentUser.userId, id)
+                const account = yield* HhAccountRepository.findById(tx, currentUser.userId, id)
+                return { account: account ?? existing, applicationIds }
+              })
+            )
+            .pipe(Effect.mapError(toStorageError("hhAccount.resumeSubmits")))
+          if (outcome === null) return yield* new NotFound({ entity: "HhAccount", id })
+          return outcome
+        })
+
+      const captchaEpisodes: HhAccountServiceShape["captchaEpisodes"] = (input) =>
+        database
+          .asUser(currentUser.userId, (tx) =>
+            SubmitPacingRepository.episodes(tx, currentUser.userId, {
+              hhAccountId: input.hhAccountId,
+              limit: Math.min(Math.max(input.limit ?? 20, 1), 200)
+            })
+          )
+          .pipe(Effect.mapError(toStorageError("hhAccount.captchaEpisodes")))
+
+      return HhAccountService.of({ list, upsert, setSession, remove, findById, resumeSubmits, captchaEpisodes })
     })
   )
 }

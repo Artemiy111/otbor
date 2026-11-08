@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/shared/ui"
+import ApplySettingsCard from "./ApplySettingsCard.vue"
 import ProxyCard from "./ProxyCard.vue"
 import { PageHeader } from "@/widgets/page-header"
 
@@ -67,6 +68,8 @@ const { accounts, defaultAccountId } = useDefaultAccount()
           </div>
         </CardContent>
       </Card>
+
+      <ApplySettingsCard />
 
       <ProxyCard />
 

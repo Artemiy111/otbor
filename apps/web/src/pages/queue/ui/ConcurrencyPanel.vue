@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted } from "vue"
 import { useQuery } from "@pinia/colada"
 import type { StageCount } from "@otbor/contract"
+import { CaptchaBlockAlert } from "@/entities/hh-account"
 import { queueJobApi, queueJobKeys } from "@/entities/queue-job"
 import { describeError, formatAge, jobStageLabel } from "@/shared/lib"
 import { Badge, Card, CardContent, HelpHint } from "@/shared/ui"
@@ -29,7 +30,7 @@ const waitingText = (pending: ReadonlyArray<StageCount>): string =>
     ? "никого"
     : pending.map((c) => `${jobStageLabel(c.stage).toLowerCase()} ${c.count}`).join(", ")
 
-/** Время суток для строки про паузу и темп. */
+/** Время суток для строки про темп. */
 const clock = (iso: string): string =>
   new Date(iso).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
 
@@ -43,14 +44,21 @@ defineExpose({ refetch, loading: computed(() => query.isLoading.value) })
       <div class="flex items-center gap-2">
         <p class="text-sm font-semibold">Параллельность</p>
         <HelpHint
-          text="Читающие задания (форма, сверка, чаты, синхронизации) идут параллельно до потолка браузерных задач на аккаунт. Отправки и письма ограничены своим меньшим потолком и идут с паузой между собой (OTBOR_ACCOUNT_SUBMIT_INTERVAL_SECONDS, 75 с плюс до 50%); после капчи отправки аккаунта встают на паузу (OTBOR_ACCOUNT_CAPTCHA_PAUSE_SECONDS, 5 минут). Генерация от аккаунтов не зависит, её ограничивают только потоки харнесса. Числа меняют OTBOR_ACCOUNT_BROWSER_CONCURRENCY и OTBOR_ACCOUNT_SUBMIT_CONCURRENCY (облако), OTBOR_HARNESS_CONCURRENCY (харнесс, до 12)."
+          text="Читающие задания (форма, сверка, чаты, синхронизации) идут параллельно до потолка браузерных задач на аккаунт. Отправки и письма ограничены меньшим потолком и идут с паузой между собой. Капча останавливает отправки аккаунта, пока вы не решите её и не нажмёте «Продолжить». Генерация от аккаунтов не зависит, её ограничивают только потоки харнесса. Все числа меняются в настройках."
         />
+        <a href="/settings" class="ml-auto text-xs text-muted-foreground underline underline-offset-2">Изменить в настройках</a>
       </div>
 
       <p v-if="errorText" class="text-sm text-destructive">Не удалось прочитать параллельность: {{ errorText }}</p>
       <p v-else-if="!data" class="text-sm text-muted-foreground">…</p>
 
       <template v-else>
+        <p class="text-xs tabular-nums text-muted-foreground">
+          Браузерных задач на аккаунт {{ data.browserCap }}, из них отправок {{ data.actingCap }} · пауза между отправками
+          {{ data.submitIntervalSeconds }} с + до {{ data.submitJitterPercent }}% · не больше
+          {{ data.submitHourlyLimit ?? "∞" }} в час · потоки харнесса {{ data.harnessSlots }}
+        </p>
+
         <div class="space-y-1 text-sm">
           <p v-for="h in data.harnesses" :key="h.id" class="tabular-nums">
             Харнес {{ h.name }} · потоки {{ h.busy }}/{{ h.slots ?? "?" }}
@@ -73,10 +81,7 @@ defineExpose({ refetch, loading: computed(() => query.isLoading.value) })
                 (старейшее {{ formatAge(a.oldestPendingAgeSeconds) }})
               </span>
             </p>
-            <p v-if="a.submitPausedUntil" class="mt-1 text-xs text-destructive">
-              отправки на паузе до {{ clock(a.submitPausedUntil) }}
-              <template v-if="a.submitPauseReason === 'captcha'"> — hh попросил капчу</template>
-            </p>
+            <CaptchaBlockAlert v-if="a.submitBlockedAt" class="mt-2" :account-id="a.id" :account-name="a.name" />
             <p v-if="a.nextSubmitAt" class="mt-1 text-xs text-muted-foreground">
               следующая отправка не раньше {{ clock(a.nextSubmitAt) }}
             </p>

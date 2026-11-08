@@ -91,10 +91,10 @@ if (!integrationEnabled || serverUrl === null) {
       expect(account.running.reduce((n, c) => n + c.count, 0)).toBe(2)
       expect(view.inference.pending).toBe(1)
       expect(account.nextSubmitAt).toBeNull()
-      expect(account.submitPausedUntil).toBeNull()
+      expect(account.submitBlockedAt).toBeNull()
     })
 
-    test("shows the next allowed submit time and the captcha pause of an account", async () => {
+    test("shows the next allowed submit time and the captcha block of an account", async () => {
       const tenant = await seedTenant("conc-pause")
       await runAs(
         "owner",
@@ -102,15 +102,15 @@ if (!integrationEnabled || serverUrl === null) {
           tx.execute(sql`
             update hh_account
             set submit_next_at = now() + interval '80 seconds',
-                submit_paused_until = now() + interval '5 minutes',
-                submit_pause_reason = 'captcha'
+                submit_blocked_at = now() - interval '5 minutes',
+                submit_block_reason = 'captcha'
             where id = ${tenant.accountId}
           `)
         )
       )
       const account = (await snapshot(tenant.userId)).accounts.find((a) => a.id === tenant.accountId)!
-      expect(account.submitPauseReason).toBe("captcha")
-      expect(Date.parse(account.submitPausedUntil!)).toBeGreaterThan(Date.now() + 4 * 60_000)
+      expect(account.submitBlockReason).toBe("captcha")
+      expect(Date.parse(account.submitBlockedAt!)).toBeLessThan(Date.now())
       expect(Date.parse(account.nextSubmitAt!)).toBeGreaterThan(Date.now() + 60_000)
     })
 

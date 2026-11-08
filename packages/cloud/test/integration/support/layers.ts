@@ -22,6 +22,7 @@ import { EvaluationRunner } from "../../../src/services/EvaluationRunner.ts"
 import { FitJudgeRunner } from "../../../src/services/FitJudgeRunner.ts"
 import { FitJudgeService } from "../../../src/services/FitJudgeService.ts"
 import { HydrationRunner } from "../../../src/services/HydrationRunner.ts"
+import { HhAccountService } from "../../../src/services/HhAccountService.ts"
 import { InferenceService } from "../../../src/services/InferenceService.ts"
 import { LexiconService } from "../../../src/services/LexiconService.ts"
 import { MailGatewayProvider } from "../../../src/services/MailGatewayProvider.ts"
@@ -35,6 +36,7 @@ import { ResumeService } from "../../../src/services/ResumeService.ts"
 import { ResumeSync } from "../../../src/services/ResumeSync.ts"
 import { ScheduleDispatcher } from "../../../src/services/ScheduleDispatcher.ts"
 import { ScheduleService } from "../../../src/services/ScheduleService.ts"
+import { SettingsService } from "../../../src/services/SettingsService.ts"
 import { SystemOneClient } from "../../../src/services/SystemOneClient.ts"
 import { TelegramGatewayProvider } from "../../../src/services/TelegramGatewayProvider.ts"
 import { TelegramService } from "../../../src/services/TelegramService.ts"
@@ -147,6 +149,11 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
     }).pipe(
       Layer.provide(shared)
     ),
+    HhAccountService.layer.pipe(Layer.provide(shared)),
+    SettingsService.layerConfigured({
+      // Те же значения по умолчанию, что у очереди: темп по умолчанию выключен.
+      submitIntervalSeconds: options.submitIntervalSeconds ?? 0
+    }).pipe(Layer.provide(shared)),
     NegotiationsSync.layer.pipe(Layer.provide(shared)),
     ApplicationService.layer.pipe(Layer.provide(shared)),
     BrowserApply.layer.pipe(Layer.provide(shared)),
@@ -167,6 +174,8 @@ type Requirements =
   | ApplicationService
   | BrowserApply
   | QueueService
+  | SettingsService
+  | HhAccountService
   | NegotiationsSync
   | ResumeSync
   | InferenceService

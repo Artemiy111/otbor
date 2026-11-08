@@ -2,7 +2,7 @@ import { Schema } from "effect"
 import { Rpc } from "effect/rpc"
 import { ApiError } from "../errors.ts"
 import { HhAccountId } from "../ids.ts"
-import { HhAccountRecord, HhSessionState } from "../models/index.ts"
+import { CaptchaEpisode, HhAccountRecord, HhSessionState } from "../models/index.ts"
 
 export const HhAccountsList = Rpc.make("HhAccountsList", {
   success: Schema.Array(HhAccountRecord),
@@ -38,5 +38,29 @@ export const HhAccountSessionSet = Rpc.make("HhAccountSessionSet", {
 export const HhAccountRemove = Rpc.make("HhAccountRemove", {
   payload: Schema.Struct({ id: HhAccountId }),
   success: Schema.Struct({ id: HhAccountId, deleted: Schema.Boolean }),
+  error: ApiError
+})
+
+/**
+ * Оператор решил капчу в профиле браузера: снимает блокировку отправок
+ * аккаунта и возвращает автозаявки, ждавшие капчу, раннеру.
+ */
+export const HhAccountSubmitResume = Rpc.make("HhAccountSubmitResume", {
+  payload: Schema.Struct({ hhAccountId: HhAccountId }),
+  success: Schema.Struct({
+    account: HhAccountRecord,
+    /** Сколько автозаявок снова доступны раннеру. */
+    released: Schema.Int
+  }),
+  error: ApiError
+})
+
+/** Последние эпизоды капчи, новые первыми: после скольких откликов hh её показывает. */
+export const HhCaptchaEpisodesList = Rpc.make("HhCaptchaEpisodesList", {
+  payload: Schema.Struct({
+    hhAccountId: Schema.optional(HhAccountId),
+    limit: Schema.optional(Schema.Int)
+  }),
+  success: Schema.Array(CaptchaEpisode),
   error: ApiError
 })

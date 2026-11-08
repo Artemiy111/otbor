@@ -69,6 +69,13 @@ export const HhAccountRecord = Schema.Struct({
   color: Schema.optional(Schema.NullOr(Schema.String)),
   session: Schema.optional(Schema.NullOr(HhSessionRecord)),
   contacts: Schema.optional(Schema.NullOr(HhAccountContacts)),
+  /**
+   * Отправки аккаунта остановлены с этого момента (hh показал капчу); null -
+   * не остановлены. Снимает оператор (`HhAccountSubmitResume`).
+   */
+  submitBlockedAt: Schema.optional(Schema.NullOr(Schema.String)),
+  /** Почему остановлены: `captcha`. */
+  submitBlockReason: Schema.optional(Schema.NullOr(Schema.String)),
   createdAt: Schema.String,
   updatedAt: Schema.String
 })

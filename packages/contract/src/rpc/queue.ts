@@ -57,7 +57,13 @@ export const HarnessLeaseNext = Rpc.make("HarnessLeaseNext", {
     concurrency: Schema.optional(Schema.Int)
   }),
   success: Schema.Struct({
-    job: Schema.NullOr(HarnessJob)
+    job: Schema.NullOr(HarnessJob),
+    /**
+     * Сколько потоков харнесс должен держать по настройкам пользователя.
+     * Харнесс подстраивает пул на лету; нет поля - остаётся его собственное
+     * значение (`OTBOR_HARNESS_CONCURRENCY`).
+     */
+    harnessSlots: Schema.optional(Schema.Int)
   }),
   error: ApiError
 })

@@ -13,16 +13,18 @@ import {
   ReconcileJobPayload,
   SubmitJobPayload
 } from "@otbor/contract"
-import { Cause, Deferred, Duration, Effect, Fiber, type Layer, Option, Schema } from "effect"
+import { Cause, Deferred, Duration, Effect, Fiber, type Layer, Option, Ref, Schema } from "effect"
 import { BrowserExecutor } from "./browser/executor.ts"
 import { HarnessGateway } from "./client.ts"
-import type { HarnessConfig } from "./config.ts"
+import { MAX_CONCURRENCY, type HarnessConfig } from "./config.ts"
 import { probeCatalog } from "./catalog.ts"
 import { payloadHarness, runInferenceExit } from "./inference.ts"
 
 /** The cloud lease is 120s; a third of it keeps a slow prompt alive. */
 export const HEARTBEAT_INTERVAL = Duration.seconds(30)
 const RETRY_DELAY = Duration.seconds(5)
+/** Как часто простаивающий цикл проверяет, не увеличилось ли число потоков. */
+const IDLE_POLL = Duration.seconds(1)
 /** How often the catalog of agents, models and efforts is probed and reported. */
 export const CATALOG_REPORT_INTERVAL = Duration.minutes(30)
 
@@ -339,17 +341,33 @@ const deliver = (config: HarnessConfig, job: HarnessJob, exit: HarnessExit) =>
     )
   )
 
-const leaseOnce = (config: HarnessConfig, runOptions: RunJobOptions) =>
+/**
+ * Сколько потоков харнесс держит сейчас. Начальное значение - из конфигурации
+ * (`OTBOR_HARNESS_CONCURRENCY`), его же харнесс остаётся держать, пока облако
+ * не скажет иное: каждый ответ на `HarnessLeaseNext` может принести
+ * `harnessSlots` из настроек пользователя.
+ */
+const clampSlots = (value: number): number =>
+  Math.min(MAX_CONCURRENCY, Math.max(1, Math.floor(value)))
+
+const leaseOnce = (config: HarnessConfig, runOptions: RunJobOptions, slots: Ref.Ref<number>) =>
   Effect.gen(function*() {
     const gateway = yield* HarnessGateway
-    const { job } = yield* gateway.leaseNext({
+    const { job, harnessSlots } = yield* gateway.leaseNext({
       harnessId: config.harnessId,
       token: config.token,
       kinds: config.kinds,
       accounts: config.accounts,
       waitSeconds: config.waitSeconds,
-      concurrency: config.once ? 1 : config.concurrency
+      concurrency: config.once ? 1 : yield* Ref.get(slots)
     })
+
+    // Облако - главный по числу потоков: подстраиваем пул на лету.
+    if (harnessSlots !== undefined && !config.once) {
+      const next = clampSlots(harnessSlots)
+      const previous = yield* Ref.getAndSet(slots, next)
+      if (previous !== next) yield* Effect.logInfo(`harness slots ${previous} -> ${next} (from the cloud settings)`)
+    }
 
     if (job === null) {
       yield* Effect.logDebug("no job leased")
@@ -417,7 +435,7 @@ export const runHarness = Effect.fn("Harness.runHarness")(function*(
     kinds: config.kinds,
     accounts: config.accounts,
     waitSeconds: config.waitSeconds,
-    concurrency: config.once ? 1 : config.concurrency,
+    concurrency: config.once ? 1 : clampSlots(config.concurrency),
     once: config.once
   })
 
@@ -432,26 +450,41 @@ export const runHarness = Effect.fn("Harness.runHarness")(function*(
     )
   }
 
-  const worker = Effect.gen(function*() {
-    while (true) {
-      const result = yield* leaseOnce(config, runOptions).pipe(Effect.result)
+  const slots = yield* Ref.make(clampSlots(config.concurrency))
 
-      if (result._tag === "Failure") {
-        yield* Effect.logError(`lease loop: ${result.failure.message}`)
+  /**
+   * Один цикл выдачи. Номер `index` решает, работает ли он при текущем числе
+   * потоков: циклы сверх него простаивают (доделав начатую задачу) и просыпаются,
+   * когда облако увеличит число потоков. Пул уменьшается и растёт на лету.
+   */
+  const worker = (index: number) =>
+    Effect.gen(function*() {
+      while (true) {
+        if (!config.once && index >= (yield* Ref.get(slots))) {
+          yield* Effect.sleep(IDLE_POLL)
+          continue
+        }
+
+        const result = yield* leaseOnce(config, runOptions, slots).pipe(Effect.result)
+
+        if (result._tag === "Failure") {
+          yield* Effect.logError(`lease loop: ${result.failure.message}`)
+          if (config.once) return
+          yield* Effect.sleep(RETRY_DELAY)
+        }
+
         if (config.once) return
-        yield* Effect.sleep(RETRY_DELAY)
       }
+    })
 
-      if (config.once) return
-    }
-  })
+  if (config.once) return yield* worker(0)
 
-  // Several independent lease loops: a slow letter or form read no longer holds
-  // up the rest of the queue. The cloud leases each job to one loop only.
-  if (config.once || config.concurrency <= 1) return yield* worker
+  // Циклов столько, сколько харнесс вообще может держать; сколько из них
+  // выдаёт задачи, решает `slots`. Медленное письмо или чтение формы не держит
+  // остальную очередь, а облако выдаёт каждую задачу одному циклу.
   yield* Effect.forEach(
-    Array.from({ length: config.concurrency }, (_, index) => index),
-    () => worker,
+    Array.from({ length: MAX_CONCURRENCY }, (_, index) => index),
+    (index) => worker(index),
     { concurrency: "unbounded", discard: true }
   )
 })

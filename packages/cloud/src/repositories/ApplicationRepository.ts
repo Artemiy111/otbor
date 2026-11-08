@@ -544,7 +544,11 @@ export const listOwnedByRunner = (
       where user_id = ${input.userId} and hh_account_id = ${input.hhAccountId}
         and auto_run is not null
         and ((auto_run = 'auto' and state = 'preparing'
-            and (retry_at is null or retry_at <= now()))
+            and (retry_at is null or retry_at <= now())
+            -- Ждёт оператора после капчи: раннер её не трогает, пока блокировка стоит.
+            and (blocked_reason is distinct from 'captcha'
+              or not exists (select 1 from hh_account a
+                              where a.id = application.hh_account_id and a.submit_blocked_at is not null)))
           or (auto_run = 'drafts' and state = 'draft'
             and not exists (select 1 from application_kit k where k.application_id = application.id)))
         ${

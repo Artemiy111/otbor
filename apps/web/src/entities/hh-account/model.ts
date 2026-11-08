@@ -1,10 +1,20 @@
-import type { HhAccountRecord } from "@otbor/contract"
+import type { CaptchaEpisode, HhAccountRecord } from "@otbor/contract"
 
 export { hhAccountHue, hhAccountInitials } from "@otbor/contract"
 
 export const hhAccountKeys = {
   all: ["hh-accounts"] as const,
-  list: () => ["hh-accounts", "list"] as const
+  list: () => ["hh-accounts", "list"] as const,
+  captchaEpisodes: () => ["hh-accounts", "captcha-episodes"] as const
+}
+
+/** «капча после N откликов за M мин»: по подтверждённым откликам эпизода. */
+export const captchaEpisodeText = (episode: CaptchaEpisode): string => {
+  const minutes =
+    episode.firstSubmitAt === null || episode.lastSubmitAt === null
+      ? 0
+      : Math.max(0, Math.round((Date.parse(episode.lastSubmitAt) - Date.parse(episode.firstSubmitAt)) / 60_000))
+  return `капча после ${episode.submitsConfirmed} откликов за ${minutes} мин`
 }
 
 /** hh display name ("firstName lastName"), else the operator's label. */

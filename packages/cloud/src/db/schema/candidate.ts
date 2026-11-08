@@ -34,9 +34,11 @@ export const hhAccount = pgTable(
     color: text("color"),
     /** Раньше этого момента claim не выдаёт действующую задачу аккаунта (темп отправок). */
     submitNextAt: timestamp("submit_next_at", { withTimezone: true }),
-    /** Пауза отправок после капчи; пока не вышла, действующие задачи не выдаются. */
-    submitPausedUntil: timestamp("submit_paused_until", { withTimezone: true }),
-    submitPauseReason: text("submit_pause_reason"),
+    /** Капча блокирует отправки бессрочно; снимает оператор (`HhAccountSubmitResume`). */
+    submitBlockedAt: timestamp("submit_blocked_at", { withTimezone: true }),
+    submitBlockReason: text("submit_block_reason"),
+    /** Когда оператор в последний раз снял блокировку. */
+    submitResumedAt: timestamp("submit_resumed_at", { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt()
   },

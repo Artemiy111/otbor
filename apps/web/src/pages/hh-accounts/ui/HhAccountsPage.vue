@@ -4,7 +4,14 @@ import { useQuery, useQueryCache } from "@pinia/colada"
 import type { HhAccountRecord } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert } from "@lucide/vue"
-import { hhAccountApi, hhAccountColor, hhAccountKeys, useDefaultAccount } from "@/entities/hh-account"
+import {
+  CaptchaBlockAlert,
+  CaptchaEpisodesCard,
+  hhAccountApi,
+  hhAccountColor,
+  hhAccountKeys,
+  useDefaultAccount
+} from "@/entities/hh-account"
 import { RefreshButton } from "@/features/refresh-button"
 import { describeError, formatDate } from "@/shared/lib"
 import {
@@ -24,6 +31,8 @@ const query = useQuery({
 })
 
 const accounts = computed<ReadonlyArray<HhAccountRecord>>(() => query.data.value ?? [])
+/** Аккаунты, чьи отправки остановлены капчей. */
+const blocked = computed(() => accounts.value.filter((account) => account.submitBlockedAt != null))
 
 const queryCache = useQueryCache()
 const actionError = ref<string | null>(null)
@@ -192,6 +201,14 @@ const refresh = () => void query.refetch()
       <AlertDescription>{{ describeError(query.error.value) }}</AlertDescription>
     </Alert>
 
+    <CaptchaBlockAlert
+      v-for="account in blocked"
+      :key="account.id"
+      class="mb-4"
+      :account-id="account.id"
+      :account-name="account.label"
+    />
+
     <DataTable
       :columns="columns"
       :data="accounts"
@@ -200,5 +217,7 @@ const refresh = () => void query.refetch()
       empty-title="Аккаунтов нет"
       empty-description="Выполните otbor hh login, чтобы создать аккаунт."
     />
+
+    <CaptchaEpisodesCard class="mt-6" />
   </section>
 </template>

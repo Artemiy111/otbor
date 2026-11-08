@@ -143,10 +143,10 @@ export const ConcurrencyAccount = Schema.Struct({
   holderHarnessName: Schema.NullOr(Schema.String),
   /** Раньше этого момента следующая отправка аккаунта не выдастся (темп); null, если можно сейчас. */
   nextSubmitAt: Schema.NullOr(Schema.String),
-  /** Отправки на паузе до этого момента; null, если пауза не действует. */
-  submitPausedUntil: Schema.NullOr(Schema.String),
-  /** Почему пауза: `captcha` - hh попросил капчу. */
-  submitPauseReason: Schema.NullOr(Schema.String),
+  /** Отправки остановлены с этого момента, пока оператор не скажет «Продолжить»; null, если не остановлены. */
+  submitBlockedAt: Schema.NullOr(Schema.String),
+  /** Почему остановлены: `captcha` - hh попросил капчу. */
+  submitBlockReason: Schema.NullOr(Schema.String),
   /** Браузерные задачи в `leased`/`running` по стадиям. */
   running: Schema.Array(StageCount),
   browserRunning: Schema.Int,
@@ -158,12 +158,18 @@ export const ConcurrencyAccount = Schema.Struct({
 })
 
 export const QueueConcurrency = Schema.Struct({
-  /** Браузерных задач аккаунта разом у одного харнесса (`OTBOR_ACCOUNT_BROWSER_CONCURRENCY`). */
+  /** Браузерных задач аккаунта разом у одного харнесса (настройки пользователя). */
   browserCap: Schema.Int,
-  /** Из них действующих: submit, letter_attach (`OTBOR_ACCOUNT_SUBMIT_CONCURRENCY`). */
+  /** Из них действующих: submit, letter_attach (настройки пользователя). */
   actingCap: Schema.Int,
-  /** Минимум секунд между отправками одного аккаунта (`OTBOR_ACCOUNT_SUBMIT_INTERVAL_SECONDS`), без надбавки до 50%. */
+  /** Минимум секунд между отправками одного аккаунта (настройки), без случайной надбавки. */
   submitIntervalSeconds: Schema.Int,
+  /** Случайная надбавка к интервалу, процентов от него. */
+  submitJitterPercent: Schema.Int,
+  /** Не больше стольких отправок аккаунта за час; null - без лимита. */
+  submitHourlyLimit: Schema.NullOr(Schema.Int),
+  /** Сколько потоков харнессы должны держать (настройки). */
+  harnessSlots: Schema.Int,
   actingStages: Schema.Array(JobStage),
   harnesses: Schema.Array(ConcurrencyHarness),
   accounts: Schema.Array(ConcurrencyAccount),
@@ -180,5 +186,23 @@ export const HeartbeatResult = Schema.Struct({
 })
 
 export type HeartbeatResult = typeof HeartbeatResult.Type
+
+/**
+ * Эпизод капчи: после какого числа откликов и за какое время hh показал капчу.
+ * Строка открывается, когда капча остановила отправки аккаунта, и закрывается
+ * (`resumedAt`), когда оператор их возобновил.
+ */
+export const CaptchaEpisode = Schema.Struct({
+  id: Schema.String,
+  hhAccountId: HhAccountId,
+  captchaAt: Schema.String,
+  resumedAt: Schema.NullOr(Schema.String),
+  /** Подтверждённые отклики аккаунта между прошлым возобновлением и капчей. */
+  submitsConfirmed: Schema.Int,
+  firstSubmitAt: Schema.NullOr(Schema.String),
+  lastSubmitAt: Schema.NullOr(Schema.String)
+})
+
+export type CaptchaEpisode = typeof CaptchaEpisode.Type
 
 /* -------------------------------------------------------------------------- */

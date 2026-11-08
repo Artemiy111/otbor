@@ -11,6 +11,7 @@ import { join } from "node:path"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import { AutoApplyRunner } from "../../src/services/AutoApplyRunner.ts"
+import { HhAccountService } from "../../src/services/HhAccountService.ts"
 import * as support from "./support/index.ts"
 
 const enabled = support.integrationEnabled
@@ -572,24 +573,24 @@ if (!enabled || serverUrl === null) {
         "owner",
         support.ownerTx((tx) =>
           tx
-            .execute(sql`select submit_paused_until, submit_pause_reason from hh_account where id = ${ctx.tenant.accountId}`)
-            .pipe(Effect.map((r) => r.rows[0] as { submit_paused_until: Date | null; submit_pause_reason: string | null }))
+            .execute(sql`select submit_blocked_at, submit_block_reason from hh_account where id = ${ctx.tenant.accountId}`)
+            .pipe(Effect.map((r) => r.rows[0] as { submit_blocked_at: Date | null; submit_block_reason: string | null }))
         )
       )
 
-    test("a captcha after the click pauses the account; a manual application goes back to draft", async () => {
+    test("a captcha after the click blocks the account; a manual application goes back to draft", async () => {
       const ctx = await setup("cap-manual")
       const job = await captchaSubmit(ctx)
-      const pause = await accountPause(ctx)
-      expect(pause.submit_pause_reason).toBe("captcha")
-      expect(new Date(pause.submit_paused_until!).getTime()).toBeGreaterThan(Date.now() + 4 * 60_000)
+      const block = await accountPause(ctx)
+      expect(block.submit_block_reason).toBe("captcha")
+      expect(block.submit_blocked_at).not.toBeNull()
 
       await ctx.complete(job, reconciled(ctx, { vacancy: vacancyPage(ctx, false), negotiations: [] }))
       expect(await stateOf(ctx)).toBe("draft")
       expect((await support.findApplication(ctx.applicationId))?.blockedReason).toBeNull()
     })
 
-    test("an auto application unsent after a captcha waits in preparing until the pause ends, then goes out once more", async () => {
+    test("an auto application unsent after a captcha waits in preparing until the operator resumes the account, then goes out once more", async () => {
       const ctx = await setup("cap-auto", "preparing", "auto")
       // Автозаявке нужно резюме, иначе раннер отдаёт её человеку (no_resume).
       resumeCounter += 2
@@ -618,7 +619,6 @@ if (!enabled || serverUrl === null) {
         artifacts: { clicked: true, url: urlFor(ctx.externalId), marker: "captcha" }
       })
       const job = await leaseReconcile(ctx)
-      const pause = await accountPause(ctx)
       await ctx.complete(job, reconciled(ctx, { vacancy: vacancyPage(ctx, false), negotiations: [] }))
 
       expect(await stateOf(ctx)).toBe("preparing")
@@ -631,10 +631,11 @@ if (!enabled || serverUrl === null) {
         )
       )
       expect(row.blocked_reason).toBe("captcha")
-      expect(new Date(row.retry_at).getTime()).toBe(new Date(pause.submit_paused_until!).getTime())
+      // Срока нет: заявку вернёт оператор, а не время.
+      expect(row.retry_at).toBeNull()
       expect(row.auto_retries).toBe(0)
 
-      // Пока пауза идёт, раннер ничего не отправляет.
+      // Пока блокировка стоит, раннер ничего не отправляет, сколько бы ни прошло времени.
       const tick = () =>
         support.runAs(
           ctx.tenant.userId,
@@ -645,16 +646,24 @@ if (!enabled || serverUrl === null) {
       await tick()
       expect(await support.countJobs(ctx.applicationId, "submit")).toBe(1)
 
-      // Пауза вышла: заявка дождалась retry_at, и шлюз ставит новую задачу (один раз).
       await support.runAs(
         "owner",
         support.ownerTx((tx) =>
-          Effect.gen(function*() {
-            yield* tx.execute(sql`update hh_account set submit_paused_until = now() - interval '1 second' where id = ${ctx.tenant.accountId}`)
-            yield* tx.execute(sql`update application set retry_at = now() - interval '1 second' where id = ${ctx.applicationId}`)
-          })
+          tx.execute(sql`update hh_account set submit_blocked_at = now() - interval '2 days' where id = ${ctx.tenant.accountId}`)
         )
       )
+      await tick()
+      expect(await support.countJobs(ctx.applicationId, "submit")).toBe(1)
+      expect(await stateOf(ctx)).toBe("preparing")
+
+      // Оператор решил капчу и нажал «Продолжить»: шлюз ставит новую задачу (один раз).
+      const resumed = await support.runAs(
+        ctx.tenant.userId,
+        Effect.gen(function*() {
+          return yield* (yield* HhAccountService).resumeSubmits(ctx.tenant.accountId)
+        })
+      )
+      expect(resumed.applicationIds).toEqual([ctx.applicationId])
       await tick()
       await tick()
       expect(await support.countJobs(ctx.applicationId, "submit")).toBe(2)

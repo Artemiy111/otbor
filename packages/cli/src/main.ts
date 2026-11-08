@@ -26,6 +26,7 @@ import { extensionCommand } from "./commands/extension.ts"
 import { proxyCommand } from "./commands/proxy.ts"
 import { queueCommand } from "./commands/queue.ts"
 import { scheduleCommand } from "./commands/schedule.ts"
+import { settingsCommand } from "./commands/settings.ts"
 import { healthCommand } from "./commands/system.ts"
 import { doctorCommand, downCommand, statusCommand, upCommand } from "./commands/stack.ts"
 import { telegramCommand } from "./commands/telegram.ts"
@@ -96,6 +97,7 @@ root
       crawlCommand,
       hydrateCommand,
       scheduleCommand,
+      settingsCommand,
       contactsCommand,
       peopleCommand,
       mailCommand,

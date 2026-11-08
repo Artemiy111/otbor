@@ -254,6 +254,60 @@ describe("runHarness", () => {
     expect(leases).toBeGreaterThanOrEqual(3)
   })
 
+  test("the pool follows `harnessSlots` from the cloud at runtime, up and down, and keeps the config value without one", async () => {
+    const config = await makeConfig({ OTBOR_HARNESS_CONCURRENCY: "2" })
+    let wanted: number | undefined
+    let inFlight = 0
+    let peak = 0
+    const reported: Array<number | undefined> = []
+
+    const fiber = Effect.runFork(
+      runHarness(config).pipe(
+        Effect.provide(
+          gatewayLayer({
+            leaseNext: (input) =>
+              Effect.gen(function*() {
+                reported.push(input.concurrency)
+                inFlight += 1
+                peak = Math.max(peak, inFlight)
+                yield* Effect.sleep(Duration.millis(40))
+                inFlight -= 1
+                return { job: null, ...(wanted === undefined ? {} : { harnessSlots: wanted }) }
+              })
+          })
+        )
+      )
+    )
+    const measure = async (): Promise<number> => {
+      peak = 0
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      return peak
+    }
+
+    // Облако молчит: остаётся значение конфигурации.
+    expect(await measure()).toBe(2)
+
+    // Облако увеличило потоки: спящие циклы просыпаются (проверка раз в секунду).
+    wanted = 5
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    await new Promise((resolve) => setTimeout(resolve, 1_300))
+    expect(await measure()).toBe(5)
+
+    // И уменьшило: лишние циклы доделывают начатое и засыпают.
+    wanted = 1
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(await measure()).toBe(1)
+    // Харнесс сообщает облаку то число, что держит сейчас.
+    expect(reported.at(-1)).toBe(1)
+
+    // Значение вне границ сжимается до 1..12.
+    wanted = 99
+    await new Promise((resolve) => setTimeout(resolve, 1_500))
+    expect(await measure()).toBe(12)
+
+    await Effect.runPromise(Effect.sync(() => fiber.interruptUnsafe()))
+  }, 15_000)
+
   test("once mode returns after an empty lease without completing anything", async () => {
     const config = await makeConfig({}, true)
     let leases = 0

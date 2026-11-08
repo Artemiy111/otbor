@@ -48,8 +48,9 @@ export const completeReconcile: StageHandler = (tx, ctx, exit) =>
     if (verdict._tag === "unsent") {
       // Provably no response. Ручная заявка возвращается в draft: человек
       // смотрит и одобряет заново. Автозаявка, чей режим всё ещё auto, уходит
-      // в preparing и уйдёт снова сама (через шлюз, не здесь): после паузы
-      // капчи, иначе с обычным автоповтором. Здесь ничего не ставится в очередь.
+      // в preparing и уйдёт снова сама (через шлюз, не здесь): после того как
+      // оператор решит капчу и возобновит аккаунт, иначе с обычным автоповтором.
+      // Здесь ничего не ставится в очередь.
       const message = `reconciled: ${verdict.reason}`
       const settled = { status: "failed", result: { clicked: false, reconciled: true }, message } as const
       if (application.autoRun === "auto") {
@@ -60,15 +61,16 @@ export const completeReconcile: StageHandler = (tx, ctx, exit) =>
           application.resumeId ?? null
         )
         if (mode === "auto") {
-          const pause = yield* SubmitPacingRepository.activePause(tx, application.hhAccountId)
+          const block = yield* SubmitPacingRepository.activeBlock(tx, application.hhAccountId)
           const spent = application.autoRetries ?? 0
-          if (pause !== null) {
+          if (block !== null) {
+            // Без retry_at: заявку вернёт раннеру «Продолжить» оператора, не время.
             return outcome("done", message, {
               appState: "preparing",
               appPatch: {
-                lastError: "hh asked for a captcha; the response did not go out, it will be sent after the pause",
+                lastError: "hh asked for a captcha; the response did not go out, it will be sent after you resume the account",
                 blockedReason: "captcha",
-                retryAt: pause.until
+                retryAt: null
               },
               jobResult: { found: false, reading: verdict.reading },
               reconcileKept,

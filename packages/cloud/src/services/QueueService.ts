@@ -7,7 +7,8 @@ import type {
   HeartbeatResult,
   JobKind,
   QueueConcurrency,
-  QueueStats
+  QueueStats,
+  UserSettings
 } from "@otbor/contract"
 import { HarnessRejected, NotFound } from "@otbor/contract"
 import { sql } from "drizzle-orm"
@@ -17,6 +18,7 @@ import { Database } from "../db/Database.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
 import * as HhAccountRepository from "../repositories/HhAccountRepository.ts"
 import * as HarnessRepository from "../repositories/HarnessRepository.ts"
+import * as SettingsRepository from "../repositories/SettingsRepository.ts"
 import * as SubmitPacingRepository from "../repositories/SubmitPacingRepository.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
 import { AutoApplyRunner } from "./AutoApplyRunner.ts"
@@ -27,6 +29,7 @@ import { stageHandlers, type AppState } from "./completion/index.ts"
 import { nextSequence, reconcileJob, targetFor } from "./jobs.ts"
 import { toStorageError } from "./support.ts"
 import { DEFAULT_DAILY_APPLY_LIMIT } from "./dailyLimit.ts"
+import { settingsDefaultsFromEnv } from "./SettingsService.ts"
 
 export { exitDetail } from "./completion/index.ts"
 
@@ -136,7 +139,9 @@ export interface QueueServiceShape {
     readonly limit?: number
   }) => Effect.Effect<ReadonlyArray<HarnessJob>, ApiError>
   readonly register: (input: RegisterInput) => Effect.Effect<HarnessRegistration, ApiError>
-  readonly leaseNext: (input: LeaseInput) => Effect.Effect<{ readonly job: HarnessJob | null }, ApiError>
+  readonly leaseNext: (
+    input: LeaseInput
+  ) => Effect.Effect<{ readonly job: HarnessJob | null; readonly harnessSlots: number }, ApiError>
   readonly heartbeat: (input: HeartbeatInput) => Effect.Effect<HeartbeatResult, ApiError>
   readonly complete: (input: CompleteInput) => Effect.Effect<CompleteResult, ApiError>
   readonly revoke: (input: { readonly harnessId: string }) => Effect.Effect<RevokeResult, ApiError>
@@ -151,18 +156,35 @@ export interface QueueServiceOptions {
    * делал бы их порядок недетерминированным.
    */
   readonly advanceOnComplete?: boolean
+  /*
+   * Ниже - значения по умолчанию для настроек пользователя: они действуют, пока
+   * у него нет строки `user_settings`. Дальше решает база (см. `SettingsService`).
+   */
   /** Браузерных задач одного аккаунта у одного харнесса разом (`OTBOR_ACCOUNT_BROWSER_CONCURRENCY`, 4). */
   readonly accountBrowserConcurrency?: number
   /** Из них действующих, submit и letter_attach (`OTBOR_ACCOUNT_SUBMIT_CONCURRENCY`, 1). */
   readonly accountSubmitConcurrency?: number
-  /**
-   * Минимум секунд между двумя действующими задачами аккаунта, плюс случайная
-   * надбавка до 50% (`OTBOR_ACCOUNT_SUBMIT_INTERVAL_SECONDS`, 75). 0 - без темпа.
-   */
+  /** Минимум секунд между двумя действующими задачами аккаунта (`OTBOR_ACCOUNT_SUBMIT_INTERVAL_SECONDS`, 75). 0 - без темпа. */
   readonly accountSubmitIntervalSeconds?: number
-  /** Пауза отправок аккаунта после капчи, секунд (`OTBOR_ACCOUNT_CAPTCHA_PAUSE_SECONDS`, 300). */
-  readonly accountCaptchaPauseSeconds?: number
+  /** Случайная надбавка к интервалу, процентов (`OTBOR_ACCOUNT_SUBMIT_JITTER_PERCENT`, 50). */
+  readonly accountSubmitJitterPercent?: number
+  /** Потоки харнесса (`OTBOR_HARNESS_CONCURRENCY`, 6). */
+  readonly harnessSlots?: number
 }
+
+/** Настройки по умолчанию из опций сервиса. */
+const defaultsOf = (options: QueueServiceOptions): UserSettings => ({
+  accountBrowserConcurrency:
+    options.accountBrowserConcurrency ?? SettingsRepository.BUILTIN_SETTINGS.accountBrowserConcurrency,
+  accountActingConcurrency:
+    options.accountSubmitConcurrency ?? SettingsRepository.BUILTIN_SETTINGS.accountActingConcurrency,
+  submitIntervalSeconds:
+    options.accountSubmitIntervalSeconds ?? SettingsRepository.BUILTIN_SETTINGS.submitIntervalSeconds,
+  submitJitterPercent:
+    options.accountSubmitJitterPercent ?? SettingsRepository.BUILTIN_SETTINGS.submitJitterPercent,
+  submitHourlyLimit: null,
+  harnessSlots: options.harnessSlots ?? SettingsRepository.BUILTIN_SETTINGS.harnessSlots
+})
 
 export class QueueService extends Context.Service<QueueService, QueueServiceShape>()(
   "otbor/cloud/QueueService"
@@ -174,24 +196,14 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
         const dailyApplyLimit = yield* Config.Int("OTBOR_DAILY_APPLY_LIMIT").pipe(
           Config.withDefault(DEFAULT_DAILY_APPLY_LIMIT)
         )
-        const accountBrowserConcurrency = yield* Config.Int("OTBOR_ACCOUNT_BROWSER_CONCURRENCY").pipe(
-          Config.withDefault(QueueRepository.DEFAULT_ACCOUNT_BROWSER_CONCURRENCY)
-        )
-        const accountSubmitConcurrency = yield* Config.Int("OTBOR_ACCOUNT_SUBMIT_CONCURRENCY").pipe(
-          Config.withDefault(QueueRepository.DEFAULT_ACCOUNT_SUBMIT_CONCURRENCY)
-        )
-        const accountSubmitIntervalSeconds = yield* Config.Int("OTBOR_ACCOUNT_SUBMIT_INTERVAL_SECONDS").pipe(
-          Config.withDefault(QueueRepository.DEFAULT_ACCOUNT_SUBMIT_INTERVAL_SECONDS)
-        )
-        const accountCaptchaPauseSeconds = yield* Config.Int("OTBOR_ACCOUNT_CAPTCHA_PAUSE_SECONDS").pipe(
-          Config.withDefault(SubmitPacingRepository.DEFAULT_CAPTCHA_PAUSE_SECONDS)
-        )
+        const env = yield* settingsDefaultsFromEnv()
         return QueueService.layerWith({
-          accountCaptchaPauseSeconds,
           dailyApplyLimit,
-          accountBrowserConcurrency,
-          accountSubmitConcurrency,
-          accountSubmitIntervalSeconds,
+          accountBrowserConcurrency: env.accountBrowserConcurrency,
+          accountSubmitConcurrency: env.accountActingConcurrency,
+          accountSubmitIntervalSeconds: env.submitIntervalSeconds,
+          accountSubmitJitterPercent: env.submitJitterPercent,
+          harnessSlots: env.harnessSlots,
           ...overrides
         })
       })
@@ -207,6 +219,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
       const database = yield* Database
       const currentUser = yield* CurrentUser
       const autoApply = yield* AutoApplyRunner
+      const defaults = defaultsOf(options)
 
       /**
        * После коммита завершения: раннер двигает автозаявки, которых ждала эта
@@ -232,11 +245,16 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
       const concurrency: QueueServiceShape["concurrency"] = () =>
         database
           .asOwner((tx) =>
-            QueueRepository.concurrency(tx, currentUser.userId, {
-              browserCap: options.accountBrowserConcurrency ?? QueueRepository.DEFAULT_ACCOUNT_BROWSER_CONCURRENCY,
-              actingCap: options.accountSubmitConcurrency ?? QueueRepository.DEFAULT_ACCOUNT_SUBMIT_CONCURRENCY,
-              submitIntervalSeconds:
-                options.accountSubmitIntervalSeconds ?? QueueRepository.DEFAULT_ACCOUNT_SUBMIT_INTERVAL_SECONDS
+            Effect.gen(function*() {
+              const settings = yield* SettingsRepository.effective(tx, currentUser.userId, defaults)
+              return yield* QueueRepository.concurrency(tx, currentUser.userId, {
+                browserCap: settings.accountBrowserConcurrency,
+                actingCap: Math.min(settings.accountBrowserConcurrency, settings.accountActingConcurrency),
+                submitIntervalSeconds: settings.submitIntervalSeconds,
+                submitJitterPercent: settings.submitJitterPercent,
+                submitHourlyLimit: settings.submitHourlyLimit,
+                harnessSlots: settings.harnessSlots
+              })
             })
           )
           .pipe(Effect.mapError(toStorageError("queue.concurrency")))
@@ -319,15 +337,11 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                 holder: input.harnessId,
                 kinds: input.kinds,
                 accounts: input.accounts,
-                ...(options.accountBrowserConcurrency === undefined
-                  ? {}
-                  : { browserConcurrency: options.accountBrowserConcurrency }),
-                ...(options.accountSubmitConcurrency === undefined
-                  ? {}
-                  : { actingConcurrency: options.accountSubmitConcurrency }),
-                ...(options.accountSubmitIntervalSeconds === undefined
-                  ? {}
-                  : { submitIntervalSeconds: options.accountSubmitIntervalSeconds })
+                browserConcurrency: defaults.accountBrowserConcurrency,
+                actingConcurrency: defaults.accountActingConcurrency,
+                submitIntervalSeconds: defaults.submitIntervalSeconds,
+                submitJitterPercent: defaults.submitJitterPercent,
+                submitHourlyLimit: defaults.submitHourlyLimit
               })
               if (claimed === null) return null
 
@@ -401,10 +415,22 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
 
           const deadline = Date.now() + Math.min(Math.max(input.waitSeconds ?? 0, 0), 30) * 1_000
 
+          // Число потоков харнесса читаем на каждом ответе, в том числе пустом:
+          // так правка в настройках доходит до работающего харнесса без перезапуска.
+          const slots = () =>
+            database
+              .asUser(currentUser.userId, (tx) =>
+                SettingsRepository.effective(tx, currentUser.userId, defaults)
+              )
+              .pipe(
+                Effect.map((settings) => settings.harnessSlots),
+                Effect.mapError(toStorageError("harness.lease"))
+              )
+
           while (true) {
             const job = yield* claimOnce({ ...input, accounts })
-            if (job !== null) return { job }
-            if (Date.now() >= deadline) return { job: null }
+            if (job !== null) return { job, harnessSlots: yield* slots() }
+            if (Date.now() >= deadline) return { job: null, harnessSlots: yield* slots() }
             yield* Effect.sleep("750 millis")
           }
         })
@@ -515,17 +541,13 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                   }
                 }
 
-                // Капча от hh: отправки аккаунта встают на фиксированную паузу
-                // (по умолчанию 5 минут). Читающие задачи идут.
-                if (ctx.hhAccountId !== null) {
-                  if (exit.tag === "captcha") {
-                    const pause = yield* SubmitPacingRepository.recordCaptcha(
-                      tx,
-                      ctx.hhAccountId,
-                      options.accountCaptchaPauseSeconds ?? SubmitPacingRepository.DEFAULT_CAPTCHA_PAUSE_SECONDS
-                    )
+                // Капча от hh: отправки аккаунта встают без срока, пока оператор не
+                // решит капчу в профиле и не нажмёт «Продолжить». Читающие задачи идут.
+                if (ctx.hhAccountId !== null && exit.tag === "captcha") {
+                  const blocked = yield* SubmitPacingRepository.recordCaptcha(tx, ctx.userId, ctx.hhAccountId)
+                  if (blocked) {
                     yield* Effect.logWarning(
-                      `hh asked for a captcha (${job.stage}); submits of the account are paused until ${pause.until.toISOString()}`
+                      `hh asked for a captcha (${job.stage}); submits of the account are stopped until the operator resumes them`
                     )
                   }
                 }

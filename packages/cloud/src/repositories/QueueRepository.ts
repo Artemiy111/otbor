@@ -1,8 +1,17 @@
-import type { HarnessJob, JobKind, JobStage, JobStatus, QueueConcurrency, QueueStats } from "@otbor/contract"
+import type {
+  HarnessJob,
+  JobKind,
+  JobStage,
+  JobStatus,
+  QueueConcurrency,
+  QueueStats,
+  UserSettings
+} from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
 import { harnessJob } from "../db/tables.ts"
+import * as SettingsRepository from "./SettingsRepository.ts"
 
 export interface JobRow {
   readonly id: string
@@ -117,17 +126,21 @@ export interface ClaimInput {
   readonly actingConcurrency?: number
   /**
    * Минимум секунд между двумя действующими задачами одного аккаунта; к нему
-   * добавляется случайная надбавка до 50%. 0 выключает темп.
+   * добавляется случайная надбавка (`submitJitterPercent`). 0 выключает темп.
    */
   readonly submitIntervalSeconds?: number
+  /** Случайная надбавка к интервалу, процентов от него (по умолчанию 50). */
+  readonly submitJitterPercent?: number
+  /** Не больше стольких отправок аккаунта за скользящий час; `null` - без лимита. */
+  readonly submitHourlyLimit?: number | null
 }
 
 export const DEFAULT_ACCOUNT_BROWSER_CONCURRENCY = 4
 export const DEFAULT_ACCOUNT_SUBMIT_CONCURRENCY = 1
 /** Темп отправок аккаунта по умолчанию (`OTBOR_ACCOUNT_SUBMIT_INTERVAL_SECONDS`). */
 export const DEFAULT_ACCOUNT_SUBMIT_INTERVAL_SECONDS = 75
-/** Верхняя граница случайной надбавки к интервалу, доля от него. */
-export const SUBMIT_INTERVAL_JITTER = 0.5
+/** Случайная надбавка к интервалу по умолчанию, процентов от него. */
+export const DEFAULT_SUBMIT_JITTER_PERCENT = 50
 
 /**
  * Стадии, которые действуют от имени аккаунта (клик «откликнуться», письмо в
@@ -158,6 +171,13 @@ const kindClause = (kinds: ReadonlyArray<JobKind>) =>
 
 const actingList = sql.join(ACTING_STAGES.map((stage) => sql`${stage}`), sql`, `)
 
+/**
+ * Числовая настройка владельца задачи (`user_settings`) или `fallback`, пока
+ * строки нет. Читается в самом запросе выбора кандидата, по `harness_jobs.user_id`.
+ */
+const settingOf = (column: string, fallback: number) =>
+  sql`coalesce((select s.${sql.identifier(column)} from user_settings s where s.user_id = harness_jobs.user_id), ${fallback}::int)`
+
 /** Сколько раз claim пробует другого кандидата, проиграв гонку за аккаунт. */
 const CLAIM_ATTEMPTS = 5
 
@@ -184,6 +204,10 @@ const accountLoad = (holder: string, accountId: string) => sql`
  * занятый аккаунт не заслоняет inference и задачи других аккаунтов
  * (head-of-line blocking), и задачи не откладываются на 5 секунд.
  *
+ * Потолки, темп и часовой лимит берутся из `user_settings` владельца задачи
+ * при каждой выдаче (нет строки - значения из `ClaimInput`), так что правка из
+ * интерфейса действует без перезапуска.
+ *
  * Отсев в запросе — снимок. Гонку закрывает блокировка строки `account_lease`:
  * upsert берёт её, параллельный claim того же аккаунта ждёт до коммита и
  * пересчитывает занятость уже с нашей задачей. Проигравший по потолку
@@ -192,12 +216,22 @@ const accountLoad = (holder: string, accountId: string) => sql`
 export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | null> =>
   Effect.gen(function*() {
     const leaseSeconds = input.leaseSeconds ?? 120
-    const browserCap = Math.max(1, input.browserConcurrency ?? DEFAULT_ACCOUNT_BROWSER_CONCURRENCY)
-    const actingCap = Math.min(
-      browserCap,
-      Math.max(1, input.actingConcurrency ?? DEFAULT_ACCOUNT_SUBMIT_CONCURRENCY)
-    )
-    const intervalSeconds = Math.max(0, input.submitIntervalSeconds ?? DEFAULT_ACCOUNT_SUBMIT_INTERVAL_SECONDS)
+    // Значения на случай, когда у владельца задачи нет строки настроек.
+    const defaults: UserSettings = {
+      accountBrowserConcurrency: Math.max(1, input.browserConcurrency ?? DEFAULT_ACCOUNT_BROWSER_CONCURRENCY),
+      accountActingConcurrency: Math.max(1, input.actingConcurrency ?? DEFAULT_ACCOUNT_SUBMIT_CONCURRENCY),
+      submitIntervalSeconds: Math.max(0, input.submitIntervalSeconds ?? DEFAULT_ACCOUNT_SUBMIT_INTERVAL_SECONDS),
+      submitJitterPercent: Math.max(0, input.submitJitterPercent ?? DEFAULT_SUBMIT_JITTER_PERCENT),
+      submitHourlyLimit: input.submitHourlyLimit ?? null,
+      harnessSlots: 6
+    }
+    const browserCapSql = settingOf("account_browser_concurrency", defaults.accountBrowserConcurrency)
+    const actingCapSql = sql`least(${browserCapSql}, ${
+      settingOf("account_acting_concurrency", defaults.accountActingConcurrency)
+    })`
+    const hourlyLimitSql = sql`(case when exists (select 1 from user_settings s where s.user_id = harness_jobs.user_id)
+      then (select s.submit_hourly_limit from user_settings s where s.user_id = harness_jobs.user_id)
+      else ${defaults.submitHourlyLimit}::int end)`
     const rejectedAccounts: Array<string> = []
 
     for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt++) {
@@ -247,17 +281,28 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
                     and r.kind = 'browser'
                     and r.status in ('leased', 'running')
                     and r.locked_by = ${input.holder}
-                ) < ${browserCap}::int
+                ) < ${browserCapSql}
                 and (
                   harness_jobs.stage not in (${actingList})
                   or exists (
-                    -- Темп и пауза после капчи: действующую задачу аккаунт принимает
-                    -- не раньше submit_next_at и не во время submit_paused_until.
+                    -- Темп и блокировка после капчи: действующую задачу аккаунт
+                    -- принимает не раньше submit_next_at и пока оператор не снял блокировку.
                     select 1 from hh_account pa
                     where pa.id = harness_jobs.hh_account_id
                       and (pa.submit_next_at is null or pa.submit_next_at <= now())
-                      and (pa.submit_paused_until is null or pa.submit_paused_until <= now())
+                      and pa.submit_blocked_at is null
                   )
+                )
+                and (
+                  -- Часовой лимит отправок аккаунта (null - без лимита).
+                  harness_jobs.stage <> 'submit'
+                  or ${hourlyLimitSql} is null
+                  or (
+                    select count(*) from harness_jobs r
+                    where r.hh_account_id = harness_jobs.hh_account_id
+                      and r.stage = 'submit'
+                      and r.leased_at > now() - interval '1 hour'
+                  ) < ${hourlyLimitSql}
                 )
                 and (
                   harness_jobs.stage not in (${actingList})
@@ -268,7 +313,7 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
                       and r.status in ('leased', 'running')
                       and r.locked_by = ${input.holder}
                       and r.stage in (${actingList})
-                  ) < ${actingCap}::int
+                  ) < ${actingCapSql}
                 )
               )
             )
@@ -311,21 +356,38 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
         const total = Number(load?.total ?? 0)
         const acting = Number(load?.acting ?? 0)
         const isActing = ACTING_STAGES.includes(candidate.stage as JobStage)
+        const settings = yield* SettingsRepository.effective(tx, candidate.user_id as string, defaults)
+        const browserCap = settings.accountBrowserConcurrency
+        const actingCap = Math.min(browserCap, settings.accountActingConcurrency)
         if (total >= browserCap || (isActing && acting >= actingCap)) {
           rejectedAccounts.push(hhAccountId)
           continue
         }
 
+        // Часовой лимит перепроверяем под той же блокировкой: выбор кандидата - снимок.
+        if (candidate.stage === "submit" && settings.submitHourlyLimit !== null) {
+          const used = yield* tx.execute(sql`
+            select count(*)::int as n from harness_jobs
+            where hh_account_id = ${hhAccountId} and stage = 'submit'
+              and leased_at > now() - interval '1 hour'
+          `)
+          if (Number((used.rows[0] as { n?: number } | undefined)?.n ?? 0) >= settings.submitHourlyLimit) {
+            rejectedAccounts.push(hhAccountId)
+            continue
+          }
+        }
+
         if (isActing) {
           // Темп проверяем и назначаем под той же блокировкой account_lease:
           // параллельный claim этого аккаунта видит уже сдвинутый submit_next_at.
-          const jitter = intervalSeconds * SUBMIT_INTERVAL_JITTER * Math.random()
+          const intervalSeconds = settings.submitIntervalSeconds
+          const jitter = intervalSeconds * (settings.submitJitterPercent / 100) * Math.random()
           const paced = yield* tx.execute(sql`
             update hh_account
             set submit_next_at = now() + make_interval(secs => ${intervalSeconds + jitter})
             where id = ${hhAccountId}
               and (submit_next_at is null or submit_next_at <= now())
-              and (submit_paused_until is null or submit_paused_until <= now())
+              and submit_blocked_at is null
             returning id
           `)
           if (paced.rows.length === 0) {
@@ -342,6 +404,7 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
               lease_id = uuidv7(),
               lease_epoch = lease_epoch + 1,
               lease_until = now() + make_interval(secs => ${leaseSeconds}),
+              leased_at = now(),
               locked_by = ${input.holder},
               attempts = attempts + 1,
               updated_at = now()
@@ -515,7 +578,10 @@ export const stats = (tx: Executor, kind?: string): RepoEffect<QueueStats> =>
 interface ConcurrencyCaps {
   readonly browserCap: number
   readonly actingCap: number
-  readonly submitIntervalSeconds?: number
+  readonly submitIntervalSeconds: number
+  readonly submitJitterPercent: number
+  readonly submitHourlyLimit: number | null
+  readonly harnessSlots: number
 }
 
 const stageCounts = (rows: ReadonlyArray<Record<string, unknown>>) =>
@@ -557,8 +623,8 @@ export const concurrency = (
              ) as name,
              l.holder, h.name as holder_name,
              case when a.submit_next_at > now() then a.submit_next_at end as next_submit_at,
-             case when a.submit_paused_until > now() then a.submit_paused_until end as paused_until,
-             case when a.submit_paused_until > now() then a.submit_pause_reason end as pause_reason
+             a.submit_blocked_at as blocked_at,
+             a.submit_block_reason as block_reason
       from hh_account a
       left join account_lease l on l.hh_account_id = a.id and l.expires_at > now()
       left join harness h on h.id::text = l.holder and h.user_id = a.user_id
@@ -595,7 +661,10 @@ export const concurrency = (
     return {
       browserCap: caps.browserCap,
       actingCap: caps.actingCap,
-      submitIntervalSeconds: caps.submitIntervalSeconds ?? DEFAULT_ACCOUNT_SUBMIT_INTERVAL_SECONDS,
+      submitIntervalSeconds: caps.submitIntervalSeconds,
+      submitJitterPercent: caps.submitJitterPercent,
+      submitHourlyLimit: caps.submitHourlyLimit,
+      harnessSlots: caps.harnessSlots,
       actingStages: ACTING_STAGES,
       harnesses: harnesses.map((row) => ({
         id: String(row.id),
@@ -614,8 +683,8 @@ export const concurrency = (
           holderHarnessId: row.holder === null ? null : String(row.holder),
           holderHarnessName: row.holder_name === null ? null : String(row.holder_name),
           nextSubmitAt: row.next_submit_at == null ? null : new Date(String(row.next_submit_at)).toISOString(),
-          submitPausedUntil: row.paused_until == null ? null : new Date(String(row.paused_until)).toISOString(),
-          submitPauseReason: row.pause_reason == null ? null : String(row.pause_reason),
+          submitBlockedAt: row.blocked_at == null ? null : new Date(String(row.blocked_at)).toISOString(),
+          submitBlockReason: row.block_reason == null ? null : String(row.block_reason),
           running: run,
           browserRunning: sum(run),
           actingRunning: sum(run.filter((c) => ACTING_STAGES.includes(c.stage))),

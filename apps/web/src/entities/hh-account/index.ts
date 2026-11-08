@@ -1,5 +1,7 @@
 export { hhAccountApi } from "./api"
 export { defaultHhAccountColor, hhAccountColor, hhAccountColorById } from "./colors"
-export { hhAccountKeys, hhAccountName, hhAccountNameById, hhAccountHue, hhAccountInitials } from "./model"
+export { captchaEpisodeText, hhAccountKeys, hhAccountName, hhAccountNameById, hhAccountHue, hhAccountInitials } from "./model"
 export { ALL_ACCOUNTS, DEFAULT_ACCOUNT, useAccountFilter, useDefaultAccount } from "./scope"
 export { default as AccountChip } from "./ui/AccountChip.vue"
+export { default as CaptchaBlockAlert } from "./ui/CaptchaBlockAlert.vue"
+export { default as CaptchaEpisodesCard } from "./ui/CaptchaEpisodesCard.vue"

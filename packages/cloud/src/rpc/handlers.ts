@@ -1,5 +1,5 @@
 import { OtborRpcs, type ProxyMode, type VacancyId } from "@otbor/contract"
-import { Effect, Layer } from "effect"
+import { Cause, Effect, Layer } from "effect"
 import { ProxyService } from "../services/ProxyService.ts"
 import { ApplyFilterService } from "../services/ApplyFilterService.ts"
 import { AutoApplyViewService } from "../services/AutoApplyViewService.ts"
@@ -36,6 +36,7 @@ import { ChatSync } from "../services/ChatSync.ts"
 import { ResumeSync } from "../services/ResumeSync.ts"
 import { PresetService } from "../services/PresetService.ts"
 import { QueueService } from "../services/QueueService.ts"
+import { SettingsService } from "../services/SettingsService.ts"
 import { ResumeService } from "../services/ResumeService.ts"
 import { ScheduleDispatcher } from "../services/ScheduleDispatcher.ts"
 import { ScheduleService } from "../services/ScheduleService.ts"
@@ -84,6 +85,8 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const telegram = yield* TelegramService
     const blacklist = yield* BlacklistService
     const hhAccounts = yield* HhAccountService
+    const settings = yield* SettingsService
+    const autoApply = yield* AutoApplyRunner
     const resumes = yield* ResumeService
     const negotiations = yield* NegotiationsSync
     const letters = yield* LetterAttach
@@ -137,6 +140,24 @@ export const OtborHandlers = OtborRpcs.toLayer(
       HhAccountUpsert: (payload) => hhAccounts.upsert(payload),
       HhAccountSessionSet: (payload) => hhAccounts.setSession(payload),
       HhAccountRemove: ({ id }) => hhAccounts.remove(id),
+      HhAccountSubmitResume: ({ hhAccountId }) =>
+        hhAccounts.resumeSubmits(hhAccountId).pipe(
+          Effect.tap(({ applicationIds }) =>
+            // Освобождённые автозаявки раннер двигает сразу, не дожидаясь расписания;
+            // сбой только в лог: их подхватит и обычный проход.
+            applicationIds.length === 0
+              ? Effect.void
+              : CurrentUser.pipe(
+                  Effect.flatMap((user) => autoApply.advance(user.userId, applicationIds)),
+                  Effect.catchCause((cause) => Effect.logWarning(`resume: advance failed: ${Cause.pretty(cause)}`)),
+                  Effect.forkDetach
+                )
+          ),
+          Effect.map(({ account, applicationIds }) => ({ account, released: applicationIds.length }))
+        ),
+      HhCaptchaEpisodesList: (payload) => hhAccounts.captchaEpisodes(payload),
+      SettingsGet: () => settings.get(),
+      SettingsUpdate: (payload) => settings.update(payload),
 
       ResumesList: (payload) => resumes.list(payload?.hhAccountId),
       ResumeGet: ({ id }) => resumes.get(id),
@@ -368,5 +389,6 @@ export const OtborServices = Layer.mergeAll(
   LetterAttach.layer,
   BrowserApply.layer,
   ChatSync.layer,
-  QueueService.layer
+  QueueService.layer,
+  SettingsService.layer
 )

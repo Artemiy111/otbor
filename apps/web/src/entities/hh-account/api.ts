@@ -1,4 +1,4 @@
-import type { HhAccountId, HhAccountRecord } from "@otbor/contract"
+import type { CaptchaEpisode, HhAccountId, HhAccountRecord } from "@otbor/contract"
 import { call } from "@/shared/api"
 
 export const hhAccountApi = {
@@ -27,5 +27,12 @@ export const hhAccountApi = {
       })
     ),
   remove: (id: string): Promise<{ readonly id: HhAccountId; readonly deleted: boolean }> =>
-    call((client) => client.HhAccountRemove({ id: id as HhAccountId }))
+    call((client) => client.HhAccountRemove({ id: id as HhAccountId })),
+  /** Оператор решил капчу: снимает блокировку отправок аккаунта. */
+  resumeSubmits: (
+    hhAccountId: string
+  ): Promise<{ readonly account: HhAccountRecord; readonly released: number }> =>
+    call((client) => client.HhAccountSubmitResume({ hhAccountId: hhAccountId as HhAccountId })),
+  captchaEpisodes: (limit = 10): Promise<ReadonlyArray<CaptchaEpisode>> =>
+    call((client) => client.HhCaptchaEpisodesList({ limit }))
 }
