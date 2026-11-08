@@ -35,6 +35,8 @@ export interface BrowserSubmitInput {
   /** hh's id of the user logged in on the page. */
   readonly hhid?: string | null | undefined
   readonly resumeTitle: string | null
+  /** hh's id of the resume the response used, when the page's response list told. */
+  readonly resumeExternalId?: string | null | undefined
   readonly letter: string | null
   readonly answers: ReadonlyArray<FormAnswer>
   readonly formHash: string | null
@@ -87,6 +89,23 @@ const accountOfHhid = (tx: Executor, hhid: string | null | undefined) =>
     if (!/^\d+$/.test(id)) return null
     const result = yield* tx.execute(sql`select id from hh_account where session_profile = ${`hh_${id}`} limit 1`)
     return (result.rows[0]?.id as string | undefined) ?? null
+  })
+
+/** The resume hh names by its own id: its account and our row, when otbor has synced it. */
+const resumeByExternalId = (tx: Executor, externalId: string | null | undefined, hhAccountId: string | null) =>
+  Effect.gen(function*() {
+    const id = (externalId ?? "").trim()
+    if (id === "") return null
+    const result = yield* tx.execute(sql`
+      select id, hh_account_id from resume
+      where source = 'hh' and external_id = ${id}
+        and (${hhAccountId}::uuid is null or hh_account_id = ${hhAccountId}::uuid)
+      limit 2`)
+    if (result.rows.length !== 1) return null
+    return {
+      hhAccountId: result.rows[0]!.hh_account_id as string,
+      resumeId: result.rows[0]!.id as string
+    } satisfies Target
   })
 
 /** The account is known: its resume by that title, else its one application to the vacancy. */
@@ -249,10 +268,13 @@ export class BrowserApply extends Context.Service<BrowserApply, BrowserApplyShap
                   return result("unknown_vacancy", null, `vacancy ${input.externalId} is not in the corpus`)
                 }
                 const account = yield* accountOfHhid(tx, input.hhid)
+                // hh's own id of the resume beats its title; it also names the account.
+                const named = yield* resumeByExternalId(tx, input.resumeExternalId, account)
                 const target =
-                  account !== null
+                  named ??
+                  (account !== null
                     ? yield* targetInAccount(tx, account, vacancyId, resumeTitle)
-                    : yield* resolveTarget(tx, vacancyId, resumeTitle)
+                    : yield* resolveTarget(tx, vacancyId, resumeTitle))
                 if (target === null) {
                   return result("no_account", null, "cannot tell which hh account responded; set a default account")
                 }

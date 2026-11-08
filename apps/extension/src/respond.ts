@@ -6,7 +6,7 @@ import type {
   FormQuestion,
   ResponseForm
 } from "@otbor/contract"
-import { parseResponseForm } from "@otbor/hh"
+import { parseNegotiations, parseResponseForm } from "@otbor/hh"
 import type { Request, Settings } from "@/messages.ts"
 
 /**
@@ -514,8 +514,33 @@ export const startResponseWatch = (
     }
   }
 
+  /**
+   * The resume of a response whose form named none (hh responds in one click
+   * with the account's resume): hh's own list of responses says which resume
+   * each response was sent with. The list may show the new response a moment
+   * late, so it is read a few times; null leaves the resume to `otbor hh sync`.
+   */
+  const resumeFromNegotiations = async (externalId: string): Promise<string | null> => {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (attempt > 0) await wait(1500)
+      try {
+        const response = await fetch("/applicant/negotiations?page=0", { credentials: "same-origin" })
+        if (!response.ok) continue
+        const page = parseNegotiations(await response.text())
+        if (!page.readable) continue
+        const topic = page.topics.find((item) => item.vacancyId === externalId)
+        if (topic !== undefined) return topic.resumeId
+      } catch {
+        // offline or blocked: the sync fills the resume later
+      }
+    }
+    return null
+  }
+
   const record = async (snap: Snapshot): Promise<void> => {
     try {
+      const resumeExternalId =
+        snap.kind === "submit" && snap.resumeTitle === null ? await resumeFromNegotiations(snap.externalId) : null
       const result = await send<BrowserSubmitResult>({
         type: "record",
         payload: {
@@ -523,6 +548,7 @@ export const startResponseWatch = (
           externalId: snap.externalId,
           hhid: await pageHhid(),
           resumeTitle: snap.resumeTitle,
+          resumeExternalId,
           letter: snap.letter,
           answers: snap.answers,
           formHash: snap.formHash,

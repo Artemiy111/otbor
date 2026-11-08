@@ -210,6 +210,38 @@ if (!enabled || serverUrl === null) {
       expect((await appRow(tenant.userId, first)).state).toBe("draft")
     })
 
+    test("a one-click response is stored with the resume hh's own id names", async () => {
+      const tenant = await support.seedTenant("browser-resume-id")
+      const other = await support.addAccount(tenant.userId, "second")
+      await support.setDefaultAccount(tenant.userId, tenant.accountId)
+      const externalId = String(9_300_000 + Math.floor(Math.random() * 90_000))
+      await support.seedVacancyWithExternal(externalId, "Browser resume id")
+      const mine = await support.seedResume({ userId: tenant.userId, accountId: tenant.accountId, title: "DevOps" })
+      const theirs = await support.seedResume({ userId: tenant.userId, accountId: other, title: "DevOps" })
+      await support.runAs(
+        tenant.userId,
+        support.ownerTx((tx) =>
+          tx.execute(sql`update resume set external_id = '88001' where id = ${theirs}`).pipe(
+            Effect.andThen(tx.execute(sql`update resume set external_id = '88002' where id = ${mine}`))
+          )
+        )
+      )
+
+      // No form, no title, no hhid: only hh's resume id says whose response it was.
+      const result = await record(tenant.userId, input(externalId, { resumeExternalId: "88001" }))
+      expect(result.status).toBe("recorded")
+      const rows = await support.runAs(
+        tenant.userId,
+        support.ownerTx((tx) =>
+          tx
+            .execute(sql`select hh_account_id, resume_id from application where id = ${result.application!.id}`)
+            .pipe(Effect.map((r) => r.rows[0] as { hh_account_id: string; resume_id: string }))
+        )
+      )
+      expect(rows.hh_account_id).toBe(other)
+      expect(rows.resume_id).toBe(theirs)
+    })
+
     test("an otbor submit in flight is left to the reconcile", async () => {
       const tenant = await support.seedTenant("browser-inflight")
       const externalId = String(9_500_000 + Math.floor(Math.random() * 400_000))

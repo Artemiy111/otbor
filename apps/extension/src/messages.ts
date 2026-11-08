@@ -37,6 +37,8 @@ export interface RecordPayload {
   readonly externalId: string
   readonly hhid: string | null
   readonly resumeTitle: string | null
+  /** hh's id of the resume, read from hh's list of responses when the form named none. */
+  readonly resumeExternalId?: string | null
   readonly letter: string | null
   readonly answers: ReadonlyArray<FormAnswer>
   readonly formHash: string | null

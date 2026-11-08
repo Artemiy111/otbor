@@ -195,6 +195,12 @@ export const ApplicationsRecordBrowserSubmit = Rpc.make("ApplicationsRecordBrows
     hhid: Schema.optional(Schema.NullOr(Schema.String)),
     /** The resume the form had selected, as hh titles it. */
     resumeTitle: Schema.NullOr(Schema.String),
+    /**
+     * hh's id of the resume the response was sent with, read from hh's own list
+     * of responses when the form named none (a one-click response). Stronger
+     * than the title: titles repeat, ids do not.
+     */
+    resumeExternalId: Schema.optional(Schema.NullOr(Schema.String)),
     letter: Schema.NullOr(Schema.String),
     answers: Schema.Array(FormAnswer),
     formHash: Schema.NullOr(Schema.String),
