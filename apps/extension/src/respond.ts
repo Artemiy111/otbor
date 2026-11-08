@@ -634,5 +634,31 @@ export const startResponseWatch = (
     location.assign(`/applicant/vacancy_response?vacancyId=${externalId}`)
   }
 
-  return { check: () => void autofill(), maybeOpen }
+  /**
+   * Whatever hh's button or popup looked like, a vacancy page that offered a
+   * response and now says "you responded" got one: record it. Armed only by a
+   * page that showed the button unanswered, so a page that was already
+   * "responded" when it loaded (or loaded late) records nothing. The click
+   * handlers above usually get there first; the server answers "already".
+   */
+  const armed = new Set<string>()
+  const watchResponded = (): void => {
+    const externalId = vacancyExternalId()
+    if (externalId === null || !location.pathname.startsWith("/vacancy/")) return
+    const responded = respondedNow()
+    if (!responded) {
+      if (document.querySelector(QUICK_RESPONSE_SELECTOR) !== null) armed.add(externalId)
+      return
+    }
+    if (!armed.delete(externalId)) return
+    void record(snapshot("submit", externalId))
+  }
+
+  return {
+    check: () => {
+      void autofill()
+      watchResponded()
+    },
+    maybeOpen
+  }
 }
