@@ -88,6 +88,15 @@ export const isSubmitSuccess = (html: string, url: string): boolean =>
 export const MAX_ARTIFACT_HTML = 400_000
 
 /**
+ * Страница как улика для облака: без скриптов, стилей, шаблонов и
+ * комментариев, а потом с ограничением длины. Облако читает страницу именно так
+ * (`visibleMarkup`), поэтому ничего нужного не теряется. Простая обрезка сырой
+ * страницы hh (1-1,5 МБ, первые сотни КБ - встроенные шрифты) отрезала все
+ * признаки отклика, и проверка отправки и сверка видели «нечитаемую» страницу.
+ */
+export const evidenceHtml = (html: string): string => visibleMarkup(html).slice(0, MAX_ARTIFACT_HTML)
+
+/**
  * The form element when the page has one, otherwise the page itself; both are
  * capped. Keeps the artifact small without hiding what the cloud must parse.
  */

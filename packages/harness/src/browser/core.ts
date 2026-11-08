@@ -13,9 +13,9 @@ import type {
 } from "@otbor/contract"
 import {
   classifyResponsePage,
+  evidenceHtml,
   formFragment,
   negotiationsStateFragment,
-  MAX_ARTIFACT_HTML,
   pageExcerpt,
   parseNegotiations,
   parseResponseForm,
@@ -327,7 +327,7 @@ export const postClickExit = (
     clicked: true,
     url,
     marker,
-    html: html.slice(0, 400_000),
+    html: evidenceHtml(html),
     ...(extra.letterAttached === undefined ? {} : { letterAttached: extra.letterAttached })
   })
 
@@ -400,7 +400,7 @@ export const reconcileExit = (
     externalId,
     ...(read.vacancy === undefined
       ? {}
-      : { vacancy: { url: read.vacancy.url, html: read.vacancy.html.slice(0, MAX_ARTIFACT_HTML) } }),
+      : { vacancy: { url: read.vacancy.url, html: evidenceHtml(read.vacancy.html) } }),
     negotiations: read.negotiations.map((page) => ({
       url: page.url,
       // The list lives in the page's initial state; the rest of the page is
