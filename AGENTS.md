@@ -70,6 +70,8 @@ guide doesn't cover, search through the source code in `node_modules/effect/src`
 - The operator CLI is also a binary: `packages/cli/bin/otbor` is the executable,
   and `bun run link` (or `cd packages/cli && bun link`) installs `otbor` into
   `~/.bun/bin`. Do not tell operators to type `bun packages/cli/src/main.ts`.
+- Все комментарии в коде (включая JSDoc и комментарии в тестах и SQL-миграциях)
+  пишутся на русском языке.
 - No `console.log` in server code. Use `Effect.log*`; logs go to the terminal
   and to `logs/app-YYYY-MM-DD.log`.
 - Crawl schedules are user-owned rows. The worker claims due schedules with
