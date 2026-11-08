@@ -27,6 +27,7 @@ export interface LeaseNextInput {
   readonly kinds: ReadonlyArray<JobKind>
   readonly accounts: ReadonlyArray<HhAccountId>
   readonly waitSeconds?: number
+  readonly concurrency?: number
 }
 
 export interface HeartbeatInput {

@@ -117,6 +117,55 @@ export const QueueStats = Schema.Struct({
 
 export type QueueStats = typeof QueueStats.Type
 
+/** Сколько задач одной стадии. */
+export const StageCount = Schema.Struct({
+  stage: JobStage,
+  count: Schema.Int
+})
+
+export type StageCount = typeof StageCount.Type
+
+export const ConcurrencyHarness = Schema.Struct({
+  id: HarnessId,
+  name: Schema.String,
+  /** Потоки харнесса (`OTBOR_HARNESS_CONCURRENCY`); null, пока он не сообщил. */
+  slots: Schema.NullOr(Schema.Int),
+  /** Его задачи в `leased`/`running`, браузерные и inference вместе. */
+  busy: Schema.Int,
+  lastSeenAt: Schema.NullOr(Schema.String)
+})
+
+export const ConcurrencyAccount = Schema.Struct({
+  id: HhAccountId,
+  name: Schema.String,
+  /** Держатель неистёкшего `account_lease`. */
+  holderHarnessId: Schema.NullOr(HarnessId),
+  holderHarnessName: Schema.NullOr(Schema.String),
+  /** Браузерные задачи в `leased`/`running` по стадиям. */
+  running: Schema.Array(StageCount),
+  browserRunning: Schema.Int,
+  actingRunning: Schema.Int,
+  /** Браузерные задачи в `pending`, которым уже пора, по стадиям. */
+  pending: Schema.Array(StageCount),
+  pendingTotal: Schema.Int,
+  oldestPendingAgeSeconds: Schema.Int
+})
+
+export const QueueConcurrency = Schema.Struct({
+  /** Браузерных задач аккаунта разом у одного харнесса (`OTBOR_ACCOUNT_BROWSER_CONCURRENCY`). */
+  browserCap: Schema.Int,
+  /** Из них действующих: submit, letter_attach (`OTBOR_ACCOUNT_SUBMIT_CONCURRENCY`). */
+  actingCap: Schema.Int,
+  actingStages: Schema.Array(JobStage),
+  harnesses: Schema.Array(ConcurrencyHarness),
+  accounts: Schema.Array(ConcurrencyAccount),
+  /** Браузерные задачи без аккаунта. */
+  unassigned: Schema.Struct({ running: Schema.Array(StageCount), pending: Schema.Array(StageCount) }),
+  inference: Schema.Struct({ running: Schema.Int, pending: Schema.Int })
+})
+
+export type QueueConcurrency = typeof QueueConcurrency.Type
+
 export const HeartbeatResult = Schema.Struct({
   ok: Schema.Boolean,
   reason: Schema.optional(Schema.NullOr(Schema.String))

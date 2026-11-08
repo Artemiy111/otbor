@@ -104,10 +104,11 @@ export const revoke = (tx: Executor, harnessId: string): RepoEffect<boolean> =>
     .returning({ id: harness.id })
     .pipe(Effect.map((rows) => rows.length > 0))
 
-export const touch = (tx: Executor, harnessId: string): RepoEffect<void> =>
+/** Каждый опрос — признак жизни; потоки харнесса сообщает он сам. */
+export const touch = (tx: Executor, harnessId: string, concurrency?: number): RepoEffect<void> =>
   tx
     .update(harness)
-    .set({ lastSeenAt: new Date() })
+    .set({ lastSeenAt: new Date(), ...(concurrency === undefined ? {} : { concurrency }) })
     .where(sql`${harness.id} = ${harnessId}`)
     .pipe(Effect.asVoid)
 

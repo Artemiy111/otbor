@@ -419,6 +419,8 @@ export const harness = pgTable("harness", {
   kinds: jsonb("kinds").$type<ReadonlyArray<string>>().notNull().default([]),
   tokenHash: text("token_hash"),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  /** Потоки харнесса; он сообщает их при каждом lease. */
+  concurrency: integer("concurrency"),
   /** Agents, models and efforts the harness probed (`AgentHarness[]`). */
   catalog: jsonb("catalog").$type<ReadonlyArray<AgentHarness>>(),
   catalogAt: timestamp("catalog_at", { withTimezone: true }),

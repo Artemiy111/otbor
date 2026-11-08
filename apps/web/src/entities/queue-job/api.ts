@@ -1,4 +1,4 @@
-import type { HarnessJob, QueueStats } from "@otbor/contract"
+import type { HarnessJob, QueueConcurrency, QueueStats } from "@otbor/contract"
 import { call } from "@/shared/api"
 
 export interface QueueJobListInput {
@@ -10,6 +10,7 @@ export interface QueueJobListInput {
 export const queueJobApi = {
   stats: (kind?: "browser" | "inference"): Promise<QueueStats> =>
     call((client) => client.QueueStatsGet({ kind })),
+  concurrency: (): Promise<QueueConcurrency> => call((client) => client.QueueConcurrencyGet({})),
   list: (input: QueueJobListInput): Promise<ReadonlyArray<HarnessJob>> =>
     call((client) => client.QueueJobsList(input))
 }

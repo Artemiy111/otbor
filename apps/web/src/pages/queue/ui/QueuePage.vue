@@ -7,6 +7,7 @@ import { RefreshButton } from "@/features/refresh-button"
 import { Card, CardContent } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
 import BackgroundQueuePanel from "./BackgroundQueuePanel.vue"
+import ConcurrencyPanel from "./ConcurrencyPanel.vue"
 import JobQueuePanel from "./JobQueuePanel.vue"
 
 type Tab = "browser" | "inference" | "background"
@@ -49,6 +50,7 @@ const overview = computed(() => [
 const browserPanel = ref<InstanceType<typeof JobQueuePanel>>()
 const inferencePanel = ref<InstanceType<typeof JobQueuePanel>>()
 const backgroundPanel = ref<InstanceType<typeof BackgroundQueuePanel>>()
+const concurrencyPanel = ref<InstanceType<typeof ConcurrencyPanel>>()
 
 const refresh = () => {
   void Promise.all([
@@ -57,7 +59,8 @@ const refresh = () => {
     runs.refetch(),
     browserPanel.value?.refetch(),
     inferencePanel.value?.refetch(),
-    backgroundPanel.value?.refetch()
+    backgroundPanel.value?.refetch(),
+    concurrencyPanel.value?.refetch()
   ])
 }
 const isRefreshing = computed(() => browserStats.isLoading.value || inferenceStats.isLoading.value || runs.isLoading.value)
@@ -85,6 +88,8 @@ const isRefreshing = computed(() => browserStats.isLoading.value || inferenceSta
         </Card>
       </button>
     </div>
+
+    <ConcurrencyPanel ref="concurrencyPanel" class="mb-4" />
 
     <JobQueuePanel v-show="tab === 'browser'" ref="browserPanel" kind="browser" />
     <JobQueuePanel v-show="tab === 'inference'" ref="inferencePanel" kind="inference" />
