@@ -261,6 +261,14 @@ describe("negotiations sync", () => {
     expect(wantsMoreSyncPages(fixture("synthetic-negotiations.html"), 4)).toBe(true)
   })
 
+  test("a reconcile reads to the last page hh reports, not to a fixed limit", () => {
+    // Вакансии, которой нет в списке: чтение идёт дальше, пока hh говорит, что страницы есть.
+    expect(wantsMoreNegotiations(detailed, "no-such-vacancy", 0)).toBe(true)
+    expect(wantsMoreNegotiations(detailed, "no-such-vacancy", 1)).toBe(true)
+    expect(wantsMoreNegotiations(detailed, "no-such-vacancy", 2)).toBe(false)
+    expect(wantsMoreNegotiations(empty, "no-such-vacancy", 0)).toBe(false)
+  })
+
   test("reports the pages as untouched evidence, trimmed to the initial state", () => {
     const exit = negotiationsSyncExit([
       { url: "https://hh.ru/applicant/negotiations?page=0", html: detailed }

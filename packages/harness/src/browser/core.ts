@@ -360,23 +360,29 @@ export const negotiationsUrl = (baseUrl: string, page: number): string =>
   `${baseUrl.replace(/\/+$/, "")}/applicant/negotiations?page=${page}`
 
 /**
- * Сколько страниц списка откликов читает сверка (по 20 на странице). Облако
- * признаёт «отклика нет» только по списку, дочитанному до конца, а при восьми
- * страницах аккаунт с 300+ откликами никогда не дочитывался и каждая сверка
- * заканчивалась «inconclusive». Найденный отклик останавливает чтение раньше.
+ * Список откликов читается до конца: до последней страницы, которую называет
+ * hh (`pageCount`), или до первой пустой. Облако признаёт «отклика нет» только
+ * по дочитанному списку. Это не лимит, а защита от зацикливания, если hh
+ * перестанет сообщать число страниц и будет отдавать одну и ту же:
+ * 500 страниц по 20 - это 10 000 откликов.
  */
-export const MAX_NEGOTIATION_PAGES = 25
+export const NEGOTIATION_PAGES_CEILING = 500
+
+/** Сверка: сколько страниц читается самое большее (см. {@link NEGOTIATION_PAGES_CEILING}). */
+export const MAX_NEGOTIATION_PAGES = NEGOTIATION_PAGES_CEILING
 
 /**
  * Whether another negotiations page is worth opening. This only saves
  * requests; it does not say whether a response exists.
  */
-export const wantsMoreNegotiations = (html: string, externalId: string): boolean => {
+export const wantsMoreNegotiations = (html: string, externalId: string, index?: number): boolean => {
   const page = parseNegotiations(html)
   return (
     page.readable &&
     page.topics.length > 0 &&
-    !page.topics.some((topic) => topic.vacancyId === externalId)
+    !page.topics.some((topic) => topic.vacancyId === externalId) &&
+    // Последняя страница по словам hh: дальше читать нечего.
+    (index === undefined || page.pageCount === null || index + 1 < page.pageCount)
   )
 }
 
@@ -420,8 +426,8 @@ export const reconcileExit = (
 /* Negotiations sync                                                          */
 /* -------------------------------------------------------------------------- */
 
-/** Pages of the negotiations list a sync reads at most (hh shows 20 per page). */
-export const MAX_SYNC_PAGES = 25
+/** Синхронизация: сколько страниц читается самое большее (см. {@link NEGOTIATION_PAGES_CEILING}). */
+export const MAX_SYNC_PAGES = NEGOTIATION_PAGES_CEILING
 
 /**
  * Whether the sync opens the next page after reading page `index`. Only saves

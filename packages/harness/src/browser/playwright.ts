@@ -666,7 +666,7 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
             html.includes("HH-Lux-InitialState")
           )
           negotiations.push(read)
-          if (!wantsMoreNegotiations(read.html, payload.externalId)) break
+          if (!wantsMoreNegotiations(read.html, payload.externalId, index)) break
         }
         return reconcileExit(payload.externalId, { vacancy, negotiations })
       }),
