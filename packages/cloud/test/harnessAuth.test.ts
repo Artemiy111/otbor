@@ -2,7 +2,7 @@ import { SQL } from "bun"
 import { afterAll, describe, expect, test } from "bun:test"
 import type { HarnessJob } from "@otbor/contract"
 import { eq } from "drizzle-orm"
-import { Effect, Layer, Logger } from "effect"
+import { ConfigProvider, Effect, Layer, Logger } from "effect"
 import { generateHarnessToken, hashHarnessToken } from "../src/auth/harnessToken.ts"
 import { Database, type Executor } from "../src/db/Database.ts"
 import { migrateProgram } from "../src/db/migrate.ts"
@@ -17,6 +17,7 @@ import { QueueService } from "../src/services/QueueService.ts"
 /* -------------------------------------------------------------------------- */
 
 interface TestDatabase {
+  readonly url: string
   readonly close: () => Promise<void>
 }
 
@@ -24,6 +25,14 @@ const adminUrl = (): string =>
   process.env.OTBOR_TEST_ADMIN_URL ??
   process.env.DATABASE_URL ??
   "postgres://otbor:otbor@localhost:55432/postgres"
+
+/**
+ * Адрес своей базы передаётся слою явно, а не через `process.env`: в общем
+ * прогоне `bun test` интеграционные файлы того же процесса переписывают
+ * `DATABASE_URL`, и тест уходил в чужую базу.
+ */
+const databaseUrlLayer = (url: string) =>
+  ConfigProvider.layerAdd(ConfigProvider.fromUnknown({ DATABASE_URL: url }), { asPrimary: true })
 
 const createTestDatabase = async (): Promise<TestDatabase | null> => {
   const base = adminUrl()
@@ -44,8 +53,9 @@ const createTestDatabase = async (): Promise<TestDatabase | null> => {
   const connection = url.toString()
 
   try {
-    process.env.DATABASE_URL = connection
-    await Effect.runPromise(migrateProgram().pipe(Effect.provide(Logger.layer([]))))
+    await Effect.runPromise(
+      migrateProgram().pipe(Effect.provide(Logger.layer([])), Effect.provide(databaseUrlLayer(connection)))
+    )
   } catch (cause) {
     const cleanup = new SQL(base)
     await cleanup.unsafe(`drop database if exists "${name}" with (force)`)
@@ -54,6 +64,7 @@ const createTestDatabase = async (): Promise<TestDatabase | null> => {
   }
 
   return {
+    url: connection,
     close: async () => {
       const cleanup = new SQL(base)
       await cleanup.unsafe(`drop database if exists "${name}" with (force)`)
@@ -79,7 +90,8 @@ const withQueue = <A, E>(effect: Effect.Effect<A, E, QueueService>) =>
   }).pipe(
     Effect.provide(QueueService.layer),
     Effect.provide(Layer.mergeAll(Database.layer, CurrentUser.layer)),
-    Effect.provide(Logger.layer([]))
+    Effect.provide(Logger.layer([])),
+    Effect.provide(databaseUrlLayer(database!.url))
   )
 
 const runQueue = <A, E>(effect: Effect.Effect<A, E, QueueService>) =>
@@ -90,7 +102,11 @@ const runDb = <A, E>(effect: (tx: Executor) => Effect.Effect<A, E>) =>
     Effect.gen(function*() {
       const db = yield* Database
       return yield* db.asOwner(effect)
-    }).pipe(Effect.provide(Database.layer), Effect.provide(Logger.layer([])))
+    }).pipe(
+      Effect.provide(Database.layer),
+      Effect.provide(Logger.layer([])),
+      Effect.provide(databaseUrlLayer(database!.url))
+    )
   )
 
 const registerHarness = (name: string) =>
