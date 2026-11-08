@@ -263,6 +263,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
       AutoApplyRetry: (payload) => autoApplyView.retry(payload),
 
       QueueStatsGet: ({ kind }) => queue.stats(kind),
+      QueueConcurrencyGet: () => queue.concurrency(),
       QueueJobsList: (payload) => queue.jobs(payload),
 
       HarnessRegister: (payload) => queue.register(payload),

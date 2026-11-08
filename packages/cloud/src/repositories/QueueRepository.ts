@@ -1,4 +1,4 @@
-import type { HarnessJob, JobKind, JobStage, JobStatus, QueueStats } from "@otbor/contract"
+import type { HarnessJob, JobKind, JobStage, JobStatus, QueueConcurrency, QueueStats } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
@@ -472,6 +472,112 @@ export const stats = (tx: Executor, kind?: string): RepoEffect<QueueStats> =>
         }
       })
     )
+
+interface ConcurrencyCaps {
+  readonly browserCap: number
+  readonly actingCap: number
+}
+
+const stageCounts = (rows: ReadonlyArray<Record<string, unknown>>) =>
+  rows.map((row) => ({ stage: String(row.stage) as JobStage, count: Number(row.n) }))
+
+/**
+ * Параллельность одним снимком: потоки харнессов, занятость аккаунтов по
+ * стадиям, кто держит аккаунт. Идёт от владельца, потому что `account_lease`
+ * закрыт RLS; всё остальное фильтруется по `user_id` вручную.
+ */
+export const concurrency = (
+  tx: Executor,
+  userId: string,
+  caps: ConcurrencyCaps
+): RepoEffect<QueueConcurrency> =>
+  Effect.gen(function*() {
+    const harnesses = (yield* tx.execute(sql`
+      select h.id, h.name, h.concurrency, h.last_seen_at,
+             (select count(*)::int from harness_jobs j
+               where j.user_id = ${userId} and j.locked_by = h.id::text
+                 and j.status in ('leased', 'running')) as busy
+      from harness h
+      where h.user_id = ${userId}
+      order by h.name
+    `)).rows as ReadonlyArray<Record<string, unknown>>
+
+    const accounts = (yield* tx.execute(sql`
+      select a.id,
+             coalesce(
+               nullif(trim(concat_ws(' ', a.first_name, a.last_name)), ''),
+               nullif(a.label, ''),
+               a.id::text
+             ) as name,
+             l.holder, h.name as holder_name
+      from hh_account a
+      left join account_lease l on l.hh_account_id = a.id and l.expires_at > now()
+      left join harness h on h.id::text = l.holder and h.user_id = a.user_id
+      where a.user_id = ${userId}
+      order by a.is_default desc, name
+    `)).rows as ReadonlyArray<Record<string, unknown>>
+
+    const running = (yield* tx.execute(sql`
+      select hh_account_id, stage, count(*)::int as n
+      from harness_jobs
+      where user_id = ${userId} and kind = 'browser' and status in ('leased', 'running')
+      group by hh_account_id, stage
+    `)).rows as ReadonlyArray<Record<string, unknown>>
+
+    const pending = (yield* tx.execute(sql`
+      select hh_account_id, stage, count(*)::int as n,
+             coalesce(max(extract(epoch from (now() - run_at))), 0)::int as age
+      from harness_jobs
+      where user_id = ${userId} and kind = 'browser' and status = 'pending' and run_at <= now()
+      group by hh_account_id, stage
+    `)).rows as ReadonlyArray<Record<string, unknown>>
+
+    const inference = (yield* tx.execute(sql`
+      select count(*) filter (where status in ('leased', 'running'))::int as running,
+             count(*) filter (where status = 'pending' and run_at <= now())::int as pending
+      from harness_jobs
+      where user_id = ${userId} and kind = 'inference'
+    `)).rows[0] as Record<string, unknown> | undefined
+
+    const forAccount = (rows: ReadonlyArray<Record<string, unknown>>, id: string | null) =>
+      rows.filter((row) => (row.hh_account_id === null ? null : String(row.hh_account_id)) === id)
+    const sum = (rows: ReadonlyArray<{ readonly count: number }>) => rows.reduce((total, r) => total + r.count, 0)
+
+    return {
+      browserCap: caps.browserCap,
+      actingCap: caps.actingCap,
+      actingStages: ACTING_STAGES,
+      harnesses: harnesses.map((row) => ({
+        id: String(row.id),
+        name: String(row.name),
+        slots: row.concurrency === null ? null : Number(row.concurrency),
+        busy: Number(row.busy),
+        lastSeenAt: row.last_seen_at === null ? null : new Date(String(row.last_seen_at)).toISOString()
+      })),
+      accounts: accounts.map((row) => {
+        const id = String(row.id)
+        const run = stageCounts(forAccount(running, id))
+        const wait = forAccount(pending, id)
+        return {
+          id,
+          name: String(row.name),
+          holderHarnessId: row.holder === null ? null : String(row.holder),
+          holderHarnessName: row.holder_name === null ? null : String(row.holder_name),
+          running: run,
+          browserRunning: sum(run),
+          actingRunning: sum(run.filter((c) => ACTING_STAGES.includes(c.stage))),
+          pending: stageCounts(wait),
+          pendingTotal: sum(stageCounts(wait)),
+          oldestPendingAgeSeconds: Math.max(0, ...wait.map((r) => Number(r.age)))
+        }
+      }),
+      unassigned: {
+        running: stageCounts(forAccount(running, null)),
+        pending: stageCounts(forAccount(pending, null))
+      },
+      inference: { running: Number(inference?.running ?? 0), pending: Number(inference?.pending ?? 0) }
+    } as unknown as QueueConcurrency
+  })
 
 export const oldestPendingAge = (tx: Executor): RepoEffect<number> =>
   tx

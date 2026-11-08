@@ -8,12 +8,20 @@ import {
   HarnessJob,
   HarnessRegistration,
   HeartbeatResult,
+  QueueConcurrency,
   QueueStats
 } from "../models/index.ts"
 
 export const QueueStatsGet = Rpc.make("QueueStatsGet", {
   payload: Schema.Struct({ kind: Schema.optional(JobKind) }),
   success: QueueStats,
+  error: ApiError
+})
+
+/** Параллельность: потоки харнессов, потолки аккаунтов, кто что держит. */
+export const QueueConcurrencyGet = Rpc.make("QueueConcurrencyGet", {
+  payload: Schema.Struct({}),
+  success: QueueConcurrency,
   error: ApiError
 })
 
@@ -44,7 +52,9 @@ export const HarnessLeaseNext = Rpc.make("HarnessLeaseNext", {
     token: Schema.String,
     kinds: Schema.Array(JobKind),
     accounts: Schema.Array(HhAccountId),
-    waitSeconds: Schema.optional(Schema.Int)
+    waitSeconds: Schema.optional(Schema.Int),
+    /** Потоки харнесса (`OTBOR_HARNESS_CONCURRENCY`); облако показывает их на странице очереди. */
+    concurrency: Schema.optional(Schema.Int)
   }),
   success: Schema.Struct({
     job: Schema.NullOr(HarnessJob)

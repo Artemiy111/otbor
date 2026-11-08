@@ -98,6 +98,7 @@ import {
   HarnessLeaseNext,
   HarnessRegister,
   HarnessRevoke,
+  QueueConcurrencyGet,
   QueueJobsList,
   QueueStatsGet
 } from "./queue.ts"
@@ -239,6 +240,7 @@ export const OtborRpcs = RpcGroup.make(
   AutoApplyProgress,
   AutoApplyRetry,
   QueueStatsGet,
+  QueueConcurrencyGet,
   QueueJobsList,
   HarnessRegister,
   HarnessLeaseNext,

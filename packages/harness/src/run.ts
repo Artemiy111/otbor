@@ -347,7 +347,8 @@ const leaseOnce = (config: HarnessConfig, runOptions: RunJobOptions) =>
       token: config.token,
       kinds: config.kinds,
       accounts: config.accounts,
-      waitSeconds: config.waitSeconds
+      waitSeconds: config.waitSeconds,
+      concurrency: config.once ? 1 : config.concurrency
     })
 
     if (job === null) {

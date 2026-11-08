@@ -6,6 +6,7 @@ import type {
   HarnessRegistration,
   HeartbeatResult,
   JobKind,
+  QueueConcurrency,
   QueueStats
 } from "@otbor/contract"
 import { HarnessRejected, NotFound } from "@otbor/contract"
@@ -93,6 +94,8 @@ export interface LeaseInput {
   readonly kinds: ReadonlyArray<JobKind>
   readonly accounts: ReadonlyArray<string>
   readonly waitSeconds?: number
+  /** Потоки харнесса, если он их сообщил. */
+  readonly concurrency?: number
 }
 
 export interface HeartbeatInput {
@@ -125,6 +128,7 @@ interface Completed extends CompleteResult {
 
 export interface QueueServiceShape {
   readonly stats: (kind?: string) => Effect.Effect<QueueStats, ApiError>
+  readonly concurrency: () => Effect.Effect<QueueConcurrency, ApiError>
   readonly jobs: (options: {
     readonly status?: string
     readonly kind?: string
@@ -208,6 +212,16 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
         database
           .asUser(currentUser.userId, (tx) => QueueRepository.stats(tx, kind))
           .pipe(Effect.mapError(toStorageError("queue.stats")))
+
+      const concurrency: QueueServiceShape["concurrency"] = () =>
+        database
+          .asOwner((tx) =>
+            QueueRepository.concurrency(tx, currentUser.userId, {
+              browserCap: options.accountBrowserConcurrency ?? QueueRepository.DEFAULT_ACCOUNT_BROWSER_CONCURRENCY,
+              actingCap: options.accountSubmitConcurrency ?? QueueRepository.DEFAULT_ACCOUNT_SUBMIT_CONCURRENCY
+            })
+          )
+          .pipe(Effect.mapError(toStorageError("queue.concurrency")))
 
       const jobs: QueueServiceShape["jobs"] = (options) =>
         database
@@ -350,7 +364,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
 
           // Every poll is proof of life; the health page and the job queue read it.
           yield* database
-            .asUser(currentUser.userId, (tx) => HarnessRepository.touch(tx, input.harnessId))
+            .asUser(currentUser.userId, (tx) => HarnessRepository.touch(tx, input.harnessId, input.concurrency))
             .pipe(Effect.mapError(toStorageError("harness.lease")))
 
           const registered = yield* database
@@ -583,6 +597,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
 
       return QueueService.of({
         stats,
+        concurrency,
         jobs,
         register,
         leaseNext,
