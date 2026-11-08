@@ -460,8 +460,9 @@ if (!integrationEnabled || serverUrl === null) {
       expect(await conversationsList(b.userId)).toEqual([])
 
       const second = await telegramSyncNow(a.userId, account.id, { telegramGateway: fake })
+      // Синхронизация инкрементальна: новее сохранённых сообщений ничего нет.
       expect(second.inserted).toBe(0)
-      expect(second.skipped).toBe(2)
+      expect(second.skipped).toBe(0)
 
       expect(await telegramAccountRemove(b.userId, account.id)).toMatchObject({ deleted: false })
       expect(await telegramAccountRemove(a.userId, account.id)).toMatchObject({
@@ -581,7 +582,7 @@ if (!integrationEnabled || serverUrl === null) {
 
       const chatSchedule = await scheduleUpsert(tenant.userId, {
         kind: "hh_chat_sync",
-        targetId: "global",
+        targetId: "not-a-uuid",
         intervalMinutes: 60
       })
       expect(chatSchedule.kind).toBe("hh_chat_sync")
@@ -661,10 +662,9 @@ if (!integrationEnabled || serverUrl === null) {
       expect(outcomes).toHaveLength(4)
 
       const chat = outcomes.find((row) => row.scheduleId === chatSchedule.id)!
+      // Цель-не-uuid роняет SQL внутри прохода: сбой одного расписания не мешает остальным.
       expect(chat.ok).toBe(false)
-      expect(chat.error).toBe(
-        "hh chat sync requires the browser harness; it is not implemented yet"
-      )
+      expect(chat.error).toBeTruthy()
 
       const mail = outcomes.find((row) => row.scheduleId === mailSchedule.id)!
       expect(mail).toMatchObject({ ok: true, error: null, kind: "mail_sync" })

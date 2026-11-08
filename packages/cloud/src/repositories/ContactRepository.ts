@@ -1,4 +1,11 @@
-import type { ContactKind, ContactRecord, ContactSource, VacancyId } from "@otbor/contract"
+import type {
+  ContactKind,
+  ContactRecord,
+  ContactSource,
+  PersonId,
+  PersonLink,
+  VacancyId
+} from "@otbor/contract"
 import { extractContactsFromText } from "@otbor/domain"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
@@ -24,6 +31,8 @@ export interface ContactRow {
   readonly is_bot: boolean
   readonly vacancy_id: string | null
   readonly employer_id: string | null
+  readonly person_id: string | null
+  readonly person_link: string | null
   readonly first_seen_at: Date | string
   readonly last_seen_at: Date | string
   readonly hh_account_ids?: ReadonlyArray<string> | null
@@ -45,6 +54,8 @@ export const toRecord = (row: ContactRow): ContactRecord => ({
   isBot: row.is_bot,
   vacancyId: row.vacancy_id as VacancyId | null,
   employerId: row.employer_id as ContactRecord["employerId"],
+  personId: row.person_id as PersonId | null,
+  personLink: row.person_link as PersonLink | null,
   firstSeenAt: iso(row.first_seen_at),
   lastSeenAt: iso(row.last_seen_at),
   hhAccountIds: row.hh_account_ids ?? []
@@ -61,7 +72,8 @@ export interface ContactFilter {
 
 const selection = sql`
   select id, person_name, person_role, kind, value, url, source, confidence,
-         evidence, is_bot, vacancy_id, employer_id, first_seen_at, last_seen_at,
+         evidence, is_bot, vacancy_id, employer_id, person_id, person_link,
+         first_seen_at, last_seen_at,
          coalesce((
            select array_agg(distinct cv.account_id order by cv.account_id)
            from (
@@ -180,6 +192,9 @@ export interface ContactInput {
   readonly personName?: string | null
   readonly personRole?: string | null
   readonly isBot?: boolean | null
+  /** Человек, которому принадлежит идентичность; вместе с `personLink`. */
+  readonly personId?: string | null
+  readonly personLink?: PersonLink | null
 }
 
 export interface UpsertContactsInput {
@@ -202,6 +217,10 @@ export interface UpsertContactsResult {
  * Idempotent upsert. A new sighting may improve a field but never erases one:
  * `coalesce` keeps the old name/site when the new row has no answer, and
  * confidence moves to the maximum.
+ *
+ * Привязка к человеку (`personId`/`personLink`) осторожнее остальных полей:
+ * ручная (`manual`) никогда не перезаписывается, а предложение (`suggested`)
+ * не отбирает контакт у человека, к которому он уже привязан.
  */
 export const upsertMany = (
   tx: Executor,
@@ -217,7 +236,7 @@ export const upsertMany = (
         insert into contact (
           user_id, person_name, person_role, kind, value, url, source,
           confidence, evidence, is_bot, vacancy_id, employer_id,
-          first_seen_at, last_seen_at
+          person_id, person_link, first_seen_at, last_seen_at
         ) values (
           ${input.userId},
           ${contact.personName ?? null},
@@ -231,6 +250,8 @@ export const upsertMany = (
           ${contact.isBot ?? false},
           ${input.vacancyId ?? null},
           ${input.employerId ?? null},
+          ${contact.personId ?? null},
+          ${contact.personId == null ? null : (contact.personLink ?? "auto")},
           ${now},
           ${now}
         )
@@ -247,6 +268,18 @@ export const upsertMany = (
           is_bot = contact.is_bot or excluded.is_bot,
           vacancy_id = coalesce(excluded.vacancy_id, contact.vacancy_id),
           employer_id = coalesce(excluded.employer_id, contact.employer_id),
+          person_id = case
+            when contact.person_link = 'manual' then contact.person_id
+            when contact.person_id is not null and excluded.person_link = 'suggested'
+              then contact.person_id
+            else coalesce(excluded.person_id, contact.person_id)
+          end,
+          person_link = case
+            when contact.person_link = 'manual' then contact.person_link
+            when contact.person_id is not null and excluded.person_link = 'suggested'
+              then contact.person_link
+            else coalesce(excluded.person_link, contact.person_link)
+          end,
           last_seen_at = excluded.last_seen_at
         returning (xmax = 0) as inserted
       `)

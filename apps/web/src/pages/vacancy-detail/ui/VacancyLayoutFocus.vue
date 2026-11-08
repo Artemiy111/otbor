@@ -7,6 +7,7 @@ import VacancyDecision from "./VacancyDecision.vue"
 import VacancyDescription from "./VacancyDescription.vue"
 import VacancyPassport from "./VacancyPassport.vue"
 import VacancyKeywords from "./VacancyKeywords.vue"
+import VacancyPeople from "./VacancyPeople.vue"
 import VacancySkills from "./VacancySkills.vue"
 
 defineProps<{ page: VacancyPage }>()
@@ -40,6 +41,7 @@ const h2 = "mb-2 text-sm font-semibold"
     </div>
     <aside class="min-w-0 space-y-5 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:self-start lg:overflow-y-auto lg:pr-1">
       <VacancyPassport :page="page" :data="page.data.value" :contacts="page.contacts.value" />
+      <VacancyPeople :page="page" />
       <VacancySkills :data="page.data.value" :resume="page.selectedResume.value" />
       <VacancyKeywords :data="page.data.value" :resume="page.selectedResume.value" />
       <section>

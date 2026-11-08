@@ -37,6 +37,7 @@ import {
   negotiationsUrl,
   postClickExit,
   profileUrl,
+  contactsWindow,
   chatDataUrl,
   chatReadExit,
   resumeSyncExit,
@@ -763,6 +764,18 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
           })
 
         const profile = yield* read(profileUrl(baseUrl), (html) => parseResumeRefs(html).length > 0)
+        // Контакты читаем как видимый текст: блок рисуется на клиенте, поэтому
+        // ждём его в пределах settleMs; сбой чтения не ломает синк резюме.
+        const contactsDeadline = Date.now() + config.settleMs
+        let profileContactsText: string | undefined
+        while (true) {
+          const bodyText = yield* attempt(() => page.evaluate("document.body.innerText") as Promise<string>).pipe(
+            Effect.orElseSucceed(() => "")
+          )
+          profileContactsText = contactsWindow(bodyText)
+          if (profileContactsText !== undefined || Date.now() >= contactsDeadline) break
+          yield* sleep(250)
+        }
         const refs = parseResumeRefs(profile.html)
         const limit = Math.min(payload.maxResumes ?? MAX_SYNC_RESUMES, MAX_SYNC_RESUMES)
         const resumes: Array<ReconcilePage> = []
@@ -770,7 +783,7 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
           yield* sleep(config.syncDelayMs ?? 1_500)
           resumes.push(yield* read(resumeUrl(baseUrl, ref.hash), (html) => html.includes("HH-Lux-InitialState")))
         }
-        return resumeSyncExit(profile, resumes)
+        return resumeSyncExit(profile, resumes, profileContactsText)
       }),
       { parallel: true }
     ).pipe(

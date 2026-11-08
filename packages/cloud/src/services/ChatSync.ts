@@ -9,6 +9,7 @@ import * as HarnessRepository from "../repositories/HarnessRepository.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
 import { CurrentUser } from "./CurrentUser.ts"
 import { chatReadJob } from "./jobs.ts"
+import { relinkConversations } from "./PersonService.ts"
 import { toStorageError } from "./support.ts"
 
 /**
@@ -51,7 +52,7 @@ export const importChat = (
       kind: "primary",
       source: "hh_chat"
     })
-    return yield* ConversationRepository.appendMessages(
+    const counts = yield* ConversationRepository.appendMessages(
       tx,
       input.userId,
       conversationId,
@@ -63,6 +64,97 @@ export const importChat = (
         text: message.text
       }))
     )
+    // Собеседник (имя из чата), контакты из входящих сообщений, человек и резюме
+    // отклика (`application.hh_chat_id`) определяются перелинковкой диалога в этой же
+    // транзакции. Стабильного id участника чата в ответе hh нет (`participantId`
+    // относится к конкретному чату), поэтому `hh_chat` идентичностью не становится.
+    yield* relinkConversations(tx, input.userId, conversationId)
+    return counts
+  })
+
+/** Сколько чатов ставится в очередь за один проход по умолчанию. */
+export const DEFAULT_CHAT_SYNC_LIMIT = 20
+/** Через сколько часов сохранённый чат считается устаревшим. */
+export const DEFAULT_CHAT_STALE_HOURS = 24
+
+export interface ChatSyncAllOptions {
+  /** Только этот аккаунт hh; иначе все аккаунты пользователя. */
+  readonly hhAccountId?: string
+  /** Не больше стольких заданий за проход. */
+  readonly limit?: number
+  /** Чат моложе этого возраста (по последнему чтению) не перечитывается. */
+  readonly staleHours?: number
+  readonly now?: Date
+}
+
+/**
+ * Ставит `chat_read` для откликов с известным чатом, у которых нет свежей копии.
+ * Пропускаются отклики с активным заданием и с заданием, поставленным позже
+ * границы свежести (в том числе неудачным: упавший чат не долбится каждый тик).
+ * Сначала идут чаты, которых ещё нет в базе, затем самые давние.
+ */
+export const enqueueChatReads = (
+  tx: Executor,
+  userId: string,
+  options: ChatSyncAllOptions = {}
+): RepoEffect<{ readonly queued: number; readonly candidates: number }> =>
+  Effect.gen(function*() {
+    const limit = Math.min(Math.max(Math.trunc(options.limit ?? DEFAULT_CHAT_SYNC_LIMIT), 1), 200)
+    const staleHours = Math.max(options.staleHours ?? DEFAULT_CHAT_STALE_HOURS, 0)
+    const cutoff = new Date((options.now ?? new Date()).getTime() - staleHours * 3_600_000)
+
+    const rows = yield* tx.execute(sql`
+      select distinct on (a.hh_account_id, a.hh_chat_id)
+        a.hh_account_id::text as hh_account_id,
+        a.vacancy_id::text as vacancy_id,
+        a.hh_chat_id as chat_id,
+        h.session_profile as session_profile,
+        c.updated_at as fetched_at
+      from application a
+      join hh_account h on h.id = a.hh_account_id and h.user_id = ${userId}
+      left join conversation c
+        on c.user_id = a.user_id and c.channel = 'hh_chat'
+       and c.account_id = a.hh_account_id::text and c.external_id = a.hh_chat_id
+      where a.user_id = ${userId}
+        and a.hh_chat_id is not null
+        ${options.hhAccountId === undefined ? sql`` : sql`and a.hh_account_id = ${options.hhAccountId}::uuid`}
+        and (c.id is null or c.updated_at < ${cutoff})
+        and not exists (
+          select 1 from harness_jobs j
+          where j.hh_account_id = a.hh_account_id and j.stage = ${STAGE}
+            and j.payload->>'chatId' = a.hh_chat_id
+            and j.status <> 'cancelled'
+            and (j.status in ('pending', 'leased', 'running') or j.created_at >= ${cutoff})
+        )
+      order by a.hh_account_id, a.hh_chat_id, a.updated_at desc
+    `)
+    const found = rows.rows as unknown as ReadonlyArray<{
+      hh_account_id: string
+      vacancy_id: string
+      chat_id: string
+      session_profile: string | null
+      fetched_at: Date | string | null
+    }>
+    const ordered = [...found].sort((left, right) => {
+      if (left.fetched_at === null && right.fetched_at !== null) return -1
+      if (left.fetched_at !== null && right.fetched_at === null) return 1
+      return new Date(left.fetched_at ?? 0).getTime() - new Date(right.fetched_at ?? 0).getTime()
+    })
+
+    let queued = 0
+    for (const row of ordered.slice(0, limit)) {
+      yield* chatReadJob(tx, {
+        userId,
+        hhAccountId: row.hh_account_id,
+        vacancyId: row.vacancy_id,
+        chatId: row.chat_id,
+        sessionProfile: row.session_profile,
+        sequence:
+          (yield* QueueRepository.countForVacancy(tx, row.hh_account_id, row.vacancy_id, STAGE, row.chat_id)) + 1
+      })
+      queued += 1
+    }
+    return { queued, candidates: found.length }
   })
 
 const fetchState = (status: JobStatus): VacancyChat["fetch"] => {
@@ -91,6 +183,14 @@ export interface ChatKey {
 export interface ChatSyncShape {
   readonly get: (key: ChatKey) => Effect.Effect<VacancyChat, ApiError>
   readonly refresh: (key: ChatKey) => Effect.Effect<VacancyChat, ApiError>
+  /**
+   * Пакетная синхронизация чатов: ставит `chat_read` для откликов без свежей
+   * копии чата (внутренний путь расписания `hh_chat_sync`, не RPC).
+   */
+  readonly syncAll: (
+    userId: string,
+    options?: ChatSyncAllOptions
+  ) => Effect.Effect<{ readonly queued: number; readonly candidates: number }, ApiError>
 }
 
 /** The chat of the response made with this resume; a single response needs no resume. */
@@ -200,7 +300,12 @@ export class ChatSync extends Context.Service<ChatSync, ChatSyncShape>()("otbor/
             )
           )
 
-      return ChatSync.of({ get, refresh })
+      const syncAll: ChatSyncShape["syncAll"] = (userId, options) =>
+        database
+          .asUser(userId, (tx) => enqueueChatReads(tx, userId, options))
+          .pipe(Effect.mapError(toStorageError("chat.syncAll")))
+
+      return ChatSync.of({ get, refresh, syncAll })
     })
   )
 }

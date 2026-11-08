@@ -3,7 +3,7 @@ import { Effect } from "effect"
 import { judgeChatRead, judgeNegotiationsSync, judgeResumeSync } from "../applyRules.ts"
 import { importChat } from "../ChatSync.ts"
 import { importTopics } from "../NegotiationsSync.ts"
-import { importResumes } from "../ResumeSync.ts"
+import { importProfileContacts, importResumes } from "../ResumeSync.ts"
 import { retryLater } from "./common.ts"
 import { outcome, type StageHandler } from "./types.ts"
 
@@ -59,6 +59,13 @@ export const completeResumeSync: StageHandler = (tx, ctx, exit) =>
         resumes: verdict.resumes,
         unreadable: verdict.unreadable
       })
+      if (verdict.contactsText !== undefined) {
+        yield* importProfileContacts(tx, {
+          userId: ctx.userId,
+          hhAccountId: ctx.hhAccountId,
+          text: verdict.contactsText
+        })
+      }
       return outcome(
         "done",
         `resumes synced: ${counts.imported} imported, ${counts.updated} updated, ${counts.unchanged} unchanged, ${counts.unreadable} unreadable`,

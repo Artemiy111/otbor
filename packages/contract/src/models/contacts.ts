@@ -4,9 +4,10 @@ import {
   ContactSource,
   ConversationChannel,
   MessageDirection,
-  MessageKind
+  MessageKind,
+  PersonLink
 } from "../enums.ts"
-import { ContactId, ConversationId, EmployerId, VacancyId } from "../ids.ts"
+import { ContactId, ConversationId, EmployerId, PersonId, VacancyId } from "../ids.ts"
 
 /**
  * One way to reach a person. The same `kind`+`value` is unique per user, so a
@@ -23,7 +24,11 @@ export const ContactSummary = Schema.Struct({
   confidence: Schema.NullOr(Schema.Number),
   isBot: Schema.Boolean,
   vacancyId: Schema.NullOr(VacancyId),
-  lastSeenAt: Schema.String
+  lastSeenAt: Schema.String,
+  /** The person this identity belongs to, when linked. */
+  personId: Schema.NullOr(PersonId),
+  /** How the link was made; `null` when `personId` is `null`. */
+  personLink: Schema.NullOr(PersonLink)
 })
 
 export type ContactSummary = typeof ContactSummary.Type
@@ -55,7 +60,9 @@ export const ConversationSummary = Schema.Struct({
   /** Text of the newest stored message, for list previews. */
   lastMessage: Schema.NullOr(Schema.String),
   /** The vacancy the thread is about, when one was linked. */
-  vacancyId: Schema.NullOr(VacancyId)
+  vacancyId: Schema.NullOr(VacancyId),
+  /** The human counterparty of the thread, when resolved. */
+  personId: Schema.NullOr(PersonId)
 })
 
 export type ConversationSummary = typeof ConversationSummary.Type

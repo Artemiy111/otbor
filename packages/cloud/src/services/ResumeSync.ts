@@ -6,10 +6,11 @@ import type {
   ResumeSyncStatus
 } from "@otbor/contract"
 import { Conflict, NotFound, ResumeSyncCounts as ResumeSyncCountsSchema } from "@otbor/contract"
-import { type ParsedResume, resumeExperienceKey } from "@otbor/hh"
+import { hasContactsHeading, type ParsedResume, parseProfileContactList, resumeExperienceKey } from "@otbor/hh"
 import { sql } from "drizzle-orm"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 import { Database, type Executor, type RepoEffect } from "../db/Database.ts"
+import * as HhAccountContactRepository from "../repositories/HhAccountContactRepository.ts"
 import * as HarnessRepository from "../repositories/HarnessRepository.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
 import * as ResumeRepository from "../repositories/ResumeRepository.ts"
@@ -42,6 +43,59 @@ const canonical = (value: unknown): string =>
   )
 
 const sameJson = (a: unknown, b: unknown): boolean => canonical(a) === canonical(b)
+
+const CONTACT_KINDS = ["phone", "email", "telegram"] as const
+
+/**
+ * Сохраняет собственные контакты аккаунта из текста блока «Контакты». Найденные
+ * значения обновляются идемпотентно; устаревшие значения вида удаляются, только
+ * если в тексте явно есть заголовок «Контакты» (иначе страница могла не
+ * дорисоваться). Новый telegram-handle сразу привязывается к telegram-аккаунтам
+ * пользователя с тем же username (source 'auto').
+ */
+export const importProfileContacts = (
+  tx: Executor,
+  input: {
+    readonly userId: string
+    readonly hhAccountId: string
+    readonly text: string
+    readonly now?: Date
+  }
+): RepoEffect<{ readonly saved: number; readonly linked: number }> =>
+  Effect.gen(function*() {
+    const now = input.now ?? new Date()
+    const list = parseProfileContactList(input.text)
+    for (const item of list) {
+      yield* HhAccountContactRepository.upsert(tx, {
+        userId: input.userId,
+        hhAccountId: input.hhAccountId,
+        kind: item.kind,
+        value: item.value,
+        raw: item.raw,
+        now
+      })
+    }
+    if (hasContactsHeading(input.text)) {
+      for (const kind of CONTACT_KINDS) {
+        yield* HhAccountContactRepository.deleteStale(tx, {
+          userId: input.userId,
+          hhAccountId: input.hhAccountId,
+          kind,
+          keep: list.find((item) => item.kind === kind)?.value ?? null
+        })
+      }
+    }
+    const telegram = list.find((item) => item.kind === "telegram")
+    const linked =
+      telegram === undefined
+        ? 0
+        : yield* HhAccountContactRepository.linkTelegramAccounts(tx, {
+            userId: input.userId,
+            hhAccountId: input.hhAccountId,
+            handle: telegram.value
+          })
+    return { saved: list.length, linked }
+  })
 
 /**
  * Upserts one resume per card. A resume whose content did not change is left

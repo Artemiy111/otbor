@@ -69,7 +69,11 @@ export interface TelegramGateway {
   loginWithQr(callbacks: QrLoginCallbacks): Promise<TelegramUser>
   me(): Promise<TelegramUser>
   listDialogs(limit?: number): Promise<TelegramDialog[]>
-  listMessages(chatId: string, limit?: number): Promise<TelegramMessage[]>
+  /**
+   * Последние сообщения диалога по возрастанию id. С `minId` возвращаются только
+   * сообщения с id строго больше `minId` (инкрементальная синхронизация).
+   */
+  listMessages(chatId: string, limit?: number, minId?: number): Promise<TelegramMessage[]>
   sendMessage(chatId: string, text: string): Promise<TelegramMessage>
   /** Serialized session. Never log this value. */
   sessionString(): string

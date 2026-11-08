@@ -13,6 +13,7 @@ import {
   contactSourceLabel,
   describeError,
   formatDate,
+  personPath,
   vacancyPath
 } from "@/shared/lib"
 import {
@@ -137,6 +138,26 @@ const columns: ColumnDef<ContactRecord>[] = [
               row.original.personRole
             )
       ])
+  },
+  {
+    id: "personLink",
+    accessorFn: (row) => row.personName ?? "",
+    header: sortableHeader<ContactRecord>("Человек"),
+    cell: ({ row }) => {
+      const { personId, personLink } = row.original
+      if (personId === null) return h("span", { class: "text-muted-foreground" }, "—")
+      return h("div", { class: "flex items-center gap-1.5" }, [
+        h(
+          "a",
+          {
+            href: personPath(personId),
+            class: "text-sm text-sky-700 dark:text-sky-300 underline-offset-4 hover:underline"
+          },
+          row.original.personName ?? "Открыть"
+        ),
+        personLink === "suggested" ? h(Badge, { variant: "warning" }, () => "предложено") : null
+      ])
+    }
   },
   {
     accessorKey: "value",
@@ -303,6 +324,7 @@ const columns: ColumnDef<ContactRecord>[] = [
             <SelectItem value="all">Все типы</SelectItem>
             <SelectItem value="email">Email</SelectItem>
             <SelectItem value="telegram">Telegram</SelectItem>
+            <SelectItem value="telegram_id">Telegram ID</SelectItem>
             <SelectItem value="phone">Телефон</SelectItem>
             <SelectItem value="hh_chat">Чат hh</SelectItem>
             <SelectItem value="other">Другое</SelectItem>

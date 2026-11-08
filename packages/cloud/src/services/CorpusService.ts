@@ -25,11 +25,13 @@ import type { Executor } from "../db/Database.ts"
 import { Database } from "../db/Database.ts"
 import { CurrentUser } from "./CurrentUser.ts"
 import * as ContactRepository from "../repositories/ContactRepository.ts"
+import * as ConversationRepository from "../repositories/ConversationRepository.ts"
 import * as LexiconRepository from "../repositories/LexiconRepository.ts"
 import * as DecisionRepository from "../repositories/DecisionRepository.ts"
 import * as EmployerRepository from "../repositories/EmployerRepository.ts"
 import * as VacancyAnalysisRepository from "../repositories/VacancyAnalysisRepository.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
+import { relinkConversations } from "./PersonService.ts"
 import { toStorageError, stableHash } from "./support.ts"
 
 interface LookupApplicationRow {
@@ -218,6 +220,19 @@ export class CorpusService extends Context.Service<CorpusService, CorpusServiceS
                   else if (result.status === "updated") updated += 1
                   else skipped += 1
                   items.push(VacancyRepository.toSummary(result.row))
+                }
+
+                // Диалоги, ждавшие эти вакансии (ссылка из Telegram, которой не было в
+                // базе), перелинковываются: ссылка превращается в связь, а главная
+                // вакансия выбирается заново.
+                const waiting = yield* ConversationRepository.conversationsAwaitingVacancies(
+                  tx,
+                  contactUserId,
+                  "hh",
+                  drafts.filter((draft) => (draft.source ?? "hh") === "hh").map((draft) => draft.externalId)
+                )
+                for (const conversationId of waiting) {
+                  yield* relinkConversations(tx, contactUserId, conversationId)
                 }
 
                 return { inserted, updated, skipped, items }

@@ -687,6 +687,54 @@ export const ContactsList = readTool("contacts_list", {
   })
 })
 
+export const PeopleList = readTool("people_list", {
+  description: "People (recruiters, hiring managers) who own contacts and conversations across channels, newest first.",
+  parameters: Schema.Struct({
+    query: text("Text search by name, role or contact value"),
+    limit: limit("Page size (default 20, max 100)"),
+    offset: limit("Offset (default 0)")
+  }),
+  success: Schema.Struct({
+    items: Schema.Array(Schema.Struct({
+      id: Schema.String,
+      name: NullableString,
+      role: NullableString,
+      employerId: NullableString,
+      contacts: Schema.Int,
+      conversations: Schema.Int,
+      lastSeenAt: NullableString
+    })),
+    total: Schema.Int
+  })
+})
+
+export const PersonGet = readTool("person_get", {
+  description: "One person with identities (contacts, with link kind and confidence), conversations, vacancy and resume ids.",
+  parameters: Schema.Struct({
+    id: Schema.String.annotate({ description: "Person id (UUID)" })
+  }),
+  success: Schema.Struct({
+    id: Schema.String,
+    name: NullableString,
+    role: NullableString,
+    notes: NullableString,
+    employerId: NullableString,
+    lastSeenAt: NullableString,
+    contacts: Schema.Array(Schema.Struct({
+      id: Schema.String,
+      kind: Schema.String,
+      value: Schema.String,
+      source: Schema.String,
+      link: NullableString,
+      confidence: Schema.NullOr(Schema.Number),
+      isBot: Schema.Boolean
+    })),
+    conversations: Schema.Array(ConversationBrief),
+    vacancyIds: Schema.Array(Schema.String),
+    resumeIds: Schema.Array(Schema.String)
+  })
+})
+
 /* --------------------------------- toolkit --------------------------------- */
 
 export const OtborReadToolkit = Toolkit.make(
@@ -711,6 +759,8 @@ export const OtborReadToolkit = Toolkit.make(
   ConversationsList,
   ConversationGet,
   ContactsList,
+  PeopleList,
+  PersonGet,
   SchedulesList,
   QueueStats
 )
@@ -723,7 +773,7 @@ Domain model, in pipeline order:
 - decision: the policy result for a vacancy: verdict (apply / draft / skip), fit (0-100 against the resume), priority (ranking score) and reasons (why). A vacancy is applicable when its verdict is apply. Reasons starting with "blocked_" explain a skip; \`blocked_filter\` lists the failed apply-filter rules. The "fit" reason says whether the number is "deterministic" (keyword rules, saturates near 95-100) or "llm" (a personal judgement, see fit_get).
 - application: created from an apply/draft decision; states draft, preparing (auto application waiting for form, letter or a daily slot; blockedReason/retryAt say why), queued (slot taken, submit queued), submitting, submitted, skipped, needs_human (with a blockedReason code), failed. Submit is at-most-once; "waiting" usually means draft or needs_human. Applications the operator made by hand on hh.ru are imported by the operator CLI command "otbor hh sync" as state submitted with origin "imported" (and hh's own status); they count as already applied (blocked_applied), cannot be approved or prepared again, and are not otbor submits. This server has no tool to run or change the sync.
 - kit: the cover letter and form answers prepared for an application.
-Also: hh accounts (accounts_list; several can exist), presets (saved filters), employers (with blacklist state), resumes (with operator enrichment), conversations and contacts (replies from recruiters), schedules (crawls) and the harness queue.
+Also: hh accounts (accounts_list; several can exist), presets (saved filters), employers (with blacklist state), resumes (with operator enrichment), conversations, contacts and people (replies from recruiters; people_list / person_get show the human behind several contacts and threads), schedules (crawls) and the harness queue.
 
 How to use the read tools:
 - "take N vacancies that are ..." (level, skill, company size, salary, remote, fit range, random sample): vacancies_search with a \`filter\`. Read its description first: it lists the rule fields and operators, how seniority "unknown" is treated and the company-size proxies.

@@ -170,9 +170,13 @@ export class TeleprotoGateway implements TelegramGateway {
    * Last messages of a dialog in chronological order. Call `listDialogs`
    * first on the same connection so teleproto has the entity cached.
    */
-  async listMessages(chatId: string, limit = 50): Promise<TelegramMessage[]> {
-    const messages = await this.client.getMessages(toPeer(chatId), { limit })
+  async listMessages(chatId: string, limit = 50, minId?: number): Promise<TelegramMessage[]> {
+    const messages = await this.client.getMessages(toPeer(chatId), {
+      limit,
+      ...(minId === undefined ? {} : { minId })
+    })
     return messages
+      .filter((message) => minId === undefined || message.id > minId)
       .map(toMessage)
       .sort((left, right) => Number(left.id) - Number(right.id))
   }

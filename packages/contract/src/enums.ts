@@ -281,8 +281,18 @@ export const SourceSyncKind = Schema.Literals([
 
 export type SourceSyncKind = typeof SourceSyncKind.Type
 
-/** What a contact is: a way to reach a person, not the person themselves. */
-export const ContactKind = Schema.Literals(["email", "telegram", "phone", "hh_chat", "other"])
+/**
+ * What a contact is: a way to reach a person, not the person themselves.
+ * `telegram_id` is the stable numeric Telegram user id (a username can change).
+ */
+export const ContactKind = Schema.Literals([
+  "email",
+  "telegram",
+  "telegram_id",
+  "phone",
+  "hh_chat",
+  "other"
+])
 
 export type ContactKind = typeof ContactKind.Type
 
@@ -335,3 +345,8 @@ export type BlacklistTarget = typeof BlacklistTarget.Type
 export const BlacklistSource = Schema.Literals(["user", "hh_hidden"])
 
 export type BlacklistSource = typeof BlacklistSource.Type
+
+/** How a contact was attached to a person: by a sure signal, suggested, or by the operator. */
+export const PersonLink = Schema.Literals(["auto", "suggested", "manual"])
+
+export type PersonLink = typeof PersonLink.Type

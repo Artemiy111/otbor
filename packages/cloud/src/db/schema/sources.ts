@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm"
 import {
   bigint,
   boolean,
+  type AnyPgColumn,
   doublePrecision,
   index,
   integer,
@@ -13,6 +14,7 @@ import {
   uniqueIndex,
   uuid
 } from "drizzle-orm/pg-core"
+import { hhAccount, resume } from "./candidate.ts"
 import { employer, users, vacancy } from "./corpus.ts"
 
 /**
@@ -31,6 +33,25 @@ const userId = () =>
     .notNull()
     .references(() => users.id, { onDelete: "cascade" })
 
+/** Человек-собеседник: владеет контактами и диалогами. Слитый человек не удаляется. */
+export const person = pgTable(
+  "person",
+  {
+    id: uuidPk(),
+    userId: userId(),
+    displayName: text("display_name"),
+    role: text("role"),
+    employerId: uuid("employer_id").references(() => employer.id, { onDelete: "set null" }),
+    notes: text("notes"),
+    mergedIntoId: uuid("merged_into_id").references((): AnyPgColumn => person.id, {
+      onDelete: "set null"
+    }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt()
+  },
+  (table) => [index("person_employer_idx").on(table.employerId)]
+)
+
 export const contact = pgTable(
   "contact",
   {
@@ -47,6 +68,8 @@ export const contact = pgTable(
     isBot: boolean("is_bot").notNull().default(false),
     vacancyId: uuid("vacancy_id").references(() => vacancy.id, { onDelete: "set null" }),
     employerId: uuid("employer_id").references(() => employer.id, { onDelete: "set null" }),
+    personId: uuid("person_id").references(() => person.id, { onDelete: "set null" }),
+    personLink: text("person_link"),
     firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow()
   },
@@ -72,6 +95,7 @@ export const conversation = pgTable(
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
     unreadCount: integer("unread_count").notNull().default(0),
     archived: boolean("archived").notNull().default(false),
+    personId: uuid("person_id").references(() => person.id, { onDelete: "set null" }),
     raw: jsonb("raw").$type<Record<string, unknown>>().notNull().default({}),
     createdAt: createdAt(),
     updatedAt: updatedAt()
@@ -136,6 +160,76 @@ export const conversationVacancy = pgTable(
       columns: [table.conversationId, table.vacancyId, table.kind]
     }),
     index("conversation_vacancy_vacancy_idx").on(table.vacancyId)
+  ]
+)
+
+/** Ссылка на вакансию hh, которой ещё нет в базе. */
+export const conversationVacancyRef = pgTable(
+  "conversation_vacancy_ref",
+  {
+    userId: userId(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversation.id, { onDelete: "cascade" }),
+    source: text("source").notNull().default("hh"),
+    externalId: text("external_id").notNull(),
+    evidence: text("evidence"),
+    createdAt: createdAt()
+  },
+  (table) => [
+    primaryKey({
+      name: "conversation_vacancy_ref_pkey",
+      columns: [table.conversationId, table.externalId]
+    })
+  ]
+)
+
+export const conversationResume = pgTable(
+  "conversation_resume",
+  {
+    userId: userId(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversation.id, { onDelete: "cascade" }),
+    resumeId: uuid("resume_id")
+      .notNull()
+      .references(() => resume.id, { onDelete: "cascade" }),
+    confidence: doublePrecision("confidence"),
+    source: text("source"),
+    evidence: text("evidence"),
+    createdAt: createdAt()
+  },
+  (table) => [
+    primaryKey({
+      name: "conversation_resume_pkey",
+      columns: [table.conversationId, table.resumeId]
+    }),
+    index("conversation_resume_resume_idx").on(table.resumeId)
+  ]
+)
+
+/** Собственные контакты соискателя с hh.ru/applicant/profile/me. */
+export const hhAccountContact = pgTable(
+  "hh_account_contact",
+  {
+    id: uuidPk(),
+    userId: userId(),
+    hhAccountId: uuid("hh_account_id")
+      .notNull()
+      .references(() => hhAccount.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    value: text("value").notNull(),
+    raw: text("raw"),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => [
+    uniqueIndex("hh_account_contact_account_kind_value_idx").on(
+      table.hhAccountId,
+      table.kind,
+      table.value
+    ),
+    index("hh_account_contact_user_idx").on(table.userId)
   ]
 )
 
@@ -245,5 +339,28 @@ export const telegramAccount = pgTable(
   (table) => [
     uniqueIndex("telegram_account_user_label_idx").on(table.userId, table.label),
     index("telegram_account_user_idx").on(table.userId)
+  ]
+)
+
+/** Какой аккаунт Telegram принадлежит какому аккаунту hh. */
+export const telegramAccountHhAccount = pgTable(
+  "telegram_account_hh_account",
+  {
+    userId: userId(),
+    telegramAccountId: uuid("telegram_account_id")
+      .notNull()
+      .references(() => telegramAccount.id, { onDelete: "cascade" }),
+    hhAccountId: uuid("hh_account_id")
+      .notNull()
+      .references(() => hhAccount.id, { onDelete: "cascade" }),
+    source: text("source").notNull(),
+    createdAt: createdAt()
+  },
+  (table) => [
+    primaryKey({
+      name: "telegram_account_hh_account_pkey",
+      columns: [table.telegramAccountId, table.hhAccountId]
+    }),
+    index("telegram_account_hh_account_hh_idx").on(table.hhAccountId)
   ]
 )

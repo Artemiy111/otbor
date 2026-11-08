@@ -6,6 +6,7 @@ import { AutoApplyViewService } from "../services/AutoApplyViewService.ts"
 import { ApplicationService } from "../services/ApplicationService.ts"
 import { BlacklistService } from "../services/BlacklistService.ts"
 import { ContactService } from "../services/ContactService.ts"
+import { PersonService } from "../services/PersonService.ts"
 import { ConversationService } from "../services/ConversationService.ts"
 import { CorpusService } from "../services/CorpusService.ts"
 import { CurrentUser } from "../services/CurrentUser.ts"
@@ -77,6 +78,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const queue = yield* QueueService
     const schedules = yield* ScheduleService
     const contacts = yield* ContactService
+    const people = yield* PersonService
     const conversations = yield* ConversationService
     const mail = yield* MailService
     const telegram = yield* TelegramService
@@ -192,6 +194,15 @@ export const OtborHandlers = OtborRpcs.toLayer(
       ContactsList: (payload) => contacts.list(payload),
       ContactRemove: ({ id }) => contacts.remove(id),
       ContactsExtract: () => contacts.extract(),
+      PersonList: (payload) => people.list(payload),
+      PersonGet: ({ id }) => people.get(id),
+      PersonUpdate: ({ id, ...fields }) => people.update(id, fields),
+      PersonMerge: ({ into, from }) => people.merge(into, from),
+      PersonSplit: ({ contactId }) => people.split(contactId),
+      ContactConfirm: ({ contactId }) => people.confirm(contactId),
+      ContactReject: ({ contactId }) => people.reject(contactId),
+      PeopleRelink: ({ conversationId }) =>
+        CurrentUser.pipe(Effect.flatMap((user) => people.relink(user.userId, conversationId))),
       ConversationsList: (payload) => conversations.list(payload),
       ConversationGet: ({ id }) => conversations.get(id),
 
@@ -337,6 +348,7 @@ export const OtborServices = Layer.mergeAll(
   HhAccountService.layer,
   ResumeService.layer,
   ContactService.layer,
+  PersonService.layer,
   ConversationService.layer,
   InferenceService.layer,
   WritingService.layer,

@@ -8,6 +8,7 @@ import { applyCommand } from "./commands/apply.ts"
 import { blacklistCommand } from "./commands/blacklist.ts"
 import { hhCommand } from "./commands/hh.ts"
 import { contactsCommand } from "./commands/contacts.ts"
+import { peopleCommand } from "./commands/people.ts"
 import { crawlCommand } from "./commands/crawl.ts"
 import { dbCommand } from "./commands/db.ts"
 import { decisionCommand } from "./commands/decision.ts"
@@ -96,6 +97,7 @@ root
       hydrateCommand,
       scheduleCommand,
       contactsCommand,
+      peopleCommand,
       mailCommand,
       telegramCommand,
       proxyCommand,

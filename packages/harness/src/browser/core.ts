@@ -478,6 +478,20 @@ export const profileUrl = (baseUrl: string): string =>
 export const resumeUrl = (baseUrl: string, hash: string): string =>
   `${baseUrl.replace(/\/+$/, "")}/resume/${encodeURIComponent(hash)}`
 
+/** Сколько символов после заголовка «Контакты» уходит в evidence. */
+export const CONTACTS_WINDOW_CHARS = 1500
+
+/**
+ * Окно видимого текста страницы вокруг заголовка «Контакты»: от заголовка и
+ * не дальше `CONTACTS_WINDOW_CHARS`. Без заголовка возвращает undefined.
+ */
+export const contactsWindow = (bodyText: string): string | undefined => {
+  const match = /(^|\n)\s*Контакты\s*(\n|$)/iu.exec(bodyText)
+  if (match === null) return undefined
+  const start = match.index + match[1]!.length
+  return bodyText.slice(start, start + CONTACTS_WINDOW_CHARS)
+}
+
 /** Resumes a sync opens at most; an account holds a handful. */
 export const MAX_SYNC_RESUMES = 10
 
@@ -488,7 +502,8 @@ export const MAX_SYNC_RESUMES = 10
  */
 export const resumeSyncExit = (
   profile: ReconcilePage,
-  resumes: ReadonlyArray<ReconcilePage>
+  resumes: ReadonlyArray<ReconcilePage>,
+  profileContactsText?: string
 ): HarnessExit => {
   for (const page of [profile, ...resumes]) {
     const kind = classifyResponsePage(page.html, page.url)
@@ -501,7 +516,8 @@ export const resumeSyncExit = (
     resumes: resumes.map((page) => ({
       url: page.url,
       html: resumeStateFragment(page.html) ?? page.html.slice(0, 20_000)
-    }))
+    })),
+    ...(profileContactsText === undefined ? {} : { profileContactsText })
   }
   return { tag: "reconciled", artifacts: { ...evidence } }
 }

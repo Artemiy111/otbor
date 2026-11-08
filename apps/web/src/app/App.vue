@@ -15,6 +15,7 @@ import { HealthPage } from "@/pages/health"
 import { InferencePage } from "@/pages/inference"
 import { KeywordsPage } from "@/pages/keywords"
 import { MailPage } from "@/pages/mail"
+import { PeoplePage, PersonDetailPage } from "@/pages/people"
 import { PresetsPage } from "@/pages/presets"
 import { QueuePage } from "@/pages/queue"
 import { SettingsPage } from "@/pages/settings"
@@ -30,6 +31,7 @@ import { activeSection, route } from "./router"
 
 const vacancyId = computed(() => (route.value.name === "vacancy" ? route.value.id : ""))
 const companyId = computed(() => (route.value.name === "company" ? route.value.id : ""))
+const personId = computed(() => (route.value.name === "person" ? route.value.id : ""))
 const applicationId = computed(() =>
   route.value.name === "application" ? route.value.id : ""
 )
@@ -56,6 +58,8 @@ const applicationId = computed(() =>
     <SearchPage v-else-if="route.name === 'search'" />
     <SchedulesPage v-else-if="route.name === 'schedules'" />
     <ContactsPage v-else-if="route.name === 'contacts'" />
+    <PeoplePage v-else-if="route.name === 'people'" />
+    <PersonDetailPage v-else-if="route.name === 'person'" :id="personId" />
     <MailPage v-else-if="route.name === 'mail'" />
     <TelegramPage v-else-if="route.name === 'telegram'" />
     <ResumesPage v-else-if="route.name === 'resumes'" />

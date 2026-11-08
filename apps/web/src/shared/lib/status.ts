@@ -215,6 +215,7 @@ export const applicationStateLabel = (value: string): string => statusLabel(valu
 const CONTACT_KIND_LABELS: Record<string, string> = {
   email: "Email",
   telegram: "Telegram",
+  telegram_id: "Telegram ID",
   phone: "Телефон",
   hh_chat: "Чат hh",
   other: "Другое"

@@ -91,6 +91,16 @@ import {
   MailAccountsList,
   MailSyncNow
 } from "./mail.ts"
+import {
+  ContactConfirm,
+  ContactReject,
+  PeopleRelink,
+  PersonGet,
+  PersonList,
+  PersonMerge,
+  PersonSplit,
+  PersonUpdate
+} from "./people.ts"
 import { PresetsList, PresetsPreview, PresetsRemove, PresetsUpsert } from "./presets.ts"
 import {
   HarnessComplete,
@@ -183,6 +193,14 @@ export const OtborRpcs = RpcGroup.make(
   ConversationGet,
   VacancyChatGet,
   VacancyChatRefresh,
+  PersonList,
+  PersonGet,
+  PersonUpdate,
+  PersonMerge,
+  PersonSplit,
+  ContactConfirm,
+  ContactReject,
+  PeopleRelink,
   MailAccountsList,
   MailAccountUpsert,
   MailAccountRemove,

@@ -113,6 +113,26 @@ const columns: ColumnDef<HhAccountRecord>[] = [
       h("span", null, [row.original.firstName, row.original.lastName].filter(Boolean).join(" ") || "—")
   },
   {
+    id: "contacts",
+    header: "Контакты",
+    enableSorting: false,
+    cell: ({ row }) => {
+      const contacts = row.original.contacts
+      const lines: Array<[string, string | null | undefined]> = [
+        ["Телефон", contacts?.phone],
+        ["Почта", contacts?.email],
+        ["Telegram", contacts?.telegram]
+      ]
+      return h(
+        "div",
+        { class: "space-y-0.5 text-xs" },
+        lines.map(([label, value]) =>
+          h("div", null, [h("span", { class: "text-muted-foreground" }, `${label}: `), value ?? "—"])
+        )
+      )
+    }
+  },
+  {
     accessorKey: "areaName",
     header: sortableHeader<HhAccountRecord>("Регион"),
     cell: ({ row }) => h("span", null, row.original.areaName ?? "—")

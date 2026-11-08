@@ -138,6 +138,20 @@ describe("FakeTelegramGateway", () => {
     expect(await gateway.listMessages("missing")).toEqual([])
   })
 
+  test("minId returns only messages newer than the watermark", async () => {
+    const gateway = new FakeTelegramGateway({
+      me: user,
+      dialogs: [dialog],
+      messages: { "777": history }
+    })
+    await gateway.loginWithQr({ onQr: () => {}, onError: () => {} })
+
+    const first = Number(history[0]!.id)
+    expect(await gateway.listMessages("777", 50, first)).toEqual(history.slice(1))
+    expect(await gateway.listMessages("777", 50, Number(history.at(-1)!.id))).toEqual([])
+    expect(await gateway.listMessages("777", 1, first)).toEqual([history.at(-1)!])
+  })
+
   test("sending appends an outgoing message with the next id", async () => {
     const gateway = new FakeTelegramGateway({
       me: user,

@@ -8,6 +8,8 @@ export const companyPath = (id: string): string => `/companies/${encodeURICompon
 
 export const applicationPath = (id: string): string => `/applications/${encodeURIComponent(id)}`
 
+export const personPath = (id: string): string => `/people/${encodeURIComponent(id)}`
+
 export const decisionsPath = (): string => "/decisions"
 
 export const applicationsPath = (): string => "/applications"

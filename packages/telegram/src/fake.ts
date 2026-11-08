@@ -96,9 +96,11 @@ export class FakeTelegramGateway implements TelegramGateway {
     return limit >= 0 ? this.dialogs.slice(0, limit) : [...this.dialogs]
   }
 
-  async listMessages(chatId: string, limit = 50): Promise<TelegramMessage[]> {
+  async listMessages(chatId: string, limit = 50, minId?: number): Promise<TelegramMessage[]> {
     this.assertAuthorized()
-    const messages = this.chatMessages.get(chatId) ?? []
+    const all = this.chatMessages.get(chatId) ?? []
+    const messages =
+      minId === undefined ? all : all.filter((message) => Number(message.id) > minId)
     return limit >= 0 ? messages.slice(-limit) : [...messages]
   }
 

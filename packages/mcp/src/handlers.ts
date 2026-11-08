@@ -6,6 +6,7 @@ import type {
   EmployerId,
   HhAccountId,
   OtborApi,
+  PersonId,
   PresetFilter,
   PresetId,
   ResumeId,
@@ -704,6 +705,50 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
           isBot: c.isBot
         })),
         total
+      }
+    }),
+
+    people_list: Effect.fn("mcp.people_list")(function*(params) {
+      const { items, total } = yield* run(rpc.PersonList({
+        query: params.query,
+        limit: clamp(params.limit, 20, 100),
+        offset: clamp(params.offset, 0, 100000, 0)
+      }))
+      return {
+        items: items.map((p) => ({
+          id: p.id,
+          name: p.displayName,
+          role: p.role,
+          employerId: p.employerId,
+          contacts: p.contactCount,
+          conversations: p.conversationCount,
+          lastSeenAt: p.lastSeenAt
+        })),
+        total
+      }
+    }),
+
+    person_get: Effect.fn("mcp.person_get")(function*(params) {
+      const p = yield* run(rpc.PersonGet({ id: params.id as PersonId }))
+      return {
+        id: p.id,
+        name: p.displayName,
+        role: p.role,
+        notes: p.notes,
+        employerId: p.employerId,
+        lastSeenAt: p.lastSeenAt,
+        contacts: p.contacts.map((c) => ({
+          id: c.id as string,
+          kind: c.kind,
+          value: c.value,
+          source: c.source,
+          link: c.personLink,
+          confidence: c.confidence,
+          isBot: c.isBot
+        })),
+        conversations: p.conversations.map(conversationBrief),
+        vacancyIds: [...p.vacancyIds],
+        resumeIds: [...p.resumeIds]
       }
     })
   })

@@ -21,7 +21,8 @@ import {
   FileText,
   SlidersHorizontal,
   Sparkles,
-  User
+  User,
+  Users
 } from "@lucide/vue"
 
 export interface NavItem {
@@ -71,7 +72,8 @@ export const navSections: ReadonlyArray<NavSection> = [
     items: [
       { id: "decisions", label: "Решения", href: "/decisions", icon: Gavel },
       { id: "applications", label: "Отклики", href: "/applications", icon: Send },
-      { id: "contacts", label: "Контакты", href: "/contacts", icon: Contact }
+      { id: "contacts", label: "Контакты", href: "/contacts", icon: Contact },
+      { id: "people", label: "Люди", href: "/people", icon: Users }
     ]
   },
   {

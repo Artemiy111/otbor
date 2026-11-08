@@ -43,6 +43,18 @@ describe("judgeResumeSync", () => {
     expect(judgeResumeSync({ tag: "transport", message: "x" })._tag).toBe("retry")
   })
 
+  test("текст блока «Контакты» доходит до вердикта; у старых заданий его нет", () => {
+    const base = exit(profile, [resume])
+    const withText: HarnessExit = {
+      ...base,
+      artifacts: { ...(base.artifacts as object), profileContactsText: "Контакты\nТелефон\n+7 995 260-41-35" }
+    }
+    const verdict = judgeResumeSync(withText)
+    expect(verdict._tag === "read" && verdict.contactsText).toBe("Контакты\nТелефон\n+7 995 260-41-35")
+    const old = judgeResumeSync(base)
+    expect(old._tag === "read" && old.contactsText).toBeUndefined()
+  })
+
   test("session and captcha need a human", () => {
     expect(judgeResumeSync({ tag: "session_expired" })._tag).toBe("human")
     expect(judgeResumeSync({ tag: "captcha" })._tag).toBe("human")

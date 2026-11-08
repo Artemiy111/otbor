@@ -22,6 +22,8 @@ export const contactHref = (
       if (/^https?:\/\//i.test(value)) return value
       return `https://t.me/${value.replace(/^@/, "")}`
     }
+    case "telegram_id":
+      return /^\d+$/.test(value) ? `tg://user?id=${value}` : null
     case "hh_chat":
     case "other":
       return /^https?:\/\//i.test(value) ? value : null

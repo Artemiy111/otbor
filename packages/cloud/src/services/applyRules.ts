@@ -660,6 +660,8 @@ export type ResumeSyncVerdict =
       readonly resumes: ReadonlyArray<ParsedResume>
       /** Cards whose page was missing or unreadable. */
       readonly unreadable: number
+      /** Текст блока «Контакты» профиля; нет у старых заданий. */
+      readonly contactsText?: string
     }
   | { readonly _tag: "human"; readonly reason: string }
   | { readonly _tag: "retry"; readonly reason: string }
@@ -684,7 +686,7 @@ export const judgeResumeSync = (exit: HarnessExit): ResumeSyncVerdict => {
   if (Option.isNone(decoded)) {
     return { _tag: "retry", reason: "resume sync evidence is not readable" }
   }
-  const { profile, resumes: pages } = decoded.value
+  const { profile, resumes: pages, profileContactsText } = decoded.value
   for (const page of [profile, ...pages]) {
     const kind = classifyResponsePage(page.html, page.url)
     if (kind === "login") return { _tag: "human", reason: "hh session expired; log in again" }
@@ -703,7 +705,13 @@ export const judgeResumeSync = (exit: HarnessExit): ResumeSyncVerdict => {
     const parsed = byHash.get(ref.hash)
     return parsed === undefined ? [] : [parsed]
   })
-  return { _tag: "read", found: refs.length, resumes, unreadable: refs.length - resumes.length }
+  return {
+    _tag: "read",
+    found: refs.length,
+    resumes,
+    unreadable: refs.length - resumes.length,
+    ...(profileContactsText === undefined ? {} : { contactsText: profileContactsText })
+  }
 }
 
 export type LetterAttachVerdict =

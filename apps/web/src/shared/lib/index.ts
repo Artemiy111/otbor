@@ -29,6 +29,7 @@ export {
   applicationsPath,
   companyPath,
   decisionsPath,
+  personPath,
   vacancyPath
 } from "./links"
 export {

@@ -19,6 +19,9 @@ export interface StoredHhAccount {
   readonly session_last_ok_at?: Date | string | null
   readonly session_last_error?: string | null
   readonly session_updated_at?: Date | string | null
+  readonly contact_phone?: string | null
+  readonly contact_email?: string | null
+  readonly contact_telegram?: string | null
   readonly created_at: Date | string
   readonly updated_at: Date | string
 }
@@ -47,6 +50,14 @@ export const toRecord = (row: StoredHhAccount): HhAccountRecord => ({
           lastError: row.session_last_error ?? null,
           updatedAt: iso(row.session_updated_at ?? row.updated_at)
         },
+  contacts:
+    row.contact_phone == null && row.contact_email == null && row.contact_telegram == null
+      ? null
+      : {
+          phone: row.contact_phone ?? null,
+          email: row.contact_email ?? null,
+          telegram: row.contact_telegram ?? null
+        },
   createdAt: iso(row.created_at),
   updatedAt: iso(row.updated_at)
 })
@@ -55,7 +66,13 @@ const selection = sql`
   select a.id, a.user_id, a.label, a.is_default, a.first_name, a.last_name, a.email,
          a.phone, a.area_name, a.session_profile, a.color, a.created_at, a.updated_at,
          s.state as session_state, s.last_ok_at as session_last_ok_at,
-         s.last_error as session_last_error, s.updated_at as session_updated_at
+         s.last_error as session_last_error, s.updated_at as session_updated_at,
+         (select c.value from hh_account_contact c where c.hh_account_id = a.id and c.kind = 'phone'
+           order by c.last_seen_at desc limit 1) as contact_phone,
+         (select c.value from hh_account_contact c where c.hh_account_id = a.id and c.kind = 'email'
+           order by c.last_seen_at desc limit 1) as contact_email,
+         (select c.value from hh_account_contact c where c.hh_account_id = a.id and c.kind = 'telegram'
+           order by c.last_seen_at desc limit 1) as contact_telegram
   from hh_account a
   left join hh_account_session s on s.hh_account_id = a.id
 `

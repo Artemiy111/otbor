@@ -6,7 +6,9 @@ import * as ScheduleRunRepository from "../repositories/ScheduleRunRepository.ts
 import type { StoredSchedule } from "../repositories/ScheduleRepository.ts"
 import { CrawlRunner, type CrawlRunnerResult } from "./CrawlRunner.ts"
 import { AnalysisRunner } from "./AnalysisRunner.ts"
+import * as ConversationRepository from "../repositories/ConversationRepository.ts"
 import { AutoApplyRunner } from "./AutoApplyRunner.ts"
+import { enqueueChatReads } from "./ChatSync.ts"
 import { DEFAULT_BATCH, MAX_BATCH } from "./decisionEvaluation.ts"
 import { EmployerHydrator } from "./EmployerHydrator.ts"
 import { EvaluationRunner } from "./EvaluationRunner.ts"
@@ -14,6 +16,7 @@ import { FitJudgeRunner } from "./FitJudgeRunner.ts"
 import { HydrationRunner } from "./HydrationRunner.ts"
 import { MailSync } from "./MailSync.ts"
 import { ResumeSync } from "./ResumeSync.ts"
+import { toStorageError } from "./support.ts"
 import { TelegramSync } from "./TelegramSync.ts"
 
 export interface ScheduleDispatchResult {
@@ -122,6 +125,40 @@ export class ScheduleDispatcher extends Context.Service<
       const resumeSync = yield* ResumeSync
       const analysis = yield* AnalysisRunner
       const autoApply = yield* AutoApplyRunner
+
+      /**
+       * Подтягивает вакансии, на которые ссылались в Telegram, но которых нет в базе.
+       * Не больше `max` за проход, в случайном порядке (недоступная вакансия не
+       * должна вечно занимать очередь). Ингест перелинковывает ждавшие диалоги.
+       * Сбой одной вакансии не валит расписание.
+       */
+      const fetchPendingVacancies = (userId: string, max: number): Effect.Effect<number> =>
+        Effect.gen(function*() {
+          if (max <= 0) return 0
+          const refs = yield* database.asUser(userId, (tx) =>
+            ConversationRepository.listVacancyRefs(tx, userId)
+          )
+          const ids = [...new Set(refs.filter((ref) => ref.source === "hh").map((ref) => ref.externalId))]
+          for (let index = ids.length - 1; index > 0; index -= 1) {
+            const other = Math.floor(Math.random() * (index + 1))
+            const swap = ids[index]!
+            ids[index] = ids[other]!
+            ids[other] = swap
+          }
+          let fetched = 0
+          for (const externalId of ids.slice(0, max)) {
+            const ok = yield* hydration.fetchByReference(userId, externalId).pipe(
+              Effect.as(true),
+              Effect.catch((error) =>
+                Effect.logWarning(`pending vacancy ${externalId} was not fetched: ${JSON.stringify(error)}`).pipe(
+                  Effect.as(false)
+                )
+              )
+            )
+            if (ok) fetched += 1
+          }
+          return fetched
+        }).pipe(Effect.catchCause(() => Effect.succeed(0)))
 
       /**
        * Decides the vacancies a crawl or hydration pass just saved. It is a
@@ -404,10 +441,17 @@ export class ScheduleDispatcher extends Context.Service<
                 })
               }
               const result = yield* telegram.sync(schedule.userId, schedule.targetId, {
-                dialogs: intOption(options, "dialogs", 25, 1, 100),
+                dialogs: intOption(options, "dialogs", 100, 1, 100),
                 messages: intOption(options, "messages", 50, 1, 200)
               })
-              return syncResult(result)
+              // Ссылки на вакансии, которых ещё нет в базе: догружаем несколько
+              // страниц (`vacancyFetch`, 0 — не догружать).
+              const vacanciesFetched = yield* fetchPendingVacancies(
+                schedule.userId,
+                intOption(options, "vacancyFetch", 5, 0, 50)
+              )
+              const base = syncResult(result)
+              return { ...base, detail: { ...base.detail, vacanciesFetched } }
             }
 
             case "resume_sync": {
@@ -422,11 +466,27 @@ export class ScheduleDispatcher extends Context.Service<
               }
             }
 
-            case "hh_chat_sync":
-              return yield* new InvalidInput({
-                message:
-                  "hh chat sync requires the browser harness; it is not implemented yet"
-              })
+            case "hh_chat_sync": {
+              // Только ставит `chat_read` для откликов без свежей копии чата: читает
+              // hh браузерный harness, сохраняет `QueueService.complete`. Цель — id
+              // аккаунта hh или `global`/пусто для всех аккаунтов пользователя.
+              const target = schedule.targetId.trim()
+              const named = target !== "" && target !== "default" && target !== "global"
+              const result = yield* database
+                .asUser(schedule.userId, (tx) =>
+                  enqueueChatReads(tx, schedule.userId, {
+                    ...(named ? { hhAccountId: target } : {}),
+                    limit: intOption(options, "limit", 20, 1, 200),
+                    staleHours: intOption(options, "staleHours", 24, 0, 24 * 365)
+                  })
+                )
+                .pipe(Effect.mapError(toStorageError("schedule.hh_chat_sync")))
+              return {
+                ok: true,
+                error: null,
+                detail: { queued: result.queued, candidates: result.candidates }
+              }
+            }
 
             default:
               return yield* new InvalidInput({

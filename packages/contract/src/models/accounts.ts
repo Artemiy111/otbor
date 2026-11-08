@@ -49,6 +49,14 @@ export const HhSessionRecord = Schema.Struct({
 })
 export type HhSessionRecord = typeof HhSessionRecord.Type
 
+/** Собственные контакты аккаунта из блока «Контакты» профиля hh; только чтение. */
+export const HhAccountContacts = Schema.Struct({
+  phone: Schema.NullOr(Schema.String),
+  email: Schema.NullOr(Schema.String),
+  telegram: Schema.NullOr(Schema.String)
+})
+export type HhAccountContacts = typeof HhAccountContacts.Type
+
 export const HhAccountRecord = Schema.Struct({
   id: HhAccountId,
   label: Schema.String,
@@ -60,6 +68,7 @@ export const HhAccountRecord = Schema.Struct({
   /** Operator-chosen colour, `#rrggbb`; null/absent means the automatic colour. */
   color: Schema.optional(Schema.NullOr(Schema.String)),
   session: Schema.optional(Schema.NullOr(HhSessionRecord)),
+  contacts: Schema.optional(Schema.NullOr(HhAccountContacts)),
   createdAt: Schema.String,
   updatedAt: Schema.String
 })

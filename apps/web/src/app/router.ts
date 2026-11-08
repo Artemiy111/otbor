@@ -20,6 +20,8 @@ export type Route =
   | { readonly name: "search" }
   | { readonly name: "schedules" }
   | { readonly name: "contacts" }
+  | { readonly name: "people" }
+  | { readonly name: "person"; readonly id: string }
   | { readonly name: "mail" }
   | { readonly name: "telegram" }
   | { readonly name: "resumes" }
@@ -62,6 +64,8 @@ const parse = (): Route => {
       return { name: "schedules" }
     case "contacts":
       return { name: "contacts" }
+    case "people":
+      return id === "" ? { name: "people" } : { name: "person", id }
     case "mail":
       return { name: "mail" }
     case "telegram":
@@ -142,6 +146,8 @@ export const activeSection = computed<string>(() => {
       return "companies"
     case "application":
       return "applications"
+    case "person":
+      return "people"
     default:
       return route.value.name
   }

@@ -209,7 +209,12 @@ export type ResumeSyncJobPayload = typeof ResumeSyncJobPayload.Type
  */
 export const ResumeSyncEvidence = Schema.Struct({
   profile: ReconcilePage,
-  resumes: Schema.Array(ReconcilePage)
+  resumes: Schema.Array(ReconcilePage),
+  /**
+   * Видимый текст блока «Контакты» со страницы профиля (окно вокруг заголовка).
+   * Необязательно: старые задания и профили без блока приходят без поля.
+   */
+  profileContactsText: Schema.optional(Schema.String)
 })
 
 export type ResumeSyncEvidence = typeof ResumeSyncEvidence.Type

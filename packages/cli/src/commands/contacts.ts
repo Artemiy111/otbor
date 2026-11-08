@@ -4,7 +4,7 @@ import { Command, Flag } from "effect/cli"
 import { Api } from "../client.ts"
 import { shortId, table } from "../format.ts"
 
-const kinds = ["email", "telegram", "phone", "hh_chat", "other"] as const
+const kinds = ["email", "telegram", "telegram_id", "phone", "hh_chat", "other"] as const
 const sources = ["hh_vacancy", "mail", "telegram", "hh_chat", "manual"] as const
 
 const asKind = (value: string | undefined): ContactKind | undefined =>
@@ -57,12 +57,15 @@ const list = Command.make(
 
     yield* Console.log(
       table(
-        ["id", "kind", "value", "name", "source", "vacancy", "last seen"],
+        ["id", "kind", "value", "name", "person", "source", "vacancy", "last seen"],
         result.items.map((contact) => [
           shortId(contact.id),
           contact.kind,
           contact.value,
           contact.personName ?? "-",
+          contact.personId === null
+            ? "-"
+            : `${shortId(contact.personId)}${contact.personLink === "suggested" ? "?" : ""}`,
           contact.source,
           contact.vacancyId === null ? "-" : shortId(contact.vacancyId),
           contact.lastSeenAt.slice(0, 16).replace("T", " ")

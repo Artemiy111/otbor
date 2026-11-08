@@ -28,6 +28,7 @@ import { MailGatewayProvider } from "../../../src/services/MailGatewayProvider.t
 import { MailService } from "../../../src/services/MailService.ts"
 import { MailSync } from "../../../src/services/MailSync.ts"
 import { NegotiationsSync } from "../../../src/services/NegotiationsSync.ts"
+import { PersonService } from "../../../src/services/PersonService.ts"
 import { PresetService } from "../../../src/services/PresetService.ts"
 import { QueueService } from "../../../src/services/QueueService.ts"
 import { ResumeService } from "../../../src/services/ResumeService.ts"
@@ -132,6 +133,7 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
     telegramService,
     ContactService.layer.pipe(Layer.provide(shared)),
     ConversationService.layer.pipe(Layer.provide(shared)),
+    PersonService.layer.pipe(Layer.provide(shared)),
     // These services already depend only on Database + CurrentUser.
     BlacklistService.layer.pipe(Layer.provide(shared)),
     ResumeService.layer.pipe(Layer.provide(shared)),
@@ -182,6 +184,7 @@ type Requirements =
   | TelegramSync
   | ContactService
   | ConversationService
+  | PersonService
   | HydrationRunner
   | EmployerHydrator
   | AnalysisRunner

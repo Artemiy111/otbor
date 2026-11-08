@@ -1,6 +1,5 @@
 import type { ApiError, SyncResult } from "@otbor/contract"
 import { InvalidInput, NotFound, StorageError } from "@otbor/contract"
-import { extractContactsFromText, extractVacancyIds } from "@otbor/domain"
 import {
   maskPhone,
   messageRead,
@@ -10,15 +9,14 @@ import {
 } from "@otbor/telegram"
 import { Cause, Context, Deferred, Effect, Layer, Option, Ref } from "effect"
 import { Database, type Executor } from "../db/Database.ts"
-import * as ContactRepository from "../repositories/ContactRepository.ts"
 import * as ConversationRepository from "../repositories/ConversationRepository.ts"
 import * as TelegramRepository from "../repositories/TelegramRepository.ts"
-import * as VacancyRepository from "../repositories/VacancyRepository.ts"
+import { relinkConversations } from "./PersonService.ts"
 import { TelegramGatewayProvider } from "./TelegramGatewayProvider.ts"
 import { toStorageError } from "./support.ts"
 
 export interface TelegramSyncOptions {
-  /** Dialogs per pass; private dialogs only. */
+  /** Dialogs per pass (default 100); private dialogs only. */
   readonly dialogs?: number
   readonly messages?: number
   readonly now?: Date
@@ -96,34 +94,15 @@ const parseDate = (value: string | null | undefined): Date | null => {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
+/** Потолок страницы при инкрементальном чтении: пропусков между синхронизациями быть не должно. */
+const MAX_MESSAGES = 200
+
 /** Telegram's own service account; it is not an HR dialog. */
 const SERVICE_CHAT_ID = "777000"
 
 const isServiceDialog = (dialog: TelegramDialog): boolean =>
   dialog.id === SERVICE_CHAT_ID ||
   (dialog.username !== null && /bot$/iu.test(dialog.username))
-
-const uniqueContacts = (
-  contacts: ReadonlyArray<{
-    readonly kind: "email" | "telegram" | "phone" | "hh_chat" | "other"
-    readonly value: string
-    readonly raw?: string | null
-    readonly url?: string | null
-    readonly evidence?: string | null
-    readonly confidence?: number | null
-    readonly personName?: string | null
-    readonly personRole?: string | null
-    readonly isBot?: boolean | null
-  }>
-) => {
-  const byKey = new Map<string, (typeof contacts)[number]>()
-  for (const contact of contacts) {
-    if (!byKey.has(`${contact.kind}:${contact.value}`)) {
-      byKey.set(`${contact.kind}:${contact.value}`, contact)
-    }
-  }
-  return [...byKey.values()]
-}
 
 const toMessageInputs = (
   messages: ReadonlyArray<TelegramMessage>,
@@ -190,7 +169,7 @@ export class TelegramSync extends Context.Service<TelegramSync, TelegramSyncShap
 
           const gateway = yield* provider.open(account)
           const counters = emptyCounters()
-          const dialogLimit = Math.min(Math.max(options.dialogs ?? 25, 1), 100)
+          const dialogLimit = Math.min(Math.max(options.dialogs ?? 100, 1), 100)
           const messageLimit = Math.min(Math.max(options.messages ?? 50, 1), 200)
           const now = options.now ?? new Date()
 
@@ -228,8 +207,28 @@ export class TelegramSync extends Context.Service<TelegramSync, TelegramSyncShap
               if (dialog.kind !== "private" || isServiceDialog(dialog)) continue
               counters.processed += 1
 
+              // Инкрементально: берём только сообщения новее уже сохранённых.
+              const watermark = yield* database
+                .asUser(userId, (tx) =>
+                  Effect.gen(function*() {
+                    const conversationId = yield* ConversationRepository.findByExternal(tx, {
+                      userId,
+                      channel: "telegram",
+                      accountId,
+                      externalId: dialog.id
+                    })
+                    return conversationId === null
+                      ? null
+                      : yield* ConversationRepository.maxNumericMessageId(tx, userId, conversationId)
+                  })
+                )
+                .pipe(Effect.catchCause(() => Effect.succeed(null)))
+
               const messages = yield* Effect.tryPromise({
-                try: () => gateway.listMessages(dialog.id, messageLimit),
+                try: () =>
+                  watermark === null
+                    ? gateway.listMessages(dialog.id, messageLimit)
+                    : gateway.listMessages(dialog.id, MAX_MESSAGES, watermark),
                 catch: (cause) => new Error(`listMessages ${dialog.id}: ${messageOf(cause)}`)
               }).pipe(
                 Effect.matchEffect({
@@ -418,6 +417,12 @@ export class TelegramSync extends Context.Service<TelegramSync, TelegramSyncShap
   )
 }
 
+/**
+ * Сохраняет диалог и его новые сообщения, затем перелинковывает диалог в той же
+ * транзакции: собеседник (`telegram_id` и @username как идентичности), контакты
+ * из входящих сообщений, человек, вакансии (ссылки hh.ru/vacancy/ID, отсутствующие
+ * в базе, остаются отложенными ссылками) и резюме.
+ */
 const storeDialog = (
   tx: Executor,
   userId: string,
@@ -445,91 +450,19 @@ const storeDialog = (
       raw: { kind: dialog.kind }
     })
 
-    const inputs = toMessageInputs(messages, dialog, now)
     const saved = yield* ConversationRepository.appendMessages(
       tx,
       userId,
       conversationId,
-      inputs
+      toMessageInputs(messages, dialog, now)
     )
 
-    const text = [
-      ...messages.map((message) => message.text ?? ""),
-      dialog.lastMessage ?? ""
-    ]
-      .filter(Boolean)
-      .join("\n")
-
-    const extraction = extractContactsFromText(text, {
-      senderName: dialog.title,
-      channel: "telegram"
-    })
-    const vacancyIds = extractVacancyIds(text)
-
-    const linkedVacancies: Array<string> = []
-    for (const externalId of vacancyIds) {
-      const vacancy = yield* VacancyRepository.findByExternal(tx, "hh", externalId)
-      if (vacancy !== null) linkedVacancies.push(vacancy.id)
-    }
-
-    let linked = 0
-    for (const [index, vacancyId] of linkedVacancies.entries()) {
-      const created = yield* ConversationRepository.linkVacancy(tx, {
-        userId,
-        conversationId,
-        vacancyId,
-        kind: index === 0 ? "primary" : "mentioned",
-        confidence: 1,
-        source: "telegram",
-        evidence: dialog.lastMessage
-      })
-      if (created) linked += 1
-    }
-
-    const candidates = [
-      ...(dialog.username === null
-        ? []
-        : [
-            {
-              kind: "telegram" as const,
-              value: `@${dialog.username.toLowerCase()}`,
-              raw: `@${dialog.username}`,
-              url,
-              evidence: "Telegram profile",
-              confidence: 1,
-              personName: dialog.title,
-              personRole: null,
-              isBot: false
-            }
-          ]),
-      ...extraction.contacts.map((contact) => ({
-        kind: contact.kind,
-        value: contact.value,
-        raw: contact.raw,
-        url: contact.url,
-        evidence: contact.evidence,
-        confidence: contact.confidence,
-        personName: contact.personName,
-        personRole: contact.personRole,
-        isBot: contact.isBot
-      }))
-    ]
-
-    const contacts = uniqueContacts(candidates)
-    if (contacts.length > 0) {
-      yield* ContactRepository.upsertMany(tx, {
-        userId,
-        contacts,
-        source: "telegram",
-        vacancyId: linkedVacancies[0] ?? null,
-        evidence: dialog.lastMessage
-      })
-    }
+    const relinked = yield* relinkConversations(tx, userId, conversationId)
 
     return {
       inserted: saved.inserted,
       updated: saved.updated,
-      contacts: contacts.length,
-      linked
+      contacts: relinked.contactsLinked,
+      linked: relinked.vacancyLinks
     }
   })
