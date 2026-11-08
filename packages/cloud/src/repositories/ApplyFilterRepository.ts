@@ -296,3 +296,38 @@ export const listForUser = (
         : sql`${applyFilter.userId} = ${userId} and ${applyFilter.hhAccountId} = ${hhAccountId}`
     )
     .pipe(Effect.map((rows) => rows.map(toRecord)))
+
+/**
+ * SQL-скаляр: `auto_mode`, который управляет строкой application `alias`.
+ * Решает парная строка (аккаунт, резюме), если она есть, иначе строка аккаунта
+ * (resume NULL), иначе `off`. Одно определение для шлюза отправки, понижения
+ * при смене режима и повтора в раннере.
+ */
+export const governingAutoModeSql = (alias: string) => {
+  const a = sql.identifier(alias)
+  return sql`coalesce(
+    (select f.auto_mode from apply_filter f
+      where f.user_id = ${a}.user_id and f.hh_account_id = ${a}.hh_account_id and f.resume_id = ${a}.resume_id
+      limit 1),
+    (select f.auto_mode from apply_filter f
+      where f.user_id = ${a}.user_id and f.hh_account_id = ${a}.hh_account_id and f.resume_id is null
+      limit 1),
+    'off')`
+}
+
+/**
+ * `auto_mode`, который сейчас управляет парой (аккаунт, резюме): парная
+ * строка, если есть, иначе строка аккаунта, иначе `off`.
+ */
+export const governingAutoMode = (
+  tx: Executor,
+  userId: string,
+  hhAccountId: string,
+  resumeId: string | null
+): RepoEffect<ApplyFilterRecord["autoMode"]> =>
+  Effect.gen(function*() {
+    const pair = resumeId === null ? null : yield* find(tx, userId, hhAccountId, resumeId)
+    if (pair !== null) return pair.autoMode
+    const account = yield* find(tx, userId, hhAccountId, null)
+    return account?.autoMode ?? "off"
+  })

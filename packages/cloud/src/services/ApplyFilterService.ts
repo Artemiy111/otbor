@@ -9,6 +9,7 @@ import {
 } from "@otbor/contract"
 import { Context, Effect, Layer } from "effect"
 import { Database, type Executor } from "../db/Database.ts"
+import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
 import * as ApplyFilterRepository from "../repositories/ApplyFilterRepository.ts"
 import * as PresetRepository from "../repositories/PresetRepository.ts"
 import { CurrentUser } from "./CurrentUser.ts"
@@ -151,7 +152,7 @@ export class ApplyFilterService extends Context.Service<ApplyFilterService, Appl
             .asUser(userId, (tx) =>
               Effect.gen(function*() {
                 yield* requireTarget(tx, input)
-                return yield* ApplyFilterRepository.upsert(tx, {
+                const saved = yield* ApplyFilterRepository.upsert(tx, {
                   userId,
                   hhAccountId: input.hhAccountId,
                   resumeId: input.resumeId ?? null,
@@ -171,6 +172,13 @@ export class ApplyFilterService extends Context.Service<ApplyFilterService, Appl
                   writingEffort: input.writingEffort,
                   templatePresetId: input.templatePresetId
                 })
+                // Строка, вышедшая из `auto`, перестаёт отправлять: отклики, которые
+                // она вела и которые ещё ждут кит, возвращаются в draft в этой же
+                // транзакции.
+                if (input.autoMode !== undefined) {
+                  yield* ApplicationRepository.demoteUngovernedAuto(tx, userId, input.hhAccountId)
+                }
+                return saved
               })
             )
             .pipe(Effect.mapError(toStorageErrorUnlessApi("applyFilter.set")))

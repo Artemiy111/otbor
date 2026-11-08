@@ -248,6 +248,8 @@ if (!enabled || serverUrl === null) {
 
     /** An auto-queued application with a stored kit for the fixture form, whose form is read now. */
     const autoQueuedReread = async (tenant: support.Tenant, label: string) => {
+      // Режим auto и текущий лимит: отправка автозаявки разрешена только при auto.
+      await support.applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter: {}, autoMode: "auto" })
       const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
       const vacancyId = await support.seedVacancy(label)
       const externalId = await support.vacancyExternalId(vacancyId)
@@ -255,7 +257,8 @@ if (!enabled || serverUrl === null) {
         userId: tenant.userId,
         accountId: tenant.accountId,
         vacancyId,
-        state: "queued"
+        state: "queued",
+        autoRun: "auto"
       })
       const form = parseResponseForm(
         responseHtml,

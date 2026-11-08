@@ -440,7 +440,7 @@ export class AutoApplyViewService extends Context.Service<AutoApplyViewService, 
               yield* tx.execute(sql`
                 update application
                 set state = case when state = 'needs_human'
-                      then (case when auto_run = 'auto' then 'queued' else 'draft' end)
+                      then (case when auto_run = 'auto' and ${ApplyFilterRepository.governingAutoModeSql("application")} = 'auto' then 'queued' else 'draft' end)
                       else state end,
                     last_error = null, updated_at = now()
                 where id = ${applicationId} and user_id = ${userId} and intent_at is null

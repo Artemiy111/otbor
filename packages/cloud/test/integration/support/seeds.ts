@@ -343,8 +343,14 @@ export const seedApplication = async (input: {
   readonly userId: string
   readonly accountId: string
   readonly vacancyId: string
-  readonly state?: "draft" | "queued" | "submitted"
+  readonly state?: "draft" | "queued" | "submitted" | "needs_human" | "failed"
   readonly resumeId?: string
+  /** Заявка автозапуска: раннер ведёт её, а режим auto разрешает отправку. */
+  readonly autoRun?: "drafts" | "auto"
+  readonly origin?: "otbor" | "imported"
+  readonly intentAt?: Date
+  readonly submittedAt?: Date
+  readonly hhRespondedAt?: Date
 }): Promise<string> =>
   runAs(
     input.userId,
@@ -357,7 +363,12 @@ export const seedApplication = async (input: {
             hhAccountId: input.accountId,
             vacancyId: input.vacancyId,
             resumeId: input.resumeId ?? null,
-            state: input.state ?? "queued"
+            state: input.state ?? "queued",
+            ...(input.autoRun === undefined ? {} : { autoRun: input.autoRun }),
+            ...(input.origin === undefined ? {} : { origin: input.origin }),
+            ...(input.intentAt === undefined ? {} : { intentAt: input.intentAt }),
+            ...(input.submittedAt === undefined ? {} : { submittedAt: input.submittedAt }),
+            ...(input.hhRespondedAt === undefined ? {} : { hhRespondedAt: input.hhRespondedAt })
           })
           .returning({ id: application.id })
         return row!.id

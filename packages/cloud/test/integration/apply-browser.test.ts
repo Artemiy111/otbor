@@ -74,15 +74,19 @@ if (!enabled || serverUrl === null) {
     }, 60_000)
 
     /** A tenant with one account, a registered browser harness and one application. */
-    const setup = async (label: string, state: "draft" | "queued" = "draft") => {
+    const setup = async (label: string, state: "draft" | "queued" = "draft", autoRun?: "auto") => {
       const tenant = await support.seedTenant(label)
+      if (autoRun === "auto") {
+        await support.applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter: {}, autoMode: "auto" })
+      }
       const vacancyId = await support.seedVacancy(label)
       const externalId = await support.vacancyExternalId(vacancyId)
       const applicationId = await support.seedApplication({
         userId: tenant.userId,
         accountId: tenant.accountId,
         vacancyId,
-        state
+        state,
+        ...(autoRun === undefined ? {} : { autoRun })
       })
       const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
       const lease = () =>
@@ -289,7 +293,7 @@ if (!enabled || serverUrl === null) {
     })
 
     test("an auto-mode application waits for a kit and queues its submit when one arrives", async () => {
-      const ctx = await setup("auto-kit", "queued")
+      const ctx = await setup("auto-kit", "queued", "auto")
       await prepare(ctx, responseHtml)
       expect(await stateOf(ctx)).toBe("queued")
       expect(await support.countJobs(ctx.applicationId, "submit")).toBe(0)

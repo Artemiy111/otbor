@@ -10,6 +10,7 @@ import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
 import { application, applicationAttempt, applicationKit } from "../db/tables.ts"
+import * as ApplyFilterRepository from "./ApplyFilterRepository.ts"
 
 export const APPLICABLE_STATES = ["draft", "needs_human", "failed"] as const
 
@@ -452,3 +453,25 @@ export const pendingAutoSlots = (
         and auto_run = 'auto' and state = 'queued' and intent_at is null
     `)
     .pipe(Effect.map((result) => Number((result.rows[0] as { n?: number } | undefined)?.n ?? 0)))
+
+/**
+ * Автоотклики аккаунта, которые ждут в `queued` кит или форму, но чья
+ * управляющая строка apply filter больше не `auto`: они возвращаются в `draft`
+ * с причиной, их никто не отправит, и они перестают резервировать слоты.
+ * Возвращает, сколько строк сдвинуто. Вызывать в транзакции, менявшей режим.
+ */
+export const demoteUngovernedAuto = (
+  tx: Executor,
+  userId: string,
+  hhAccountId: string
+): RepoEffect<number> =>
+  tx
+    .execute(sql`
+      update application a
+      set state = 'draft', last_error = 'auto mode was turned off; nothing was sent', updated_at = now()
+      where a.user_id = ${userId} and a.hh_account_id = ${hhAccountId}
+        and a.auto_run = 'auto' and a.state = 'queued' and a.intent_at is null
+        and ${ApplyFilterRepository.governingAutoModeSql("a")} <> 'auto'
+      returning a.id
+    `)
+    .pipe(Effect.map((result) => result.rows.length))

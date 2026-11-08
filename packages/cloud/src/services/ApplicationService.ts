@@ -17,20 +17,14 @@ import * as DecisionRepository from "../repositories/DecisionRepository.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
 import { CurrentUser } from "./CurrentUser.ts"
-import { checkKit, type KitProblem } from "./applyRules.ts"
-import {
-  claimSendSlot,
-  DAY_MS,
-  DEFAULT_DAILY_APPLY_LIMIT,
-  dailyLimitFor,
-  recentSubmits
-} from "./dailyLimit.ts"
+import { type KitProblem } from "./applyRules.ts"
+import { DEFAULT_DAILY_APPLY_LIMIT, dailyLimitFor, recentSubmits } from "./dailyLimit.ts"
 
 export { DEFAULT_DAILY_APPLY_LIMIT }
-import { nextSequence, reconcileJob, submitJob, targetFor } from "./jobs.ts"
+import { nextSequence, reconcileJob, targetFor } from "./jobs.ts"
 import * as VacancyFormRepository from "../repositories/VacancyFormRepository.ts"
-import { FORM_TTL_MS } from "../repositories/VacancyFormRepository.ts"
 import { currentFormFor, requestFormRead } from "./vacancyForm.ts"
+import { trySubmit } from "./submitGate.ts"
 import { toStorageError } from "./support.ts"
 
 /* -------------------------------------------------------------------------- */
@@ -388,137 +382,28 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                 if (application === null || application.userId !== currentUser.userId) {
                   return fail({ _tag: "not_found", entity: "Application", id })
                 }
-                if (application.state === "submitted") {
-                  return fail({
-                    _tag: "conflict",
-                    entity: "Application",
-                    message: "already submitted"
-                  })
-                }
-                if (application.state === "submitting") {
-                  return fail({
-                    _tag: "conflict",
-                    entity: "Application",
-                    message: "submit is in flight; reconcile instead of approving again"
-                  })
-                }
-
-                const stored = yield* currentFormFor(tx, application)
-                if (stored === null) {
-                  return fail({
-                    _tag: "conflict",
-                    entity: "Application",
-                    message: "the form has not been read yet; refresh the vacancy form first"
-                  })
-                }
-                // The kit was written against a form that may have changed since.
-                // A day-old read is not trusted for an irreversible send; the
-                // submit itself still compares the live form hash.
-                if (Date.now() - Date.parse(stored.fetchedAt) > FORM_TTL_MS) {
-                  return fail({
-                    _tag: "conflict",
-                    entity: "Application",
-                    message: "the stored form is older than a day; refresh the vacancy form first"
-                  })
-                }
-                const kit = yield* ApplicationRepository.findKit(tx, id, stored.form.formHash)
-                if (kit === null) {
-                  return fail({
-                    _tag: "conflict",
-                    entity: "Application",
-                    message: "there is no kit for the current form; set a kit first"
-                  })
-                }
-
-                // Hard hints, required questions, code tasks and flagged
-                // answers are checked here, before anything can be queued.
-                const problems = checkKit({ form: stored.form, hints: stored.hints, kit })
-                if (problems.length > 0) {
-                  return fail({ _tag: "answers", applicationId: id, problems })
-                }
-
-                // At-most-once: once a submit job exists, approving again may
-                // only observe it. A terminal failure means a human must
-                // reconcile, never that the click is repeated. The one
-                // exception is a submit the harness proved was never clicked
-                // (`form_changed`, captcha, expired session ...): that job
-                // recorded `clicked: false` and a new submit gets its own key.
-                const existing = yield* QueueRepository.latestFor(tx, id, ["submit"])
-                const unsent =
-                  existing !== null &&
-                  (existing.status === "failed" || existing.status === "needs_human") &&
-                  (existing.result as { clicked?: unknown } | null)?.clicked === false
-                if (existing !== null && !unsent) {
-                  if (
-                    existing.status === "failed" ||
-                    existing.status === "dead" ||
-                    existing.status === "needs_human" ||
-                    existing.status === "needs_reconcile" ||
-                    existing.status === "done"
-                  ) {
-                    return fail({
-                      _tag: "conflict",
-                      entity: "Application",
-                      message: `submit was already attempted (${existing.status}); reconcile, do not resubmit`
-                    })
-                  }
-                }
-
-                // The real safety net behind any chat or CLI front end: a hard
-                // per-account cap on approvals in a rolling 24 hours.
-                if (!(["draft", "needs_human", "failed"] as ReadonlyArray<string>).includes(application.state)) {
-                  return fail({
-                    _tag: "conflict",
-                    entity: "Application",
-                    message: `cannot approve from state ${application.state}`
-                  })
-                }
-                const recent = yield* recentSubmits(tx, application.hhAccountId, id)
-                const dailyLimit = yield* dailyLimitFor(
-                  tx,
-                  currentUser.userId,
-                  application.hhAccountId,
-                  options.dailyApplyLimit
-                )
-                if (recent.used >= dailyLimit) {
-                  return fail({
-                    _tag: "limit",
-                    limit: dailyLimit,
-                    used: recent.used,
-                    resetsAt: new Date((recent.oldest?.getTime() ?? Date.now()) + DAY_MS).toISOString()
-                  })
-                }
-
-                const updated = yield* ApplicationRepository.transition(tx, currentUser.userId, id, "queued", {
-                  from: ["draft", "needs_human", "failed"],
-                  patch: { intentAt: new Date(), lastError: null }
+                // Все проверки, лимит и постановка submit-задачи - в общем шлюзе.
+                const outcome = yield* trySubmit(tx, {
+                  userId: currentUser.userId,
+                  application,
+                  trigger: "approve",
+                  fallbackLimit: options.dailyApplyLimit
                 })
-                if (updated === null) {
-                  return fail({
-                    _tag: "conflict",
-                    entity: "Application",
-                    message: `cannot approve from state ${application.state}`
+                return Match.value(outcome).pipe(
+                  Match.tagsExhaustive({
+                    queued: (queued) => ok(queued.application),
+                    not_ready: (notReady) =>
+                      fail({ _tag: "conflict", entity: "Application", message: notReady.message }),
+                    parked: (parked) =>
+                      fail({ _tag: "limit", limit: parked.limit, used: parked.used, resetsAt: parked.resetsAt }),
+                    refused: (refused) =>
+                      refused.reason === "kit_refused"
+                        ? fail({ _tag: "answers", applicationId: id, problems: refused.problems })
+                        : refused.reason === "no_vacancy"
+                        ? fail({ _tag: "not_found", entity: "Vacancy", id: application.vacancyId })
+                        : fail({ _tag: "conflict", entity: "Application", message: refused.message })
                   })
-                }
-
-                if (existing === null || unsent) {
-                  const target = yield* targetFor(tx, updated)
-                  if (target === null) {
-                    return fail({
-                      _tag: "not_found",
-                      entity: "Vacancy",
-                      id: updated.vacancyId
-                    })
-                  }
-                  yield* submitJob(tx, {
-                    ...target,
-                    kit,
-                    form: stored.form,
-                    sequence: (yield* nextSequence(tx, id, "submit"))
-                  })
-                }
-
-                return ok(updated)
+                )
               })
             )
             .pipe(Effect.mapError(toStorageError("application.approve")))
@@ -637,17 +522,28 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                   force: true
                 })
 
-                // After a provably unsent submit the form is new: the kit has to
-                // be approved again, so the application goes back to draft
-                // instead of auto-submitting the next kit.
+                // Повтор - не одобрение. После заведомо неотправленного submit форма
+                // новая, и кит надо одобрить заново. Заявка без auto_run тоже
+                // возвращается в draft: иначе следующее чтение формы отправило бы её
+                // без одобрения. Только автоотклик, чей режим всё ещё auto, снова
+                // отдаётся раннеру (`queued`, intent_at пуст).
+                const governedByAuto =
+                  !unsent &&
+                  application.autoRun === "auto" &&
+                  (yield* ApplyFilterRepository.governingAutoMode(
+                    tx,
+                    currentUser.userId,
+                    application.hhAccountId,
+                    application.resumeId ?? null
+                  )) === "auto"
                 const updated = yield* ApplicationRepository.transition(
                   tx,
                   currentUser.userId,
                   id,
-                  unsent ? "draft" : "queued",
+                  governedByAuto ? "queued" : "draft",
                   {
                     from: ["needs_human", "failed", "draft"],
-                    patch: { lastError: null }
+                    patch: governedByAuto ? { lastError: null, intentAt: null } : { lastError: null }
                   }
                 )
                 return updated === null
@@ -698,37 +594,17 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                   costUsd: input.costUsd ?? null
                 })
 
-                // An auto-mode application waits in `queued` for exactly this
-                // kit. When it matches the prepared form and passes every
-                // check, the single submit job is queued; otherwise the kit is
-                // only stored and a human decides.
+                // Автоотклик ждёт в `queued` именно этот кит. Когда он подходит к
+                // сохранённой форме, шлюз сам проверит всё и поставит единственную
+                // submit-задачу; иначе кит просто сохранён, решает человек.
+                // Заявки без auto_run шлюз по триггеру auto не отправляет.
                 if (application.state === "queued") {
-                  const stored = yield* currentFormFor(tx, application)
-                  const existing = yield* QueueRepository.latestFor(tx, application.id, ["submit"])
-                  if (
-                    stored !== null &&
-                    existing === null &&
-                    stored.form.formHash === kit.formHash &&
-                    checkKit({ form: stored.form, hints: stored.hints, kit }).length === 0
-                  ) {
-                    // The same daily cap as approve. Without a slot the kit stays
-                    // stored and a human approves it when one frees up.
-                    const target = yield* targetFor(tx, application)
-                    if (target !== null) {
-                      const claim = yield* claimSendSlot(tx, {
-                        userId: currentUser.userId,
-                        application,
-                        fallbackLimit: options.dailyApplyLimit
-                      })
-                      if (!claim.slot) return ok(kit)
-                      yield* submitJob(tx, {
-                        ...target,
-                        kit,
-                        form: stored.form,
-                        sequence: yield* nextSequence(tx, application.id, "submit")
-                      })
-                    }
-                  }
+                  yield* trySubmit(tx, {
+                    userId: currentUser.userId,
+                    application,
+                    trigger: "auto",
+                    fallbackLimit: options.dailyApplyLimit
+                  })
                 }
                 return ok(kit)
               })

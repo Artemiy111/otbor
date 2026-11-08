@@ -1,5 +1,6 @@
 import type {
   ApiError,
+  ApplicationRecord,
   ApplyFilterRecord,
   FormAnswer,
   ResponseForm,
@@ -13,7 +14,7 @@ import {
   parseGeneratedDraft
 } from "@otbor/domain"
 import { sql } from "drizzle-orm"
-import { Context, Effect, Layer, Option, Schema } from "effect"
+import { Config, Context, Effect, Layer, Match, Option, Schema } from "effect"
 import { Database, type Executor } from "../db/Database.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
 import * as ApplyFilterRepository from "../repositories/ApplyFilterRepository.ts"
@@ -25,6 +26,8 @@ import { ApplicationService } from "./ApplicationService.ts"
 import { NO_RESUME_MESSAGE, resolveApplyResume } from "./applyResume.ts"
 import { checkKit, type KitProblem } from "./applyRules.ts"
 import { CurrentUser } from "./CurrentUser.ts"
+import { DEFAULT_DAILY_APPLY_LIMIT } from "./dailyLimit.ts"
+import { trySubmit } from "./submitGate.ts"
 import { inferenceJob } from "./jobs.ts"
 import { sha256, toStorageError } from "./support.ts"
 import { currentFormFor, requestFormRead } from "./vacancyForm.ts"
@@ -78,6 +81,9 @@ const describeError = (error: ApiError): string =>
 const PROGRESS_LIMIT = 200
 
 type Mode = "drafts" | "auto"
+
+/** Режим, который сейчас ведёт заявку с этим резюме (парная строка, иначе строка аккаунта). */
+type ModeOf = (resumeId: string | null) => ApplyFilterRecord["autoMode"]
 
 /** The idempotency key of the one writing job of (application, form). */
 export const writingKey = (applicationId: string, formHash: string): string =>
@@ -185,14 +191,23 @@ interface RunnerApplication {
  * State is read from the database on every pass, so a crashed or overlapping
  * pass loses nothing, and every step has an idempotency key.
  *
- * The runner never changes the submit path: `ApplicationService.setKit` queues
- * the single submit of a `queued` application whose kit passes `checkKit` and
- * the daily cap. Applications without `auto_run` (made by hand) are never read.
+ * Отправку runner не решает сам: единственную submit-задачу `queued` автозаявки
+ * с подходящим китом ставит общий шлюз `trySubmit` (режим auto, свежая форма,
+ * `checkKit`, дневной лимит). Applications without `auto_run` (made by hand) are never read.
  */
 export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyRunnerShape>()(
   "otbor/cloud/AutoApplyRunner"
 ) {
-  static readonly layer = Layer.effect(
+  /** Продовый слой: лимит по умолчанию - `OTBOR_DAILY_APPLY_LIMIT` (иначе 200). */
+  static readonly layer = Layer.unwrap(
+    Config.Int("OTBOR_DAILY_APPLY_LIMIT").pipe(
+      Config.withDefault(DEFAULT_DAILY_APPLY_LIMIT),
+      Effect.map((dailyApplyLimit) => AutoApplyRunner.layerWith({ dailyApplyLimit }))
+    )
+  )
+
+  static readonly layerWith = (config: { readonly dailyApplyLimit: number }) =>
+  Layer.effect(
     AutoApplyRunner,
     Effect.gen(function*() {
       const database = yield* Database
@@ -285,7 +300,7 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
               )
               .pipe(Effect.mapError(toStorageError("autoApply.resume")))
 
-          const progress = (app: RunnerApplication): Effect.Effect<Step, ApiError> =>
+          const progress = (app: RunnerApplication, modeOf: ModeOf): Effect.Effect<Step, ApiError> =>
             Effect.gen(function*() {
               const snapshot = yield* database
                 .asUser(userId, (tx) =>
@@ -337,6 +352,9 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                 if (filled.reason !== null || filled.resumeId === null) return human(filled.reason ?? NO_RESUME_MESSAGE)
                 effectiveResumeId = filled.resumeId
               }
+              // Режим мог смениться; решает строка, которая ведёт заявку с учётом
+              // дозаполненного резюме, а не то, что было в строке до дозаполнения.
+              if (modeOf(effectiveResumeId) !== app.autoRun) return idle
 
               /* The form must be read and fresh before anything is written. */
               if (form.reading) return waiting
@@ -369,18 +387,31 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                 const problems = checkKit({ form: stored.form, hints: stored.hints, kit })
                 if (problems.length > 0) return human(describeProblems(problems))
                 if (app.autoRun === "drafts") return idle
-                // Auto, kit passes, no submit yet: store it again so setKit's
-                // own guard (daily cap, at-most-one submit) queues the submit.
-                yield* applications.setKit({
-                  applicationId: app.id,
-                  formHash: kit.formHash,
-                  letter: kit.letter ?? null,
-                  answers: kit.answers,
-                  model: kit.model ?? null,
-                  promptHash: kit.promptHash ?? null,
-                  costUsd: kit.costUsd ?? null
-                })
-                return yield* settle(app)
+                // Автоотклик, кит проходит, submit ещё нет: отправку решает общий
+                // шлюз (режим auto, свежесть формы, дневной лимит, at-most-once).
+                const gate = yield* database
+                  .asUser(userId, (tx) =>
+                    trySubmit(tx, {
+                      userId,
+                      application: { ...current, resumeId: effectiveResumeId as ApplicationRecord["resumeId"] },
+                      trigger: "auto",
+                      fallbackLimit: config.dailyApplyLimit
+                    })
+                  )
+                  .pipe(Effect.mapError(toStorageError("autoApply.submit")))
+                return Match.value(gate).pipe(
+                  Match.tagsExhaustive({
+                    queued: (queued): Step => ({ tag: "kit_set", submitQueued: queued.jobQueued }),
+                    parked: (): Step => ({ tag: "parked" }),
+                    not_ready: (): Step => waiting,
+                    refused: (refused): Step =>
+                      refused.reason === "kit_refused"
+                        ? human(describeProblems(refused.problems))
+                        : refused.reason === "no_vacancy"
+                        ? human(refused.message)
+                        : idle
+                  })
+                )
               }
 
               const blocked = blockedBeforeWriting(stored)
@@ -393,7 +424,7 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                 // that governs this application; none set: the harness default.
                 const writer = yield* database
                   .asUser(userId, (tx) =>
-                    ApplyFilterRepository.resolve(tx, userId, current.hhAccountId, current.resumeId ?? null)
+                    ApplyFilterRepository.resolve(tx, userId, current.hhAccountId, effectiveResumeId)
                   )
                   .pipe(Effect.mapError(toStorageError("autoApply.writer")))
                 const prompt = yield* writing.draftPrompt({
@@ -485,8 +516,8 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
               return { tag: "kit_set", submitQueued: after.submit !== null } as const
             })
 
-          const advance = (app: RunnerApplication) =>
-            progress(app).pipe(
+          const advance = (app: RunnerApplication, modeOf: ModeOf) =>
+            progress(app, modeOf).pipe(
               Effect.flatMap((step): Effect.Effect<Step, ApiError> =>
                 step.tag === "needs_human"
                   ? parkForHuman(app.id, step.reason).pipe(Effect.as(step))
@@ -536,7 +567,7 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
 
             const pairResumeIds = accountRows.flatMap((row) => (row.resumeId === null ? [] : [row.resumeId]))
             // A pair row decides for its resume; the account row for the rest.
-            const modeOf = (resumeId: string | null): ApplyFilterRecord["autoMode"] => {
+            const modeOf: ModeOf = (resumeId) => {
               const pair = resumeId === null ? undefined : accountRows.find((row) => row.resumeId === resumeId)
               const own = pair ?? accountRows.find((row) => row.resumeId === null)
               return own?.autoMode ?? "off"
@@ -641,10 +672,11 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
               .pipe(Effect.mapError(toStorageError("autoApply.owned")))
 
             for (const app of owned) {
-              // The mode may have changed since the application was made: only
-              // an application whose row is still in the mode it was made in moves on.
-              if (modeOf(app.resumeId) !== app.autoRun) continue
-              yield* advance(app)
+              // Режим мог смениться с момента создания заявки: двигается только та,
+              // чья строка всё ещё в режиме создания. У заявки без резюме проверка
+              // идёт после дозаполнения резюме (в `progress`).
+              if (app.resumeId !== null && modeOf(app.resumeId) !== app.autoRun) continue
+              yield* advance(app, modeOf)
             }
             })
 

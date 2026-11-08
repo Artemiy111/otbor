@@ -23,7 +23,6 @@ import * as VacancyRepository from "../repositories/VacancyRepository.ts"
 import { CurrentUser } from "./CurrentUser.ts"
 import {
   attemptArtifacts,
-  checkKit,
   judgePrepare,
   judgeReconcile,
   judgeChatRead,
@@ -35,13 +34,13 @@ import {
 } from "./applyRules.ts"
 import { completeFitInference } from "./fitJudge.ts"
 import * as VacancyFormRepository from "../repositories/VacancyFormRepository.ts"
-import { hintsFor } from "./formHints.ts"
 import { importTopics } from "./NegotiationsSync.ts"
 import { importChat } from "./ChatSync.ts"
 import { importResumes } from "./ResumeSync.ts"
-import { negotiationsSyncJob, nextSequence, reconcileJob, submitJob, targetFor } from "./jobs.ts"
+import { negotiationsSyncJob, nextSequence, reconcileJob, targetFor } from "./jobs.ts"
 import { toStorageError } from "./support.ts"
-import { claimSendSlot, DEFAULT_DAILY_APPLY_LIMIT } from "./dailyLimit.ts"
+import { DEFAULT_DAILY_APPLY_LIMIT } from "./dailyLimit.ts"
+import { trySubmit } from "./submitGate.ts"
 
 /* -------------------------------------------------------------------------- */
 /* Outcomes                                                                   */
@@ -454,21 +453,39 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                       typeof wanted === "string"
                         ? yield* VacancyRepository.findById(tx, wanted)
                         : null
+                    // Заявки этой вакансии, ждущие формы: `queued` и без submit-задачи
+                    // (с задачей отправка уже идёт, форма ей не нужна). Форма у вакансии
+                    // общая, а сбои чтения привязаны к аккаунту харнесса.
                     const waiting =
                       vacancy === null
                         ? []
-                        : yield* ApplicationRepository.list(tx, ctx.userId, {
-                            state: "queued",
-                            vacancyId: vacancy.id
-                          })
-                    /** An application auto-queued for this form cannot wait for a read that failed. */
-                    const parkWaiting = (state: "needs_human" | "skipped", reason: string) =>
-                      Effect.forEach(waiting, (application) =>
+                        : yield* Effect.filter(
+                            yield* ApplicationRepository.list(tx, ctx.userId, {
+                              state: "queued",
+                              vacancyId: vacancy.id
+                            }),
+                            (application) =>
+                              QueueRepository.latestFor(tx, application.id, ["submit"]).pipe(
+                                Effect.map((submit) => submit === null)
+                              )
+                          )
+                    /** Заявки аккаунта, чьим сеансом читали форму. */
+                    const own = waiting.filter((application) => application.hhAccountId === ctx.hhAccountId)
+                    const park = (
+                      targets: typeof waiting,
+                      state: "needs_human" | "skipped",
+                      reason: string
+                    ) =>
+                      Effect.forEach(targets, (application) =>
                         ApplicationRepository.transition(tx, ctx.userId, application.id, state, {
                           from: ["queued"],
                           patch: { lastError: reason }
                         })
                       )
+                    /** Сбой, зависящий от аккаунта (чужая вакансия, human, failed, исчерпанные повторы): паркуем только его заявки. */
+                    const parkOwn = (state: "needs_human" | "skipped", reason: string) => park(own, state, reason)
+                    /** Вердикт про саму вакансию (архив, нераспознанная раскладка): касается всех аккаунтов. */
+                    const parkAll = (state: "needs_human" | "skipped", reason: string) => park(waiting, state, reason)
 
                     if (vacancy === null) {
                       status = "failed"
@@ -482,7 +499,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                           vacancyId: vacancy.id,
                           message
                         })
-                        yield* parkWaiting("needs_human", message)
+                        yield* parkOwn("needs_human", message)
                       } else if (form.layout === "unknown") {
                         status = "needs_human"
                         message = "the response form layout was not recognized"
@@ -491,7 +508,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                           accountId: ctx.hhAccountId,
                           message
                         })
-                        yield* parkWaiting("needs_human", message)
+                        yield* parkAll("needs_human", message)
                       } else {
                         const recorded = yield* VacancyFormRepository.recordRead(tx, {
                           vacancyId: vacancy.id,
@@ -501,42 +518,21 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                           url: verdict.artifacts.url
                         })
                         message = recorded.changed ? "form read; the form changed" : "form read; unchanged"
-                        // Auto-queued applications whose kit fits this form go out now.
-                        for (const application of waiting) {
-                          const kit = yield* ApplicationRepository.findKit(tx, application.id, form.formHash)
-                          if (kit === null) continue
-                          if ((yield* QueueRepository.latestFor(tx, application.id, ["submit"])) !== null) continue
-                          const hints = yield* hintsFor(tx, application, form)
-                          const problems = checkKit({ form, hints, kit })
-                          if (problems.length > 0) {
-                            yield* ApplicationRepository.transition(
-                              tx,
-                              ctx.userId,
-                              application.id,
-                              "needs_human",
-                              {
-                                from: ["queued"],
-                                patch: {
-                                  lastError: `kit refused: ${problems.map((problem) => problem.code).join(", ")}`
-                                }
-                              }
-                            )
-                            continue
-                          }
-                          const target = yield* targetFor(tx, application)
-                          if (target !== null) {
-                            // The same daily cap and intent stamp as approve / setKit.
-                            const claim = yield* claimSendSlot(tx, {
-                              userId: ctx.userId,
-                              application,
-                              fallbackLimit: options.dailyApplyLimit
-                            })
-                            if (!claim.slot) continue
-                            yield* submitJob(tx, {
-                              ...target,
-                              kit,
-                              form,
-                              sequence: yield* nextSequence(tx, application.id, "submit")
+                        // Автозаявки любого аккаунта, чей кит подходит к этой форме, уходят
+                        // сейчас - через общий шлюз. Аккаунты по порядку id: блокировки
+                        // слотов берутся в одном порядке и не ждут друг друга по кругу.
+                        const ordered = [...waiting].sort((a, b) => a.hhAccountId.localeCompare(b.hhAccountId))
+                        for (const application of ordered) {
+                          const outcome = yield* trySubmit(tx, {
+                            userId: ctx.userId,
+                            application,
+                            trigger: "auto",
+                            fallbackLimit: options.dailyApplyLimit
+                          })
+                          if (outcome._tag === "refused" && outcome.reason === "kit_refused") {
+                            yield* ApplicationRepository.transition(tx, ctx.userId, application.id, "needs_human", {
+                              from: ["queued"],
+                              patch: { lastError: outcome.message }
                             })
                           }
                         }
@@ -558,7 +554,9 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                           message: verdict.reason
                         })
                       }
-                      yield* parkWaiting("skipped", verdict.reason)
+                      // Архив - свойство вакансии; «hh уже держит отклик» - только этого аккаунта.
+                      if (verdict.reason.includes("archived")) yield* parkAll("skipped", verdict.reason)
+                      else yield* parkOwn("skipped", verdict.reason)
                       if (exit.tag === "already_responded" && ctx.hhAccountId !== null) {
                         // hh knows a response otbor does not: import it, so the
                         // vacancy shows "responded" instead of a form error.
@@ -582,12 +580,12 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                       status = "needs_human"
                       message = `form read needs a human: ${verdict.reason}`
                       yield* VacancyFormRepository.recordFailure(tx, { vacancyId: vacancy.id, message })
-                      yield* parkWaiting("needs_human", verdict.reason)
+                      yield* parkOwn("needs_human", verdict.reason)
                     } else if (verdict._tag === "failed") {
                       status = "failed"
                       message = verdict.reason
                       yield* VacancyFormRepository.recordFailure(tx, { vacancyId: vacancy.id, message })
-                      yield* parkWaiting("needs_human", verdict.reason)
+                      yield* parkOwn("needs_human", verdict.reason)
                     } else if (job.attempts < job.maxAttempts) {
                       status = "pending"
                       runAt = retryLater(exit, 30)
@@ -596,7 +594,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                       status = "dead"
                       message = `form read exhausted retries: ${exit.tag}`
                       yield* VacancyFormRepository.recordFailure(tx, { vacancyId: vacancy.id, message })
-                      yield* parkWaiting("needs_human", message)
+                      yield* parkOwn("needs_human", message)
                     }
                     break
                   }
