@@ -256,3 +256,8 @@ export const seedSearchVacancy = async (input: {
   }
   return id
 }
+
+/** Archives every vacancy seeded so far, so a list test sees only its own rows. */
+export const archiveAllVacancies = async (): Promise<void> => {
+  await runAs("owner", ownerTx((tx) => tx.update(vacancy).set({ archived: true }).pipe(Effect.asVoid)))
+}

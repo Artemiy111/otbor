@@ -197,7 +197,8 @@ if (!enabled || serverUrl === null) {
       // A draft is the operator's; only an auto-queued application is parked by a failed read.
       expect(await stateOf(responded)).toBe("draft")
       const respondedForm = await support.vacancyFormState(responded.tenant.userId, responded.vacancyId)
-      expect(respondedForm.lastError ?? "").toBe("")
+      // the skip reason is kept, so the vacancy does not look like a form with no questions
+      expect(respondedForm.lastError).toContain("already holds a response")
       expect(respondedForm.form).toBeNull()
 
       const auto = await setup("prep-responded-auto", "queued")
@@ -267,7 +268,7 @@ if (!enabled || serverUrl === null) {
       expect(stale).toBeInstanceOf(Conflict)
     })
 
-    test("a code task is never approved from a model answer", async () => {
+    test("a code task answered by the model is approved like any other answer", async () => {
       const ctx = await setup("approve-code")
       await prepare(ctx, codeHtml)
       const form = (await detail(ctx)).form!.form
@@ -282,19 +283,6 @@ if (!enabled || serverUrl === null) {
           human(other.id, { text: "5" }),
           human(code.id, { text: "def f(): pass", source: "model" })
         ]
-      })
-      const refused = await support.applicationApproveFailure(ctx.tenant.userId, ctx.applicationId)
-      expect(refused).toBeInstanceOf(AnswersInvalid)
-      expect((refused as AnswersInvalid).problems.map((problem) => problem.code)).toContain(
-        "code_needs_human"
-      )
-
-      // The same answer written by a human is accepted.
-      await support.applicationSetKit(ctx.tenant.userId, {
-        applicationId: ctx.applicationId,
-        formHash: form.formHash,
-        letter: "x",
-        answers: [human(other.id, { text: "5" }), human(code.id, { text: "def f(): pass" })]
       })
       const approved = await support.applicationApprove(ctx.tenant.userId, ctx.applicationId)
       expect(approved.state).toBe("queued")

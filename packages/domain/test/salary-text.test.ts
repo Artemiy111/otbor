@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { detectSalaryInText } from "../src/salary-text.ts"
 
-const d = (t: string) => detectSalaryInText(t)
+const d = (t: string | null) => detectSalaryInText(t)
 
 describe("detectSalaryInText", () => {
   test("оклад без валюты до вычета налога", () => {

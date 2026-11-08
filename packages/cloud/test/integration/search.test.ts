@@ -145,19 +145,21 @@ if (!enabled || serverUrl === null) {
       const middle = await support.seedSearchVacancy({
         label: "lf1", title: "Mid", employerId: employer, seniority: "middle", skills: ["Kubernetes"]
       })
-      await support.seedSearchVacancy({ label: "lf2", title: "Sen", employerId: employer, seniority: "senior" })
+      const senior = await support.seedSearchVacancy({ label: "lf2", title: "Sen", employerId: employer, seniority: "senior" })
       const archived = await support.seedSearchVacancy({
         label: "lf3", title: "Old mid", employerId: employer, seniority: "middle", archived: true
       })
 
+      // The corpus is shared with earlier tests: look only at this test's rows.
+      const own = new Set([middle, senior, archived])
       const ids = async (filter: PresetFilter | undefined, includeArchived = false) =>
         (await support.runAs(
           tenant.userId,
           Effect.gen(function*() {
             const corpus = yield* CorpusService
-            return yield* corpus.list({ limit: 50, filter, includeArchived })
+            return yield* corpus.list({ limit: 200, filter, includeArchived })
           })
-        )).items.map((row): string => row.id)
+        )).items.map((row): string => row.id).filter((id) => own.has(id))
 
       expect(await ids({ rules: [{ field: "seniority", op: "eq", value: "middle" }] })).toEqual([middle])
       expect((await ids({
@@ -169,6 +171,7 @@ if (!enabled || serverUrl === null) {
   })
 
     test("salary compares the vacancy range, pins a currency, accepts missing salaries and ORs currencies", async () => {
+      await support.archiveAllVacancies()
       const tenant = await support.seedTenant("salary-filter")
       const employer = await support.seedEmployerStats("e-salary", "Salary Co")
       const mk = (label: string, extra: { salaryFrom?: number; salaryTo?: number; salaryCurrency?: string }) =>
@@ -212,6 +215,7 @@ if (!enabled || serverUrl === null) {
       ] }] })).toEqual(sorted(rub400, usd4k))
     }, 60_000)
     test("location matches a country with all its cities, a single city, several places and negation", async () => {
+      await support.archiveAllVacancies()
       const tenant = await support.seedTenant("location-filter")
       const employer = await support.seedEmployerStats("e-location", "Location Co")
       const mk = (label: string, areaId?: number) =>
