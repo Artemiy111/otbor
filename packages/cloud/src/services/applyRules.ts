@@ -397,7 +397,8 @@ export type ReconcileVerdict =
   /** A response exists. Whatever the submit said, the application is submitted. */
   | { readonly _tag: "submitted"; readonly reading: ReconcileReading; readonly reason: string }
   /**
-   * Both reads were clear and show no response: the click did not reach hh.
+   * The vacancy page, read logged in on the right URL, offers the plain
+   * "respond" control: no response exists, the click did not reach hh.
    * The application goes back to a human; nothing is queued.
    */
   | { readonly _tag: "unsent"; readonly reading: ReconcileReading; readonly reason: string }
@@ -415,19 +416,25 @@ export type ReconcileVerdict =
  *
  * The harness's tag is not a verdict: a bare `submitted` or `not_submitted` is
  * a claim without evidence and is read again. Only the cloud's own reading of
- * the pages settles anything, and only a clear reading of both pages settles
- * "no response". Every doubt keeps the application in reconcile; no outcome
- * of this function ever queues a second submit.
+ * the pages settles anything. The vacancy page decides: "respond" control means
+ * no response, "you responded" means a response; the negotiations list is read
+ * only to tell which resume a response belongs to. Every doubt keeps the
+ * application in reconcile; no outcome of this function ever queues a second submit.
  */
 export const judgeReconcile = (
   exit: HarnessExit,
   externalId: string,
   /**
    * hh's id of the resume the application was made with. hh keeps one response
-   * per resume, so with it only the topic of that resume counts, and the vacancy
-   * page (which shows a response made with any resume) proves nothing alone.
+   * per resume, so the topic is matched by it (see `needsResume`).
    */
-  resumeExternalId: string | null = null
+  resumeExternalId: string | null = null,
+  /**
+   * У аккаунта есть другая заявка на эту вакансию с другим резюме: «вы
+   * откликнулись» на странице вакансии не говорит, чей это отклик, и нужен
+   * отклик из списка именно с этим резюме. По умолчанию - когда резюме известно.
+   */
+  needsResume: boolean = resumeExternalId !== null
 ): ReconcileVerdict => {
   if (exit.tag === "session_expired") {
     return { _tag: "human", reason: "hh session expired; log in again" }
@@ -490,49 +497,62 @@ export const judgeReconcile = (
     }
   }
 
-  // The vacancy page cannot say which resume the response was made with.
-  const vacancyResponded = vacancy.state === "responded" && resumeExternalId === null
+  const vacancyResponded = vacancy.state === "responded"
   const vacancyNo = vacancy.state === "not_responded"
   const found = topic !== null
-  // The list says "absent" only when it was read to the end.
-  const listNo = !found && exhausted
 
-  if ((vacancyResponded || found) && (vacancyNo || (vacancyResponded && listNo))) {
+  // «Откликнуться» на странице вакансии, где аккаунт вошёл: hh показывает
+  // «вы откликнулись» при отклике с любым резюме, значит, отклика нет вовсе.
+  // Список для этого не нужен. Если список всё же прочитан и держит отклик,
+  // это противоречие, а не повод верить странице.
+  if (vacancyNo) {
+    if (found) {
+      return {
+        _tag: "retry",
+        reading,
+        reason: "contradiction: the negotiations list holds the vacancy, the vacancy page shows no response"
+      }
+    }
+    return { _tag: "unsent", reading, reason: "the vacancy page shows no response" }
+  }
+
+  if (vacancyResponded) {
+    // Отклик есть. Если резюме различать не нужно (других заявок на вакансию
+    // с другим резюме нет), страницы достаточно.
+    if (found || !needsResume) {
+      return {
+        _tag: "submitted",
+        reading,
+        reason: found
+          ? "a response exists (vacancy page, negotiations list)"
+          : "a response exists (vacancy page)"
+      }
+    }
+    // Нужен отклик именно с этим резюме. Список прочитан до конца и его нет:
+    // страница видит чужой отклик, наш невидим - решает человек.
+    if (exhausted) {
+      return {
+        _tag: "human",
+        reason: "the vacancy page shows a response, but the list holds none made with this resume"
+      }
+    }
+    const doubts = [
+      !readable ? "negotiations list unreadable or not read" : null,
+      readable && !exhausted ? "negotiations list not read to the end" : null
+    ].filter((doubt) => doubt !== null)
     return {
       _tag: "retry",
       reading,
-      reason: vacancyNo
-        ? "contradiction: the negotiations list holds the vacancy, the vacancy page shows no response"
-        : "contradiction: the vacancy page shows a response, the negotiations list does not hold it"
+      reason: `reconcile is inconclusive: the response may belong to another resume, ${doubts.join(", ")}`
     }
   }
 
-  if (vacancyResponded || found) {
-    const sources = [vacancyResponded ? "vacancy page" : null, found ? "negotiations list" : null]
-    return {
-      _tag: "submitted",
-      reading,
-      reason: `a response exists (${sources.filter((source) => source !== null).join(", ")})`
-    }
+  // Страница не читается (другой адрес, незнакомая вёрстка, архив).
+  // Отклик в прочитанном списке всё же доказывает отправку.
+  if (found) {
+    return { _tag: "submitted", reading, reason: "a response exists (negotiations list)" }
   }
-
-  if (vacancyNo && listNo) {
-    return {
-      _tag: "unsent",
-      reading,
-      reason: "neither the vacancy page nor the negotiations list shows a response"
-    }
-  }
-
-  const doubts = [
-    vacancy.state === "unreadable" ? "vacancy page unreadable" : null,
-    resumeExternalId !== null && vacancy.state === "responded" && !found
-      ? "the vacancy page shows a response, but the list holds none made with this resume"
-      : null,
-    !readable ? "negotiations list unreadable" : null,
-    readable && !exhausted ? "negotiations list not read to the end" : null
-  ].filter((doubt) => doubt !== null)
-  return { _tag: "retry", reading, reason: `reconcile is inconclusive: ${doubts.join(", ")}` }
+  return { _tag: "retry", reading, reason: "reconcile is inconclusive: vacancy page unreadable" }
 }
 
 /** The reconcile attempt keeps the cloud's reading and the verdict, not page bodies. */

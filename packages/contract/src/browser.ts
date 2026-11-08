@@ -124,7 +124,19 @@ export const SubmitEvidence = Schema.Struct({
 export type SubmitEvidence = typeof SubmitEvidence.Type
 
 /** `reconcile` reads the site for an application whose submit is unknown. */
-export const ReconcileJobPayload = Schema.Struct(Target)
+export const ReconcileJobPayload = Schema.Struct({
+  ...Target,
+  /**
+   * Ответ на вакансию уже есть, вопрос только в том, с каким резюме он сделан
+   * (у аккаунта есть другая заявка на эту вакансию с другим резюме). Облако
+   * считает это при постановке сверки. Только тогда харнесс, увидев на странице
+   * вакансии «вы откликнулись», читает список откликов, и только до первого
+   * отклика на эту вакансию с этим резюме. Без подсказки список не читается.
+   */
+  needsResume: Schema.optional(Schema.Boolean),
+  /** hh-id резюме заявки: по нему харнесс узнаёт нужный отклик в списке. */
+  resumeExternalId: Schema.optional(Schema.NullOr(Schema.String))
+})
 
 export type ReconcileJobPayload = typeof ReconcileJobPayload.Type
 

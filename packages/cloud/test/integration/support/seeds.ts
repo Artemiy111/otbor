@@ -318,6 +318,8 @@ export const seedResume = async (input: {
   readonly userId: string
   readonly accountId: string
   readonly title: string
+  /** hh-id резюме (для откликов в списке); по умолчанию случайный. */
+  readonly externalId?: string
 }): Promise<string> =>
   runAs(
     input.userId,
@@ -328,7 +330,7 @@ export const seedResume = async (input: {
           .values({
             userId: input.userId,
             hhAccountId: input.accountId,
-            externalId: unique("resume"),
+            externalId: input.externalId ?? unique("resume"),
             hash: randomUUID(),
             title: input.title,
             text: input.title

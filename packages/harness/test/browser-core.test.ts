@@ -241,6 +241,8 @@ describe("reconcileExit", () => {
     expect(negotiationsUrl("https://hh.ru", 3)).toBe("https://hh.ru/applicant/negotiations?page=3")
     expect(wantsMoreNegotiations(list.html, "999")).toBe(true)
     expect(wantsMoreNegotiations(list.html, "100500")).toBe(false)
+    // A topic of another resume on the same vacancy does not stop the reading.
+    expect(wantsMoreNegotiations(list.html, "100500", undefined, "no-such-resume")).toBe(true)
     expect(wantsMoreNegotiations(fixture("synthetic-negotiations-empty.html"), "1")).toBe(false)
     expect(wantsMoreNegotiations("<html></html>", "1")).toBe(false)
   })

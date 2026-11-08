@@ -60,6 +60,8 @@ if (!enabled || serverUrl === null) {
   const base = serverUrl
   const previousDatabaseUrl = process.env.DATABASE_URL
 
+  let resumeCounter = 7_000_000
+
   describe("browser apply flow", () => {
     beforeAll(async () => {
       await support.createTestDatabase(base)
@@ -74,18 +76,50 @@ if (!enabled || serverUrl === null) {
     }, 60_000)
 
     /** A tenant with one account, a registered browser harness and one application. */
-    const setup = async (label: string, state: "draft" | "preparing" | "queued" = "draft", autoRun?: "auto") => {
+    const setup = async (
+      label: string,
+      state: "draft" | "preparing" | "queued" = "draft",
+      autoRun?: "auto",
+      /** Заявка с резюме A; вторая заявка на ту же вакансию с резюме B. */
+      twoResumes = false
+    ) => {
       const tenant = await support.seedTenant(label)
       if (autoRun === "auto") {
         await support.applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter: {}, autoMode: "auto" })
       }
       const vacancyId = await support.seedVacancy(label)
       const externalId = await support.vacancyExternalId(vacancyId)
+      let resumeId: string | undefined
+      resumeCounter += 2
+      const resumeA = String(resumeCounter)
+      const resumeB = String(resumeCounter + 1)
+      if (twoResumes) {
+        resumeId = await support.seedResume({
+          userId: tenant.userId,
+          accountId: tenant.accountId,
+          title: "A",
+          externalId: resumeA
+        })
+        const otherResumeId = await support.seedResume({
+          userId: tenant.userId,
+          accountId: tenant.accountId,
+          title: "B",
+          externalId: resumeB
+        })
+        await support.seedApplication({
+          userId: tenant.userId,
+          accountId: tenant.accountId,
+          vacancyId,
+          state: "submitted",
+          resumeId: otherResumeId
+        })
+      }
       const applicationId = await support.seedApplication({
         userId: tenant.userId,
         accountId: tenant.accountId,
         vacancyId,
         state,
+        ...(resumeId === undefined ? {} : { resumeId }),
         ...(autoRun === undefined ? {} : { autoRun })
       })
       const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
@@ -103,7 +137,7 @@ if (!enabled || serverUrl === null) {
           epoch: job.leaseEpoch,
           exit
         })
-      return { tenant, vacancyId, externalId, applicationId, harness, lease, complete }
+      return { tenant, vacancyId, externalId, applicationId, harness, lease, complete, resumeA, resumeB }
     }
 
     type Ctx = Awaited<ReturnType<typeof setup>>
@@ -493,13 +527,8 @@ if (!enabled || serverUrl === null) {
       const ctx = await setup("rec-unsent")
       const job = await ambiguousSubmit(ctx)
 
-      const result = await ctx.complete(
-        job,
-        reconciled(ctx, {
-          vacancy: vacancyPage(ctx, false),
-          negotiations: [otherListHtml, emptyListHtml]
-        })
-      )
+      // The vacancy page alone is enough: no list was read.
+      const result = await ctx.complete(job, reconciled(ctx, { vacancy: vacancyPage(ctx, false), negotiations: [] }))
       expect(result).toMatchObject({ accepted: true, status: "done" })
       expect(await stateOf(ctx)).toBe("draft")
 
@@ -527,12 +556,10 @@ if (!enabled || serverUrl === null) {
       const ctx = await setup("rec-inconclusive")
       let job = await ambiguousSubmit(ctx)
 
-      // The list was not read to the end: absence proves nothing.
+      // The vacancy page is unreadable: it proves nothing, the list is not read for it.
+      const unreadable = { url: `https://hh.ru/vacancy/${ctx.externalId}`, html: "<html>archived</html>" }
       for (let attempt = 1; attempt < 3; attempt += 1) {
-        const result = await ctx.complete(
-          job,
-          reconciled(ctx, { vacancy: vacancyPage(ctx, false), negotiations: [otherListHtml] })
-        )
+        const result = await ctx.complete(job, reconciled(ctx, { vacancy: unreadable, negotiations: [] }))
         expect(result.status).toBe("pending")
         expect(await stateOf(ctx)).toBe("submitting")
         const row = (await support.jobsOf(ctx.applicationId)).find((item) => item.stage === "reconcile")!
@@ -541,10 +568,7 @@ if (!enabled || serverUrl === null) {
         expect(leased.job?.stage).toBe("reconcile")
         job = leased.job!
       }
-      const last = await ctx.complete(
-        job,
-        reconciled(ctx, { vacancy: vacancyPage(ctx, false), negotiations: [otherListHtml] })
-      )
+      const last = await ctx.complete(job, reconciled(ctx, { vacancy: unreadable, negotiations: [] }))
       expect(last.status).toBe("dead")
       expect(await stateOf(ctx)).toBe("needs_human")
 
@@ -557,7 +581,55 @@ if (!enabled || serverUrl === null) {
       expect(await stateOf(ctx)).toBe("submitting")
     })
 
+    test("a response on the vacancy page settles submitted without a list when the account has a single resume", async () => {
+      const ctx = await setup("rec-single-resume")
+      const job = await ambiguousSubmit(ctx)
+      expect((job.payload as { needsResume?: boolean }).needsResume).toBe(false)
+      const result = await ctx.complete(job, reconciled(ctx, { vacancy: vacancyPage(ctx, true), negotiations: [] }))
+      expect(result).toMatchObject({ accepted: true, status: "done" })
+      expect(await stateOf(ctx)).toBe("submitted")
+    })
+
+    /** A list page with this vacancy at the given resume. */
+    const listWithResume = (ctx: Ctx, resumeId: string) =>
+      `<template id="HH-Lux-InitialState">{"applicantNegotiations":{"topicList":[{"vacancyId":${JSON.stringify(ctx.externalId)},"resumeId":${resumeId},"lastState":"RESPONSE"}]}}</template>`
+
+    test("with another resume on the vacancy the list is read and decides by resume", async () => {
+      const found = await setup("rec-two-resumes-found", "draft", undefined, true)
+      const foundJob = await ambiguousSubmit(found)
+      expect(foundJob.payload).toMatchObject({ needsResume: true, resumeExternalId: found.resumeA })
+      // The page shows a response, but no list was read yet: ask again.
+      const unread = await found.complete(foundJob, reconciled(found, { vacancy: vacancyPage(found, true), negotiations: [] }))
+      expect(unread.status).toBe("pending")
+      expect(await stateOf(found)).toBe("submitting")
+      const row = (await support.jobsOf(found.applicationId)).find((item) => item.stage === "reconcile")!
+      await support.makeJobRunnable(row.id as string)
+      const again = (await found.lease()).job!
+      const done = await found.complete(
+        again,
+        reconciled(found, { vacancy: vacancyPage(found, true), negotiations: [listWithResume(found, found.resumeA)] })
+      )
+      expect(done).toMatchObject({ accepted: true, status: "done" })
+      expect(await stateOf(found)).toBe("submitted")
+
+      // The topic belongs to the other resume only and the list ends: a person looks.
+      const missing = await setup("rec-two-resumes-missing", "draft", undefined, true)
+      const missingJob = await ambiguousSubmit(missing)
+      const human = await missing.complete(
+        missingJob,
+        reconciled(missing, {
+          vacancy: vacancyPage(missing, true),
+          negotiations: [listWithResume(missing, missing.resumeB), emptyListHtml]
+        })
+      )
+      expect(human.status).toBe("needs_human")
+      expect(await stateOf(missing)).toBe("needs_human")
+      expect(await support.countJobs(missing.applicationId, "submit")).toBe(1)
+    })
+
     test("a contradictory reconcile stays in reconcile", async () => {
+      // The list is only read for a response; a list that holds the vacancy beside an
+      // open vacancy page is still a contradiction.
       const ctx = await setup("rec-contradiction")
       const job = await ambiguousSubmit(ctx)
       const result = await ctx.complete(

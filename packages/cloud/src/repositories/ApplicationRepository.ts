@@ -646,3 +646,24 @@ export const clearFormReadBlock = (
             and id in (${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)})
         `)
         .pipe(Effect.asVoid)
+
+/**
+ * Есть ли у аккаунта другая заявка (любого состояния и происхождения) на ту же
+ * вакансию с другим резюме. Тогда страница вакансии, которая показывает «вы
+ * откликнулись», не говорит, чей это отклик. Заявка без резюме ничего не
+ * различает, ей список не нужен.
+ */
+export const hasOtherResumeApplication = (tx: Executor, applicationId: string): RepoEffect<boolean> =>
+  tx
+    .execute(sql`
+      select exists (
+        select 1
+        from application a
+        join application o
+          on o.hh_account_id = a.hh_account_id and o.vacancy_id = a.vacancy_id and o.id <> a.id
+        where a.id = ${applicationId}
+          and a.resume_id is not null
+          and o.resume_id is distinct from a.resume_id
+      ) as other
+    `)
+    .pipe(Effect.map((result) => (result.rows[0] as { other?: boolean } | undefined)?.other === true))

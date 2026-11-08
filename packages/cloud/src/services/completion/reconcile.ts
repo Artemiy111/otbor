@@ -25,7 +25,12 @@ export const completeReconcile: StageHandler = (tx, ctx, exit) =>
       application.resumeId === null || application.resumeId === undefined
         ? null
         : yield* ResumeRepository.externalIdOf(tx, application.resumeId)
-    const verdict = judgeReconcile(exit, vacancy.externalId, resumeExternalId)
+    // Список откликов нужен только когда у аккаунта есть другая заявка на
+    // вакансию с другим резюме: иначе «вы откликнулись» на странице однозначно.
+    // Считается заново: заявки могли появиться после постановки сверки.
+    const needsResume =
+      resumeExternalId !== null && (yield* ApplicationRepository.hasOtherResumeApplication(tx, application.id))
+    const verdict = judgeReconcile(exit, vacancy.externalId, resumeExternalId, needsResume)
     const reconcileKept = reconcileArtifacts(exit, verdict)
 
     if (verdict._tag === "submitted") {

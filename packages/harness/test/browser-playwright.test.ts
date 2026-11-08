@@ -378,7 +378,7 @@ describe.skipIf(!hasBrowser)("PlaywrightBrowserExecutor against a local hh imita
     sessionProfile: "test-account"
   }
 
-  test("reconcile returns the vacancy page and the negotiations pages as evidence, and clicks nothing", async () => {
+  test("reconcile of a responded vacancy without the resume hint reads only the vacancy page", async () => {
     reconcileMode = "responded"
     posts = 0
     visited.length = 0
@@ -391,29 +391,51 @@ describe.skipIf(!hasBrowser)("PlaywrightBrowserExecutor against a local hh imita
     }
     expect(evidence.externalId).toBe("100500")
     expect(evidence.vacancy.url).toBe(`${origin}/vacancy/100500`)
-    // The cloud's reading of the same pages finds the response.
+    // The cloud's reading of the same page finds the response.
     expect(readResponseStatus(evidence.vacancy.html, "100500", "https://hh.ru/vacancy/100500").state).toBe("responded")
+    expect(evidence.negotiations).toHaveLength(0)
+    expect(posts).toBe(0)
+    expect(visited).toEqual(["/vacancy/100500"])
+  }, 40_000)
+
+  test("reconcile of a vacancy without a response does not open the list", async () => {
+    reconcileMode = "open"
+    posts = 0
+    visited.length = 0
+    const exit = await run(executor().reconcile({ ...reconcilePayload, needsResume: true }))
+    expect(exit.tag).toBe("reconciled")
+    expect((exit.artifacts as { negotiations: ReadonlyArray<unknown> }).negotiations).toHaveLength(0)
+    expect(posts).toBe(0)
+    expect(visited).toEqual(["/vacancy/100500"])
+  }, 40_000)
+
+  test("reconcile with the resume hint reads the list only to the page that holds the vacancy", async () => {
+    reconcileMode = "responded"
+    posts = 0
+    visited.length = 0
+    const exit = await run(executor().reconcile({ ...reconcilePayload, needsResume: true }))
+    expect(exit.tag).toBe("reconciled")
+    const evidence = exit.artifacts as { negotiations: ReadonlyArray<{ url: string; html: string }> }
     expect(parseNegotiations(evidence.negotiations[0]!.html).topics.map((topic) => topic.vacancyId)).toContain("100500")
-    // It stopped at the page that holds the vacancy, and sent nothing.
     expect(evidence.negotiations).toHaveLength(1)
     expect(posts).toBe(0)
     expect(visited).toEqual(["/vacancy/100500", "/applicant/negotiations?page=0"])
   }, 40_000)
 
-  test("reconcile reads the list to its end when the vacancy is absent", async () => {
-    reconcileMode = "open"
-    posts = 0
+  test("reconcile with the resume hint and an absent topic reads the list to its end", async () => {
+    reconcileMode = "responded"
     visited.length = 0
-    const exit = await run(executor().reconcile(reconcilePayload))
-    expect(exit.tag).toBe("reconciled")
+    // The topic on page 0 belongs to no such resume: reading goes on to the empty page.
+    const exit = await run(
+      executor().reconcile({ ...reconcilePayload, needsResume: true, resumeExternalId: "no-such-resume" })
+    )
     const evidence = exit.artifacts as { negotiations: ReadonlyArray<{ html: string }> }
     expect(evidence.negotiations).toHaveLength(2)
     expect(parseNegotiations(evidence.negotiations[1]!.html)).toEqual({ readable: true, topics: [], pageCount: null })
-    expect(posts).toBe(0)
   }, 40_000)
 
   test("reconcile with a bounded page budget stops there", async () => {
-    reconcileMode = "open"
+    reconcileMode = "responded"
     const exit = await run(
       makePlaywrightExecutor({
         baseUrl: origin,
@@ -423,7 +445,7 @@ describe.skipIf(!hasBrowser)("PlaywrightBrowserExecutor against a local hh imita
         navigationTimeoutMs: 10_000,
         settleMs: 4_000,
         maxNegotiationPages: 1
-      }).reconcile(reconcilePayload)
+      }).reconcile({ ...reconcilePayload, needsResume: true, resumeExternalId: "no-such-resume" })
     )
     expect((exit.artifacts as { negotiations: ReadonlyArray<unknown> }).negotiations).toHaveLength(1)
   }, 40_000)

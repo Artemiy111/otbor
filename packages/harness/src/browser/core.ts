@@ -375,12 +375,21 @@ export const MAX_NEGOTIATION_PAGES = NEGOTIATION_PAGES_CEILING
  * Whether another negotiations page is worth opening. This only saves
  * requests; it does not say whether a response exists.
  */
-export const wantsMoreNegotiations = (html: string, externalId: string, index?: number): boolean => {
+export const wantsMoreNegotiations = (
+  html: string,
+  externalId: string,
+  index?: number,
+  /** Нужен отклик именно с этим резюме: отклик с другим резюме на ту же вакансию не останавливает чтение. */
+  resumeExternalId: string | null = null
+): boolean => {
   const page = parseNegotiations(html)
   return (
     page.readable &&
     page.topics.length > 0 &&
-    !page.topics.some((topic) => topic.vacancyId === externalId) &&
+    !page.topics.some(
+      (topic) =>
+        topic.vacancyId === externalId && (resumeExternalId === null || topic.resumeId === resumeExternalId)
+    ) &&
     // Последняя страница по словам hh: дальше читать нечего.
     (index === undefined || page.pageCount === null || index + 1 < page.pageCount)
   )

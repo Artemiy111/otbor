@@ -9,6 +9,7 @@ import type {
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { DatabaseError, Executor } from "../db/Database.ts"
+import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
 import { toFormAnswers } from "./applyRules.ts"
@@ -166,8 +167,13 @@ export const submitJob = (
 export const reconcileJob = (
   tx: Executor,
   input: JobTarget & { readonly sequence: number; readonly runAt?: Date }
-) => {
+) => Effect.gen(function*() {
+  // Список откликов нужен, только если страница вакансии не скажет, с каким
+  // резюме сделан отклик: у аккаунта есть другая заявка на вакансию с другим резюме.
+  const needsResume = yield* ApplicationRepository.hasOtherResumeApplication(tx, input.applicationId)
   const payload = {
+    needsResume,
+    resumeExternalId: input.resumeExternalId ?? null,
     applicationId: input.applicationId,
     vacancyId: input.vacancyId,
     canonicalUrl: input.canonicalUrl,
@@ -175,7 +181,7 @@ export const reconcileJob = (
     sessionProfile: input.sessionProfile ?? null
   }
 
-  return QueueRepository.enqueue(tx, {
+  return yield* QueueRepository.enqueue(tx, {
     userId: input.userId,
     hhAccountId: input.hhAccountId,
     applicationId: input.applicationId,
@@ -187,7 +193,7 @@ export const reconcileJob = (
     payload,
     idempotencyKey: `application:${input.applicationId}:reconcile:${input.sequence}`
   })
-}
+})
 
 /**
  * An ACP prompt as a queue job. The harness owns the actual agent process; the

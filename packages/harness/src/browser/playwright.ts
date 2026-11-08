@@ -10,7 +10,7 @@ import type {
   SubmitEvidence
 } from "@otbor/contract"
 import { isTrackerUrl } from "./trackers.ts"
-import { classifyResponsePage, parseResumeRefs, responseResumeHash } from "@otbor/hh"
+import { classifyResponsePage, parseResumeRefs, readResponseStatus, responseResumeHash } from "@otbor/hh"
 import { Effect, Layer, Schema, Semaphore } from "effect"
 import { existsSync } from "node:fs"
 import { chromium, type BrowserContext, type Page } from "playwright"
@@ -659,14 +659,24 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
         const early = reconcileExit(payload.externalId, { vacancy, negotiations: [] })
         if (early.tag !== "reconciled") return early
 
+        // Список откликов нужен только когда страница вакансии говорит «вы
+        // откликнулись», а облако не может сказать, с каким резюме (подсказка
+        // `needsResume`). Иначе страницы вакансии достаточно: «откликнуться»
+        // на ней - отсутствие отклика, «вы откликнулись» - его наличие.
         const negotiations: Array<ReconcilePage> = []
-        const limit = config.maxNegotiationPages ?? MAX_NEGOTIATION_PAGES
-        for (let index = 0; index < limit; index += 1) {
-          const read = yield* settled(negotiationsUrl(baseUrl, index), (html) =>
-            html.includes("HH-Lux-InitialState")
-          )
-          negotiations.push(read)
-          if (!wantsMoreNegotiations(read.html, payload.externalId, index)) break
+        const responded =
+          readResponseStatus(vacancy.html, payload.externalId, vacancy.url).state === "responded"
+        if (responded && payload.needsResume === true) {
+          const limit = config.maxNegotiationPages ?? MAX_NEGOTIATION_PAGES
+          for (let index = 0; index < limit; index += 1) {
+            const read = yield* settled(negotiationsUrl(baseUrl, index), (html) =>
+              html.includes("HH-Lux-InitialState")
+            )
+            negotiations.push(read)
+            if (!wantsMoreNegotiations(read.html, payload.externalId, index, payload.resumeExternalId ?? null)) {
+              break
+            }
+          }
         }
         return reconcileExit(payload.externalId, { vacancy, negotiations })
       }),

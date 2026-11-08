@@ -65,48 +65,65 @@ describe("judgeReconcile", () => {
     }
   })
 
-  test("a list that was not read to the end is never negative", () => {
-    const verdict = judgeReconcile(
-      exit({ vacancy: page(open, VACANCY_URL), negotiations: [page(listOther)] }),
-      ID
-    )
-    expect(verdict._tag).toBe("retry")
+  test("the vacancy page alone proves no response: no list is needed", () => {
+    const verdict = judgeReconcile(exit({ vacancy: page(open, VACANCY_URL), negotiations: [] }), ID)
+    expect(verdict._tag).toBe("unsent")
+    // Same without the field at all (the harness did not read the list).
+    expect(judgeReconcile(exit({ vacancy: page(open, VACANCY_URL) }), ID)._tag).toBe("unsent")
+    // Even when the account has a response made with another resume.
+    expect(judgeReconcile(exit({ vacancy: page(open, VACANCY_URL) }), ID, "42", true)._tag).toBe("unsent")
   })
 
-  test("an unreadable vacancy page or list is never negative", () => {
+  test("a response on the vacancy page with a single resume settles submitted without the list", () => {
+    expect(judgeReconcile(exit({ vacancy: page(responded, VACANCY_URL), negotiations: [] }), ID, "42", false)._tag)
+      .toBe("submitted")
+    expect(judgeReconcile(exit({ vacancy: page(responded, VACANCY_URL) }), ID, null)._tag).toBe("submitted")
+  })
+
+  test("with another resume on the vacancy the list decides by resume", () => {
+    const vacancyOnly = exit({ vacancy: page(responded, VACANCY_URL), negotiations: [] })
+    // Not read yet: the harness is asked again.
+    expect(judgeReconcile(vacancyOnly, ID, "42", true)._tag).toBe("retry")
+    // The first page holds a topic of the right resume.
+    const mine = `<template id="HH-Lux-InitialState">{"applicantNegotiations":{"topicList":[{"vacancyId":${ID},"resumeId":42,"lastState":"RESPONSE"}]}}</template>`
+    const other = `<template id="HH-Lux-InitialState">{"applicantNegotiations":{"topicList":[{"vacancyId":${ID},"resumeId":7,"lastState":"RESPONSE"}]}}</template>`
     expect(
-      judgeReconcile(exit({ negotiations: [page(listEmpty)] }), ID)._tag
+      judgeReconcile(exit({ vacancy: page(responded, VACANCY_URL), negotiations: [page(mine)] }), ID, "42", true)._tag
+    ).toBe("submitted")
+    // Only another resume's topic, list not read to the end: keep reading.
+    expect(
+      judgeReconcile(exit({ vacancy: page(responded, VACANCY_URL), negotiations: [page(other)] }), ID, "42", true)._tag
     ).toBe("retry")
+    // The list ends without a topic of this resume: a person looks.
+    expect(
+      judgeReconcile(
+        exit({ vacancy: page(responded, VACANCY_URL), negotiations: [page(other), page(listEmpty)] }),
+        ID,
+        "42",
+        true
+      )._tag
+    ).toBe("human")
+  })
+
+  test("an unreadable vacancy page is never a verdict by itself", () => {
+    expect(judgeReconcile(exit({ negotiations: [page(listEmpty)] }), ID)._tag).toBe("retry")
     expect(
       judgeReconcile(
         exit({ vacancy: page("<html>archived</html>", VACANCY_URL), negotiations: [page(listEmpty)] }),
         ID
       )._tag
     ).toBe("retry")
-    expect(
-      judgeReconcile(exit({ vacancy: page(open, VACANCY_URL), negotiations: [page("<html></html>")] }), ID)._tag
-    ).toBe("retry")
-    expect(judgeReconcile(exit({ vacancy: page(open, VACANCY_URL), negotiations: [] }), ID)._tag).toBe("retry")
+    expect(judgeReconcile(exit({ vacancy: page("<html>archived</html>", VACANCY_URL) }), ID)._tag).toBe("retry")
     // The vacancy page redirected elsewhere: it says nothing about this vacancy.
-    expect(
-      judgeReconcile(
-        exit({ vacancy: page(open, "https://hh.ru/vacancy/999"), negotiations: [page(listEmpty)] }),
-        ID
-      )._tag
-    ).toBe("retry")
+    expect(judgeReconcile(exit({ vacancy: page(open, "https://hh.ru/vacancy/999") }), ID)._tag).toBe("retry")
   })
 
-  test("contradictions stay in reconcile", () => {
+  test("a list that holds the vacancy contradicts a vacancy page without a response", () => {
     const listedButOpen = judgeReconcile(
       exit({ vacancy: page(open, VACANCY_URL), negotiations: [page(listWith), page(listEmpty)] }),
       ID
     )
     expect(listedButOpen._tag).toBe("retry")
-    const respondedButAbsent = judgeReconcile(
-      exit({ vacancy: page(responded, VACANCY_URL), negotiations: [page(listOther), page(listEmpty)] }),
-      ID
-    )
-    expect(respondedButAbsent._tag).toBe("retry")
   })
 
   test("login and captcha need a human, from the tag or from the pages", () => {
