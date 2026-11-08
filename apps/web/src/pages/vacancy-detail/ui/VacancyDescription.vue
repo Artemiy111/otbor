@@ -22,7 +22,7 @@ const html = computed(() => {
   )
 })
 const box = computed(() => [
-  "whitespace-pre-wrap break-words rounded-md border border-border bg-muted/30 p-4 text-sm leading-relaxed",
+  "whitespace-pre-wrap break-words text-sm leading-relaxed",
   expanded.value ? "" : "max-h-72 overflow-hidden [mask-image:linear-gradient(#000_70%,transparent)]"
 ])
 </script>
