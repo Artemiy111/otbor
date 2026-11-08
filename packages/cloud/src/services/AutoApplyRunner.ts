@@ -14,7 +14,6 @@ import {
   APPLY_POLICY_VERSION,
   parseGeneratedDraft
 } from "@otbor/domain"
-import { sql } from "drizzle-orm"
 import { Config, Context, Effect, Layer, Match, Option, Schema } from "effect"
 import { Database, type Executor } from "../db/Database.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
@@ -74,6 +73,16 @@ export interface AutoApplyRunnerShape {
     userId: string,
     options?: AutoApplyRunOptions
   ) => Effect.Effect<AutoApplyResult, ApiError>
+  /**
+   * Двигает дальше только перечисленные автозаявки, не создавая новых: тот же
+   * шаг, что делает проход (режим строки, `retry_at`), но сразу после того, как
+   * закончилась задача, которую заявка ждала (чтение формы, письмо). Вызывать
+   * после коммита завершения задачи; расписание остаётся запасным путём.
+   */
+  readonly advance: (
+    userId: string,
+    applicationIds: ReadonlyArray<string>
+  ) => Effect.Effect<AutoApplyResult, ApiError>
 }
 
 const describeError = (error: ApiError): string =>
@@ -94,6 +103,14 @@ type ModeOf = (resumeId: string | null) => ApplyFilterRecord["autoMode"]
  */
 export const writingKey = (applicationId: string, formHash: string): string =>
   `autoapply:writing:${applicationId}:${formHash}`
+
+/** Id заявки из ключа задачи письма; `null`, если ключ не `autoapply:writing:`. */
+export const writingApplicationId = (idempotencyKey: string): string | null => {
+  const parts = idempotencyKey.split(":")
+  return parts[0] === "autoapply" && parts[1] === "writing" && parts[2] !== undefined && parts[2] !== ""
+    ? parts[2]
+    : null
+}
 
 /** What happened to one application in a pass. */
 type Step =
@@ -186,13 +203,7 @@ const blockedBeforeWriting = (stored: StoredForm): { readonly reason: string; re
 /* Service                                                                    */
 /* -------------------------------------------------------------------------- */
 
-interface RunnerApplication {
-  readonly id: string
-  readonly vacancyId: string
-  readonly resumeId: string | null
-  readonly hhAccountId: string
-  readonly autoRun: Mode
-}
+type RunnerApplication = ApplicationRepository.RunnerApplicationRow
 
 /**
  * `apply` schedule: turns the apply filter's `auto_mode` into applications.
@@ -239,7 +250,15 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
           Layer.orDie
         )
 
-      const run: AutoApplyRunnerShape["run"] = (userId, options = {}) =>
+      /**
+       * Проход раннера. С `only` создание заявок пропускается, а двигаются
+       * только перечисленные заявки (остальные условия выбора прежние).
+       */
+      const pass = (
+        userId: string,
+        options: AutoApplyRunOptions,
+        only?: ReadonlyArray<string>
+      ): Effect.Effect<AutoApplyResult, ApiError> =>
         Effect.gen(function*() {
           const applications = yield* ApplicationService
           const writing = yield* WritingService
@@ -293,23 +312,19 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                 Effect.gen(function*() {
                   const resume = yield* resolveApplyResume(tx, userId, app.hhAccountId, null)
                   if (resume === null) return { reason: NO_RESUME_MESSAGE, resumeId: null }
-                  const clash = yield* tx.execute(sql`
-                    select 1 from application
-                    where hh_account_id = ${app.hhAccountId} and vacancy_id = ${app.vacancyId}
-                      and resume_id = ${resume.id} and id <> ${app.id}
-                    limit 1
-                  `)
-                  if (clash.rows.length > 0) {
+                  const clash = yield* ApplicationRepository.resumeClashExists(tx, {
+                    hhAccountId: app.hhAccountId,
+                    vacancyId: app.vacancyId,
+                    resumeId: resume.id,
+                    exceptId: app.id
+                  })
+                  if (clash) {
                     return {
                       reason: `не выбрано резюме для откликов: на эту вакансию уже есть отклик резюме «${resume.title}»`,
                       resumeId: null
                     }
                   }
-                  yield* tx.execute(sql`
-                    update application set resume_id = ${resume.id}, updated_at = now()
-                    where id = ${app.id} and user_id = ${userId}
-                      and auto_run is not null and resume_id is null
-                  `)
+                  yield* ApplicationRepository.backfillResume(tx, { userId, id: app.id, resumeId: resume.id })
                   return { reason: null, resumeId: resume.id }
                 })
               )
@@ -356,13 +371,7 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                     const jobError =
                       job === null || job.status === "done"
                         ? null
-                        : yield* tx
-                            .execute(sql`select last_error from harness_jobs where id = ${job.id}`)
-                            .pipe(
-                              Effect.map((result) =>
-                                (result.rows[0] as { last_error?: string | null } | undefined)?.last_error ?? null
-                              )
-                            )
+                        : yield* QueueRepository.lastErrorOf(tx, job.id)
                     const submit = yield* QueueRepository.latestFor(tx, app.id, ["submit"])
                     return { current, form, stored, kit, job, jobError, submit }
                   })
@@ -402,12 +411,7 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
               const resumed = current.blockedReason ?? null
               if (resumed !== null) {
                 yield* database
-                  .asUser(userId, (tx) =>
-                    tx.execute(sql`
-                      update application set blocked_reason = null, retry_at = null, updated_at = now()
-                      where id = ${app.id} and user_id = ${userId} and state = 'preparing'
-                    `)
-                  )
+                  .asUser(userId, (tx) => ApplicationRepository.clearPreparingBlock(tx, userId, app.id))
                   .pipe(Effect.mapError(toStorageError("autoApply.resume")))
               }
 
@@ -668,7 +672,10 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
             }
 
             // Creation: pair rows first (they are the more specific), then the account row.
-            const ordered = [...active].sort((a, b) => Number(a.resumeId === null) - Number(b.resumeId === null))
+            const ordered =
+              only === undefined
+                ? [...active].sort((a, b) => Number(a.resumeId === null) - Number(b.resumeId === null))
+                : []
             for (const row of ordered) {
               const mode = row.autoMode as Mode
               const budget = yield* Effect.gen(function*() {
@@ -729,40 +736,12 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
             // Progress: everything the runner created that still waits on it.
             const owned = yield* database
               .asUser(userId, (tx) =>
-                tx
-                  .execute(sql`
-                    select id, vacancy_id, resume_id, hh_account_id, auto_run
-                    from application
-                    where user_id = ${userId} and hh_account_id = ${hhAccountId}
-                      and auto_run is not null
-                      and ((auto_run = 'auto' and state = 'preparing'
-                          and (retry_at is null or retry_at <= now()))
-                        or (auto_run = 'drafts' and state = 'draft'
-                          and not exists (select 1 from application_kit k where k.application_id = application.id)))
-                    order by created_at asc
-                    limit ${PROGRESS_LIMIT}
-                  `)
-                  .pipe(
-                    Effect.map((result) =>
-                      (
-                        result.rows as unknown as ReadonlyArray<{
-                          id: string
-                          vacancy_id: string
-                          resume_id: string | null
-                          hh_account_id: string
-                          auto_run: Mode
-                        }>
-                      ).map(
-                        (row): RunnerApplication => ({
-                          id: row.id,
-                          vacancyId: row.vacancy_id,
-                          resumeId: row.resume_id,
-                          hhAccountId: row.hh_account_id,
-                          autoRun: row.auto_run
-                        })
-                      )
-                    )
-                  )
+                ApplicationRepository.listOwnedByRunner(tx, {
+                  userId,
+                  hhAccountId,
+                  limit: PROGRESS_LIMIT,
+                  onlyIds: only
+                })
               )
               .pipe(Effect.mapError(toStorageError("autoApply.owned")))
 
@@ -795,7 +774,24 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
           return { ...counts, errors } satisfies AutoApplyResult
         }).pipe(Effect.provide(servicesFor(userId)))
 
-      return AutoApplyRunner.of({ run })
+      const run: AutoApplyRunnerShape["run"] = (userId, options = {}) => pass(userId, options)
+
+      const advance: AutoApplyRunnerShape["advance"] = (userId, applicationIds) =>
+        applicationIds.length === 0
+          ? Effect.succeed({
+              accounts: 0,
+              selected: 0,
+              created: 0,
+              writingEnqueued: 0,
+              kitsSet: 0,
+              submitQueued: 0,
+              needsHuman: 0,
+              waiting: 0,
+              errors: []
+            })
+          : pass(userId, {}, applicationIds)
+
+      return AutoApplyRunner.of({ run, advance })
     })
   )
 }

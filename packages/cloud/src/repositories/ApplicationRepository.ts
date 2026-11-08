@@ -503,3 +503,105 @@ export const demoteUngovernedAuto = (
       returning a.id
     `)
     .pipe(Effect.map((result) => result.rows.length))
+
+
+/** Заявка, которую раннер автооткликов ведёт дальше. */
+export interface RunnerApplicationRow {
+  readonly id: string
+  readonly vacancyId: string
+  readonly resumeId: string | null
+  readonly hhAccountId: string
+  readonly autoRun: "drafts" | "auto"
+}
+
+interface RunnerRawRow {
+  readonly id: string
+  readonly vacancy_id: string
+  readonly resume_id: string | null
+  readonly hh_account_id: string
+  readonly auto_run: "drafts" | "auto"
+}
+
+/**
+ * Автозаявки аккаунта, которые ещё ждут раннера: `auto` в `preparing` (и
+ * дождавшиеся `retry_at`) и `drafts` в `draft` без кита. `onlyIds` сужает выбор
+ * до перечисленных заявок, условия остаются теми же.
+ */
+export const listOwnedByRunner = (
+  tx: Executor,
+  input: {
+    readonly userId: string
+    readonly hhAccountId: string
+    readonly limit: number
+    readonly onlyIds?: ReadonlyArray<string> | undefined
+  }
+): RepoEffect<ReadonlyArray<RunnerApplicationRow>> =>
+  tx
+    .execute(sql`
+      select id, vacancy_id, resume_id, hh_account_id, auto_run
+      from application
+      where user_id = ${input.userId} and hh_account_id = ${input.hhAccountId}
+        and auto_run is not null
+        and ((auto_run = 'auto' and state = 'preparing'
+            and (retry_at is null or retry_at <= now()))
+          or (auto_run = 'drafts' and state = 'draft'
+            and not exists (select 1 from application_kit k where k.application_id = application.id)))
+        ${
+          input.onlyIds === undefined
+            ? sql``
+            : input.onlyIds.length === 0
+              ? sql`and false`
+              : sql`and id in (${sql.join(input.onlyIds.map((id) => sql`${id}::uuid`), sql`, `)})`
+        }
+      order by created_at asc
+      limit ${input.limit}
+    `)
+    .pipe(
+      Effect.map((result) =>
+        (result.rows as unknown as ReadonlyArray<RunnerRawRow>).map(
+          (row): RunnerApplicationRow => ({
+            id: row.id,
+            vacancyId: row.vacancy_id,
+            resumeId: row.resume_id,
+            hhAccountId: row.hh_account_id,
+            autoRun: row.auto_run
+          })
+        )
+      )
+    )
+
+/** Уже есть заявка на эту вакансию с этим резюме (кроме самой `exceptId`). */
+export const resumeClashExists = (
+  tx: Executor,
+  input: { readonly hhAccountId: string; readonly vacancyId: string; readonly resumeId: string; readonly exceptId: string }
+): RepoEffect<boolean> =>
+  tx
+    .execute(sql`
+      select 1 from application
+      where hh_account_id = ${input.hhAccountId} and vacancy_id = ${input.vacancyId}
+        and resume_id = ${input.resumeId} and id <> ${input.exceptId}
+      limit 1
+    `)
+    .pipe(Effect.map((result) => result.rows.length > 0))
+
+/** Дозаполняет резюме у автозаявки, у которой оно ещё NULL. */
+export const backfillResume = (
+  tx: Executor,
+  input: { readonly userId: string; readonly id: string; readonly resumeId: string }
+): RepoEffect<void> =>
+  tx
+    .execute(sql`
+      update application set resume_id = ${input.resumeId}, updated_at = now()
+      where id = ${input.id} and user_id = ${input.userId}
+        and auto_run is not null and resume_id is null
+    `)
+    .pipe(Effect.asVoid)
+
+/** Снимает причину ожидания и `retry_at` у `preparing`-заявки: раннер идёт дальше. */
+export const clearPreparingBlock = (tx: Executor, userId: string, id: string): RepoEffect<void> =>
+  tx
+    .execute(sql`
+      update application set blocked_reason = null, retry_at = null, updated_at = now()
+      where id = ${id} and user_id = ${userId} and state = 'preparing'
+    `)
+    .pipe(Effect.asVoid)

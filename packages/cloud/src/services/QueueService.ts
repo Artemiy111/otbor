@@ -6,42 +6,27 @@ import type {
   HarnessRegistration,
   HeartbeatResult,
   JobKind,
-  JobStatus,
   QueueStats
 } from "@otbor/contract"
-import { type BlockedReason, HarnessRejected, NotFound } from "@otbor/contract"
-import { parseResponseForm } from "@otbor/hh"
+import { HarnessRejected, NotFound } from "@otbor/contract"
 import { sql } from "drizzle-orm"
-import { Config, Context, Effect, Layer } from "effect"
+import { Cause, Config, Context, Effect, Layer } from "effect"
 import { generateHarnessToken, hashHarnessToken } from "../auth/harnessToken.ts"
 import { Database } from "../db/Database.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
 import * as HhAccountRepository from "../repositories/HhAccountRepository.ts"
 import * as HarnessRepository from "../repositories/HarnessRepository.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
-import * as VacancyRepository from "../repositories/VacancyRepository.ts"
+import { AutoApplyRunner } from "./AutoApplyRunner.ts"
 import { CurrentUser } from "./CurrentUser.ts"
-import {
-  attemptArtifacts,
-  judgePrepare,
-  judgeReconcile,
-  judgeChatRead,
-  judgeLetterAttach,
-  judgeNegotiationsSync,
-  judgeResumeSync,
-  judgeSubmit,
-  reconcileArtifacts
-} from "./applyRules.ts"
+import { attemptArtifacts } from "./applyRules.ts"
 import { completeFitInference } from "./fitJudge.ts"
-import * as VacancyFormRepository from "../repositories/VacancyFormRepository.ts"
-import { importTopics } from "./NegotiationsSync.ts"
-import { importChat } from "./ChatSync.ts"
-import { importResumes } from "./ResumeSync.ts"
-import { negotiationsSyncJob, nextSequence, reconcileJob, targetFor } from "./jobs.ts"
+import { stageHandlers, type AppState } from "./completion/index.ts"
+import { nextSequence, reconcileJob, targetFor } from "./jobs.ts"
 import { toStorageError } from "./support.ts"
 import { DEFAULT_DAILY_APPLY_LIMIT } from "./dailyLimit.ts"
-import { trySubmit } from "./submitGate.ts"
-import { deferOrPark, parkWithCode } from "./blocked.ts"
+
+export { exitDetail } from "./completion/index.ts"
 
 /* -------------------------------------------------------------------------- */
 /* Outcomes                                                                   */
@@ -73,33 +58,22 @@ const unwrap = <A>(outcome: Outcome<A>): Effect.Effect<A, ApiError> =>
 /** One message for unknown, unregistered and revoked harnesses alike. */
 const invalidToken = "invalid harness token; register again to receive a new one"
 
-/** `tag` or `tag: message` (the harness reason, trimmed to 500 chars) so a person can see WHY. */
-export const exitDetail = (exit: HarnessExit): string => {
-  const text = (exit.message ?? "").replace(/\s+/g, " ").trim()
-  if (text === "") return exit.tag
-  return `${exit.tag}: ${text.length > 500 ? `${text.slice(0, 497)}...` : text}`
-}
-
-/** Retry the same row; the lease and epoch make a duplicate harmless. */
-const retryLater = (exit: HarnessExit, fallbackSeconds: number) =>
-  new Date(Date.now() + Math.max(exit.retryAfterSeconds ?? fallbackSeconds, 1) * 1_000)
-
-const terminalFailure: ReadonlyArray<string> = [
-  "permanent",
-  "site_rejected",
-  "resume_mismatch",
-  "answer_rejected",
-  "form_changed"
-]
-
-const needsHuman: ReadonlyArray<string> = ["captcha", "session_expired"]
-
-const retryable: ReadonlyArray<string> = [
-  "transport",
-  "rate_limited",
-  "inference_failed",
-  "ambiguous"
-]
+/** Из каких состояний завершение задачи вправе перевести заявку в `to`. */
+const transitionFrom = (
+  to: AppState,
+  stage: HarnessJob["stage"]
+): ReadonlyArray<AppState> =>
+  to === "submitted"
+    ? ["submitting", "needs_human", "failed"]
+    : to === "submitting"
+      ? ["queued", "submitting"]
+      : to === "needs_human"
+        ? ["draft", "queued", "submitting", "needs_human", "failed"]
+        : to === "failed"
+          ? ["draft", "queued", "submitting", "needs_human", "failed"]
+          : to === "draft" && stage === "reconcile"
+            ? ["submitting", "needs_human", "failed"]
+            : ["draft", "queued"]
 
 const asAttemptStage = (
   stage: HarnessJob["stage"]
@@ -144,6 +118,11 @@ export interface CompleteResult {
   readonly message?: string | null
 }
 
+/** Итог завершения вместе с заявками, которые раннер двигает после коммита. */
+interface Completed extends CompleteResult {
+  readonly advance: ReadonlyArray<string>
+}
+
 export interface QueueServiceShape {
   readonly stats: (kind?: string) => Effect.Effect<QueueStats, ApiError>
   readonly jobs: (options: {
@@ -161,18 +140,28 @@ export interface QueueServiceShape {
 export interface QueueServiceOptions {
   /** Daily sends per hh account when the account has no apply filter row. */
   readonly dailyApplyLimit: number
+  /**
+   * Двигать автозаявки раннером сразу после завершения задачи (по умолчанию да).
+   * Тесты, которые сами вызывают проходы раннера, выключают: фоновый шаг
+   * делал бы их порядок недетерминированным.
+   */
+  readonly advanceOnComplete?: boolean
 }
 
 export class QueueService extends Context.Service<QueueService, QueueServiceShape>()(
   "otbor/cloud/QueueService"
 ) {
-  /** Production layer: the fallback daily limit is `OTBOR_DAILY_APPLY_LIMIT` (default 200). */
-  static readonly layer = Layer.unwrap(
-    Config.Int("OTBOR_DAILY_APPLY_LIMIT").pipe(
-      Config.withDefault(DEFAULT_DAILY_APPLY_LIMIT),
-      Effect.map((dailyApplyLimit) => QueueService.layerWith({ dailyApplyLimit }))
+  /** Как `layer`, с переопределением остальных настроек. */
+  static readonly layerConfigured = (overrides: Omit<QueueServiceOptions, "dailyApplyLimit">) =>
+    Layer.unwrap(
+      Config.Int("OTBOR_DAILY_APPLY_LIMIT").pipe(
+        Config.withDefault(DEFAULT_DAILY_APPLY_LIMIT),
+        Effect.map((dailyApplyLimit) => QueueService.layerWith({ dailyApplyLimit, ...overrides }))
+      )
     )
-  )
+
+  /** Production layer: the fallback daily limit is `OTBOR_DAILY_APPLY_LIMIT` (default 200). */
+  static readonly layer = QueueService.layerConfigured({})
 
   static readonly layerWith = (options: QueueServiceOptions) =>
   Layer.effect(
@@ -180,6 +169,23 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
     Effect.gen(function*() {
       const database = yield* Database
       const currentUser = yield* CurrentUser
+      const autoApply = yield* AutoApplyRunner
+
+      /**
+       * После коммита завершения: раннер двигает автозаявки, которых ждала эта
+       * задача (форма прочитана, письмо готово). Отдельный fiber: ответ
+       * харнессу не ждёт раннера, сбой только в лог, расписание остаётся
+       * запасным путём.
+       */
+      const advanceLater = (userId: string, applicationIds: ReadonlyArray<string>) =>
+        autoApply.advance(userId, applicationIds).pipe(
+          Effect.asVoid,
+          Effect.catchCause((cause) =>
+            Effect.logWarning(`autoapply advance after job completion failed: ${Cause.pretty(cause)}`)
+          ),
+          Effect.forkDetach,
+          Effect.asVoid
+        )
 
       const stats: QueueServiceShape["stats"] = (kind) =>
         database
@@ -412,464 +418,10 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                 }
 
                 const exit = input.exit
-                let status: JobStatus = "done"
-                let message: string | null = null
-                let runAt: Date | null | undefined
-                let appState:
-                  | "draft"
-                  | "preparing"
-                  | "queued"
-                  | "submitting"
-                  | "submitted"
-                  | "skipped"
-                  | "needs_human"
-                  | "failed"
-                  | null = null
-                let appPatch: Record<string, unknown> = {}
-                let enqueue: "reconcile" | "submit" | null = null
-                let jobResult: unknown
-                /** Reconcile: what the cloud read, kept on the attempt instead of the pages. */
-                let reconcileKept: Record<string, unknown> | null = null
-                /** Reconcile: how the parked submit job is closed once the application moves. */
-                let settle: {
-                  readonly status: "done" | "failed"
-                  readonly result: unknown
-                  readonly message: string
-                } | null = null
-
-                switch (job.stage) {
-                  case "prepare": {
-                    // Replaced by `form_read`; a leftover job reads nothing.
-                    status = "cancelled"
-                    message = "prepare is replaced by form_read"
-                    break
-                  }
-
-                  case "form_read": {
-                    // The form belongs to the vacancy: every applicant sees the
-                    // same questions. The harness delivers the page, the cloud
-                    // parses it and keeps one version per distinct form.
-                    const verdict = judgePrepare(exit)
-                    const wanted = (job.payload as { vacancyId?: unknown } | null)?.vacancyId
-                    const vacancy =
-                      typeof wanted === "string"
-                        ? yield* VacancyRepository.findById(tx, wanted)
-                        : null
-                    // Заявки этой вакансии, ждущие формы: `preparing` и без submit-задачи
-                    // (с задачей отправка уже идёт, форма ей не нужна). Форма у вакансии
-                    // общая, а сбои чтения привязаны к аккаунту харнесса.
-                    const waiting =
-                      vacancy === null
-                        ? []
-                        : yield* Effect.filter(
-                            yield* ApplicationRepository.list(tx, ctx.userId, {
-                              state: "preparing",
-                              vacancyId: vacancy.id
-                            }),
-                            (application) =>
-                              QueueRepository.latestFor(tx, application.id, ["submit"]).pipe(
-                                Effect.map((submit) => submit === null)
-                              )
-                          )
-                    /** Заявки аккаунта, чьим сеансом читали форму. */
-                    const own = waiting.filter((application) => application.hhAccountId === ctx.hhAccountId)
-                    const park = (
-                      targets: typeof waiting,
-                      state: "needs_human" | "skipped",
-                      reason: string,
-                      code: BlockedReason
-                    ) =>
-                      Effect.forEach(targets, (application) =>
-                        ApplicationRepository.transition(tx, ctx.userId, application.id, state, {
-                          from: ["preparing"],
-                          patch: state === "needs_human" ? { lastError: reason, blockedReason: code } : { lastError: reason }
-                        })
-                      )
-                    /** Сбой, зависящий от аккаунта (чужая вакансия, human, failed): паркуем только его заявки. */
-                    const parkOwn = (state: "needs_human" | "skipped", reason: string, code: BlockedReason) =>
-                      park(own, state, reason, code)
-                    /** Вердикт про саму вакансию (архив, нераспознанная раскладка): касается всех аккаунтов. */
-                    const parkAll = (state: "needs_human" | "skipped", reason: string, code: BlockedReason) =>
-                      park(waiting, state, reason, code)
-                    /**
-                     * Транзиентный сбой чтения: заявки аккаунта остаются `preparing` и ждут
-                     * повтор (1 ч, 4 ч, 12 ч); когда повторы кончились - `needs_human`.
-                     */
-                    const deferOwn = (reason: string) =>
-                      Effect.forEach(own, (application) =>
-                        deferOrPark(tx, ctx.userId, application, "form_read_failed", reason)
-                      )
-
-                    if (vacancy === null) {
-                      status = "failed"
-                      message = "form read, but the vacancy is gone"
-                    } else if (verdict._tag === "form") {
-                      const form = parseResponseForm(verdict.artifacts.html, verdict.artifacts.url)
-                      if (form.vacancyId !== "" && form.vacancyId !== vacancy.externalId) {
-                        status = "needs_human"
-                        message = "the harness returned the form of another vacancy"
-                        yield* VacancyFormRepository.recordFailure(tx, {
-                          vacancyId: vacancy.id,
-                          message
-                        })
-                        yield* parkOwn("needs_human", message, "form_unreadable")
-                      } else if (form.layout === "unknown") {
-                        status = "needs_human"
-                        message = "the response form layout was not recognized"
-                        yield* VacancyFormRepository.recordUnreadable(tx, {
-                          vacancyId: vacancy.id,
-                          accountId: ctx.hhAccountId,
-                          message
-                        })
-                        yield* parkAll("needs_human", message, "form_unreadable")
-                      } else {
-                        const recorded = yield* VacancyFormRepository.recordRead(tx, {
-                          vacancyId: vacancy.id,
-                          accountId: ctx.hhAccountId,
-                          status: form.questions.length === 0 ? "none" : "present",
-                          form,
-                          url: verdict.artifacts.url
-                        })
-                        message = recorded.changed ? "form read; the form changed" : "form read; unchanged"
-                        // Автозаявки любого аккаунта, чей кит подходит к этой форме, уходят
-                        // сейчас - через общий шлюз. Аккаунты по порядку id: блокировки
-                        // слотов берутся в одном порядке и не ждут друг друга по кругу.
-                        const ordered = [...waiting].sort((a, b) => a.hhAccountId.localeCompare(b.hhAccountId))
-                        for (const application of ordered) {
-                          const outcome = yield* trySubmit(tx, {
-                            userId: ctx.userId,
-                            application,
-                            trigger: "auto",
-                            fallbackLimit: options.dailyApplyLimit
-                          })
-                          if (outcome._tag === "refused" && outcome.reason === "kit_refused") {
-                            yield* parkWithCode(
-                              tx,
-                              ctx.userId,
-                              application.id,
-                              ["preparing"],
-                              "kit_refused",
-                              outcome.message
-                            )
-                          }
-                        }
-                      }
-                    } else if (verdict._tag === "skip") {
-                      status = "done"
-                      message = `form read skipped: ${verdict.reason}`
-                      if (verdict.reason.includes("archived")) {
-                        yield* VacancyFormRepository.recordRead(tx, {
-                          vacancyId: vacancy.id,
-                          accountId: ctx.hhAccountId,
-                          status: "gone",
-                          form: null,
-                          url: null
-                        })
-                      } else {
-                        yield* VacancyFormRepository.recordFailure(tx, {
-                          vacancyId: vacancy.id,
-                          message: verdict.reason
-                        })
-                      }
-                      // Архив - свойство вакансии; «hh уже держит отклик» - только этого аккаунта.
-                      if (verdict.reason.includes("archived")) yield* parkAll("skipped", verdict.reason, "form_gone")
-                      else yield* parkOwn("skipped", verdict.reason, "operator")
-                      if (exit.tag === "already_responded" && ctx.hhAccountId !== null) {
-                        // hh knows a response otbor does not: import it, so the
-                        // vacancy shows "responded" instead of a form error.
-                        const latest = yield* QueueRepository.latestForAccount(
-                          tx,
-                          ctx.hhAccountId,
-                          "negotiations_sync"
-                        )
-                        if (latest === null || !["pending", "leased", "running"].includes(latest.job.status)) {
-                          const profile = (job.payload as { sessionProfile?: unknown } | null)?.sessionProfile
-                          yield* negotiationsSyncJob(tx, {
-                            userId: ctx.userId,
-                            hhAccountId: ctx.hhAccountId,
-                            sessionProfile: typeof profile === "string" ? profile : null,
-                            sequence:
-                              (yield* QueueRepository.countForAccount(tx, ctx.hhAccountId, "negotiations_sync")) + 1
-                          })
-                        }
-                      }
-                    } else if (verdict._tag === "human") {
-                      status = "needs_human"
-                      message = `form read needs a human: ${verdict.reason}`
-                      yield* VacancyFormRepository.recordFailure(tx, { vacancyId: vacancy.id, message })
-                      yield* parkOwn("needs_human", verdict.reason, "form_read_failed")
-                    } else if (verdict._tag === "failed") {
-                      status = "failed"
-                      message = verdict.reason
-                      yield* VacancyFormRepository.recordFailure(tx, { vacancyId: vacancy.id, message })
-                      yield* deferOwn(verdict.reason)
-                    } else if (job.attempts < job.maxAttempts) {
-                      status = "pending"
-                      runAt = retryLater(exit, 30)
-                      message = `form read retry ${job.attempts + 1}/${job.maxAttempts}: ${exit.tag}`
-                    } else {
-                      status = "dead"
-                      message = `form read exhausted retries: ${exit.tag}`
-                      yield* VacancyFormRepository.recordFailure(tx, { vacancyId: vacancy.id, message })
-                      yield* deferOwn(message)
-                    }
-                    break
-                  }
-
-                  case "submit": {
-                    // The harness reports a claim, the cloud decides from the
-                    // evidence. Only a page the cloud itself reads as "you
-                    // responded" settles a submit; anything that might have
-                    // reached hh goes to reconcile and is never sent again.
-                    const verdict = judgeSubmit(exit)
-                    if (verdict._tag === "submitted") {
-                      status = "done"
-                      appState = "submitted"
-                      appPatch = { submittedAt: new Date(), lastError: null }
-                      message = "submitted; the response page confirmed it"
-                      jobResult = { clicked: true, verified: "page" }
-                    } else if (verdict._tag === "not_sent") {
-                      status = verdict.app === "failed" ? "failed" : "needs_human"
-                      appState = verdict.app
-                      appPatch = { lastError: verdict.reason, blockedReason: "submit_not_sent" }
-                      message = `submit not sent: ${verdict.tag}`
-                      jobResult = { clicked: false, tag: verdict.tag }
-                    } else {
-                      status = "needs_reconcile"
-                      appState = "submitting"
-                      enqueue = "reconcile"
-                      message = verdict.reason
-                      jobResult = { clicked: null }
-                    }
-                    break
-                  }
-
-                  case "reconcile": {
-                    // The harness only reports the pages it read. The cloud
-                    // parses them and decides; a bare tag settles nothing, and
-                    // no verdict here can queue a second submit.
-                    const application =
-                      ctx.applicationId === null
-                        ? null
-                        : yield* ApplicationRepository.findAny(tx, ctx.applicationId)
-                    const vacancy = application
-                      ? yield* VacancyRepository.findById(tx, application.vacancyId)
-                      : null
-                    if (application === null || vacancy === null) {
-                      status = "failed"
-                      appState = "failed"
-                      message = "reconciled, but the application or vacancy is gone"
-                      break
-                    }
-
-                    const resumeRow =
-                      application.resumeId === null || application.resumeId === undefined
-                        ? null
-                        : yield* tx.execute(
-                            sql`select external_id from resume where id = ${application.resumeId} limit 1`
-                          )
-                    const verdict = judgeReconcile(
-                      exit,
-                      vacancy.externalId,
-                      (resumeRow?.rows[0]?.external_id as string | undefined) ?? null
-                    )
-                    reconcileKept = reconcileArtifacts(exit, verdict)
-                    if (verdict._tag === "submitted") {
-                      status = "done"
-                      appState = "submitted"
-                      appPatch = { submittedAt: new Date(), lastError: null }
-                      message = `reconciled: ${verdict.reason}`
-                      jobResult = { found: true, reading: verdict.reading }
-                      settle = {
-                        status: "done",
-                        result: { clicked: true, verified: "reconcile" },
-                        message
-                      }
-                    } else if (verdict._tag === "unsent") {
-                      // Provably no response: back to draft so a person looks
-                      // again and approves again. Nothing is queued here.
-                      status = "done"
-                      appState = "draft"
-                      message = `reconciled: ${verdict.reason}`
-                      appPatch = {
-                        lastError: "the response did not reach hh; approve again to send it"
-                      }
-                      jobResult = { found: false, reading: verdict.reading }
-                      settle = {
-                        status: "failed",
-                        result: { clicked: false, reconciled: true },
-                        message
-                      }
-                    } else if (verdict._tag === "human") {
-                      status = "needs_human"
-                      appState = "needs_human"
-                      message = `reconcile needs a human: ${verdict.reason}`
-                      appPatch = { lastError: verdict.reason, blockedReason: "reconcile_unclear" }
-                    } else if (job.attempts < job.maxAttempts) {
-                      status = "pending"
-                      runAt = retryLater(exit, 60)
-                      message = `reconcile retry ${job.attempts + 1}/${job.maxAttempts}: ${verdict.reason}`
-                    } else {
-                      status = "dead"
-                      appState = "needs_human"
-                      message = `reconcile exhausted retries: ${verdict.reason}`
-                      appPatch = {
-                        blockedReason: "reconcile_unclear",
-                        lastError: `could not confirm whether the response was sent: ${verdict.reason}`
-                      }
-                    }
-                    break
-                  }
-
-                  case "negotiations_sync": {
-                    // The harness only delivers pages. The cloud reads them and
-                    // imports; nothing here touches an application of origin otbor.
-                    const verdict = judgeNegotiationsSync(exit)
-                    if (verdict._tag === "read" && ctx.hhAccountId !== null) {
-                      const imported = yield* importTopics(tx, {
-                        userId: ctx.userId,
-                        hhAccountId: ctx.hhAccountId,
-                        topics: verdict.topics,
-                        pages: verdict.pages,
-                        complete: verdict.complete
-                      })
-                      status = "done"
-                      jobResult = { counts: imported.counts }
-                      message = `negotiations synced: ${imported.counts.imported} imported, ${imported.counts.updated} updated, ${imported.counts.unknownVacancy} unknown vacancy${verdict.complete ? "" : " (list not read to the end)"}`
-                    } else if (verdict._tag === "human") {
-                      status = "needs_human"
-                      message = `negotiations sync needs a human: ${verdict.reason}`
-                    } else if (verdict._tag === "read" || job.attempts >= job.maxAttempts) {
-                      status = "dead"
-                      message = `negotiations sync gave up: ${verdict._tag === "read" ? "job has no account" : verdict.reason}`
-                    } else {
-                      status = "pending"
-                      runAt = retryLater(exit, 120)
-                      message = `negotiations sync retry ${job.attempts + 1}/${job.maxAttempts}: ${verdict.reason}`
-                    }
-                    break
-                  }
-
-                  case "letter_attach": {
-                    // One attempt, never retried: a click that may have reached hh
-                    // is left for the operator to look at.
-                    const verdict = judgeLetterAttach(exit)
-                    if (verdict._tag === "sent") {
-                      status = "done"
-                      message = "cover letter sent"
-                    } else if (verdict._tag === "human") {
-                      status = "needs_human"
-                      message = `cover letter: ${verdict.reason}`
-                    } else {
-                      status = "failed"
-                      message = verdict.reason
-                    }
-                    break
-                  }
-
-                  case "resume_sync": {
-                    // The harness only delivers pages. The cloud reads them and
-                    // stores the resumes; the operator's enrichment is untouched.
-                    const verdict = judgeResumeSync(exit)
-                    if (verdict._tag === "read" && ctx.hhAccountId !== null) {
-                      const counts = yield* importResumes(tx, {
-                        userId: ctx.userId,
-                        hhAccountId: ctx.hhAccountId,
-                        found: verdict.found,
-                        resumes: verdict.resumes,
-                        unreadable: verdict.unreadable
-                      })
-                      status = "done"
-                      jobResult = { counts }
-                      message = `resumes synced: ${counts.imported} imported, ${counts.updated} updated, ${counts.unchanged} unchanged, ${counts.unreadable} unreadable`
-                    } else if (verdict._tag === "human") {
-                      status = "needs_human"
-                      message = `resume sync needs a human: ${verdict.reason}`
-                    } else if (verdict._tag === "read" || job.attempts >= job.maxAttempts) {
-                      status = "dead"
-                      message = `resume sync gave up: ${verdict._tag === "read" ? "job has no account" : verdict.reason}`
-                    } else {
-                      status = "pending"
-                      runAt = retryLater(exit, 120)
-                      message = `resume sync retry ${job.attempts + 1}/${job.maxAttempts}: ${verdict.reason}`
-                    }
-                    break
-                  }
-
-                  case "chat_read": {
-                    // The harness only delivers the JSON; the cloud parses it and
-                    // stores the messages. Read-only, so a retry is always safe.
-                    const payload = job.payload as { vacancyId?: string; chatId?: string }
-                    const verdict =
-                      typeof payload.chatId === "string"
-                        ? judgeChatRead(exit, payload.chatId)
-                        : ({ _tag: "human", reason: "job has no chat id" } as const)
-                    if (
-                      verdict._tag === "read" &&
-                      ctx.hhAccountId !== null &&
-                      typeof payload.vacancyId === "string"
-                    ) {
-                      const counts = yield* importChat(tx, {
-                        userId: ctx.userId,
-                        hhAccountId: ctx.hhAccountId,
-                        vacancyId: payload.vacancyId,
-                        chat: verdict.chat
-                      })
-                      status = "done"
-                      jobResult = { counts }
-                      message = `chat read: ${counts.inserted} new, ${counts.updated} known messages`
-                    } else if (verdict._tag === "human") {
-                      status = "needs_human"
-                      message = `chat read needs a human: ${verdict.reason}`
-                    } else if (verdict._tag === "read" || job.attempts >= job.maxAttempts) {
-                      status = "dead"
-                      message = `chat read gave up: ${verdict._tag === "read" ? "job has no account or vacancy" : verdict.reason}`
-                    } else {
-                      status = "pending"
-                      runAt = retryLater(exit, 30)
-                      message = `chat read retry ${job.attempts + 1}/${job.maxAttempts}: ${verdict.reason}`
-                    }
-                    break
-                  }
-
-                  case "session": {
-                    if (exit.tag === "prepared") {
-                      status = "done"
-                      message = "session is usable"
-                    } else {
-                      status = "needs_human"
-                      message = `session needs a human: ${exit.tag}`
-                    }
-                    break
-                  }
-
-                  case "inference": {
-                    if (exit.tag === "prepared") {
-                      status = "done"
-                      jobResult = exit.artifacts ?? null
-                      message = "inference completed"
-                    } else if (terminalFailure.includes(exit.tag)) {
-                      status = "failed"
-                      message = `inference failed: ${exitDetail(exit)}`
-                    } else if (needsHuman.includes(exit.tag)) {
-                      status = "needs_human"
-                      message = `inference needs a human: ${exitDetail(exit)}`
-                    } else if (retryable.includes(exit.tag)) {
-                      if (job.attempts < job.maxAttempts) {
-                        status = "pending"
-                        runAt = retryLater(exit, 15)
-                        message = `inference retry ${job.attempts + 1}/${job.maxAttempts}: ${exitDetail(exit)}`
-                      } else {
-                        status = "dead"
-                        message = `inference exhausted retries: ${exitDetail(exit)}`
-                      }
-                    } else {
-                      status = "needs_human"
-                      message = `inference finished with unexpected exit: ${exitDetail(exit)}`
-                    }
-                    break
-                  }
-                }
+                // Решение по стадии: что стало с задачей и заявкой.
+                const decided = yield* stageHandlers[job.stage](tx, ctx, exit, options)
+                const { status, message, runAt, appState, appPatch, enqueue, jobResult, reconcileKept, settle } =
+                  decided
 
                 const accepted = yield* QueueRepository.complete(tx, {
                   jobId: job.id,
@@ -883,10 +435,11 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                 })
 
                 if (!accepted) {
-                  return ok<CompleteResult>({
+                  return ok<Completed>({
                     status: job.status,
                     accepted: false,
-                    message: "stale lease"
+                    message: "stale lease",
+                    advance: []
                   })
                 }
 
@@ -944,18 +497,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                     ctx.applicationId,
                     appState,
                     {
-                      from:
-                        appState === "submitted"
-                          ? ["submitting", "needs_human", "failed"]
-                          : appState === "submitting"
-                            ? ["queued", "submitting"]
-                            : appState === "needs_human"
-                              ? ["draft", "queued", "submitting", "needs_human", "failed"]
-                              : appState === "failed"
-                                ? ["draft", "queued", "submitting", "needs_human", "failed"]
-                                : appState === "draft" && job.stage === "reconcile"
-                                  ? ["submitting", "needs_human", "failed"]
-                                  : ["draft", "queued"],
+                      from: transitionFrom(appState, job.stage),
                       patch: appPatch
                     }
                   )
@@ -986,12 +528,15 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                   }
                 }
 
-                return ok<CompleteResult>({ status, accepted: true, message })
+                return ok<Completed>({ status, accepted: true, message, advance: decided.advance })
               })
             )
             .pipe(Effect.mapError(toStorageError("harness.complete")))
 
-          return yield* unwrap(outcome)
+          const { advance, ...result } = yield* unwrap(outcome)
+          // Транзакция уже закоммичена: раннер увидит завершённую задачу.
+          if (advance.length > 0 && options.advanceOnComplete !== false) yield* advanceLater(currentUser.userId, advance)
+          return result
         })
 
       const revoke: QueueServiceShape["revoke"] = (input) =>
@@ -1023,5 +568,5 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
         revoke
       })
     })
-  )
+  ).pipe(Layer.provide(AutoApplyRunner.layerWith({ dailyApplyLimit: options.dailyApplyLimit })))
 }

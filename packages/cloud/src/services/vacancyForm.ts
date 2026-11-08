@@ -1,7 +1,7 @@
 import type { ApplicationRecord, StoredForm, VacancyFormState } from "@otbor/contract"
-import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { DatabaseError, Executor } from "../db/Database.ts"
+import * as HhAccountRepository from "../repositories/HhAccountRepository.ts"
 import * as VacancyFormRepository from "../repositories/VacancyFormRepository.ts"
 import * as VacancyRepository from "../repositories/VacancyRepository.ts"
 import { hintsFor } from "./formHints.ts"
@@ -29,16 +29,14 @@ export const requestFormRead = (
 
     const state = yield* VacancyFormRepository.getState(tx, vacancy.id)
     if ((input.force === true || state.stale) && !state.reading) {
-      const profile = yield* tx.execute(
-        sql`select session_profile from hh_account where id = ${input.hhAccountId} limit 1`
-      )
+      const sessionProfile = yield* HhAccountRepository.sessionProfileOf(tx, input.hhAccountId)
       yield* formReadJob(tx, {
         userId: input.userId,
         hhAccountId: input.hhAccountId,
         vacancyId: vacancy.id,
         externalId: vacancy.externalId,
         canonicalUrl: vacancy.canonicalUrl,
-        sessionProfile: (profile.rows[0]?.session_profile as string | null | undefined) ?? null,
+        sessionProfile,
         priority: input.priority ?? 0
       })
       return yield* VacancyFormRepository.getState(tx, vacancy.id)

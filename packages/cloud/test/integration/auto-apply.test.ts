@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { Database } from "../../src/db/Database.ts"
 import { AutoApplyRunner } from "../../src/services/AutoApplyRunner.ts"
+import { QueueService } from "../../src/services/QueueService.ts"
 import { AutoApplyViewService } from "../../src/services/AutoApplyViewService.ts"
 import { ResumeService } from "../../src/services/ResumeService.ts"
 import * as support from "./support/index.ts"
@@ -1190,6 +1191,117 @@ if (!enabled || serverUrl === null) {
   /* ------------------------------------------------------------------------ */
   /* Preparing and blocked reasons                                            */
   /* ------------------------------------------------------------------------ */
+
+  describe("advance on job completion", () => {
+    /**
+     * Leases the next job of a kind and completes it through the queue API with the
+     * completion-triggered advance on, then waits (bounded) for `until` to hold. One
+     * layer scope for both: the advance is a forked fiber and dies with its scope.
+     */
+    const completeAndWait = (
+      ctx: Ctx,
+      kind: "browser" | "inference",
+      exit: Parameters<typeof support.completeJob>[1]["exit"] | ((job: { payload: any }) => Parameters<typeof support.completeJob>[1]["exit"]),
+      until: string
+    ) =>
+      support.runAsWithOptions(
+        ctx.tenant.userId,
+        { advanceOnComplete: true },
+        Effect.gen(function*() {
+          const queue = yield* QueueService
+          const database = yield* Database
+          const leased = yield* queue.leaseNext({
+            harnessId: ctx.harness.id,
+            token: ctx.harness.token!,
+            kinds: [kind],
+            accounts: ctx.accounts
+          })
+          const job = leased.job!
+          yield* queue.complete({
+            harnessId: ctx.harness.id,
+            token: ctx.harness.token!,
+            jobId: job.id,
+            leaseId: job.leaseId!,
+            epoch: job.leaseEpoch,
+            exit: typeof exit === "function" ? exit(job as never) : exit
+          })
+          for (let attempt = 0; attempt < 100; attempt += 1) {
+            const found = yield* database.asOwner((tx) =>
+              tx.execute(sql.raw(until)).pipe(Effect.map((result) => result.rows.length > 0))
+            )
+            if (found) return true
+            yield* Effect.sleep("100 millis")
+          }
+          return false
+        })
+      )
+
+    test("a finished form read and a finished writing job move an auto application without a pass", async () => {
+      const ctx = await setup("aa-adv")
+      await configure(ctx, { autoMode: "auto" })
+      await decided(ctx, "aa-adv-1", 90)
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ created: 1 })
+      const app = (await applicationsOf(ctx.tenant.accountId))[0]!
+      expect(app.state).toBe("preparing")
+
+      // the form read ends: the writing job appears with no tick in between
+      expect(
+        await completeAndWait(
+          ctx,
+          "browser",
+          (leased) => ({
+            tag: "prepared",
+            artifacts: {
+              url: `https://hh.ru/applicant/vacancy_response?vacancyId=${leased.payload.externalId}`,
+              html: responseHtml
+            }
+          }),
+          `select 1 from harness_jobs where stage = 'inference'
+             and idempotency_key like 'autoapply:writing:${app.id}:%'`
+        )
+      ).toBe(true)
+      expect(await writingJobs(ctx.tenant.accountId)).toHaveLength(1)
+      expect(await kitOf(app.id)).toBeNull()
+
+      // the writing job ends: the kit is stored and the single submit is queued
+      expect(
+        await completeAndWait(
+          ctx,
+          "inference",
+          { tag: "prepared", artifacts: { text: GOOD_DRAFT, model: "test/model" } },
+          `select 1 from harness_jobs where stage = 'submit' and application_id = '${app.id}'`
+        )
+      ).toBe(true)
+      expect((await kitOf(app.id))?.model).toBe("test/model")
+      expect(await submitCount(app.id)).toBe(1)
+      expect((await applicationsOf(ctx.tenant.accountId))[0]).toMatchObject({ state: "queued" })
+
+      // the scheduled pass stays a harmless fallback: nothing is queued twice
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ created: 0, writingEnqueued: 0, submitQueued: 0 })
+      expect(await submitCount(app.id)).toBe(1)
+    }, 120_000)
+
+    test("a dead writing job parks a drafts application on completion, not on the next pass", async () => {
+      const ctx = await setup("aa-adv-drafts")
+      await configure(ctx, { autoMode: "drafts" })
+      await decided(ctx, "aa-adv-drafts-1", 90)
+      await tick(ctx.tenant.userId)
+      await readForms(ctx, responseHtml)
+      await tick(ctx.tenant.userId)
+      const app = (await applicationsOf(ctx.tenant.accountId))[0]!
+
+      // a permanent failure ends the writing job; the application goes to a human at once
+      expect(
+        await completeAndWait(
+          ctx,
+          "inference",
+          { tag: "permanent", message: "model refused" },
+          `select 1 from application where id = '${app.id}' and state = 'needs_human'`
+        )
+      ).toBe(true)
+      expect((await applicationsOf(ctx.tenant.accountId))[0]).toMatchObject({ blocked_reason: "writing_failed" })
+    }, 120_000)
+  })
 
   describe("preparing and blocked reasons", () => {
     const HOUR = 3_600_000

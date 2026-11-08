@@ -1,18 +1,12 @@
-import { sql } from "drizzle-orm"
 import { Effect } from "effect"
-import type { Executor } from "../db/Database.ts"
+import type { DatabaseError, Executor } from "../db/Database.ts"
+import * as ResumeRepository from "../repositories/ResumeRepository.ts"
 
 export interface ApplyResume {
   readonly id: string
   readonly title: string
   /** True when the resume was picked by the account fallback, not named by the decision. */
   readonly fallback: boolean
-}
-
-interface ResumeRow {
-  readonly id: string
-  readonly title: string
-  readonly is_active: boolean
 }
 
 /**
@@ -31,22 +25,15 @@ export const resolveApplyResume = (
   userId: string,
   hhAccountId: string,
   decisionResumeId: string | null | undefined
-): Effect.Effect<ApplyResume | null, any> =>
+): Effect.Effect<ApplyResume | null, DatabaseError> =>
   Effect.gen(function*() {
-    const result = yield* tx.execute(sql`
-      select id, title, is_active from resume
-      where user_id = ${userId} and hh_account_id = ${hhAccountId}
-      order by is_active desc, updated_at desc, id asc
-    `)
-    const rows = result.rows as unknown as ReadonlyArray<ResumeRow>
+    const rows = yield* ResumeRepository.listForAccountOrdered(tx, userId, hhAccountId)
     if (decisionResumeId !== null && decisionResumeId !== undefined) {
       const own = rows.find((row) => row.id === decisionResumeId)
       if (own !== undefined) return { id: own.id, title: own.title, fallback: false }
       // Not among the account's resumes (should not happen): fall through to the title lookup.
-      const [lookup] = (yield* tx.execute(
-        sql`select id, title from resume where id = ${decisionResumeId} and user_id = ${userId} limit 1`
-      )).rows as unknown as ReadonlyArray<{ id: string; title: string }>
-      return lookup === undefined ? null : { id: lookup.id, title: lookup.title, fallback: false }
+      const lookup = yield* ResumeRepository.findTitle(tx, userId, decisionResumeId)
+      return lookup === null ? null : { id: lookup.id, title: lookup.title, fallback: false }
     }
     // The query is ordered active first, then most recently updated.
     const active = rows.filter((row) => row.is_active)
@@ -60,14 +47,8 @@ export const accountResumeTitles = (
   tx: Executor,
   userId: string,
   hhAccountId: string
-): Effect.Effect<ReadonlyArray<{ readonly id: string; readonly title: string }>, any> =>
-  tx
-    .execute(sql`
-      select id, title from resume
-      where user_id = ${userId} and hh_account_id = ${hhAccountId}
-      order by is_active desc, updated_at desc, id asc
-    `)
-    .pipe(Effect.map((result) => result.rows as unknown as ReadonlyArray<{ id: string; title: string }>))
+): Effect.Effect<ReadonlyArray<{ readonly id: string; readonly title: string }>, DatabaseError> =>
+  ResumeRepository.listForAccountOrdered(tx, userId, hhAccountId)
 
 export const NO_RESUME_MESSAGE =
   "не выбрано резюме для откликов: у решения нет резюме, а у аккаунта нет активного или единственного резюме. Выберите резюме или создайте фильтр для пары аккаунт + резюме"

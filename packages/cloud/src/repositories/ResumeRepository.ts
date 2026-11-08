@@ -237,3 +237,45 @@ export const remove = (
       delete from resume where user_id = ${userId} and id = ${id}::uuid returning id
     `)
     .pipe(Effect.map((result) => result.rows.length > 0))
+
+/** Резюме аккаунта в порядке выбора: активные, затем самые свежие. */
+export interface AccountResumeRow {
+  readonly id: string
+  readonly title: string
+  readonly is_active: boolean
+}
+
+export const listForAccountOrdered = (
+  tx: Executor,
+  userId: string,
+  hhAccountId: string
+): RepoEffect<ReadonlyArray<AccountResumeRow>> =>
+  tx
+    .execute(sql`
+      select id, title, is_active from resume
+      where user_id = ${userId} and hh_account_id = ${hhAccountId}
+      order by is_active desc, updated_at desc, id asc
+    `)
+    .pipe(Effect.map((result) => result.rows as unknown as ReadonlyArray<AccountResumeRow>))
+
+/** Идентификатор и название резюме пользователя по id (без привязки к аккаунту). */
+export const findTitle = (
+  tx: Executor,
+  userId: string,
+  id: string
+): RepoEffect<{ readonly id: string; readonly title: string } | null> =>
+  tx
+    .execute(sql`select id, title from resume where id = ${id} and user_id = ${userId} limit 1`)
+    .pipe(
+      Effect.map(
+        (result) => (result.rows[0] as { id: string; title: string } | undefined) ?? null
+      )
+    )
+
+/** Внешний id резюме на hh (`null`, если резюме нет). */
+export const externalIdOf = (tx: Executor, id: string): RepoEffect<string | null> =>
+  tx
+    .execute(sql`select external_id from resume where id = ${id} limit 1`)
+    .pipe(
+      Effect.map((result) => (result.rows[0] as { external_id: string } | undefined)?.external_id ?? null)
+    )

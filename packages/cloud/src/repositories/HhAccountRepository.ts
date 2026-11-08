@@ -236,3 +236,14 @@ export const remove = (
       delete from hh_account where user_id = ${userId} and id = ${id}::uuid returning id
     `)
     .pipe(Effect.map((result) => result.rows.length > 0))
+
+
+/** Профиль браузерной сессии аккаунта (`null`, если аккаунта нет или профиль не задан). */
+export const sessionProfileOf = (tx: Executor, hhAccountId: string): RepoEffect<string | null> =>
+  tx
+    .execute(sql`select session_profile from hh_account where id = ${hhAccountId} limit 1`)
+    .pipe(
+      Effect.map(
+        (result) => (result.rows[0] as { session_profile: string | null } | undefined)?.session_profile ?? null
+      )
+    )

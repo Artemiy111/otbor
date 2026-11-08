@@ -48,6 +48,11 @@ export interface LayerOptions {
   readonly systemOne?: Layer.Layer<SystemOneClient, never, never>
   readonly mailGateway?: MailGateway
   readonly telegramGateway?: TelegramGateway
+  /**
+   * Раннер автооткликов двигает заявки сразу после завершения задачи. Выключено:
+   * тесты сами вызывают проходы и ждут точные счётчики.
+   */
+  readonly advanceOnComplete?: boolean
 }
 
 /**
@@ -131,7 +136,9 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
     VacancyAnalysisService.layer.pipe(Layer.provide(shared)),
     DecisionService.layer.pipe(Layer.provide(shared)),
     FitJudgeService.layer.pipe(Layer.provide(shared)),
-    QueueService.layer.pipe(Layer.provide(shared)),
+    QueueService.layerConfigured({ advanceOnComplete: options.advanceOnComplete === true }).pipe(
+      Layer.provide(shared)
+    ),
     NegotiationsSync.layer.pipe(Layer.provide(shared)),
     ApplicationService.layer.pipe(Layer.provide(shared)),
     BrowserApply.layer.pipe(Layer.provide(shared)),

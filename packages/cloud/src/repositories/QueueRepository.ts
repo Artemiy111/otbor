@@ -551,6 +551,8 @@ export interface JobContext {
   readonly hhAccountId: string | null
   readonly applicationId: string | null
   readonly lockedBy: string | null
+  /** Ключ идемпотентности: по нему узнают, чья это задача (например письмо автозаявки). */
+  readonly idempotencyKey: string
 }
 
 export const context = (tx: Executor, id: string): RepoEffect<JobContext | null> =>
@@ -568,7 +570,8 @@ export const context = (tx: Executor, id: string): RepoEffect<JobContext | null>
           userId: row.userId,
           hhAccountId: row.hhAccountId,
           applicationId: row.applicationId,
-          lockedBy: row.lockedBy
+          lockedBy: row.lockedBy,
+          idempotencyKey: row.idempotencyKey
         }
       })
     )
@@ -668,3 +671,12 @@ export const countForVacancy = (
             and (${chatId}::text is null or payload->>'chatId' = ${chatId})`
     )
     .pipe(Effect.map((result) => Number((result.rows[0] as { n?: number } | undefined)?.n ?? 0)))
+
+
+/** Последняя ошибка задачи (`last_error`): почему харнесс не справился. */
+export const lastErrorOf = (tx: Executor, jobId: string): RepoEffect<string | null> =>
+  tx
+    .execute(sql`select last_error from harness_jobs where id = ${jobId}`)
+    .pipe(
+      Effect.map((result) => (result.rows[0] as { last_error?: string | null } | undefined)?.last_error ?? null)
+    )
