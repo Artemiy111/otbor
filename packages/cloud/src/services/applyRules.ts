@@ -175,19 +175,6 @@ export const checkKit = (input: KitCheckInput): ReadonlyArray<KitProblem> => {
     }
   }
 
-  // A code task is never sent from a model or hint answer.
-  for (const question of form.questions) {
-    if (question.kind !== "code") continue
-    const answer = byQuestion.get(question.id)
-    if (answer === undefined || answer.source !== "human" || answer.needsHuman) {
-      problems.push({
-        code: "code_needs_human",
-        questionId: question.id,
-        message: "a code question needs an answer written or confirmed by a human"
-      })
-    }
-  }
-
   // A hint with blockers (for example a salary below the stated minimum) is a
   // decision for a person, not for a model.
   for (const hint of input.hints) {

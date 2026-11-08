@@ -684,7 +684,7 @@ describe("manual mode", () => {
     expect(body.next).toContain("already submitted")
   })
 
-  test("a test questionnaire is surfaced with its code question and hint blockers; kit_set demands the user", async () => {
+  test("a test questionnaire is surfaced with its code question and hint blockers; kit_set demands the user only for blockers", async () => {
     const testForm = {
       ...form,
       form: {
@@ -731,7 +731,7 @@ describe("manual mode", () => {
       ]
     })
     expect(refused.isError).toBe(true)
-    expect(text(refused)).toContain("code_needs_human")
+    expect(text(refused)).not.toContain("code_needs_human")
     expect(text(refused)).toContain("hint_blocked")
     expect(calls.setKit).toHaveLength(0)
 
@@ -740,7 +740,7 @@ describe("manual mode", () => {
       letter: "Здравствуйте. Коротко о себе.",
       answers: [
         { questionId: "t1", text: "250 000", source: "human" },
-        { questionId: "t2", text: "def f(s): return s[::-1]", source: "human" }
+        { questionId: "t2", text: "def f(s): return s[::-1]" }
       ]
     })
     expect(accepted.isError).toBeFalsy()

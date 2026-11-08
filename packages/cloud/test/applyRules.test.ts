@@ -106,31 +106,18 @@ describe("checkKit", () => {
     expect(problems.map((problem) => problem.code)).toContain("needs_human")
   })
 
-  test("a code question always needs an answer from a human", () => {
+  test("a code question is answered like any other, by a model too", () => {
     const question = codeForm.questions.find((item) => item.kind === "code")!
-    expect(question).toBeDefined()
     const other = codeForm.questions.find((item) => item.kind !== "code")!
-
-    const base = [answer(other.id, { text: "5" })]
-    const empty = checkKit({ form: codeForm, hints: [], kit: kitFor(codeForm, base) })
-    expect(empty.map((problem) => problem.code)).toContain("code_needs_human")
-
-    const byModel = checkKit({
+    const problems = checkKit({
       form: codeForm,
       hints: [],
       kit: kitFor(codeForm, [
-        ...base,
+        answer(other.id, { text: "5" }),
         answer(question.id, { text: "def f(): pass", source: "model" })
       ])
     })
-    expect(byModel.map((problem) => problem.code)).toContain("code_needs_human")
-
-    const byHuman = checkKit({
-      form: codeForm,
-      hints: [],
-      kit: kitFor(codeForm, [...base, answer(question.id, { text: "def f(): pass" })])
-    })
-    expect(byHuman.map((problem) => problem.code)).not.toContain("code_needs_human")
+    expect(problems.map((problem) => problem.code)).not.toContain("code_needs_human")
   })
 
   test("a blocked hint needs a human answer", () => {

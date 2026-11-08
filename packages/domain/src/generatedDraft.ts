@@ -5,8 +5,8 @@ import type { FormQuestion } from "@otbor/contract"
  *
  * The model is untrusted text. Only known question ids survive, only option
  * ids the question really has, single choice keeps one option, free text is
- * cut to `maxLength`, and code tasks are never filled in: the applicant writes
- * those. Anything dropped is reported in `problems`, never silently.
+ * cut to `maxLength`, and code tasks are answered as text like any other question.
+ * Anything dropped is reported in `problems`, never silently.
  */
 export interface DraftAnswer {
   readonly questionId: string
@@ -65,10 +65,6 @@ export const parseGeneratedDraft = (
     if (seen.has(id)) continue
     seen.add(id)
 
-    if (question.kind === "code") {
-      problems.push(`question ${id} is a code task: answer it yourself`)
-      continue
-    }
     if (question.kind === "single" || question.kind === "multiple") {
       const known = new Set(question.options.map((option) => option.id))
       const chosen = (Array.isArray(item?.optionIds) ? item.optionIds : [])
@@ -94,7 +90,7 @@ export const parseGeneratedDraft = (
   }
 
   for (const question of questions) {
-    if (question.required && question.kind !== "code" && !seen.has(question.id)) {
+    if (question.required && !seen.has(question.id)) {
       problems.push(`no answer for required question ${question.id}`)
     }
   }

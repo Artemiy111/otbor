@@ -22,7 +22,6 @@ const serverUrl = support.serverUrl
 const fixture = (name: string) =>
   readFileSync(join(import.meta.dir, "../../../hh/test/fixtures", name), "utf8")
 const responseHtml = fixture("hh-test-response.html")
-const codeHtml = fixture("hh-test-code.html")
 
 /** A complete model answer for hh-test-response.html. */
 const GOOD_DRAFT = JSON.stringify({
@@ -360,24 +359,6 @@ if (!enabled || serverUrl === null) {
       expect(await writingJobs(ctx.tenant.accountId)).toHaveLength(2)
       expect(b.vacancyId).not.toBe(a.vacancyId)
     }, 120_000)
-
-    test("a form that needs a human (code question) is parked without a model call", async () => {
-      const ctx = await setup("aa-drafts-code")
-      await configure(ctx, { autoMode: "drafts" })
-      await decided(ctx, "aa-drafts-code-1", 90)
-      await tick(ctx.tenant.userId)
-      await readForms(ctx, codeHtml)
-
-      const result = await tick(ctx.tenant.userId)
-      expect(result).toMatchObject({ writingEnqueued: 0, needsHuman: 1 })
-      const [row] = await applicationsOf(ctx.tenant.accountId)
-      expect(row!.state).toBe("needs_human")
-      expect(row!.last_error).toContain("code question")
-      expect(await writingJobs(ctx.tenant.accountId)).toHaveLength(0)
-
-      // parked applications are left alone
-      expect(await tick(ctx.tenant.userId)).toMatchObject({ needsHuman: 0, waiting: 0 })
-    }, 60_000)
 
     test("a dead writing job parks the application for a human", async () => {
       const ctx = await setup("aa-drafts-dead")

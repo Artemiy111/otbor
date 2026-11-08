@@ -31,9 +31,9 @@ describe("parseGeneratedDraft", () => {
     expect(draft.answers).toEqual([
       { questionId: "1", optionIds: ["11"] },
       { questionId: "2", optionIds: ["20"] },
-      { questionId: "3", text: "Москв" }
+      { questionId: "3", text: "Москв" },
+      { questionId: "4", text: "print()" }
     ])
-    expect(draft.problems.join("|")).toContain("code task")
     expect(draft.problems.join("|")).toContain("unknown question 77")
   })
 

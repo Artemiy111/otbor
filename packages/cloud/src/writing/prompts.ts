@@ -222,6 +222,7 @@ export interface DraftQuestion {
   readonly text: string
   readonly required: boolean
   readonly maxLength?: number | null
+  readonly codeLanguage?: string | null
   readonly options: ReadonlyArray<{ readonly id: string; readonly label: string }>
 }
 
@@ -391,6 +392,9 @@ const DRAFT_SYSTEM: Record<WritingLanguage, string> = {
     "- Answer every question. For single and multiple return optionIds only from that",
     "  question's options, exactly one for single. For text return text: one to four",
     "  sentences, within maxLength.",
+    "- kind=code is a programming task: solve it and return the working code as plain",
+    "  text in the language given by language=, with real line breaks, no Markdown",
+    "  fences, no explanations unless the task asks for them.",
     "- A question with a hint has an answer from the applicant's data: use it, you may",
     "  rephrase it.",
     '- "Have you worked with X?": yes when X, a close analogue or something learnable in',
@@ -456,7 +460,7 @@ const draftNotesBlock = (
   return ["APPLICANT NOTES", lines.length === 0 ? LABELS[language].none : lines.map((line) => `- ${line}`).join("\n")].join("\n")
 }
 
-/** The question a model still has to answer: not a code task, not fixed by a hard hint. */
+/** The question a model still has to answer: not fixed by a hard hint. */
 const shownHint = (hint: DraftHint | undefined): DraftHint | undefined =>
   hint === undefined || (hint.blockers ?? []).length > 0 ? undefined : hint
 
@@ -468,8 +472,8 @@ const hintValue = (question: DraftQuestion, hint: DraftHint): string => {
 }
 
 /**
- * Code tasks and questions with a usable hard hint are answered without the
- * model, so they are left out. "Have you used X?" hints are a blanket "yes":
+ * Questions with a usable hard hint are answered without the model, so they
+ * are left out. "Have you used X?" hints are a blanket "yes":
  * the prompt's own rule decides those, so that hint is not shown.
  */
 const modelQuestions = (
@@ -478,7 +482,6 @@ const modelQuestions = (
 ): ReadonlyArray<{ readonly question: DraftQuestion; readonly hint: string | null }> => {
   const byQuestion = new Map(hints.map((hint) => [hint.questionId, hint]))
   return questions.flatMap((question) => {
-    if (question.kind === "code") return []
     const hint = shownHint(byQuestion.get(question.id))
     if (hint?.hard === true && hintValue(question, hint) !== "") return []
     const value = hint === undefined || hint.kind === "tool_experience" ? "" : hintValue(question, hint)
@@ -495,7 +498,8 @@ const draftQuestionBlock = (
         .map(({ question, hint }, index) =>
           [
             `${index + 1}. id=${question.id} kind=${question.kind}` +
-              (question.maxLength != null ? ` maxLength=${question.maxLength}` : ""),
+              (question.maxLength != null ? ` maxLength=${question.maxLength}` : "") +
+              (question.kind === "code" && question.codeLanguage != null ? ` language=${question.codeLanguage}` : ""),
             `   ${text(question.text)}`,
             ...question.options.map((option) => `   - optionId=${option.id}: ${text(option.label)}`),
             ...(hint === null ? [] : [`   hint: ${hint}`])

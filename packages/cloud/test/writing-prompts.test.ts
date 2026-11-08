@@ -54,8 +54,8 @@ describe("buildDraftPrompt questions", () => {
     ]
   })
 
-  test("code tasks and hard-hinted questions are not sent to the model", () => {
-    expect(prompt.user).not.toContain("q-code")
+  test("hard-hinted questions are not sent to the model, code tasks are", () => {
+    expect(prompt.user).toContain("id=q-code")
     expect(prompt.user).not.toContain("q-salary")
   })
 

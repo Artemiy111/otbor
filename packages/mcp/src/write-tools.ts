@@ -144,7 +144,7 @@ export const AnswerInput = Schema.Struct({
   source: Schema.optional(Schema.Literals(["model", "human"])).annotate({
     description:
       "Default \"model\". Use \"human\" ONLY when the user wrote or explicitly confirmed this exact answer in chat; " +
-      "code questions and blocked hints require it."
+      "blocked hints require it."
   }),
   needsHuman: Schema.optional(Schema.Boolean).annotate({
     description: "Set true when you are unsure; approve is then refused until the user confirms"

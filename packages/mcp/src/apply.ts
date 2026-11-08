@@ -21,7 +21,7 @@ export const STYLE_RULES: ReadonlyArray<string> = [
   "Specific: tie two or three concrete things from the resume to what the vacancy asks for; no generic praise, no filler.",
   "Write in the language of the vacancy. Keep the letter short (a few short paragraphs) and plain.",
   "Form answers: honor maxLength; answer choice questions with option ids, not labels; hints with hard: true are answered exactly as hinted.",
-  "A question with a hint that has blockers, and every code question, needs the user's own answer: ask them and save it with source \"human\". Never write code answers yourself.",
+  "A question with a hint that has blockers needs the user's own answer: ask them and save it with source \"human\". Code tasks are answered like any other question.",
   "Salary and relocation or other personal-fact questions follow the resume enrichment; if it is silent, ask the user.",
   "Enrichment faq entries are the operator's instructions on how to answer common questions (city, relocation, notice period, leave reason and so on): follow them, rephrase to fit the question, never contradict them. Salary comes from the slot in the vacancy's currency; do not convert between currencies.",
   "Per-job notes in enrichment.experience are the operator's context for that job; use them when a question is about that job."
@@ -120,17 +120,6 @@ export const prevalidateKit = (
         code: "needs_human",
         questionId: answer.questionId,
         message: "the answer is flagged for a human and was not confirmed by one"
-      })
-    }
-  }
-  for (const question of form.questions) {
-    if (question.kind !== "code") continue
-    const answer = byQuestion.get(question.id)
-    if (answer === undefined || answer.source !== "human" || answer.needsHuman) {
-      issues.push({
-        code: "code_needs_human",
-        questionId: question.id,
-        message: "a code question needs an answer written or confirmed by the user (source \"human\")"
       })
     }
   }

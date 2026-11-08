@@ -83,19 +83,6 @@ describe("manual mode: an employer test is readable", () => {
     })
     expect(problems.some((p) => p.questionId === SALARY_QUESTION)).toBe(true)
   })
-
-  test("a code answer written by the model is refused, one from the user is not", () => {
-    const code = codeForm.questions.find((q) => q.kind === "code")!
-    const others = codeForm.questions.filter((q) => q.id !== code.id)
-    const rest = others.map((q) => answer(q.id, { text: "Коротко.", source: "human" }))
-    const kit = (source: "model" | "human") => ({
-      formHash: codeForm.formHash,
-      letter: "Письмо",
-      answers: [...rest, answer(code.id, { text: "def f(): pass", source })]
-    })
-    expect(checkKit({ form: codeForm, hints: [], kit: kit("model") }).map((p) => p.questionId)).toContain(code.id)
-    expect(checkKit({ form: codeForm, hints: [], kit: kit("human") }).map((p) => p.questionId)).not.toContain(code.id)
-  })
 })
 
 describe("externalIdFromReference", () => {

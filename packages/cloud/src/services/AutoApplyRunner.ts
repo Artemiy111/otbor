@@ -108,7 +108,7 @@ const hasContent = (hint: {
 /**
  * The kit answers of a finished draft. A hard hint is the answer (the model may
  * not rewrite it); a soft hint fills a question the model skipped. Everything
- * the model said is marked `model`, so `checkKit` still refuses code tasks.
+ * the model said is marked `model`,.
  */
 export const kitAnswers = (
   stored: StoredForm,
@@ -154,8 +154,6 @@ export const kitAnswers = (
 const blockedBeforeWriting = (stored: StoredForm): string | null => {
   const form: ResponseForm = stored.form
   if (form.layout !== "known") return "the form layout was not recognized; a human must fill it in"
-  const code = form.questions.find((question) => question.kind === "code")
-  if (code !== undefined) return `a code question needs a human answer (${code.id})`
   const blocked = stored.hints.find((hint) => hint.blockers.length > 0)
   if (blocked !== undefined) {
     return `the answer hint is blocked (${blocked.questionId}): ${blocked.blockers.join(", ")}`
