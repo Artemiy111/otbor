@@ -656,6 +656,7 @@ const NO_FORM = "no-form"
       :resume-id="resumeId"
       :applications="applications"
       :sent-letter="state === 'submitted' ? (savedKit?.letter ?? null) : null"
+      :sending="state === 'submitting' || state === 'queued'"
     />
 
     <Alert v-else-if="preparing">

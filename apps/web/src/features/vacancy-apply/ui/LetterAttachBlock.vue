@@ -18,6 +18,8 @@ const props = defineProps<{
   applications: ReadonlyArray<ApplicationRecord>
   /** The letter that went to hh with the response of this resume, when it had one. */
   sentLetter?: string | null
+  /** Отклик этого резюме ещё уходит на hh (в очереди или отправляется): письмо добавлять рано. */
+  sending?: boolean
 }>()
 
 const MAX_LETTER = 2000
@@ -93,7 +95,9 @@ const { query: statusQuery, status } = useLetterStatus(
   () => props.accountId,
   () => props.resumeId || null
 )
-const active = computed(() => status.value?.status === "pending" || status.value?.status === "running")
+const active = computed(
+  () => props.sending === true || status.value?.status === "pending" || status.value?.status === "running"
+)
 
 /** What hh already holds: the letter added later, else the one sent with the response. */
 const sentText = computed(() => {
@@ -171,6 +175,9 @@ const send = async () => {
         Добавить на hh
       </Button>
     </div>
+    <p v-if="sending" class="text-xs text-muted-foreground">
+      Отклик ещё отправляется. Письмо можно будет добавить, когда он уйдёт на hh.
+    </p>
     <p v-if="status?.status === 'needs_human'" class="flex items-start gap-1.5 text-xs text-destructive">
       <CircleAlert class="mt-0.5 size-3.5 shrink-0" />
       Неясно, дошло ли письмо: {{ status.message }} Проверьте чат на hh, второй раз само не отправлю.
