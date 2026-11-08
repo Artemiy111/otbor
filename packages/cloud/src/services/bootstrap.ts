@@ -1,4 +1,9 @@
-import { DEVOPS_APPLY_FILTER, DEVOPS_PRESET_TITLE } from "@otbor/domain"
+import {
+  DEVOPS_APPLY_FILTER,
+  DEVOPS_PRESET_TITLE,
+  FRONTEND_APPLY_FILTER,
+  FRONTEND_PRESET_TITLE
+} from "@otbor/domain"
 import { Config, Effect } from "effect"
 import { Database } from "../db/Database.ts"
 import * as PresetRepository from "../repositories/PresetRepository.ts"
@@ -37,6 +42,13 @@ export const ensureSystemPresets = Effect.gen(function*() {
       kind: "apply",
       title: DEVOPS_PRESET_TITLE,
       filter: DEVOPS_APPLY_FILTER
+    })
+  )
+  yield* database.asOwner((tx) =>
+    PresetRepository.ensureSystem(tx, {
+      kind: "apply",
+      title: FRONTEND_PRESET_TITLE,
+      filter: FRONTEND_APPLY_FILTER
     })
   )
 })

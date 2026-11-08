@@ -104,6 +104,69 @@ export const DEVOPS_APPLY_FILTER: PresetFilter = {
   ]
 }
 
+/** Основы названий frontend-вакансий: одно правило `title contains_any`. */
+export const FRONTEND_TITLE_STEMS: ReadonlyArray<string> = [
+  "frontend",
+  "front-end",
+  "front end",
+  "фронтенд",
+  "фронт-энд",
+  "фронт энд",
+  "react",
+  "vue",
+  "angular",
+  "svelte",
+  "next.js",
+  "nuxt",
+  "javascript",
+  "typescript",
+  "ui-разработчик",
+  "ui разработчик",
+  "web developer",
+  "web-разработчик",
+  "веб-разработчик",
+  "веб разработчик",
+  "верстальщик"
+]
+
+/**
+ * Что отсекаем по названию: нерелевантные профессии из DevOps-списка плюс
+ * тестировщики. Мобильные роли отсекает роль из анализа, а не название:
+ * "react native" остаётся на усмотрение оператора.
+ */
+export const FRONTEND_TITLE_REJECT_STEMS: ReadonlyArray<string> = [
+  ...DEVOPS_TITLE_REJECT_STEMS,
+  "тестировщик",
+  "tester"
+]
+
+/**
+ * Системный шаблон для frontend-разработчика. Зарплата и формат работы в него
+ * намеренно не входят: это личные настройки пользователя. Правила совпадают
+ * по форме с {@link DEVOPS_APPLY_FILTER}, меняются только идентичность
+ * (название или роль) и список отсеиваемых названий.
+ */
+export const FRONTEND_APPLY_FILTER: PresetFilter = {
+  rules: [
+    { field: "seniority", op: "in", value: ["middle", "senior", "lead", "unknown"] },
+    { field: "title", op: "not_contains_any", value: [...FRONTEND_TITLE_REJECT_STEMS] },
+    { field: "archived", op: "is_false" },
+    { field: "hidden", op: "not_in", value: ["app"] }
+  ],
+  groups: [
+    {
+      branches: [
+        { rules: [{ field: "title", op: "contains_any", value: [...FRONTEND_TITLE_STEMS] }] },
+        // Fullstack берём только по уверенной роли из анализа: по названию он слишком разный.
+        { rules: [{ field: "analysis_role", op: "in", value: ["frontend", "fullstack"] }] }
+      ]
+    }
+  ]
+}
+
+/** Название системного пресета с {@link FRONTEND_APPLY_FILTER}. */
+export const FRONTEND_PRESET_TITLE = "Frontend"
+
 /**
  * The fit bonuses that used to be constants in `decide`. `work_format in`
  * means "has all of them", so `[remote]` is "offers remote".

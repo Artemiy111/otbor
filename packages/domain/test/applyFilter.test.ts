@@ -3,6 +3,9 @@ import { parsePresetFilter } from "@otbor/contract"
 import {
   DEFAULT_APPLY_FILTER,
   DEVOPS_TITLE_STEMS,
+  FRONTEND_APPLY_FILTER,
+  FRONTEND_TITLE_REJECT_STEMS,
+  FRONTEND_TITLE_STEMS,
   describeGroup,
   describeRule
 } from "../src/applyFilter.ts"
@@ -29,6 +32,19 @@ describe("apply filter template", () => {
     expect(rejects.length).toBe(1)
     expect(rejects[0]).toMatchObject({ field: "title" })
     expect((rejects[0]!.value as ReadonlyArray<string>).length).toBeGreaterThan(10)
+  })
+})
+
+describe("frontend system preset", () => {
+  test("валидный фильтр: идентичность по названию или роли, без зарплаты", () => {
+    expect(parsePresetFilter(FRONTEND_APPLY_FILTER)).toEqual(FRONTEND_APPLY_FILTER)
+    const branches = FRONTEND_APPLY_FILTER.groups?.[0]?.branches ?? []
+    expect(branches[0]?.rules[0]).toMatchObject({ field: "title", op: "contains_any" })
+    expect(branches[1]?.rules[0]).toMatchObject({ field: "analysis_role", value: ["frontend", "fullstack"] })
+    const fields = (FRONTEND_APPLY_FILTER.rules ?? []).map((rule) => rule.field)
+    expect(fields).not.toContain("salary")
+    expect(FRONTEND_TITLE_STEMS).toContain("react")
+    expect(FRONTEND_TITLE_REJECT_STEMS).toContain("тестировщик")
   })
 })
 
