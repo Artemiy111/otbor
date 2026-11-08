@@ -57,6 +57,22 @@ const state = {
 const html = `<template id="HH-Lux-InitialState">${JSON.stringify(state)}</template>`
 
 describe("search page parser", () => {
+  test("a disabled next control marks the last page even when totalResults says more", () => {
+    const deep = {
+      vacancySearchResult: {
+        ...state.vacancySearchResult,
+        totalResults: 4891,
+        criteria: { ...state.vacancySearchResult.criteria, page: 39, items_on_page: 50 },
+        paging: { lastPage: null, next: { page: 40, disabled: true } }
+      }
+    }
+    const page = parseSearchHtml(
+      `<template id="HH-Lux-InitialState">${JSON.stringify(deep)}</template>`
+    )
+    expect(page.hasNext).toBe(false)
+    expect(page.pagesTotal).toBe(40)
+  })
+
   test("reads cards, paging and criteria from HH-Lux-InitialState", () => {
     const page = parseSearchHtml(html)
     expect(page.page).toBe(0)

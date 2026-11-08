@@ -90,6 +90,9 @@ const asStringArray = (value: unknown): ReadonlyArray<string> => {
   return result
 }
 
+/** hh.ru never serves search results deeper than this many items per query. */
+const HH_MAX_RESULTS_DEPTH = 2000
+
 /** Parses either a whole `HH-Lux-InitialState` state or `vacancySearchResult`. */
 export const parseSearchPage = (state: unknown): SearchPage => {
   const root = asRecord(state)
@@ -113,14 +116,25 @@ export const parseSearchPage = (state: unknown): SearchPage => {
   const lastPage = asNumber(asRecord(paging?.lastPage)?.page)
   const next = asRecord(paging?.next)
 
-  const pagesTotal =
-    lastPage !== null
-      ? lastPage + 1
-      : Math.max(1, Math.ceil(totalResults / Math.max(itemsOnPage, 1)))
+  // hh is the authority on how deep the result list goes (it caps it at 2000
+  // items whatever `totalResults` says). When it ships a `next` control, that
+  // control decides: disabled means this is the last page.
+  const nextPage = next === null ? null : asNumber(next.page)
   const hasNext =
-    next !== null && next.disabled !== true && asNumber(next.page) !== null
-      ? true
-      : pagesTotal > page + 1 && totalResults > 0
+    nextPage !== null
+      ? next?.disabled !== true
+      : lastPage !== null
+      ? lastPage > page
+      : page + 1 < Math.ceil(totalResults / Math.max(itemsOnPage, 1)) && totalResults > 0
+
+  const pagesTotal = hasNext
+    ? lastPage !== null
+      ? lastPage + 1
+      : Math.max(
+        page + 2,
+        Math.ceil(Math.min(totalResults, HH_MAX_RESULTS_DEPTH) / Math.max(itemsOnPage, 1))
+      )
+    : page + 1
 
   return {
     page,
