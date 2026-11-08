@@ -255,6 +255,8 @@ export const BrowserDraft = Schema.Struct({
   accountName: Schema.NullOr(Schema.String),
   resumeId: Schema.NullOr(ResumeId),
   resumeTitle: Schema.NullOr(Schema.String),
+  /** hh's numeric id of the resume (`resume.external_id`): what the extension matches the form by. */
+  resumeExternalId: Schema.NullOr(Schema.String),
   state: ApplicationState,
   /** The form the kit was written for; null without a kit. */
   formHash: Schema.NullOr(Schema.String),

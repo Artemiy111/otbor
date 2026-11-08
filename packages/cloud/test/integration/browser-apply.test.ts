@@ -242,6 +242,54 @@ if (!enabled || serverUrl === null) {
       expect(rows.resume_id).toBe(theirs)
     })
 
+    test("hh's resume id wins over a title that names another resume, and drafts carry the id", async () => {
+      const tenant = await support.seedTenant("browser-id-first")
+      await support.setDefaultAccount(tenant.userId, tenant.accountId)
+      const externalId = String(9_600_000 + Math.floor(Math.random() * 90_000))
+      const vacancyId = await support.seedVacancyWithExternal(externalId, "Browser id first")
+      const first = await support.seedResume({ userId: tenant.userId, accountId: tenant.accountId, title: "Backend" })
+      const second = await support.seedResume({ userId: tenant.userId, accountId: tenant.accountId, title: "Frontend" })
+      await support.runAs(
+        tenant.userId,
+        support.ownerTx((tx) =>
+          tx.execute(sql`update resume set external_id = '77001' where id = ${first}`).pipe(
+            Effect.andThen(tx.execute(sql`update resume set external_id = '77002' where id = ${second}`))
+          )
+        )
+      )
+      await support.seedApplication({
+        userId: tenant.userId,
+        accountId: tenant.accountId,
+        vacancyId,
+        resumeId: second,
+        state: "draft"
+      })
+      expect((await drafts(tenant.userId, externalId)).drafts[0]).toMatchObject({ resumeExternalId: "77002" })
+
+      // The title says "Backend", the id says the other resume: the id is the truth.
+      const result = await record(tenant.userId, input(externalId, { resumeExternalId: "77002", resumeTitle: "Backend" }))
+      expect(result.status).toBe("recorded")
+      expect(result.application?.resumeId).toBe(second as never)
+    })
+
+    test("an id otbor has not synced is stored without guessing a resume", async () => {
+      const tenant = await support.seedTenant("browser-id-unknown")
+      await support.setDefaultAccount(tenant.userId, tenant.accountId)
+      const externalId = String(9_700_000 + Math.floor(Math.random() * 90_000))
+      const vacancyId = await support.seedVacancyWithExternal(externalId, "Browser id unknown")
+      const mine = await support.seedResume({ userId: tenant.userId, accountId: tenant.accountId, title: "Backend" })
+      await support.seedApplication({
+        userId: tenant.userId,
+        accountId: tenant.accountId,
+        vacancyId,
+        resumeId: mine,
+        state: "draft"
+      })
+      const result = await record(tenant.userId, input(externalId, { resumeExternalId: "99999" }))
+      expect(result.status).toBe("recorded")
+      expect(result.application?.resumeId).toBeNull()
+    })
+
     test("an otbor submit in flight is left to the reconcile", async () => {
       const tenant = await support.seedTenant("browser-inflight")
       const externalId = String(9_500_000 + Math.floor(Math.random() * 400_000))

@@ -66,6 +66,7 @@ interface DraftRow {
   readonly account_name: string | null
   readonly resume_id: string | null
   readonly resume_title: string | null
+  readonly resume_external_id: string | null
   readonly state: string
   readonly updated_at: Date | string
   readonly form_hash: string | null
@@ -216,7 +217,7 @@ export class BrowserApply extends Context.Service<BrowserApply, BrowserApplyShap
               }
               const result = yield* tx.execute(sql`
                 select a.id, a.hh_account_id, coalesce(h.label, nullif(btrim(concat_ws(' ', h.first_name, h.last_name)), '')) as account_name,
-                  a.resume_id, r.title as resume_title, a.state, a.updated_at,
+                  a.resume_id, r.title as resume_title, r.external_id as resume_external_id, a.state, a.updated_at,
                   k.form_hash, k.letter, k.answers, ld.letter as pending_letter
                 from application a
                 join hh_account h on h.id = a.hh_account_id
@@ -241,6 +242,7 @@ export class BrowserApply extends Context.Service<BrowserApply, BrowserApplyShap
                     accountName: row.account_name,
                     resumeId: row.resume_id as BrowserDraft["resumeId"],
                     resumeTitle: row.resume_title,
+                    resumeExternalId: row.resume_external_id,
                     state: row.state as BrowserDraft["state"],
                     formHash: row.form_hash,
                     letter: blank(row.letter),
@@ -266,7 +268,9 @@ export class BrowserApply extends Context.Service<BrowserApply, BrowserApplyShap
           if (!hasRespondedMarker(input.evidence)) {
             return result("unconfirmed", null, "the page after the click shows no response")
           }
-          const resumeTitle = blank(input.resumeTitle)
+          const resumeExternalId = blank(input.resumeExternalId)
+          // The title is only a fallback for old extension builds that send no id.
+          const resumeTitle = resumeExternalId === null ? blank(input.resumeTitle) : null
           const letter = blank(input.letter)
           return yield* database
             .asUser(currentUser.userId, (tx) =>
@@ -278,11 +282,17 @@ export class BrowserApply extends Context.Service<BrowserApply, BrowserApplyShap
                 const account = yield* accountOfHhid(tx, input.hhid)
                 // hh's own id of the resume beats its title; it also names the account.
                 const named = yield* resumeByExternalId(tx, input.resumeExternalId, account)
-                const target =
+                const resolved =
                   named ??
                   (account !== null
                     ? yield* targetInAccount(tx, account, vacancyId, resumeTitle)
                     : yield* resolveTarget(tx, vacancyId, resumeTitle))
+                // An id otbor has not synced yet: the account may be guessed, the resume may not
+                // (the waiting application could belong to another resume); `otbor hh sync` fills it.
+                const target =
+                  resolved !== null && named === null && resumeExternalId !== null
+                    ? { ...resolved, resumeId: null }
+                    : resolved
                 if (target === null) {
                   return result("no_account", null, "cannot tell which hh account responded; set a default account")
                 }

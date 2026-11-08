@@ -6,8 +6,9 @@ import type {
   FormQuestion,
   ResponseForm
 } from "@otbor/contract"
-import { parseNegotiations, parseResponseForm } from "@otbor/hh"
+import { parseNegotiations, parseResponseForm, parseResponseResumes } from "@otbor/hh"
 import type { Request, Settings } from "@/messages.ts"
+import { chooseDraft, isResumeHash, resumeHashOfId, resumeIdOfHash, resumeToSelect } from "@/resumePick.ts"
 
 /**
  * hh's own response form, opened by the operator (the `/applicant/vacancy_response`
@@ -35,8 +36,9 @@ const SUBMIT_SELECTOR = '[data-qa="vacancy-response-submit-popup"]'
 const LETTER_SUBMIT_SELECTOR = '[data-qa="vacancy-response-letter-submit"]'
 const SUCCESS_SELECTOR = '[data-qa="responded-success-attach-cover-letter"]'
 const RESUME_SELECTED_SELECTOR = '[data-qa="resume-title"]'
-/** The options of the opened resume select, each with its own `resume-title`. */
-const RESUME_OPTION_SELECTOR = 'label[role="option"]'
+/** The options of the opened resume select; each is keyed by the resume's hash. */
+const RESUME_OPTION_SELECTOR = 'label[role="option"][data-magritte-select-option]'
+const RESUME_CHOSEN_SELECTOR = `${RESUME_OPTION_SELECTOR}[aria-selected="true"]`
 /** The one-click "Откликнуться" on a vacancy page: without a form hh responds at once. */
 const QUICK_RESPONSE_SELECTOR =
   '[data-qa="vacancy-response-link-top"], [data-qa="vacancy-response-link-bottom"]'
@@ -112,15 +114,6 @@ const pageHhid = (): Promise<string | null> => {
     })
     .catch(() => null)
   return hhidLookup
-}
-
-const norm = (text: string | null | undefined): string =>
-  (text ?? "").replace(/\s+/g, " ").trim().toLowerCase()
-
-/** @deprecated hh's form shows only a title; prefer hh's resume id from its response list (`resumeFromNegotiations`). */
-const selectedResumeTitle = (): string | null => {
-  const text = document.querySelector<HTMLElement>(RESUME_SELECTED_SELECTOR)?.innerText?.replace(/\s+/g, " ").trim()
-  return text === undefined || text === "" ? null : text
 }
 
 const visible = (element: Element): boolean =>
@@ -235,56 +228,144 @@ const fillQuestion = (question: FormQuestion, answer: FormAnswer): boolean => {
   return true
 }
 
+/* ---- resume of the form: by hh's id, never by title ---------------------- */
+
 /**
- * The draft for the form on screen: the one of the resume the form has
- * selected, else the only one there is.
+ * The form names the selected resume only by title, and titles repeat. The
+ * options carry the resume's hash (`data-magritte-select-option`); the page
+ * state maps hh's numeric id (`resume.external_id`) to that hash. The page does
+ * not say which resume is preselected, so the selected hash is learned from:
+ * what this extension selected, what the operator clicked, or (once) an
+ * opened list whose `aria-selected` option is read.
  */
-const pickDraft = (
-  drafts: ReadonlyArray<BrowserDraft>,
-  usable: (draft: BrowserDraft) => boolean
-): { readonly draft: BrowserDraft; readonly matched: boolean } | null => {
-  const candidates = drafts.filter(usable)
-  const title = norm(selectedResumeTitle())
-  if (title !== "") {
-    const same = candidates.find((draft) => norm(draft.resumeTitle) === title)
-    if (same !== undefined) return { draft: same, matched: true }
-  }
-  if (candidates.length === 1) return { draft: candidates[0]!, matched: title === "" }
-  return null
+let knownHash: string | null = null
+/** The card the hash was learned for: a form that was rebuilt starts unknown again. */
+let knownFor: Element | null = null
+let probedAt = 0
+const PROBE_COOLDOWN_MS = 5000
+
+const resumeCard = (): HTMLElement | null => {
+  const title = document.querySelector<HTMLElement>(RESUME_SELECTED_SELECTOR)
+  return title === null ? null : (title.closest<HTMLElement>('[role="button"]') ?? title)
 }
 
-const titleOf = (element: Element | null): string =>
-  norm((element as HTMLElement | null)?.innerText ?? element?.textContent ?? "")
+const rememberHash = (hash: string | null): void => {
+  knownHash = hash
+  knownFor = hash === null ? null : document.querySelector(RESUME_SELECTED_SELECTOR)
+}
+
+/** id → hash of the resumes the form offers, from the page state. */
+const pageResumes = () => {
+  const state = document.getElementById("HH-Lux-InitialState")
+  return state === null ? [] : parseResponseResumes(state.outerHTML).resumes
+}
+
+const optionElements = (): Array<HTMLElement> => [...document.querySelectorAll<HTMLElement>(RESUME_OPTION_SELECTOR)]
+const listOpen = (): boolean => document.querySelector(RESUME_OPTION_SELECTOR) !== null
+
+/** Hash of the `aria-selected` option of the opened list, else null. */
+const chosenHashInList = (): string | null =>
+  document.querySelector(RESUME_CHOSEN_SELECTOR)?.getAttribute("data-magritte-select-option") ?? null
 
 /**
- * Selects the draft's resume in hh's resume select, when another is selected.
- * Only opens the select and clicks an option; the form sends nothing by it.
+ * Keeps the hash of the option the operator picks. Capture phase, so it runs
+ * before hh's handlers (which close the list and remove the options).
  */
-const selectResume = async (wanted: string): Promise<boolean> => {
-  const target = norm(wanted)
-  if (norm(selectedResumeTitle()) === target) return true
-  const card = document.querySelector(RESUME_SELECTED_SELECTOR)?.closest<HTMLElement>('[role="button"]')
-  if (card === null || card === undefined) return false
-  card.click()
-  let option: HTMLElement | null = null
-  for (let i = 0; i < 20 && option === null; i++) {
-    await wait(100)
-    option =
-      [...document.querySelectorAll<HTMLElement>(RESUME_OPTION_SELECTOR)].find(
-        // В реальном варианте нет `resume-title`: название лежит в `cell-text-content`.
-        (item) => titleOf(item.querySelector('[data-qa="cell-text-content"]') ?? item.querySelector(RESUME_SELECTED_SELECTOR)) === target
-      ) ?? null
+const watchResumePicks = (): void => {
+  const take = (event: Event) => {
+    const option = event.target instanceof Element ? event.target.closest(RESUME_OPTION_SELECTOR) : null
+    const hash = option?.getAttribute("data-magritte-select-option")
+    if (hash !== null && hash !== undefined && hash !== "") rememberHash(hash)
   }
-  if (option === null) {
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+  document.addEventListener("click", take, true)
+  document.addEventListener("change", take, true)
+}
+
+/**
+ * Opens hh's resume list. The form is in the HTML before React attaches its
+ * handlers, so the first click may do nothing: click again when no option shows
+ * within ~2 s (4 tries). Never clicks while the list is open: that would close it.
+ */
+const openResumeList = async (): Promise<boolean> => {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (listOpen()) return true
+    const card = resumeCard()
+    if (card === null) return false
+    card.click()
+    for (let waited = 0; waited < 2000; waited += 100) {
+      await wait(100)
+      if (listOpen()) return true
+    }
+  }
+  return listOpen()
+}
+
+const closeResumeList = async (): Promise<void> => {
+  if (!listOpen()) return
+  const target = document.activeElement ?? document.body
+  for (const type of ["keydown", "keyup"]) {
+    target.dispatchEvent(new KeyboardEvent(type, { key: "Escape", code: "Escape", keyCode: 27, bubbles: true }))
+  }
+  for (let waited = 0; waited < 1000 && listOpen(); waited += 100) await wait(100)
+}
+
+/** hh's id of the resume the form has selected, or null while it cannot be told. */
+const selectedResumeId = async (): Promise<string | null> => {
+  const resumes = pageResumes()
+  if (resumes.length === 0 || resumeCard() === null) return null
+  if (knownHash !== null && knownFor !== null && knownFor.isConnected) return resumeIdOfHash(resumes, knownHash)
+  if (!listOpen() && Date.now() - probedAt < PROBE_COOLDOWN_MS) return null
+  probedAt = Date.now()
+  const wasOpen = listOpen()
+  if (!wasOpen && !(await openResumeList())) return null
+  const hash = chosenHashInList()
+  if (!wasOpen) await closeResumeList()
+  if (hash === null) return null
+  rememberHash(hash)
+  return resumeIdOfHash(resumes, hash)
+}
+
+/**
+ * The draft for the form on screen: the one of the resume the form has
+ * selected (by hh's id), else the only one there is.
+ */
+const pickDraft = async (
+  drafts: ReadonlyArray<BrowserDraft>,
+  usable: (draft: BrowserDraft) => boolean
+): Promise<{ readonly draft: BrowserDraft; readonly matched: boolean } | null> => {
+  const candidates = drafts.filter(usable)
+  if (candidates.length === 0) return null
+  return chooseDraft(candidates, await selectedResumeId())
+}
+
+/**
+ * Selects the resume with hh's id `wantedId` in hh's resume select, when
+ * another is selected, and verifies it by `aria-selected`. Only opens the
+ * select and clicks an option; the form sends nothing by it.
+ */
+const selectResume = async (wantedId: string): Promise<boolean> => {
+  const resumes = pageResumes()
+  const hash = resumeHashOfId(resumes, wantedId)
+  if (hash === null || !isResumeHash(hash)) return false
+  if ((await selectedResumeId()) === wantedId) return true
+  if (!(await openResumeList())) return false
+  const option = optionElements().find((item) => item.getAttribute("data-magritte-select-option") === hash)
+  if (option === undefined) {
+    await closeResumeList()
     return false
   }
   option.click()
-  for (let i = 0; i < 20; i++) {
+  rememberHash(hash)
+  let ok = false
+  for (let i = 0; i < 20 && !ok; i++) {
     await wait(100)
-    if (norm(selectedResumeTitle()) === target) return true
+    // The list closes after a pick and its options leave the DOM: reopen to read the choice.
+    if (!listOpen() && !(await openResumeList())) continue
+    ok = chosenHashInList() === hash
   }
-  return false
+  await closeResumeList()
+  if (!ok) rememberHash(null)
+  return ok
 }
 
 /** A draft the operator could still send: not sent, not being sent by otbor. */
@@ -332,7 +413,8 @@ export const toast = (text: string, tone: "good" | "warn" | "bad" = "good"): voi
 interface Snapshot {
   readonly kind: "submit" | "letter"
   readonly externalId: string
-  readonly resumeTitle: string | null
+  /** hh's id of the resume the form had selected, when it was known at the click. */
+  readonly resumeExternalId: string | null
   readonly letter: string | null
   readonly answers: ReadonlyArray<FormAnswer>
   readonly formHash: string | null
@@ -340,11 +422,16 @@ interface Snapshot {
   readonly at: number
 }
 
+/** The selected resume's hh id when already known (no list is opened). */
+const knownResumeId = (): string | null =>
+  knownHash !== null && knownFor !== null && knownFor.isConnected ? resumeIdOfHash(pageResumes(), knownHash) : null
+
 const describe = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 export const startResponseWatch = (
   send: Send
 ): { readonly check: () => void; readonly maybeOpen: (settings: Settings) => Promise<void> } => {
+  watchResumePicks()
   const cache = new Map<string, { readonly at: number; readonly value: Promise<BrowserDrafts> }>()
 
   const draftsFor = (externalId: string): Promise<BrowserDrafts> => {
@@ -371,20 +458,20 @@ export const startResponseWatch = (
     anchor.dataset[RESUME_PICKED] = "pending"
     const { drafts } = await draftsFor(externalId)
     const usable = drafts.filter(sendable)
-    const selected = norm(selectedResumeTitle())
-    if (usable.some((draft) => norm(draft.resumeTitle) === selected)) {
-      anchor.dataset[RESUME_PICKED] = "kept"
-      return null
-    }
-    const titled = usable.filter((draft) => draft.resumeTitle !== null)
-    if (titled.length !== 1) {
+    if (usable.length === 0) {
       anchor.dataset[RESUME_PICKED] = "none"
       return null
     }
-    const ok = await selectResume(titled[0]!.resumeTitle!)
+    const wanted = resumeToSelect(usable, await selectedResumeId())
+    if (wanted === null || wanted.resumeExternalId === null) {
+      anchor.dataset[RESUME_PICKED] = "none"
+      return null
+    }
+    const name = wanted.resumeTitle ?? wanted.resumeExternalId
+    const ok = await selectResume(wanted.resumeExternalId)
     anchor.dataset[RESUME_PICKED] = ok ? "done" : "failed"
-    if (!ok) toast(`otbor: не получилось выбрать резюме «${titled[0]!.resumeTitle}» — выберите его сами`, "warn")
-    return ok ? `резюме «${titled[0]!.resumeTitle}»` : null
+    if (!ok) toast(`otbor: не получилось выбрать резюме «${name}» — выберите его сами`, "warn")
+    return ok ? `резюме «${name}»` : null
   }
 
   /** Test answers, once per response form (the submit button carries the mark). */
@@ -395,7 +482,7 @@ export const startResponseWatch = (
     anchor.dataset[FILLED] = "pending"
     try {
       const { drafts } = await draftsFor(externalId)
-      const picked = pickDraft(drafts, (draft) => draft.state !== "submitted" && draft.answers.length > 0)
+      const picked = await pickDraft(drafts, (draft) => draft.state !== "submitted" && draft.answers.length > 0)
       if (picked === null) {
         anchor.dataset[FILLED] = "none"
         return null
@@ -425,7 +512,7 @@ export const startResponseWatch = (
     if (fields.length === 0 && (toggle === null || toggle.dataset[FILLED] !== undefined)) return null
     const responded = respondedNow()
     const { drafts } = await draftsFor(externalId)
-    const picked = pickDraft(drafts, (draft) => letterOf(draft, responded) !== null)
+    const picked = await pickDraft(drafts, (draft) => letterOf(draft, responded) !== null)
     if (picked === null) {
       for (const field of fields) field.dataset[FILLED] = "none"
       if (toggle !== null) toggle.dataset[FILLED] = "none"
@@ -488,7 +575,8 @@ export const startResponseWatch = (
     return {
       kind,
       externalId,
-      resumeTitle: selectedResumeTitle(),
+      // Only what is already known: opening the list at the click would disturb the form.
+      resumeExternalId: knownResumeId(),
       letter: field === null ? null : valueOf(field).trim() || null,
       answers: form === null ? [] : readAnswers(form, pasted.get(externalId) ?? null),
       formHash: form !== null && form.layout === "known" && form.questions.length > 0 ? form.formHash : null,
@@ -541,15 +629,17 @@ export const startResponseWatch = (
 
   const record = async (snap: Snapshot): Promise<void> => {
     try {
+      // The id of the form's resume when known, else hh's list of responses names it.
       const resumeExternalId =
-        snap.kind === "submit" && snap.resumeTitle === null ? await resumeFromNegotiations(snap.externalId) : null
+        snap.resumeExternalId ?? (snap.kind === "submit" ? await resumeFromNegotiations(snap.externalId) : null)
       const result = await send<BrowserSubmitResult>({
         type: "record",
         payload: {
           kind: snap.kind,
           externalId: snap.externalId,
           hhid: await pageHhid(),
-          resumeTitle: snap.resumeTitle,
+          // The title identifies nothing; the cloud resolves the resume by id.
+          resumeTitle: null,
           resumeExternalId,
           letter: snap.letter,
           answers: snap.answers,
