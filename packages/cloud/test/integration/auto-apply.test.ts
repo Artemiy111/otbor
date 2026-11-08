@@ -818,6 +818,8 @@ if (!enabled || serverUrl === null) {
       expect(await tick(ctx.tenant.userId)).toMatchObject({ submitQueued: 1 })
       const [submit] = await jobPayloads(ctx.tenant.accountId, "submit")
       expect(submit!.resumeTitle).toBe(first.title)
+      // В этом хелпере title резюме равен его external_id.
+      expect(submit!.resumeExternalId).toBe(first.title)
     }, 120_000)
 
     test("with several active resumes the most recently updated one is used", async () => {

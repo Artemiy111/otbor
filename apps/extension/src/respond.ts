@@ -271,7 +271,8 @@ const selectResume = async (wanted: string): Promise<boolean> => {
     await wait(100)
     option =
       [...document.querySelectorAll<HTMLElement>(RESUME_OPTION_SELECTOR)].find(
-        (item) => titleOf(item.querySelector(RESUME_SELECTED_SELECTOR)) === target
+        // В реальном варианте нет `resume-title`: название лежит в `cell-text-content`.
+        (item) => titleOf(item.querySelector('[data-qa="cell-text-content"]') ?? item.querySelector(RESUME_SELECTED_SELECTOR)) === target
       ) ?? null
   }
   if (option === null) {

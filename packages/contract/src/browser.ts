@@ -80,10 +80,12 @@ export const SubmitJobPayload = Schema.Struct({
   ...Target,
   kitId: Schema.String,
   /**
-   * Title of the resume the response is made with. hh sends the response with
-   * whichever resume its form has selected, so the harness selects this one
-   * and refuses to click when it cannot.
+   * Числовой id резюме на hh (`resume.external_id`), с которым делается отклик.
+   * hh отправляет отклик с тем резюме, что выбрано в форме, поэтому харнес
+   * выбирает именно его по id и не нажимает «Откликнуться», если не вышло.
    */
+  resumeExternalId: Schema.optional(Schema.NullOr(Schema.String)),
+  /** Название того же резюме, только для сообщений. */
   resumeTitle: Schema.optional(Schema.NullOr(Schema.String)),
   /** The form hash the kit was written for. A live form that differs aborts. */
   expectedFormHash: Schema.String,

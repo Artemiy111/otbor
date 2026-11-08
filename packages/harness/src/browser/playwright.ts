@@ -10,14 +10,16 @@ import type {
   SubmitEvidence
 } from "@otbor/contract"
 import { isTrackerUrl } from "./trackers.ts"
-import { classifyResponsePage, parseResumeRefs } from "@otbor/hh"
+import { classifyResponsePage, parseResumeRefs, responseResumeHash } from "@otbor/hh"
 import { Effect, Layer, Schema, Semaphore } from "effect"
 import { existsSync } from "node:fs"
 import { chromium, type BrowserContext, type Page } from "playwright"
 import {
   CHAT_INPUT_SELECTOR,
-  RESUME_OPTION_SELECTOR,
+  RESUME_CHOSEN_OPTION_SELECTOR,
   RESUME_SELECTED_SELECTOR,
+  isResumeHash,
+  resumeOptionSelector,
   CHAT_LETTER_BUTTON_SELECTOR,
   CHAT_LETTER_PREVIEW_SELECTOR,
   chatUrl,
@@ -450,41 +452,74 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
           }
         }
 
-        // hh sends the response with the resume its form has selected, so the
-        // one the operator chose is selected here and checked before the click.
-        const wanted = (payload.resumeTitle ?? "").trim()
-        if (wanted !== "") {
-          const selectedTitle = () =>
-            attempt(() => page.locator(RESUME_SELECTED_SELECTOR).first().innerText()).pipe(
-              Effect.map((title) => title.trim()),
-              Effect.orElseSucceed(() => "")
-            )
-          if ((yield* selectedTitle()) !== wanted) {
-            yield* attempt(() => page.locator(RESUME_SELECTED_SELECTOR).first().click({ timeout: 5_000 }))
-            const option = page.locator(RESUME_OPTION_SELECTOR).filter({
-              has: page.locator(RESUME_SELECTED_SELECTOR).getByText(wanted, { exact: true })
-            })
-            const matches = yield* attempt(() => option.count())
-            if (matches !== 1) {
-              return {
-                tag: "blocked",
-                message:
-                  matches === 0
-                    ? `hh offers no resume titled "${wanted}" for this response`
-                    : `several resumes are titled "${wanted}"; cannot tell which one to use`,
-                ...unclicked(lastUrl)
-              } satisfies HarnessExit
+        // hh отправляет отклик с тем резюме, которое выбрано в форме, поэтому
+        // нужное выбирается здесь по id и проверяется до клика. Любое
+        // расхождение это `blocked`: кнопка не нажимается.
+        const wantedId = (payload.resumeExternalId ?? "").trim()
+        const wantedTitle = (payload.resumeTitle ?? "").trim()
+        if (wantedId === "" && wantedTitle !== "") {
+          // Старый payload без id: по названию не выбираем (оно не ключ), блокируем.
+          return {
+            tag: "blocked",
+            message: `the job has no hh resume id for "${wantedTitle}"; cannot pick the resume safely`,
+            ...unclicked(lastUrl)
+          } satisfies HarnessExit
+        }
+        if (wantedId !== "") {
+          const label = wantedTitle === "" ? wantedId : `"${wantedTitle}" (${wantedId})`
+          const hash = responseResumeHash((yield* content(page)) ?? html, wantedId)
+          if (hash === null || !isResumeHash(hash)) {
+            return {
+              tag: "blocked",
+              message: `hh does not offer the resume ${label} for this response (hidden or not available for the vacancy)`,
+              ...unclicked(lastUrl)
+            } satisfies HarnessExit
+          }
+          const option = page.locator(resumeOptionSelector(hash))
+          /** Хэш выбранного варианта; `null`, пока список не отрисован. */
+          const chosenHash = () =>
+            attempt(async () => {
+              const radio = page.locator(`${RESUME_CHOSEN_OPTION_SELECTOR} input[type="radio"]`).first()
+              return (await radio.count()) === 0 ? null : await radio.getAttribute("value", { timeout: 2_000 })
+            }).pipe(Effect.orElseSucceed(() => null as string | null))
+          const optionShown = () => attempt(() => option.count()).pipe(Effect.orElseSucceed(() => 0))
+          /** Ждёт до ~5 с, пока вариант появится в DOM. */
+          const waitOption = Effect.gen(function*() {
+            for (let waited = 0; waited < 5_000; waited += 250) {
+              if ((yield* optionShown()) > 0) return true
+              yield* sleep(250)
+            }
+            return false
+          })
+          const openSelect = attempt(() => page.locator(RESUME_SELECTED_SELECTOR).first().click({ timeout: 5_000 }))
+          const closeSelect = attempt(() => page.keyboard.press("Escape")).pipe(Effect.ignore)
+          const blockedWith = (message: string) =>
+            ({ tag: "blocked", message, ...unclicked(lastUrl) }) satisfies HarnessExit
+
+          if ((yield* chosenHash()) !== hash) {
+            yield* openSelect
+            if (!(yield* waitOption)) {
+              return blockedWith(`the resume ${label} did not appear in hh's resume select`)
             }
             yield* attempt(() => option.first().click({ timeout: 5_000 }))
             yield* sleep(300)
           }
-          const chosen = yield* selectedTitle()
-          if (chosen !== wanted) {
-            return {
-              tag: "blocked",
-              message: `the response form uses the resume "${chosen}", not "${wanted}"`,
-              ...unclicked(lastUrl)
-            } satisfies HarnessExit
+          // Проверка по id: после клика выбранным должен быть вариант этого хэша.
+          // Если список закрылся и вариантов в DOM нет, открываем его заново.
+          let verified = false
+          for (let waited = 0; waited < 5_000 && !verified; waited += 250) {
+            let current = yield* chosenHash()
+            if (current === null && waited === 0) {
+              yield* openSelect
+              yield* waitOption
+              current = yield* chosenHash()
+            }
+            verified = current === hash
+            if (!verified) yield* sleep(250)
+          }
+          yield* closeSelect
+          if (!verified) {
+            return blockedWith(`the response form did not switch to the resume ${label}`)
           }
         }
 

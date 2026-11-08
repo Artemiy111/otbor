@@ -128,12 +128,24 @@ export const CHAT_LETTER_PREVIEW_SELECTOR = '[data-qa="chat-input-preview"]'
 export const CHAT_INPUT_SELECTOR = '[data-qa="text-input"]'
 
 /**
- * The "Резюме для отклика" select on the response form. The selected title is
- * the first `resume-title` on the page; the options are `label[role=option]`
- * (seen on a live form), each holding its own `resume-title`.
+ * Селект «Резюме для отклика». Выбранное резюме показывает карточка
+ * `resume-title` (название лежит в её `cell-text-content`); клик по карточке
+ * открывает список. Варианты это `label[role=option]` с хэшем резюме в
+ * `data-magritte-select-option`, радио внутри несёт тот же хэш в `value`.
+ * Ключ варианта это хэш, а не numeric id: id в хэш переводит
+ * `responseResumeHash` (@otbor/hh) по состоянию страницы.
  */
 export const RESUME_SELECTED_SELECTOR = '[data-qa="resume-title"]'
 export const RESUME_OPTION_SELECTOR = 'label[role="option"]'
+/** Вариант, который сейчас выбран (`aria-selected="true"`). */
+export const RESUME_CHOSEN_OPTION_SELECTOR = 'label[role="option"][aria-selected="true"]'
+
+/** Хэш резюме hh это hex; всё остальное в селектор не подставляем. */
+export const isResumeHash = (hash: string): boolean => /^[0-9a-f]{16,64}$/i.test(hash)
+
+/** Вариант селекта для хэша резюме. */
+export const resumeOptionSelector = (hash: string): string =>
+  `${RESUME_OPTION_SELECTOR}[data-magritte-select-option="${hash}"]`
 
 export const chatUrl = (baseUrl: string, chatId: string): string =>
   `${baseUrl.replace(/\/+$/, "")}/chat/${encodeURIComponent(chatId)}`

@@ -46,14 +46,56 @@ const SCRIPT = `
   form.addEventListener('change', refresh);
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    await fetch('/respond', { method: 'POST', body: new URLSearchParams(new FormData(form)) });
+    const params = new URLSearchParams(new FormData(form));
+    params.set('resume', window.__resume || '');
+    await fetch('/respond', { method: 'POST', body: params });
     if (!window.__silent) {
       document.body.innerHTML = '<div data-qa="responded-success-attach-cover-letter">Вы откликнулись</div>';
     }
   });
 </script>`
 
-const page = (opts: { silent?: boolean; letter?: boolean; rename?: boolean } = {}) => {
+const HASH_A = "aaaa00000000000000000000000000000000aa01"
+const HASH_B = "bbbb00000000000000000000000000000000bb02"
+
+/**
+ * Селект резюме по форме реальной страницы: карточка `resume-title`, клик
+ * открывает список `label[role=option]` с хэшем, выбор закрывает (размонтирует) его.
+ * Резюме 1001 (хэш A) выбрано заранее, 1002 (хэш B) предлагается; 1003 страница не знает.
+ */
+const resumeWidget = (opts: { slow?: boolean; broken?: boolean }) => {
+  const state = JSON.stringify({
+    vacancyResponsePopup: {
+      vacancy: {
+        unusedResumeIds: ["1001", "1002"],
+        resumes: {
+          "1001": { hash: HASH_A, id: "1001", title: [{ string: "Первое" }] },
+          "1002": { hash: HASH_B, id: "1002", title: [{ string: "Второе" }] }
+        }
+      }
+    }
+  })
+  return `<template id="HH-Lux-InitialState">${state}</template>
+<div id="resume-host"><div data-qa="resume-title" role="button"><div data-qa="cell-text-content" id="resume-name">Первое</div></div><div id="resume-list"></div></div>
+<script>
+  window.__resume = '${HASH_A}';
+  const names = { '${HASH_A}': 'Первое', '${HASH_B}': 'Второе' };
+  const list = document.getElementById('resume-list');
+  document.querySelector('[data-qa=resume-title]').addEventListener('click', () => {
+    setTimeout(() => {
+      list.innerHTML = Object.keys(names).map((h) => '<label role="option" data-magritte-select-option="' + h + '" aria-selected="' + (window.__resume === h) + '"><input type="radio" value="' + h + '"' + (window.__resume === h ? ' checked' : '') + '>' + names[h] + '</label>').join('');
+      for (const label of list.querySelectorAll('label')) {
+        label.addEventListener('click', () => {
+          ${opts.broken ? "" : "window.__resume = label.getAttribute('data-magritte-select-option'); document.getElementById('resume-name').textContent = names[window.__resume];"}
+          list.innerHTML = '';
+        });
+      }
+    }, ${opts.slow ? 1500 : 0});
+  });
+</script>`
+}
+
+const page = (opts: { silent?: boolean; letter?: boolean; rename?: boolean; resume?: "ok" | "slow" | "broken" } = {}) => {
   let html = base
   if (opts.rename) html = html.replace("В каком городе проживаете?", "В какой стране проживаете?")
   if (opts.letter) {
@@ -62,6 +104,8 @@ const page = (opts: { silent?: boolean; letter?: boolean; rename?: boolean } = {
       '<textarea data-qa="vacancy-response-popup-form-letter-input" name="letter"></textarea>\n<button type="submit"'
     )
   }
+  const widget = opts.resume === undefined ? "" : resumeWidget({ slow: opts.resume === "slow", broken: opts.resume === "broken" })
+  html = html.replace("</body>", `${widget}</body>`)
   const flag = opts.silent ? "<script>window.__silent = true</script>" : ""
   return html.replace("</body>", `${flag}${SCRIPT}</body>`)
 }
@@ -79,6 +123,7 @@ const html = (body: string) =>
 
 let reconcileMode = "open"
 let lettersSent = 0
+let lastResume: string | null = null
 
 const letterPage = (stuck: boolean) => `<html><body>
 <button data-qa="responded-success-attach-cover-letter" onclick="document.getElementById('dlg').style.display='block'">Приложить сопроводительное письмо</button>
@@ -103,6 +148,7 @@ beforeAll(async () => {
       const url = new URL(request.url)
       if (url.pathname === "/respond" && request.method === "POST") {
         posts += 1
+        lastResume = new URLSearchParams(await request.text()).get("resume")
         return new Response("{}", { headers: { "content-type": "application/json" } })
       }
       if (url.pathname === "/letter" && request.method === "POST") {
@@ -140,6 +186,8 @@ beforeAll(async () => {
                 ? page({ rename: true })
                 : mode === "letter"
                   ? page({ letter: true })
+                  : mode === "resume" || mode === "resume-slow" || mode === "resume-broken"
+                    ? page({ resume: mode === "resume" ? "ok" : mode === "resume-slow" ? "slow" : "broken" })
                   : page()
         return new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } })
       }
@@ -249,6 +297,45 @@ describe.skipIf(!hasBrowser)("PlaywrightBrowserExecutor against a local hh imita
     const evidence = exit.artifacts as { clicked: boolean; url: string; html: string }
     expect(evidence.clicked).toBe(true)
     expect(isSubmitSuccess(evidence.html, evidence.url)).toBe(true)
+  }, 40_000)
+
+  const withResume = async (m: string, over: Partial<SubmitJobPayload>) => {
+    mode = m
+    posts = 0
+    lastResume = null
+    return await run(executor().submit({ payload: submitPayload(over), beforeClick: Effect.succeed(true) }))
+  }
+
+  test("the resume is selected by hh id, with a late-rendered list, before the click", async () => {
+    const exit = await withResume("resume-slow", { resumeExternalId: "1002", resumeTitle: "Второе" })
+    expect(exit).toMatchObject({ tag: "submitted" })
+    expect(posts).toBe(1)
+    expect(lastResume).toBe(HASH_B)
+  }, 40_000)
+
+  test("the already selected resume is not touched", async () => {
+    const exit = await withResume("resume", { resumeExternalId: "1001" })
+    expect(exit).toMatchObject({ tag: "submitted" })
+    expect(lastResume).toBe(HASH_A)
+  }, 40_000)
+
+  test("a resume id the page does not offer is blocked and nothing is sent", async () => {
+    const exit = await withResume("resume", { resumeExternalId: "1003", resumeTitle: "Третье" })
+    expect(exit.tag).toBe("blocked")
+    expect(exit.artifacts).toMatchObject({ clicked: false })
+    expect(posts).toBe(0)
+  }, 40_000)
+
+  test("a select that does not switch is blocked and nothing is sent", async () => {
+    const exit = await withResume("resume-broken", { resumeExternalId: "1002" })
+    expect(exit.tag).toBe("blocked")
+    expect(posts).toBe(0)
+  }, 40_000)
+
+  test("a legacy payload with a title but no id is blocked", async () => {
+    const exit = await withResume("resume", { resumeTitle: "Второе" })
+    expect(exit.tag).toBe("blocked")
+    expect(posts).toBe(0)
   }, 40_000)
 
   test("a changed live form is form_changed and nothing is sent", async () => {
