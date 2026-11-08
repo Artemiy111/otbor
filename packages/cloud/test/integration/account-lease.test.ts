@@ -49,9 +49,7 @@ if (!integrationEnabled || serverUrl === null) {
   describe("account lease", () => {
     test("two holders cannot serve the same account at the same time", async () => {
       const tenant = await seedTenant("account-lease")
-      // Distinct priorities make each claim deterministic. The refused claim
-      // pushes its candidate five seconds out, and the test makes it runnable
-      // again instead of sleeping.
+      // Distinct priorities make each claim deterministic.
       const jobOne = await enqueueJob({
         userId: tenant.userId,
         accountId: tenant.accountId,
@@ -79,8 +77,8 @@ if (!integrationEnabled || serverUrl === null) {
       })
       expect(claimedByOne?.job.id).toBe(jobOne.id)
 
-      // The second holder is refused while the lease is live. Its candidate is
-      // pushed five seconds out instead of being left leased.
+      // The second holder is refused while the lease is live, and the
+      // candidate is left pending (not pushed into the future).
       const refused = await claimAsHolder({
         holder: holderTwo,
         accounts: [tenant.accountId]

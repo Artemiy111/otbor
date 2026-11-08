@@ -70,13 +70,20 @@ export interface PlaywrightOptions {
   readonly maxNegotiationPages?: number
   /** Pause between negotiations pages of a sync, so a long list is read politely. */
   readonly syncDelayMs?: number
+  /**
+   * Сколько действующих задач (submit, letter_attach) профиль выполняет разом.
+   * По умолчанию 2, как потолок облака `OTBOR_ACCOUNT_SUBMIT_CONCURRENCY`;
+   * облако остаётся главным, это страховка на стороне харнесса.
+   */
+  readonly accountActingConcurrency?: number
 }
 
 const defaults = {
   baseUrl: "https://hh.ru",
   navigationTimeoutMs: 30_000,
   settleMs: 12_000,
-  afterClickMs: 25_000
+  afterClickMs: 25_000,
+  accountActingConcurrency: 2
 }
 
 const attempt = <A>(use: () => Promise<A>) =>
@@ -172,7 +179,8 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
   /**
    * Opens a page of the profile's browser, runs `use`, always closes the page and
    * releases the browser. Jobs that act on the account (everything but a form
-   * read) run one at a time per profile; form reads run side by side.
+   * read) делят пул разрешений профиля (`accountActingConcurrency`); читающие
+   * задачи идут без ограничения.
    */
   const withPage = <A, E>(
     profile: string | null | undefined,
@@ -196,7 +204,7 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
     if (options.parallel === true) return run
     let gate = exclusive.get(dir)
     if (gate === undefined) {
-      gate = Semaphore.makeUnsafe(1)
+      gate = Semaphore.makeUnsafe(Math.max(1, Math.floor(config.accountActingConcurrency)))
       exclusive.set(dir, gate)
     }
     return gate.withPermits(1)(run)

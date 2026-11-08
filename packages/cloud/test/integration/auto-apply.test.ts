@@ -262,6 +262,14 @@ if (!enabled || serverUrl === null) {
       })
     )
 
+  const progressOf = (ctx: Ctx, options: { activeOnly?: boolean; limit?: number } = {}) =>
+    support.runAs(
+      ctx.tenant.userId,
+      Effect.gen(function*() {
+        return yield* (yield* AutoApplyViewService).progress({ hhAccountId: ctx.tenant.accountId, ...options })
+      })
+    )
+
   const zero = {
     accounts: 0,
     selected: 0,
@@ -363,6 +371,35 @@ if (!enabled || serverUrl === null) {
       expect(await writingJobs(ctx.tenant.accountId)).toHaveLength(2)
       expect(b.vacancyId).not.toBe(a.vacancyId)
     }, 120_000)
+
+    test("a drafts application keeps being prepared after the row switches to auto, and stops when it is off", async () => {
+      const ctx = await setup("aa-drafts-to-auto")
+      await configure(ctx, { autoMode: "drafts" })
+      await decided(ctx, "aa-drafts-to-auto-1", 90)
+      expect((await tick(ctx.tenant.userId)).created).toBe(1)
+
+      // The operator turns the account to auto: the draft is still prepared (letter, kit), never sent.
+      await configure(ctx, { autoMode: "auto" })
+      expect(await readForms(ctx, responseHtml)).toBe(1)
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ writingEnqueued: 1, submitQueued: 0 })
+      expect(await writeLetters(ctx, GOOD_DRAFT)).toBe(1)
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ kitsSet: 1, submitQueued: 0 })
+      const [row] = await applicationsOf(ctx.tenant.accountId)
+      expect(row!.state).toBe("draft")
+      expect(row!.auto_run).toBe("drafts")
+
+      // Off stops it, and the progress view says why.
+      const second = await setup("aa-drafts-to-off")
+      await configure(second, { autoMode: "drafts" })
+      await decided(second, "aa-drafts-to-off-1", 90)
+      expect((await tick(second.tenant.userId)).created).toBe(1)
+      await configure(second, { autoMode: "off" })
+      expect(await readForms(second, responseHtml)).toBe(1)
+      expect(await tick(second.tenant.userId)).toMatchObject(zero)
+      expect(await writingJobs(second.tenant.accountId)).toHaveLength(0)
+      const progress = await progressOf(second)
+      expect(progress.items[0]?.stageDetail).toBe("Режим автоотклика выключен — не обрабатывается")
+    }, 60_000)
 
     test("a dead writing job parks the application for a human", async () => {
       const ctx = await setup("aa-drafts-dead")
@@ -882,14 +919,6 @@ if (!enabled || serverUrl === null) {
             hhAccountId: ctx.tenant.accountId,
             ...(resumeId === undefined ? {} : { resumeId })
           })
-        })
-      )
-
-    const progressOf = (ctx: Ctx, options: { activeOnly?: boolean; limit?: number } = {}) =>
-      support.runAs(
-        ctx.tenant.userId,
-        Effect.gen(function*() {
-          return yield* (yield* AutoApplyViewService).progress({ hhAccountId: ctx.tenant.accountId, ...options })
         })
       )
 

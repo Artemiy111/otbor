@@ -111,7 +111,21 @@ export interface ClaimInput {
   readonly kinds: ReadonlyArray<JobKind>
   readonly accounts: ReadonlyArray<string>
   readonly leaseSeconds?: number
+  /** Сколько браузерных задач одного аккаунта держит один харнесс разом. */
+  readonly browserConcurrency?: number
+  /** Из них задач, действующих от имени аккаунта (`ACTING_STAGES`). */
+  readonly actingConcurrency?: number
 }
+
+export const DEFAULT_ACCOUNT_BROWSER_CONCURRENCY = 4
+export const DEFAULT_ACCOUNT_SUBMIT_CONCURRENCY = 2
+
+/**
+ * Стадии, которые действуют от имени аккаунта (клик «откликнуться», письмо в
+ * чате). Остальные браузерные стадии только читают. Зеркало
+ * неэксклюзивных `withPage` в харнессе: читающие идут параллельно.
+ */
+export const ACTING_STAGES: ReadonlyArray<JobStage> = ["submit", "letter_attach"]
 
 export interface ClaimedJob {
   readonly job: HarnessJob
@@ -133,119 +147,179 @@ const kindClause = (kinds: ReadonlyArray<JobKind>) =>
     ? sql`true`
     : sql`kind in (${sql.join(kinds.map((kind) => sql`${kind}`), sql`, `)})`
 
+const actingList = sql.join(ACTING_STAGES.map((stage) => sql`${stage}`), sql`, `)
+
+/** Сколько раз claim пробует другого кандидата, проиграв гонку за аккаунт. */
+const CLAIM_ATTEMPTS = 5
+
 /**
- * Claims one job and the account it belongs to.
+ * Занятость аккаунта для этого харнесса: сколько его браузерных задач уже
+ * в `leased`/`running`, и сколько из них действующих. Один запрос на обе цифры.
+ */
+const accountLoad = (holder: string, accountId: string) => sql`
+  select count(*)::int as total,
+         count(*) filter (where r.stage in (${actingList}))::int as acting
+  from harness_jobs r
+  where r.hh_account_id = ${accountId}
+    and r.kind = 'browser'
+    and r.status in ('leased', 'running')
+    and r.locked_by = ${holder}
+`
+
+/**
+ * Claims the best job that can actually be started right now.
  *
- * The account lease is taken first. If another performer holds the account, the
- * job is *not* left in `leased`: it is pushed five seconds into the future and
- * the claim returns empty, so a busy account never looks like a dead worker.
+ * Выбор кандидата сам отсекает то, что взять нельзя: браузерную задачу
+ * аккаунта, которым владеет другой неистёкший держатель, или аккаунта, где
+ * этот харнесс уже на потолке (всего или по действующим стадиям). Поэтому
+ * занятый аккаунт не заслоняет inference и задачи других аккаунтов
+ * (head-of-line blocking), и задачи не откладываются на 5 секунд.
+ *
+ * Отсев в запросе — снимок. Гонку закрывает блокировка строки `account_lease`:
+ * upsert берёт её, параллельный claim того же аккаунта ждёт до коммита и
+ * пересчитывает занятость уже с нашей задачей. Проигравший по потолку
+ * пробует следующего кандидата, исключив этот аккаунт.
  */
 export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | null> =>
   Effect.gen(function*() {
     const leaseSeconds = input.leaseSeconds ?? 120
+    const browserCap = Math.max(1, input.browserConcurrency ?? DEFAULT_ACCOUNT_BROWSER_CONCURRENCY)
+    const actingCap = Math.min(
+      browserCap,
+      Math.max(1, input.actingConcurrency ?? DEFAULT_ACCOUNT_SUBMIT_CONCURRENCY)
+    )
+    const rejectedAccounts: Array<string> = []
 
-    const [candidate] = (
-      yield* tx.execute(sql`
-        select id, hh_account_id, user_id, kind
-        from harness_jobs
-        where status = 'pending'
-          and run_at <= now()
-          and ${kindClause(input.kinds)}
-          and ${accountClause(input.accounts)}
-          and (
-            application_id is null
-            or exists (
-              select 1 from application a
-              where a.id = harness_jobs.application_id
-                and (
-                  (harness_jobs.stage = 'prepare' and a.state in ('draft', 'queued', 'needs_human', 'failed'))
-                  or (harness_jobs.stage = 'submit' and a.state = 'queued')
-                  or (harness_jobs.stage = 'reconcile' and a.state in ('submitting', 'needs_human', 'failed'))
-                  or harness_jobs.stage = 'session'
-                  or harness_jobs.stage = 'inference'
-                )
+    for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt++) {
+      const rejected = rejectedAccounts.length === 0
+        ? sql`true`
+        : sql`(hh_account_id is null or hh_account_id not in (${sql.join(
+            rejectedAccounts.map((account) => sql`${account}`),
+            sql`, `
+          )}))`
+
+      const [candidate] = (
+        yield* tx.execute(sql`
+          select id, hh_account_id, user_id, kind, stage
+          from harness_jobs
+          where status = 'pending'
+            and run_at <= now()
+            and ${kindClause(input.kinds)}
+            and ${accountClause(input.accounts)}
+            and ${rejected}
+            and (
+              application_id is null
+              or exists (
+                select 1 from application a
+                where a.id = harness_jobs.application_id
+                  and (
+                    (harness_jobs.stage = 'prepare' and a.state in ('draft', 'queued', 'needs_human', 'failed'))
+                    or (harness_jobs.stage = 'submit' and a.state = 'queued')
+                    or (harness_jobs.stage = 'reconcile' and a.state in ('submitting', 'needs_human', 'failed'))
+                    or harness_jobs.stage = 'session'
+                    or harness_jobs.stage = 'inference'
+                  )
+              )
             )
-          )
-        order by priority desc, run_at asc
-        for update skip locked
-        limit 1
-      `)
-    ).rows
+            and (
+              kind <> 'browser'
+              or hh_account_id is null
+              or (
+                not exists (
+                  select 1 from account_lease l
+                  where l.hh_account_id = harness_jobs.hh_account_id
+                    and l.expires_at >= now()
+                    and l.holder <> ${input.holder}
+                )
+                and (
+                  select count(*) from harness_jobs r
+                  where r.hh_account_id = harness_jobs.hh_account_id
+                    and r.kind = 'browser'
+                    and r.status in ('leased', 'running')
+                    and r.locked_by = ${input.holder}
+                ) < ${browserCap}::int
+                and (
+                  harness_jobs.stage not in (${actingList})
+                  or (
+                    select count(*) from harness_jobs r
+                    where r.hh_account_id = harness_jobs.hh_account_id
+                      and r.kind = 'browser'
+                      and r.status in ('leased', 'running')
+                      and r.locked_by = ${input.holder}
+                      and r.stage in (${actingList})
+                  ) < ${actingCap}::int
+                )
+              )
+            )
+          order by priority desc, run_at asc
+          for update skip locked
+          limit 1
+        `)
+      ).rows
 
-    if (candidate === undefined) return null
+      if (candidate === undefined) return null
 
-    const jobId = candidate.id as string
-    const hhAccountId = candidate.hh_account_id as string | null
-    const candidateKind = candidate.kind as string
+      const jobId = candidate.id as string
+      const hhAccountId = candidate.hh_account_id as string | null
+      const candidateKind = candidate.kind as string
 
-    if (hhAccountId !== null) {
-      const leased = yield* tx.execute(sql`
-        insert into account_lease (hh_account_id, holder, epoch, expires_at)
-        values (${hhAccountId}, ${input.holder}, 1, now() + make_interval(secs => ${leaseSeconds * 5}))
-        on conflict (hh_account_id) do update
-        set holder = excluded.holder,
-            epoch = account_lease.epoch + 1,
-            expires_at = excluded.expires_at
-        where account_lease.expires_at < now()
-           or account_lease.holder = excluded.holder
-        returning epoch
-      `)
+      // Аренда и потолки только у браузерных задач: inference не привязан к
+      // профилю Chrome и не должен зависеть от занятости аккаунта.
+      if (hhAccountId !== null && candidateKind === "browser") {
+        const leased = yield* tx.execute(sql`
+          insert into account_lease (hh_account_id, holder, epoch, expires_at)
+          values (${hhAccountId}, ${input.holder}, 1, now() + make_interval(secs => ${leaseSeconds * 5}))
+          on conflict (hh_account_id) do update
+          set holder = excluded.holder,
+              epoch = account_lease.epoch + 1,
+              expires_at = excluded.expires_at
+          where account_lease.expires_at < now()
+             or account_lease.holder = excluded.holder
+          returning epoch
+        `)
 
-      if (leased.rows.length === 0) {
+        // Аккаунт перехватил другой держатель между выбором и арендой.
+        if (leased.rows.length === 0) {
+          rejectedAccounts.push(hhAccountId)
+          continue
+        }
+
+        // Строка account_lease заблокирована нами до коммита, так что
+        // пересчёт видит всё, что закоммитили параллельные claim этого аккаунта.
+        const [load] = (yield* tx.execute(accountLoad(input.holder, hhAccountId))).rows
+        const total = Number(load?.total ?? 0)
+        const acting = Number(load?.acting ?? 0)
+        const isActing = ACTING_STAGES.includes(candidate.stage as JobStage)
+        if (total >= browserCap || (isActing && acting >= actingCap)) {
+          rejectedAccounts.push(hhAccountId)
+          continue
+        }
+      }
+
+      const [row] = (
         yield* tx.execute(sql`
           update harness_jobs
-          set run_at = now() + interval '5 seconds', updated_at = now()
+          set status = 'leased',
+              lease_id = uuidv7(),
+              lease_epoch = lease_epoch + 1,
+              lease_until = now() + make_interval(secs => ${leaseSeconds}),
+              locked_by = ${input.holder},
+              attempts = attempts + 1,
+              updated_at = now()
           where id = ${jobId}
+          returning *
         `)
-        return null
+      ).rows
+
+      return {
+        job: toJob(row as unknown as JobRow),
+        userId: row!.user_id as string,
+        hhAccountId,
+        applicationId: row!.application_id as string | null
       }
     }
 
-    // One browser job per hh account at a time. Another holder is kept out by
-    // account_lease itself; this closes the gap for the same holder, whose
-    // upsert always succeeds. The upsert locks the account's row, so a
-    // concurrent claim for the account waits and then sees the job leased here.
-    if (hhAccountId !== null && candidateKind === "browser") {
-      const busy = yield* tx.execute(sql`
-        select 1 from harness_jobs
-        where hh_account_id = ${hhAccountId}
-          and kind = 'browser'
-          and status in ('leased', 'running')
-          and locked_by = ${input.holder}
-          and id <> ${jobId}
-        limit 1
-      `)
-      if (busy.rows.length > 0) {
-        yield* tx.execute(sql`
-          update harness_jobs
-          set run_at = now() + interval '5 seconds', updated_at = now()
-          where id = ${jobId}
-        `)
-        return null
-      }
-    }
-
-    const [row] = (
-      yield* tx.execute(sql`
-        update harness_jobs
-        set status = 'leased',
-            lease_id = uuidv7(),
-            lease_epoch = lease_epoch + 1,
-            lease_until = now() + make_interval(secs => ${leaseSeconds}),
-            locked_by = ${input.holder},
-            attempts = attempts + 1,
-            updated_at = now()
-        where id = ${jobId}
-        returning *
-      `)
-    ).rows
-
-    return {
-      job: toJob(row as unknown as JobRow),
-      userId: row!.user_id as string,
-      hhAccountId,
-      applicationId: row!.application_id as string | null
-    }
+    return null
   })
 
 /** Extends the lease. Zero rows means the lease was lost: stop working. */

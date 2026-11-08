@@ -89,7 +89,7 @@ const run = Command.make(
       Flag.optional
     ),
     concurrency: Flag.Int("concurrency").pipe(
-      Flag.withDescription("Jobs run at the same time, 1–8 (default 3, or OTBOR_HARNESS_CONCURRENCY)"),
+      Flag.withDescription("Jobs run at the same time, 1–12 (default 6, or OTBOR_HARNESS_CONCURRENCY)"),
       Flag.optional
     ),
     once: Flag.Boolean("once").pipe(
@@ -150,6 +150,10 @@ const run = Command.make(
         ? {
             browserLayer: PlaywrightBrowserExecutor.layer({
               headless: process.env.OTBOR_BROWSER_HEADLESS !== "0",
+              ...(Number.isInteger(Number(process.env.OTBOR_HARNESS_ACCOUNT_SUBMIT_CONCURRENCY)) &&
+                Number(process.env.OTBOR_HARNESS_ACCOUNT_SUBMIT_CONCURRENCY) >= 1
+                ? { accountActingConcurrency: Number(process.env.OTBOR_HARNESS_ACCOUNT_SUBMIT_CONCURRENCY) }
+                : {}),
               ...(process.env.OTBOR_CHROME_PATH === undefined
                 ? {}
                 : { executablePath: process.env.OTBOR_CHROME_PATH })

@@ -694,7 +694,7 @@ if (!enabled || serverUrl === null) {
       expect(late).toBeDefined()
     })
 
-    test("one browser job per hh account at a time", async () => {
+    test("browser jobs of one account run side by side for one harness", async () => {
       const ctx = await setup("serial")
       const otherVacancy = await support.seedVacancy("serial-2")
       const otherApp = await support.seedApplication({
@@ -721,15 +721,12 @@ if (!enabled || serverUrl === null) {
 
       const first = await ctx.lease()
       expect(first.job).not.toBeNull()
-      // The same harness asks again while the first job is in flight.
+      // The same harness asks again while the first job is in flight: reads
+      // of one account go in parallel up to the cloud cap.
       const second = await ctx.lease()
-      expect(second.job).toBeNull()
-
-      await ctx.complete(first.job!, { tag: "session_expired" })
-      await support.makeJobRunnable((await support.formReadJobsOf(otherVacancy))[0]!.id as string)
-      const next = await ctx.lease()
-      expect(next.job).not.toBeNull()
-      expect(next.job?.id).not.toBe(first.job?.id)
+      expect(second.job).not.toBeNull()
+      expect(second.job?.id).not.toBe(first.job?.id)
+      expect((await ctx.lease()).job).toBeNull()
     })
   })
 }

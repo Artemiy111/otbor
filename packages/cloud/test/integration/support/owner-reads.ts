@@ -169,6 +169,8 @@ export const claimAsHolder = async (input: {
   readonly accounts: ReadonlyArray<string>
   readonly kinds?: ReadonlyArray<JobKind>
   readonly leaseSeconds?: number
+  readonly browserConcurrency?: number
+  readonly actingConcurrency?: number
 }) =>
   runAs(
     "owner",
@@ -177,7 +179,9 @@ export const claimAsHolder = async (input: {
         holder: input.holder,
         accounts: input.accounts,
         kinds: input.kinds ?? ["browser"],
-        leaseSeconds: input.leaseSeconds
+        leaseSeconds: input.leaseSeconds,
+        ...(input.browserConcurrency === undefined ? {} : { browserConcurrency: input.browserConcurrency }),
+        ...(input.actingConcurrency === undefined ? {} : { actingConcurrency: input.actingConcurrency })
       })
     )
   )

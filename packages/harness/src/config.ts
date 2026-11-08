@@ -8,8 +8,8 @@ import { Effect, Schema } from "effect"
 export const DEFAULT_API_URL = "http://127.0.0.1:3001/rpc"
 export const DEFAULT_WAIT_SECONDS = 30
 /** Jobs one harness runs at the same time. */
-export const DEFAULT_CONCURRENCY = 3
-export const MAX_CONCURRENCY = 8
+export const DEFAULT_CONCURRENCY = 6
+export const MAX_CONCURRENCY = 12
 
 /** Configuration errors are answers, not crashes: print the message and exit. */
 export class HarnessConfigError extends Schema.TaggedError<HarnessConfigError>()(

@@ -146,6 +146,10 @@ export interface QueueServiceOptions {
    * делал бы их порядок недетерминированным.
    */
   readonly advanceOnComplete?: boolean
+  /** Браузерных задач одного аккаунта у одного харнесса разом (`OTBOR_ACCOUNT_BROWSER_CONCURRENCY`, 4). */
+  readonly accountBrowserConcurrency?: number
+  /** Из них действующих, submit и letter_attach (`OTBOR_ACCOUNT_SUBMIT_CONCURRENCY`, 2). */
+  readonly accountSubmitConcurrency?: number
 }
 
 export class QueueService extends Context.Service<QueueService, QueueServiceShape>()(
@@ -154,10 +158,23 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
   /** Как `layer`, с переопределением остальных настроек. */
   static readonly layerConfigured = (overrides: Omit<QueueServiceOptions, "dailyApplyLimit">) =>
     Layer.unwrap(
-      Config.Int("OTBOR_DAILY_APPLY_LIMIT").pipe(
-        Config.withDefault(DEFAULT_DAILY_APPLY_LIMIT),
-        Effect.map((dailyApplyLimit) => QueueService.layerWith({ dailyApplyLimit, ...overrides }))
-      )
+      Effect.gen(function*() {
+        const dailyApplyLimit = yield* Config.Int("OTBOR_DAILY_APPLY_LIMIT").pipe(
+          Config.withDefault(DEFAULT_DAILY_APPLY_LIMIT)
+        )
+        const accountBrowserConcurrency = yield* Config.Int("OTBOR_ACCOUNT_BROWSER_CONCURRENCY").pipe(
+          Config.withDefault(QueueRepository.DEFAULT_ACCOUNT_BROWSER_CONCURRENCY)
+        )
+        const accountSubmitConcurrency = yield* Config.Int("OTBOR_ACCOUNT_SUBMIT_CONCURRENCY").pipe(
+          Config.withDefault(QueueRepository.DEFAULT_ACCOUNT_SUBMIT_CONCURRENCY)
+        )
+        return QueueService.layerWith({
+          dailyApplyLimit,
+          accountBrowserConcurrency,
+          accountSubmitConcurrency,
+          ...overrides
+        })
+      })
     )
 
   /** Production layer: the fallback daily limit is `OTBOR_DAILY_APPLY_LIMIT` (default 200). */
@@ -269,7 +286,13 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
               const claimed = yield* QueueRepository.claim(tx, {
                 holder: input.harnessId,
                 kinds: input.kinds,
-                accounts: input.accounts
+                accounts: input.accounts,
+                ...(options.accountBrowserConcurrency === undefined
+                  ? {}
+                  : { browserConcurrency: options.accountBrowserConcurrency }),
+                ...(options.accountSubmitConcurrency === undefined
+                  ? {}
+                  : { actingConcurrency: options.accountSubmitConcurrency })
               })
               if (claimed === null) return null
 

@@ -22,6 +22,7 @@ import { FORM_TTL_MS } from "../repositories/VacancyFormRepository.ts"
 import { ApplicationService } from "./ApplicationService.ts"
 import { accountResumeTitles, type ApplyResume, resolveApplyResume } from "./applyResume.ts"
 import { ApplyFilterService } from "./ApplyFilterService.ts"
+import { type GoverningMode } from "./autoRunMode.ts"
 import { CurrentUser } from "./CurrentUser.ts"
 import { toStorageError } from "./support.ts"
 
@@ -88,6 +89,8 @@ interface ProgressRow {
   readonly intent_at: Date | string | null
   readonly write_retries: number | null
   readonly read_status: string | null
+  /** Режим строки фильтра, которая ведёт заявку сейчас; нет значения - неизвестен. */
+  readonly governing_mode?: GoverningMode | null
 }
 
 const iso = (value: Date | string | null): string | null =>
@@ -132,6 +135,16 @@ export const deriveStage = (
     }
   }
 
+  // Раннер заявку не трогает, пока режим выключен: оператору надо это сказать,
+  // иначе она молча висит. Черновик с готовым китом ждёт человека и без раннера.
+  if (
+    row.governing_mode === "off" &&
+    (row.state === "draft" || row.state === "preparing") &&
+    !(row.auto_run === "drafts" && row.kit_exists)
+  ) {
+    return { stage: "waiting", detail: "Режим автоотклика выключен — не обрабатывается" }
+  }
+
   const formFresh =
     row.form_hash !== null &&
     row.form_checked_at !== null &&
@@ -139,14 +152,17 @@ export const deriveStage = (
   if (row.read_status === "running" || row.read_status === "leased") {
     return { stage: "reading_form", detail: "Читается форма отклика" }
   }
-  if (!formFresh) {
-    return { stage: "waiting", detail: "Ждёт чтения формы" }
+  // Готовый кит важнее возраста формы: отправка (`approve`) перечитает форму
+  // сама, а `kit_exists` уже считается по текущей версии формы.
+  if (row.kit_exists) {
+    const stale = formFresh ? "" : ", форма перечитается перед отправкой"
+    return row.auto_run === "auto"
+      ? { stage: "kit_ready", detail: `Кит готов, отправка в очереди${stale}` }
+      : { stage: "kit_ready", detail: `Кит готов, ждёт вашей отправки${stale}` }
   }
 
-  if (row.kit_exists) {
-    return row.auto_run === "auto"
-      ? { stage: "kit_ready", detail: "Кит готов, отправка в очереди" }
-      : { stage: "kit_ready", detail: "Кит готов, ждёт вашей отправки" }
+  if (!formFresh) {
+    return { stage: "waiting", detail: "Ждёт чтения формы" }
   }
 
   if (row.write_status === null) {
@@ -195,7 +211,7 @@ const progressRows = (tx: Executor, userId: string, where: SQL) =>
   tx
     .execute(sql`
       select a.id, a.vacancy_id, v.title, e.name as employer_name, r.title as resume_title, a.auto_run, a.state,
-        a.last_error, a.blocked_reason, a.retry_at, a.created_at, a.updated_at, a.submitted_at, a.intent_at,
+        a.last_error, a.blocked_reason, a.retry_at, ${ApplyFilterRepository.governingAutoModeSql("a")} as governing_mode, a.created_at, a.updated_at, a.submitted_at, a.intent_at,
         fs.status as form_status, fs.checked_at as form_checked_at, ver.form_hash,
         kit.letter as kit_letter,
         case when kit.id is null then null else jsonb_array_length(kit.answers) end as kit_answers,

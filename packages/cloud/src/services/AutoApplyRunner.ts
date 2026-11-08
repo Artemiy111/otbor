@@ -27,6 +27,7 @@ import { deferOrPark, retireWritingJob } from "./blocked.ts"
 import { NO_RESUME_MESSAGE, resolveApplyResume } from "./applyResume.ts"
 import { checkKit, type KitProblem } from "./applyRules.ts"
 import { CurrentUser } from "./CurrentUser.ts"
+import { runnerMayAdvance } from "./autoRunMode.ts"
 import { DEFAULT_DAILY_APPLY_LIMIT } from "./dailyLimit.ts"
 import { trySubmit } from "./submitGate.ts"
 import { inferenceJob } from "./jobs.ts"
@@ -408,7 +409,7 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
               }
               // Режим мог смениться; решает строка, которая ведёт заявку с учётом
               // дозаполненного резюме, а не то, что было в строке до дозаполнения.
-              if (modeOf(effectiveResumeId) !== app.autoRun) return idle
+              if (!runnerMayAdvance(modeOf(effectiveResumeId), app.autoRun)) return idle
 
               /*
                * Заявка дождалась `retry_at` (иначе запрос её не отдал бы): причину
@@ -759,10 +760,10 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
               .pipe(Effect.mapError(toStorageError("autoApply.owned")))
 
             for (const app of owned) {
-              // Режим мог смениться с момента создания заявки: двигается только та,
-              // чья строка всё ещё в режиме создания. У заявки без резюме проверка
+              // Режим мог смениться с момента создания заявки: `auto` двигается, пока
+              // строка `auto`; `drafts` (без отправки) - пока строка `drafts` или `auto`. У заявки без резюме проверка
               // идёт после дозаполнения резюме (в `progress`).
-              if (app.resumeId !== null && modeOf(app.resumeId) !== app.autoRun) continue
+              if (app.resumeId !== null && !runnerMayAdvance(modeOf(app.resumeId), app.autoRun)) continue
               yield* advance(app, modeOf)
             }
             })

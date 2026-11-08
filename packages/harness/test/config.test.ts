@@ -38,7 +38,7 @@ describe("parseHarnessConfig", () => {
 
   test("concurrency is read from the environment and bounded", async () => {
     expect((await parse({ ...baseEnv, OTBOR_HARNESS_CONCURRENCY: "5" })).concurrency).toBe(5)
-    for (const value of ["0", "9", "x", "1.5"]) {
+    for (const value of ["0", "13", "x", "1.5"]) {
       const error = await parseError({ ...baseEnv, OTBOR_HARNESS_CONCURRENCY: value })
       expect(error.message).toContain("OTBOR_HARNESS_CONCURRENCY")
     }
