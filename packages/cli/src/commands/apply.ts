@@ -31,19 +31,28 @@ const create = Command.make(
     account: accountFlag,
     resume: Flag.String("resume").pipe(Flag.withDescription("Resume id"), Flag.optional),
     auto: Flag.Boolean("auto").pipe(
-      Flag.withDescription("Queue the application after prepare instead of waiting for approval"),
+      Flag.withDescription(
+        "Removed: automatic sending is the apply filter's auto mode (otbor filter set --auto auto --yes)"
+      ),
       Flag.withDefault(false)
     )
   },
   Effect.fn(function*({ decision, account, resume, auto }) {
+    if (auto) {
+      return yield* Effect.fail(
+        new Error(
+          "--auto was removed: an application made by hand is always a draft you approve. " +
+            "Automatic sending is the apply filter's auto mode: otbor filter set --auto auto --yes"
+        )
+      )
+    }
     const api = yield* Api
     const hhAccountId = yield* requireAccount(account)
     const decisionId = yield* resolveDecisionId(api, decision)
     const application = yield* api.ApplicationsCreateFromDecision({
       decisionId,
       hhAccountId,
-      resumeId: Option.getOrUndefined(resume),
-      mode: auto ? "auto" : "drafts"
+      resumeId: Option.getOrUndefined(resume)
     })
     yield* Console.log(
       `${application.id}  ${application.state}  ${application.vacancyTitle ?? application.vacancyId}`

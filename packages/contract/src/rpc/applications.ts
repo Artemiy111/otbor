@@ -38,8 +38,7 @@ export const ApplicationsCreateFromDecision = Rpc.make("ApplicationsCreateFromDe
   payload: Schema.Struct({
     decisionId: Schema.String,
     hhAccountId: HhAccountId,
-    resumeId: Schema.optional(Schema.String),
-    mode: Schema.optional(Schema.Literals(["drafts", "auto"]))
+    resumeId: Schema.optional(Schema.String)
   }),
   success: ApplicationRecord,
   error: ApiError

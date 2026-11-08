@@ -356,7 +356,7 @@ describe("write tools", () => {
     const body = first.structuredContent as { existing: boolean; application: { state: string } }
     expect(body.existing).toBe(false)
     expect(body.application.state).toBe("draft")
-    expect(fresh.calls.create).toEqual([{ decisionId: id(1001), hhAccountId: ACCOUNT, mode: "drafts" }])
+    expect(fresh.calls.create).toEqual([{ decisionId: id(1001), hhAccountId: ACCOUNT }])
 
     // an application for vacancy 1 on this account already exists
     const known = makeFake({ applications: [record(1)] })
@@ -383,7 +383,7 @@ describe("write tools", () => {
     const named = makeFake({ accounts: two })
     const ok = await call(named.layer, "application_prepare", { decisionId: id(1001), account: "ivan petrov" })
     expect(ok.isError).toBeFalsy()
-    expect(named.calls.create).toEqual([{ decisionId: id(1001), hhAccountId: ACCOUNT, mode: "drafts" }])
+    expect(named.calls.create).toEqual([{ decisionId: id(1001), hhAccountId: ACCOUNT }])
     const brief = (ok.structuredContent as { application: { account: { id: string; name: string } } }).application
     expect(brief.account).toEqual({ id: ACCOUNT, name: "Ivan Petrov" })
 

@@ -38,13 +38,14 @@ export const applicationRetry = async (userId: string, id: string) =>
 
 export const applicationSetKit = async (
   userId: string,
-  input: Parameters<ApplicationService["Service"]["setKit"]>[0]
+  input: Parameters<ApplicationService["Service"]["setKit"]>[0],
+  options?: Parameters<ApplicationService["Service"]["setKit"]>[1]
 ) =>
   runAs(
     userId,
     Effect.gen(function*() {
       const applications = yield* ApplicationService
-      return yield* applications.setKit(input)
+      return yield* applications.setKit(input, options)
     })
   )
 

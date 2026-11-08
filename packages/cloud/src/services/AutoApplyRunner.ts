@@ -373,13 +373,17 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                         ? null
                         : yield* QueueRepository.lastErrorOf(tx, job.id)
                     const submit = yield* QueueRepository.latestFor(tx, app.id, ["submit"])
-                    return { current, form, stored, kit, job, jobError, submit }
+                    // Срок ожидания проверяем по часам базы в той же транзакции: список
+                    // заявок и этот снимок - разные транзакции, а соседний проход мог
+                    // успеть отложить заявку заново.
+                    const due = yield* ApplicationRepository.retryDue(tx, app.id)
+                    return { current, form, stored, kit, job, jobError, submit, due }
                   })
                 )
                 .pipe(Effect.mapError(toStorageError("autoApply.snapshot")))
 
               if (snapshot === null) return idle
-              const { current, form, stored, kit, jobError, submit } = snapshot
+              const { current, form, stored, kit, jobError, submit, due } = snapshot
               let job = snapshot.job
 
               // Only the two states the runner owns; a person changed anything else.
@@ -389,6 +393,9 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
               if (!mine) return idle
               // A submit job exists: the submit path owns it from here.
               if (submit !== null) return idle
+
+              // Заявка ещё ждёт `retry_at` (дневной лимит, автоповтор): не трогаем.
+              if (!due) return waiting
 
               /* One resume for the response and the letter: set it on old NULL rows. */
               let effectiveResumeId: string | null = current.resumeId ?? null
@@ -410,9 +417,12 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                */
               const resumed = current.blockedReason ?? null
               if (resumed !== null) {
-                yield* database
+                // Условное снятие: если соседний проход успел отложить заявку заново,
+                // срок ещё не вышел, и этот шаг - ожидание.
+                const cleared = yield* database
                   .asUser(userId, (tx) => ApplicationRepository.clearPreparingBlock(tx, userId, app.id))
                   .pipe(Effect.mapError(toStorageError("autoApply.resume")))
+                if (!cleared) return waiting
               }
 
               // Повтор письма: мёртвая задача отдаёт ключ, ниже ставится новая.
@@ -569,17 +579,20 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
               }
               const letter = stored.form.coverLetter === "absent" ? null : draft.letter
               const payload = job.payload as { prompt?: unknown; system?: unknown } | null
-              yield* applications.setKit({
-                applicationId: app.id,
-                formHash: stored.form.formHash,
-                letter,
-                answers: kitAnswers(stored, draft),
-                model: decoded.value.model ?? null,
-                promptHash: sha256(
-                  `${DRAFT_PROMPT_VERSION}\n${String(payload?.system ?? "")}\n${String(payload?.prompt ?? "")}`
-                ),
-                costUsd: null
-              })
+              yield* applications.setKit(
+                {
+                  applicationId: app.id,
+                  formHash: stored.form.formHash,
+                  letter,
+                  answers: kitAnswers(stored, draft),
+                  model: decoded.value.model ?? null,
+                  promptHash: sha256(
+                    `${DRAFT_PROMPT_VERSION}\n${String(payload?.system ?? "")}\n${String(payload?.prompt ?? "")}`
+                  ),
+                  costUsd: null
+                },
+                { runner: true }
+              )
               return yield* settle(app)
             })
 

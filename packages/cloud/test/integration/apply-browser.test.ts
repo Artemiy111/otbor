@@ -307,12 +307,18 @@ if (!enabled || serverUrl === null) {
       // Incomplete: still no submit.
       expect(await support.countJobs(ctx.applicationId, "submit")).toBe(0)
 
-      await support.applicationSetKit(ctx.tenant.userId, {
+      const complete = {
         applicationId: ctx.applicationId,
         formHash: form.formHash,
         letter: "x",
         answers: fullAnswers()
-      })
+      }
+      // Оператор (RPC, без опции раннера) кит сохраняет, но не отправляет.
+      await support.applicationSetKit(ctx.tenant.userId, complete)
+      expect(await support.countJobs(ctx.applicationId, "submit")).toBe(0)
+      expect(await stateOf(ctx)).toBe("preparing")
+      // Раннер сохраняет тот же кит и отправляет через шлюз.
+      await support.applicationSetKit(ctx.tenant.userId, complete, { runner: true })
       expect(await support.countJobs(ctx.applicationId, "submit")).toBe(1)
     })
 

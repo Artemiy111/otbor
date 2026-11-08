@@ -216,7 +216,6 @@ export const OtborWriteHandlers = OtborWriteToolkit.toLayer(Effect.gen(function*
       const created = yield* run(rpc.ApplicationsCreateFromDecision({
         decisionId,
         hhAccountId,
-        mode: "drafts",
         ...(params.resumeId === undefined ? {} : { resumeId: params.resumeId })
       }))
       const existing = Date.now() - Date.parse(created.createdAt) > FRESH_MS

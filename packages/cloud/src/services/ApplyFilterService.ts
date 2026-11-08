@@ -174,10 +174,9 @@ export class ApplyFilterService extends Context.Service<ApplyFilterService, Appl
                 })
                 // Строка, вышедшая из `auto`, перестаёт отправлять: отклики, которые
                 // она вела и которые ещё ждут кит, возвращаются в draft в этой же
-                // транзакции.
-                if (input.autoMode !== undefined) {
-                  yield* ApplicationRepository.demoteUngovernedAuto(tx, userId, input.hhAccountId)
-                }
+                // транзакции. Вызываем после любой записи: управляющая строка
+                // могла смениться и без явного autoMode (новая парная строка).
+                yield* ApplicationRepository.demoteUngovernedAuto(tx, userId, input.hhAccountId)
                 return saved
               })
             )
@@ -191,13 +190,17 @@ export class ApplyFilterService extends Context.Service<ApplyFilterService, Appl
               yield* requireTarget(tx, input)
               const preset = yield* PresetRepository.findById(tx, input.presetId, userId)
               if (preset === null) return yield* new NotFound({ entity: "Preset", id: input.presetId })
-              return yield* ApplyFilterRepository.upsert(tx, {
+              const saved = yield* ApplyFilterRepository.upsert(tx, {
                 userId,
                 hhAccountId: input.hhAccountId,
                 resumeId: input.resumeId ?? null,
                 filter: preset.filter,
                 templatePresetId: preset.id
               })
+              // Новая парная строка с режимом по умолчанию (`off`) перекрывает
+              // строку аккаунта в `auto`: ждущие отклики надо вернуть в draft.
+              yield* ApplicationRepository.demoteUngovernedAuto(tx, userId, input.hhAccountId)
+              return saved
             })
           )
           .pipe(Effect.mapError(toStorageErrorUnlessApi("applyFilter.fromPreset")))

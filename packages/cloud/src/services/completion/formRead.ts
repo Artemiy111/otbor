@@ -1,4 +1,4 @@
-import { type BlockedReason } from "@otbor/contract"
+import { type ApplicationRecord, type BlockedReason } from "@otbor/contract"
 import { parseResponseForm } from "@otbor/hh"
 import { Effect } from "effect"
 import * as ApplicationRepository from "../../repositories/ApplicationRepository.ts"
@@ -17,6 +17,13 @@ import { outcome, type StageHandler } from "./types.ts"
  * harness delivers the page, the cloud parses it and keeps one version per
  * distinct form.
  */
+/** Заявка ждёт сама: у неё код ожидания и срок ещё впереди (или это дневной лимит). */
+const alreadyWaiting = (application: ApplicationRecord): boolean =>
+  application.blockedReason === "daily_cap" ||
+  (application.blockedReason != null &&
+    application.retryAt != null &&
+    Date.parse(application.retryAt) > Date.now())
+
 export const completeFormRead: StageHandler = (tx, ctx, exit, options) =>
   Effect.suspend(() => {
     /** Заявки вакансии, которых ждала форма: раннер двигает их после коммита. */
@@ -67,7 +74,12 @@ export const completeFormRead: StageHandler = (tx, ctx, exit, options) =>
        * повтор (1 ч, 4 ч, 12 ч); когда повторы кончились - `needs_human`.
        */
       const deferOwn = (reason: string) =>
-        Effect.forEach(own, (application) => deferOrPark(tx, ctx.userId, application, "form_read_failed", reason))
+        Effect.forEach(
+          // Уже ждущую заявку (дневной лимит, сбой письма, прошлый автоповтор с
+          // будущим сроком) не трогаем: иначе чужой код затрётся, а повтор сгорит.
+          own.filter((application) => !alreadyWaiting(application)),
+          (application) => deferOrPark(tx, ctx.userId, application, "form_read_failed", reason)
+        )
 
       waitingIds = waiting.map((application) => application.id)
 
@@ -98,6 +110,12 @@ export const completeFormRead: StageHandler = (tx, ctx, exit, options) =>
           form,
           url: verdict.artifacts.url
         })
+        // Чтение удалось: препятствие `form_read_failed` снято, повторы заново.
+        yield* ApplicationRepository.clearFormReadBlock(
+          tx,
+          ctx.userId,
+          waiting.filter((application) => application.blockedReason === "form_read_failed").map((a) => a.id)
+        )
         // Автозаявки любого аккаунта, чей кит подходит к этой форме, уходят
         // сейчас - через общий шлюз. Аккаунты по порядку id: блокировки
         // слотов берутся в одном порядке и не ждут друг друга по кругу.

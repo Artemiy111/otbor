@@ -65,8 +65,7 @@ const createMutation = useMutation({
     return applicationApi.createFromDecision({
       decisionId: decision.id,
       hhAccountId: decision.hhAccountId,
-      resumeId: decision.resumeId ?? undefined,
-      mode: "drafts"
+      resumeId: decision.resumeId ?? undefined
     })
   },
   async onSuccess(application) {

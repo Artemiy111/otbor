@@ -478,6 +478,7 @@ export const pendingAutoSlots = (
       select count(*)::int as n from application
       where user_id = ${userId} and hh_account_id = ${hhAccountId}
         and auto_run = 'auto' and state = 'preparing'
+        and ${ApplyFilterRepository.governingAutoModeSql("application")} = 'auto'
     `)
     .pipe(Effect.map((result) => Number((result.rows[0] as { n?: number } | undefined)?.n ?? 0)))
 
@@ -597,11 +598,51 @@ export const backfillResume = (
     `)
     .pipe(Effect.asVoid)
 
-/** Снимает причину ожидания и `retry_at` у `preparing`-заявки: раннер идёт дальше. */
-export const clearPreparingBlock = (tx: Executor, userId: string, id: string): RepoEffect<void> =>
+/**
+ * Снимает причину ожидания и `retry_at` у `preparing`-заявки: раннер идёт
+ * дальше. Только если срок вышел (или не был задан); возвращает, снято ли.
+ */
+export const clearPreparingBlock = (tx: Executor, userId: string, id: string): RepoEffect<boolean> =>
   tx
     .execute(sql`
       update application set blocked_reason = null, retry_at = null, updated_at = now()
       where id = ${id} and user_id = ${userId} and state = 'preparing'
+        and (retry_at is null or retry_at <= now())
+      returning id
+    `)
+    .pipe(Effect.map((result) => result.rows.length > 0))
+
+/** Срок ожидания заявки вышел (или не был задан), по часам базы. */
+export const retryDue = (tx: Executor, id: string): RepoEffect<boolean> =>
+  tx
+    .execute(sql`select (retry_at is null or retry_at <= now()) as due from application where id = ${id}`)
+    .pipe(Effect.map((result) => (result.rows[0] as { due?: boolean } | undefined)?.due !== false))
+
+/** Препятствие снято: бюджет автоповторов (3) начинается заново. */
+export const resetAutoRetries = (tx: Executor, userId: string, id: string): RepoEffect<void> =>
+  tx
+    .execute(sql`
+      update application set auto_retries = 0
+      where id = ${id} and user_id = ${userId} and auto_retries <> 0
     `)
     .pipe(Effect.asVoid)
+
+/**
+ * Чтение формы удалось: заявки, ждавшие повтора после `form_read_failed`,
+ * освобождаются от ожидания, а счётчик автоповторов обнуляется.
+ */
+export const clearFormReadBlock = (
+  tx: Executor,
+  userId: string,
+  ids: ReadonlyArray<string>
+): RepoEffect<void> =>
+  ids.length === 0
+    ? Effect.void
+    : tx
+        .execute(sql`
+          update application
+          set blocked_reason = null, retry_at = null, auto_retries = 0, updated_at = now()
+          where user_id = ${userId} and state = 'preparing' and blocked_reason = 'form_read_failed'
+            and id in (${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)})
+        `)
+        .pipe(Effect.asVoid)

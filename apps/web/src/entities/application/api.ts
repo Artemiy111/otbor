@@ -30,7 +30,6 @@ export interface ApplicationCreateFromDecisionInput {
   readonly decisionId: string
   readonly hhAccountId: string
   readonly resumeId?: string
-  readonly mode?: "drafts" | "auto"
 }
 
 export interface ApplicationSetKitInput {
@@ -118,6 +117,8 @@ export const applicationApi = {
     ),
   approve: (id: string): Promise<ApplicationRecord> =>
     call((client) => client.ApplicationsApprove({ id: id as ApplicationId })),
+  skip: (id: string, reason?: string): Promise<ApplicationRecord> =>
+    call((client) => client.ApplicationsSkip({ id: id as ApplicationId, reason })),
   /** Adds a cover letter to the response hh already holds. Queues one job; sent at most once. */
   letterAttach: (input: {
     readonly vacancyId: string
@@ -188,8 +189,7 @@ export const applicationApi = {
       client.ApplicationsCreateFromDecision({
         decisionId: input.decisionId as DecisionId,
         hhAccountId: input.hhAccountId as HhAccountId,
-        resumeId: input.resumeId,
-        mode: input.mode
+        resumeId: input.resumeId
       })
     )
 }

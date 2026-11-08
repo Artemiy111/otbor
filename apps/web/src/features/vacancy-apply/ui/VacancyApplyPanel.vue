@@ -124,6 +124,28 @@ const finished = computed(() =>
   ["submitted", "submitting", "queued"].includes(state.value ?? "")
 )
 
+/**
+ * Автоотклик готовит раннер (форма, письмо, кит): редактор заперт, иначе
+ * «Сохранить» и «Отправить» гонялись бы с ним. Пропустить можно.
+ */
+const preparing = computed(() => state.value === "preparing")
+
+const skipPreparing = async () => {
+  const id = existing.value?.id
+  if (busy.value !== null || id === undefined) return
+  busy.value = "save"
+  errorText.value = null
+  try {
+    await applicationApi.skip(id, "skipped from the vacancy page")
+    await detailQuery.refetch()
+    emit("changed")
+  } catch (error) {
+    errorText.value = explain(error)
+  } finally {
+    busy.value = null
+  }
+}
+
 /* ---- letter and answers -------------------------------------------------- */
 
 interface AnswerState {
@@ -635,6 +657,15 @@ const NO_FORM = "no-form"
       :applications="applications"
       :sent-letter="state === 'submitted' ? (savedKit?.letter ?? null) : null"
     />
+
+    <Alert v-else-if="preparing">
+      <LoaderCircle class="animate-spin" />
+      <AlertTitle>Автоотклик готовится</AlertTitle>
+      <AlertDescription>
+        <p>Раннер автооткликов сам читает форму, пишет письмо и отправляет. Пока он работает, редактор заперт.</p>
+        <Button variant="ghost" size="sm" :disabled="busy !== null" @click="skipPreparing">Пропустить</Button>
+      </AlertDescription>
+    </Alert>
 
     <template v-else>
       <!-- the vacancy form: read once, shared by every applicant -->

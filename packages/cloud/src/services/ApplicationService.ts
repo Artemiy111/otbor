@@ -9,8 +9,8 @@ import type {
 } from "@otbor/contract"
 import { AnswersInvalid, Conflict, InvalidInput, LimitExceeded, NotFound } from "@otbor/contract"
 import { sql } from "drizzle-orm"
-import { Config, Context, Effect, Layer, Match } from "effect"
-import { Database, type Executor } from "../db/Database.ts"
+import { Config, Context, Data, Effect, Layer, Match } from "effect"
+import { Database, type DatabaseError, type Executor } from "../db/Database.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
 import * as ApplyFilterRepository from "../repositories/ApplyFilterRepository.ts"
 import * as DecisionRepository from "../repositories/DecisionRepository.ts"
@@ -72,6 +72,9 @@ const raise: (failure: Failure) => ApiError = Match.type<Failure>().pipe(
   })
 )
 
+/** Внутренний сигнал: исход - отказ, транзакцию надо откатить. */
+class Refusal extends Data.TaggedError("Refusal")<{ readonly failure: Failure }> {}
+
 const unwrap = <A>(outcome: Outcome<A>): Effect.Effect<A, ApiError> =>
   outcome.ok ? Effect.succeed(outcome.value) : Effect.fail(raise(outcome.failure))
 
@@ -94,6 +97,7 @@ export interface CreateFromDecisionInput {
   readonly decisionId: string
   readonly hhAccountId: string
   readonly resumeId?: string
+  /** Учитывается только вместе с `autoRun`: режим, в котором раннер ведёт заявку. */
   readonly mode?: "drafts" | "auto"
   /**
    * Set by AutoApplyRunner only: records on a newly created row that the runner
@@ -145,7 +149,15 @@ export interface ApplicationServiceShape {
     ApiError
   >
   readonly retry: (id: string) => Effect.Effect<ApplicationRecord, ApiError>
-  readonly setKit: (input: SetKitInput) => Effect.Effect<KitRecord, ApiError>
+  /**
+   * Сохраняет кит. `options.runner` передаёт только AutoApplyRunner: тогда кит
+   * `preparing`-автозаявки сразу идёт в шлюз отправки. Оператор через RPC опций
+   * не передаёт, поэтому сохранение кита никогда не отправляет отклик.
+   */
+  readonly setKit: (
+    input: SetKitInput,
+    options?: { readonly runner?: boolean }
+  ) => Effect.Effect<KitRecord, ApiError>
   /** Responses used and left in the rolling 24 hours of one hh account. */
   readonly dailyUsage: (hhAccountId: string) => Effect.Effect<ApplyUsage, ApiError>
   /** The response form of a vacancy as last read. Never opens hh. */
@@ -227,6 +239,22 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
       const database = yield* Database
       const currentUser = yield* CurrentUser
 
+      /**
+       * Транзакция с исходом-значением. Отказ (`fail(...)`) откатывает всё, что
+       * транзакция успела записать до него, и возвращается наружу как значение:
+       * иначе отклонённая операция оставляла бы частичные записи.
+       */
+      const asOutcome = <A>(body: (tx: Executor) => Effect.Effect<Outcome<A>, DatabaseError>) =>
+        database
+          .asUser(currentUser.userId, (tx) =>
+            body(tx).pipe(
+              Effect.flatMap((outcome) =>
+                outcome.ok ? Effect.succeed(outcome) : Effect.fail(new Refusal({ failure: outcome.failure }))
+              )
+            )
+          )
+          .pipe(Effect.catchTag("Refusal", (refusal) => Effect.succeed(fail(refusal.failure))))
+
       const list: ApplicationServiceShape["list"] = (options) =>
         database
           .asUser(currentUser.userId, (tx) => ApplicationRepository.list(tx, currentUser.userId, options))
@@ -259,8 +287,7 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
 
       const createFromDecision: ApplicationServiceShape["createFromDecision"] = (input) =>
         Effect.gen(function*() {
-          const outcome = yield* database
-            .asUser(currentUser.userId, (tx) =>
+          const outcome = yield* asOutcome((tx) =>
               Effect.gen(function*() {
                 const decision = yield* DecisionRepository.findById(tx, input.decisionId)
                 if (decision === null) {
@@ -297,7 +324,10 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                   })
                 }
 
-                const state = input.mode === "auto" ? "preparing" : "draft"
+                // `preparing` заводит только раннер (autoRun): у заявки с auto_run
+                // есть хозяин, который её ведёт. Любая другая создаёт `draft`.
+                const runnerOwned = input.autoRun === true && input.mode !== undefined
+                const state = runnerOwned && input.mode === "auto" ? "preparing" : "draft"
                 const created = yield* ApplicationRepository.create(tx, {
                   userId: currentUser.userId,
                   hhAccountId: input.hhAccountId,
@@ -306,7 +336,7 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                   streamId: null,
                   decisionId: decision.id,
                   state,
-                  ...(input.autoRun === true && input.mode !== undefined ? { autoRun: input.mode } : {})
+                  ...(runnerOwned ? { autoRun: input.mode } : {})
                 })
 
                 if (created.created) {
@@ -328,8 +358,7 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
 
       const createManual: ApplicationServiceShape["createManual"] = (input) =>
         Effect.gen(function*() {
-          const outcome = yield* database
-            .asUser(currentUser.userId, (tx) =>
+          const outcome = yield* asOutcome((tx) =>
               Effect.gen(function*() {
                 if (!(yield* accountExists(tx, input.hhAccountId))) {
                   return fail({ _tag: "not_found", entity: "HhAccount", id: input.hhAccountId })
@@ -375,8 +404,7 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
 
       const approve: ApplicationServiceShape["approve"] = (id) =>
         Effect.gen(function*() {
-          const outcome = yield* database
-            .asUser(currentUser.userId, (tx) =>
+          const outcome = yield* asOutcome((tx) =>
               Effect.gen(function*() {
                 const application = yield* ApplicationRepository.findAny(tx, id)
                 if (application === null || application.userId !== currentUser.userId) {
@@ -413,8 +441,7 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
 
       const skip: ApplicationServiceShape["skip"] = (input) =>
         Effect.gen(function*() {
-          const outcome = yield* database
-            .asUser(currentUser.userId, (tx) =>
+          const outcome = yield* asOutcome((tx) =>
               Effect.gen(function*() {
                 const application = yield* ApplicationRepository.findAny(tx, input.id)
                 if (application === null || application.userId !== currentUser.userId) {
@@ -456,8 +483,7 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
 
       const retry: ApplicationServiceShape["retry"] = (id) =>
         Effect.gen(function*() {
-          const outcome = yield* database
-            .asUser(currentUser.userId, (tx) =>
+          const outcome = yield* asOutcome((tx) =>
               Effect.gen(function*() {
                 const application = yield* ApplicationRepository.findAny(tx, id)
                 if (application === null || application.userId !== currentUser.userId) {
@@ -563,10 +589,9 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
           return yield* unwrap(outcome)
         })
 
-      const setKit: ApplicationServiceShape["setKit"] = (input) =>
+      const setKit: ApplicationServiceShape["setKit"] = (input, setKitOptions) =>
         Effect.gen(function*() {
-          const outcome = yield* database
-            .asUser(currentUser.userId, (tx) =>
+          const outcome = yield* asOutcome((tx) =>
               Effect.gen(function*() {
                 const application = yield* ApplicationRepository.findAny(
                   tx,
@@ -597,11 +622,19 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                   costUsd: input.costUsd ?? null
                 })
 
+                // Кит сохранён - препятствие (письмо) снято, бюджет автоповторов
+                // начинается заново.
+                if (application.state === "preparing") {
+                  yield* ApplicationRepository.resetAutoRetries(tx, currentUser.userId, application.id)
+                }
+
                 // Автоотклик ждёт в `preparing` именно этот кит. Когда он подходит к
                 // сохранённой форме, шлюз сам проверит всё и поставит единственную
                 // submit-задачу; иначе кит просто сохранён, решает человек.
-                // Заявки без auto_run шлюз по триггеру auto не отправляет.
-                if (application.state === "preparing") {
+                // Отправляет только вызов раннера: сохранение кита оператором
+                // (RPC) никогда не ставит submit. Заявки без auto_run шлюз по
+                // триггеру auto не отправляет.
+                if (setKitOptions?.runner === true && application.state === "preparing") {
                   yield* trySubmit(tx, {
                     userId: currentUser.userId,
                     application,
@@ -619,8 +652,7 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
 
       const dailyUsage: ApplicationServiceShape["dailyUsage"] = (hhAccountId) =>
         Effect.gen(function*() {
-          const outcome = yield* database
-            .asUser(currentUser.userId, (tx) =>
+          const outcome = yield* asOutcome((tx) =>
               Effect.gen(function*() {
                 if (!(yield* accountExists(tx, hhAccountId))) {
                   return fail({ _tag: "not_found", entity: "HhAccount", id: hhAccountId })
@@ -648,8 +680,7 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
 
       const formRefresh: ApplicationServiceShape["formRefresh"] = (input) =>
         Effect.gen(function*() {
-          const outcome = yield* database
-            .asUser(currentUser.userId, (tx) =>
+          const outcome = yield* asOutcome((tx) =>
               Effect.gen(function*() {
                 if (!(yield* accountExists(tx, input.hhAccountId))) {
                   return fail({ _tag: "not_found", entity: "HhAccount", id: input.hhAccountId })
