@@ -175,6 +175,10 @@ export const OtborHandlers = OtborRpcs.toLayer(
       HhAccountsList: () => hhAccounts.list(),
       HhAccountUpsert: (payload) => hhAccounts.upsert(payload),
       HhAccountSessionSet: (payload) => hhAccounts.setSession(payload),
+      HhAccountSessionStateGet: ({ id }) => hhAccounts.sessionStateGet(id),
+      HhAccountSessionStatePut: (payload) => hhAccounts.sessionStatePut(payload),
+      HarnessSessionGet: (payload) => hhAccounts.harnessSessionGet(payload),
+      HarnessSessionPut: (payload) => hhAccounts.harnessSessionPut(payload),
       HhAccountRemove: ({ id }) => hhAccounts.remove(id),
       HhAccountSubmitResume: ({ hhAccountId }) =>
         hhAccounts.resumeSubmits(hhAccountId).pipe(

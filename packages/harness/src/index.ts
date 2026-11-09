@@ -64,6 +64,12 @@ export {
   safeProfileName
 } from "./browser/profile.ts"
 export {
+  fileSessionStore,
+  rpcSessionStore,
+  type LoadedSession,
+  type SessionStore
+} from "./browser/sessionStore.ts"
+export {
   BrowserError,
   PlaywrightBrowserExecutor,
   makePlaywrightExecutor,

@@ -66,7 +66,8 @@ export const hhAccountRefreshCommand = Command.make(
     const targets = all.filter((a) => a.sessionProfile !== null && (account === "" || a.id === account))
     if (targets.length === 0) yield* Console.log("Нет аккаунтов с профилем сессии.")
     for (const acc of targets) {
-      const check = yield* Effect.promise(() => checkProfileSession(acc.sessionProfile!))
+      const stored = yield* api.HhAccountSessionStateGet({ id: acc.id })
+      const check = yield* Effect.promise(() => checkProfileSession(stored.state))
       if (check.state !== "ok") {
         yield* api.HhAccountSessionSet({ id: acc.id, state: check.state, error: check.error })
         yield* Console.log(`${acc.label}: сессия ${check.state}, имя не обновлено`)

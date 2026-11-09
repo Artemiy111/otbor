@@ -1,14 +1,8 @@
 import { Api } from "../client.ts"
 import { fullName, isReplaceableLabel, parseProfileName } from "../hh-session.ts"
-import { hhProfileDir } from "@otbor/harness"
 import { Console, Effect } from "effect"
 import { Command, Flag } from "effect/cli"
 import { chromium } from "playwright"
-import { mkdir, writeFile } from "node:fs/promises"
-import { join } from "node:path"
-
-const profileDir = (name: string) => hhProfileDir(name)
-const storagePath = (name: string) => join(profileDir(name), "storage-state.json")
 
 export const hhLoginCommand = Command.make(
   "login",
@@ -27,14 +21,18 @@ export const hhLoginCommand = Command.make(
     )
   },
   Effect.fn(function*({ account, profile, timeout }) {
-    const profileDirPath = profileDir(profile)
-    const context = yield* Effect.tryPromise({
-      try: () => chromium.launchPersistentContext(profileDirPath, {
+    // Профиля на диске нет: вход идёт в обычном окне, а cookies уходят в облако.
+    const browser = yield* Effect.tryPromise({
+      try: () => chromium.launch({
         headless: false,
         executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
         ignoreDefaultArgs: ["--no-sandbox"]
       }),
       catch: (error) => new Error(`browser launch failed: ${error}`)
+    })
+    const context = yield* Effect.tryPromise({
+      try: () => browser.newContext(),
+      catch: (error) => new Error(`context failed: ${error}`)
     })
     const page = context.pages()[0] ?? (yield* Effect.tryPromise({
       try: () => context.newPage(),
@@ -69,7 +67,7 @@ export const hhLoginCommand = Command.make(
     }
 
     if (!loggedIn) {
-      yield* Effect.tryPromise({ try: () => context.close(), catch: () => new Error("close failed") })
+      yield* Effect.tryPromise({ try: () => browser.close(), catch: () => new Error("close failed") })
       return yield* Effect.fail(new Error("login timeout"))
     }
 
@@ -97,16 +95,7 @@ export const hhLoginCommand = Command.make(
     const hhid = homeHtml.match(/"hhid":\s*"([^"]+)"/)?.[1] ?? null
     const resolvedProfile = hhid ? `hh_${hhid}` : (firstName && lastName ? `${firstName}_${lastName}`.toLowerCase() : "default")
 
-    const path = storagePath(resolvedProfile)
-    yield* Effect.tryPromise({
-      try: async () => {
-        await mkdir(path.replace(/\/[^/]+$/, ""), { recursive: true })
-        await writeFile(path, JSON.stringify(state, null, 2), { mode: 0o600 })
-      },
-      catch: (error) => new Error(`save failed: ${error}`)
-    })
-
-    yield* Effect.tryPromise({ try: () => context.close(), catch: () => new Error("close failed") })
+    yield* Effect.tryPromise({ try: () => browser.close(), catch: () => new Error("close failed") })
 
     const hhName = fullName({ firstName, lastName }) || (hhid ? `hh ${hhid}` : "hh account")
     const api = yield* Api
@@ -123,8 +112,9 @@ export const hhLoginCommand = Command.make(
       lastName: lastName ?? existing?.lastName ?? undefined,
       isDefault: existing ? existing.isDefault : true
     })
+    yield* api.HhAccountSessionStatePut({ id: createdAccount.id, state: JSON.stringify(state) })
     yield* api.HhAccountSessionSet({ id: createdAccount.id, state: "ok" })
-    yield* Console.log(`Сессия сохранена: ${path}`)
+    yield* Console.log("Сессия сохранена в облаке (cookies зашифрованы).")
     yield* Console.log(`Аккаунт: ${createdAccount.label} (${createdAccount.id})`)
   })
 ).pipe(Command.withDescription("Log in to hh.ru and save session"))

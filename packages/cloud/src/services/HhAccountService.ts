@@ -1,7 +1,11 @@
-import type { ApiError, CaptchaEpisode, CaptchaModelStat, CaptchaSolveRecord, HhAccountId, HhAccountRecord, HhSessionState } from "@otbor/contract"
-import { InvalidInput, NotFound } from "@otbor/contract"
+import type { ApiError, HarnessId, CaptchaEpisode, CaptchaModelStat, CaptchaSolveRecord, HhAccountId, HhAccountRecord, HhSessionState } from "@otbor/contract"
+import { HarnessRejected, InvalidInput, NotFound } from "@otbor/contract"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "../db/Database.ts"
+import { hashHarnessToken } from "../auth/harnessToken.ts"
+import { decryptSession, encryptSession, loadSessionKey } from "../auth/sessionVault.ts"
+import * as HarnessRepository from "../repositories/HarnessRepository.ts"
+import * as HhSessionStateRepository from "../repositories/HhSessionStateRepository.ts"
 import * as CaptchaAttemptRepository from "../repositories/CaptchaAttemptRepository.ts"
 import * as HhAccountRepository from "../repositories/HhAccountRepository.ts"
 import * as SubmitPacingRepository from "../repositories/SubmitPacingRepository.ts"
@@ -52,6 +56,30 @@ export interface HhAccountServiceShape {
     readonly hhAccountId?: string | undefined
     readonly limit?: number | undefined
   }) => Effect.Effect<ReadonlyArray<CaptchaEpisode>, ApiError>
+
+  /** Cookies аккаунта, расшифрованные; `null`, если оператор ещё не входил. */
+  readonly sessionStateGet: (id: string) => Effect.Effect<
+    { readonly state: string | null; readonly version: number | null; readonly updatedAt: string | null },
+    ApiError
+  >
+  /** Оператор вошёл заново: cookies заменяются безусловно. */
+  readonly sessionStatePut: (input: {
+    readonly id: string
+    readonly state: string
+  }) => Effect.Effect<{ readonly version: number }, ApiError>
+  /** То же для харнесса: аккаунт по `sessionProfile`, доступ по токену харнесса. */
+  readonly harnessSessionGet: (input: {
+    readonly harnessId: HarnessId
+    readonly token: string
+    readonly sessionProfile: string
+  }) => Effect.Effect<{ readonly state: string | null; readonly version: number | null }, ApiError>
+  readonly harnessSessionPut: (input: {
+    readonly harnessId: HarnessId
+    readonly token: string
+    readonly sessionProfile: string
+    readonly state: string
+    readonly baseVersion: number | null
+  }) => Effect.Effect<{ readonly accepted: boolean; readonly version: number | null }, ApiError>
 }
 
 export class HhAccountService extends Context.Service<HhAccountService, HhAccountServiceShape>()(
@@ -179,7 +207,96 @@ export class HhAccountService extends Context.Service<HhAccountService, HhAccoun
           )
           .pipe(Effect.mapError(toStorageError("hhAccount.captchaSolves")))
 
-      return HhAccountService.of({ list, upsert, setSession, remove, findById, resumeSubmits, captchaEpisodes, captchaSolves })
+      const key = loadSessionKey()
+
+      const sessionStateGet: HhAccountServiceShape["sessionStateGet"] = (id) =>
+        database
+          .asUser(currentUser.userId, (tx) => HhSessionStateRepository.get(tx, id))
+          .pipe(
+            Effect.mapError(toStorageError("hhAccount.sessionStateGet")),
+            Effect.map((row) =>
+              row === null
+                ? { state: null, version: null, updatedAt: null }
+                : { state: decryptSession(row.ciphertext, key), version: row.version, updatedAt: row.updatedAt }
+            )
+          )
+
+      const sessionStatePut: HhAccountServiceShape["sessionStatePut"] = (input) =>
+        Effect.gen(function*() {
+          try {
+            JSON.parse(input.state)
+          } catch {
+            return yield* new InvalidInput({ message: "session state must be JSON" })
+          }
+          const account = yield* findById(input.id)
+          if (account === null) return yield* new NotFound({ entity: "HhAccount", id: input.id })
+          const version = yield* database
+            .asUser(currentUser.userId, (tx) =>
+              HhSessionStateRepository.replace(tx, {
+                userId: currentUser.userId,
+                hhAccountId: input.id,
+                ciphertext: encryptSession(input.state, key)
+              })
+            )
+            .pipe(Effect.mapError(toStorageError("hhAccount.sessionStatePut")))
+          return { version }
+        })
+
+      const harnessAccountId = (input: {
+        readonly harnessId: HarnessId
+        readonly token: string
+        readonly sessionProfile: string
+      }) =>
+        Effect.gen(function*() {
+          const authenticated = yield* database
+            .asUser(currentUser.userId, (tx) =>
+              HarnessRepository.authenticate(tx, input.harnessId, hashHarnessToken(input.token))
+            )
+            .pipe(Effect.mapError(toStorageError("hhAccount.harnessSession")))
+          if (!authenticated) {
+            return yield* new HarnessRejected({ message: "invalid harness token; register again to receive a new one" })
+          }
+          const account = yield* database
+            .asUser(currentUser.userId, (tx) =>
+              HhAccountRepository.findBySessionProfile(tx, currentUser.userId, input.sessionProfile)
+            )
+            .pipe(Effect.mapError(toStorageError("hhAccount.harnessSession")))
+          return account?.id ?? null
+        })
+
+      const harnessSessionGet: HhAccountServiceShape["harnessSessionGet"] = (input) =>
+        Effect.gen(function*() {
+          const accountId = yield* harnessAccountId(input)
+          if (accountId === null) return { state: null, version: null }
+          const row = yield* database
+            .asUser(currentUser.userId, (tx) => HhSessionStateRepository.get(tx, accountId))
+            .pipe(Effect.mapError(toStorageError("hhAccount.harnessSessionGet")))
+          return row === null
+            ? { state: null, version: null }
+            : { state: decryptSession(row.ciphertext, key), version: row.version }
+        })
+
+      const harnessSessionPut: HhAccountServiceShape["harnessSessionPut"] = (input) =>
+        Effect.gen(function*() {
+          const accountId = yield* harnessAccountId(input)
+          if (accountId === null) return { accepted: false, version: null }
+          const version = yield* database
+            .asUser(currentUser.userId, (tx) =>
+              HhSessionStateRepository.put(tx, {
+                userId: currentUser.userId,
+                hhAccountId: accountId,
+                ciphertext: encryptSession(input.state, key),
+                baseVersion: input.baseVersion
+              })
+            )
+            .pipe(Effect.mapError(toStorageError("hhAccount.harnessSessionPut")))
+          return { accepted: version !== null, version }
+        })
+
+      return HhAccountService.of({
+        list, upsert, setSession, remove, findById, resumeSubmits, captchaEpisodes, captchaSolves,
+        sessionStateGet, sessionStatePut, harnessSessionGet, harnessSessionPut
+      })
     })
   )
 }

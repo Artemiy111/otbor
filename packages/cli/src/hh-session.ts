@@ -1,7 +1,5 @@
 import type { HhSessionState } from "@otbor/contract"
-import { hhStoragePath } from "@otbor/harness"
 import { classifyResponsePage } from "@otbor/hh"
-import { readFile } from "node:fs/promises"
 
 /** The label an account got before accounts were named after hh's display name. */
 export const LEGACY_LABEL = "local"
@@ -59,9 +57,11 @@ export interface StoredCookie {
   readonly expires?: number
 }
 
-export const readCookies = async (profile: string): Promise<ReadonlyArray<StoredCookie> | null> => {
+/** hh-cookies из Playwright storageState (JSON-текст из облака); `null`, если состояния нет или оно битое. */
+export const readCookies = (stateJson: string | null): ReadonlyArray<StoredCookie> | null => {
+  if (stateJson === null) return null
   try {
-    const state = JSON.parse(await readFile(hhStoragePath(profile), "utf8")) as { cookies?: StoredCookie[] }
+    const state = JSON.parse(stateJson) as { cookies?: StoredCookie[] }
     return (state.cookies ?? []).filter((c) => String(c.domain ?? "").includes("hh.ru"))
   } catch {
     return null
@@ -73,8 +73,8 @@ export interface SessionCheck extends SessionVerdict {
 }
 
 /** Fetches the hh profile page with the stored cookies; verdict and name come from one answer. */
-export const checkProfileSession = async (profile: string): Promise<SessionCheck> => {
-  const cookies = await readCookies(profile)
+export const checkProfileSession = async (stateJson: string | null): Promise<SessionCheck> => {
+  const cookies = readCookies(stateJson)
   if (cookies === null) return { state: "expired", error: "no stored session", name: NO_NAME }
   const token = cookies.find((c) => c.name === "hhtoken" || c.name === "hhul")
   if (token?.expires !== undefined && token.expires > 0 && token.expires * 1000 < Date.now()) {

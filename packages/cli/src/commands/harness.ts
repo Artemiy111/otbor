@@ -3,6 +3,7 @@ import { HarnessExitTag, JobKind as JobKindSchema } from "@otbor/contract"
 import {
   HarnessGateway,
   PlaywrightBrowserExecutor,
+  rpcSessionStore,
   openAiStorePath,
   parseHarnessConfig,
   readOpenAiStore,
@@ -144,15 +145,15 @@ const run = Command.make(
           : { OTBOR_HARNESS_CONCURRENCY: process.env.OTBOR_HARNESS_CONCURRENCY })
     })
 
-    // Browser jobs need the account's hh session on this machine. The profile
-    // is the one `otbor hh login` wrote; nothing here talks to hh.ru unless a
-    // browser job is actually leased.
+    // Browser jobs take the account's hh cookies from the cloud (`otbor hh login`
+    // stores them there); nothing here talks to hh.ru unless a browser job is leased.
     const handlesBrowser = config.kinds.length === 0 || config.kinds.includes("browser")
     yield* runHarness(
       { ...config, once },
       handlesBrowser
         ? {
             browserLayer: PlaywrightBrowserExecutor.layer({
+              sessions: rpcSessionStore({ url: config.apiUrl, harnessId: config.harnessId, token: config.token }),
               headless: process.env.OTBOR_BROWSER_HEADLESS !== "0",
               ...(Number.isInteger(Number(process.env.OTBOR_HARNESS_ACCOUNT_SUBMIT_CONCURRENCY)) &&
                 Number(process.env.OTBOR_HARNESS_ACCOUNT_SUBMIT_CONCURRENCY) >= 1

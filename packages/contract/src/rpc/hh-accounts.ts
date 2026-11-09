@@ -80,3 +80,23 @@ export const CaptchaSolvesList = Rpc.make("CaptchaSolvesList", {
   }),
   error: ApiError
 })
+
+/**
+ * Cookies аккаунта (Playwright storageState как JSON-текст). Оператор читает и
+ * пишет их из CLI: `otbor hh login` кладёт сюда результат входа.
+ */
+export const HhAccountSessionStateGet = Rpc.make("HhAccountSessionStateGet", {
+  payload: Schema.Struct({ id: HhAccountId }),
+  success: Schema.Struct({
+    state: Schema.NullOr(Schema.String),
+    version: Schema.NullOr(Schema.Int),
+    updatedAt: Schema.NullOr(Schema.String)
+  }),
+  error: ApiError
+})
+
+export const HhAccountSessionStatePut = Rpc.make("HhAccountSessionStatePut", {
+  payload: Schema.Struct({ id: HhAccountId, state: Schema.String }),
+  success: Schema.Struct({ version: Schema.Int }),
+  error: ApiError
+})

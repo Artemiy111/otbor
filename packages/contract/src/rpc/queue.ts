@@ -112,3 +112,36 @@ export const HarnessRevoke = Rpc.make("HarnessRevoke", {
   }),
   error: ApiError
 })
+
+/**
+ * Харнесс берёт cookies аккаунта перед задачей и возвращает обновлённые после.
+ * Аккаунт определяется по `sessionProfile` из задачи. Запись принимается, только
+ * если `baseVersion` совпадает с текущей: более свежие cookies не затираются.
+ */
+export const HarnessSessionGet = Rpc.make("HarnessSessionGet", {
+  payload: Schema.Struct({
+    harnessId: HarnessId,
+    token: Schema.String,
+    sessionProfile: Schema.String
+  }),
+  success: Schema.Struct({
+    state: Schema.NullOr(Schema.String),
+    version: Schema.NullOr(Schema.Int)
+  }),
+  error: ApiError
+})
+
+export const HarnessSessionPut = Rpc.make("HarnessSessionPut", {
+  payload: Schema.Struct({
+    harnessId: HarnessId,
+    token: Schema.String,
+    sessionProfile: Schema.String,
+    state: Schema.String,
+    baseVersion: Schema.NullOr(Schema.Int)
+  }),
+  success: Schema.Struct({
+    accepted: Schema.Boolean,
+    version: Schema.NullOr(Schema.Int)
+  }),
+  error: ApiError
+})

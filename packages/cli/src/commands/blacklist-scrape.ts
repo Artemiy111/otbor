@@ -1,42 +1,23 @@
+import type { HhAccountId } from "@otbor/contract"
 import { Console, Effect } from "effect"
 import { Command, Flag } from "effect/cli"
 import { chromium } from "playwright"
-import { readFile } from "node:fs/promises"
-import { homedir } from "node:os"
-import { join } from "node:path"
 import { Api } from "../client.ts"
-
-const profileDir = (name: string) => join(homedir(), ".otbor", "hh", "accounts", name)
-const storagePath = (name: string) => join(profileDir(name), "storage-state.json")
 
 export const blacklistScrapeCommand = Command.make(
   "scrape-hh",
   {
-    profile: Flag.String("profile").pipe(
-      Flag.withDescription("Profile name for this hh.ru account"),
-      Flag.withDefault("default")
-    ),
     account: Flag.String("account").pipe(
       Flag.withDescription("hh account id to import into")
     )
   },
-  Effect.fn(function*({ profile, account }) {
+  Effect.fn(function*({ account }) {
     const api = yield* Api
-    let resolvedProfile = profile
-    if (account !== "") {
-      const accounts = yield* api.HhAccountsList()
-      const acc = accounts.find((a) => a.id === account)
-      if (acc?.sessionProfile) resolvedProfile = acc.sessionProfile
+    const stored = yield* api.HhAccountSessionStateGet({ id: account as HhAccountId })
+    if (stored.state === null) {
+      return yield* Effect.fail(new Error("Нет сохранённой сессии hh.ru. Сначала выполните: otbor hh login"))
     }
-    const path = storagePath(resolvedProfile)
-
-    const state = yield* Effect.tryPromise({
-      try: async () => {
-        const text = await readFile(path, "utf8")
-        return JSON.parse(text)
-      },
-      catch: () => new Error(`Нет сохранённой сессии hh.ru. Сначала выполните: otbor hh login`)
-    })
+    const state = JSON.parse(stored.state)
 
     const browser = yield* Effect.tryPromise({
       try: () => chromium.launch({ headless: true, executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", ignoreDefaultArgs: ["--no-sandbox"] }),

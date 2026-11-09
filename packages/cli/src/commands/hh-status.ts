@@ -29,7 +29,8 @@ export const hhStatusCommand = Command.make(
         rows.push([acc.label, "none", "no profile", "never"])
         continue
       }
-      const check = yield* Effect.promise(() => checkProfileSession(profile))
+      const stored = yield* api.HhAccountSessionStateGet({ id: acc.id })
+      const check = yield* Effect.promise(() => checkProfileSession(stored.state))
       const saved = yield* api.HhAccountSessionSet({ id: acc.id, state: check.state, error: check.error })
       rows.push([acc.label, profile, check.state, formatLastOk(saved.session?.lastOkAt)])
     }

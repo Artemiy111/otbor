@@ -60,6 +60,8 @@ import { FitJudgeEnqueue, FitJudgementGet, FitJudgementSave, FitJudgementsList }
 import {
   HhAccountRemove,
   HhAccountSessionSet,
+  HhAccountSessionStateGet,
+  HhAccountSessionStatePut,
   HhAccountSubmitResume,
   HhAccountUpsert,
   HhAccountsList,
@@ -122,6 +124,8 @@ import {
   HarnessLeaseNext,
   HarnessRegister,
   HarnessRevoke,
+  HarnessSessionGet,
+  HarnessSessionPut,
   QueueConcurrencyGet,
   QueueJobsList,
   QueueStatsGet
@@ -236,6 +240,10 @@ export const OtborRpcs = RpcGroup.make(
   HhAccountsList,
   HhAccountUpsert,
   HhAccountSessionSet,
+  HhAccountSessionStateGet,
+  HhAccountSessionStatePut,
+  HarnessSessionGet,
+  HarnessSessionPut,
   HhAccountRemove,
   HhAccountSubmitResume,
   HhCaptchaEpisodesList,

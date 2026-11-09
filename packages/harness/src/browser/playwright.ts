@@ -17,7 +17,7 @@ import { existsSync } from "node:fs"
 import { mkdir } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
-import { chromium, type BrowserContext, type Page } from "playwright"
+import { chromium, type Browser, type BrowserContext, type Page } from "playwright"
 import {
   CHAT_INPUT_SELECTOR,
   RESUME_CHOSEN_OPTION_SELECTOR,
@@ -59,7 +59,8 @@ import {
 import { BrowserExecutor, type LetterAttachRequest, type ResumeBumpRequest, type SubmitRequest } from "./executor.ts"
 import { makeCaptchaSolve, type CaptchaSolve } from "./captcha.ts"
 import { makeHumanizer, noHumanizer } from "./humanize.ts"
-import { DEFAULT_CHROME_PATH, hhProfileDir } from "./profile.ts"
+import { DEFAULT_CHROME_PATH } from "./profile.ts"
+import { fileSessionStore, type LoadedSession, type SessionStore } from "./sessionStore.ts"
 
 export class BrowserError extends Schema.TaggedError<BrowserError>()("BrowserError", {
   message: Schema.String
@@ -68,8 +69,13 @@ export class BrowserError extends Schema.TaggedError<BrowserError>()("BrowserErr
 export interface PlaywrightOptions {
   /** hh origin. Tests point this at a local server; production keeps the default. */
   readonly baseUrl?: string
-  /** Root of the per-account profiles. Defaults to `~/.otbor/hh/accounts`. */
+  /**
+   * Корень локальных файлов `storage-state.json`, если `sessions` не задан.
+   * По умолчанию `~/.otbor/hh/accounts`.
+   */
   readonly profilesDir?: string
+  /** Откуда брать и куда возвращать cookies аккаунта. По умолчанию локальный файл. */
+  readonly sessions?: SessionStore
   /** `null` uses Playwright's bundled Chromium. Default: installed Google Chrome. */
   readonly executablePath?: string | null
   readonly headless?: boolean
@@ -156,64 +162,81 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
   /** Куда класть скриншоты капчи; `null` выключает их. */
   const shotsDir = config.captchaShotsDir === undefined ? defaultCaptchaShotsDir() : config.captchaShotsDir
 
-  const profileDir = (name: string | null | undefined) =>
-    config.profilesDir === undefined
-      ? hhProfileDir(name)
-      : hhProfileDir(name, { OTBOR_HH_PROFILES_DIR: config.profilesDir })
-
   /**
-   * One Chrome per profile directory: Chrome locks a profile, so concurrent jobs
-   * of the same account share a context and each gets its own page. The context
-   * opens with the first user and closes with the last; a new user waits for a
-   * close that is still running.
+   * Cookies аккаунта берутся из хранилища на каждую задачу, а Chrome один на
+   * весь харнесс: профиля на диске нет, поэтому блокировать нечего, и две задачи
+   * одного аккаунта (или два харнесса) не мешают друг другу.
    */
-  const shared = new Map<string, { readonly context: Promise<BrowserContext>; users: number }>()
-  const closing = new Map<string, Promise<void>>()
+  const sessions: SessionStore =
+    config.sessions ??
+    fileSessionStore(config.profilesDir === undefined ? process.env : { OTBOR_HH_PROFILES_DIR: config.profilesDir })
+
   const exclusive = new Map<string, Semaphore.Semaphore>()
 
-  const launch = async (dir: string) => {
-    const context = await chromium.launchPersistentContext(dir, {
-      headless: config.headless ?? true,
-      ...(executablePath === undefined ? {} : { executablePath }),
-      ignoreDefaultArgs: ["--no-sandbox"]
-    })
+  let browser: Promise<Browser> | null = null
+  const getBrowser = (): Promise<Browser> => {
+    if (browser === null) {
+      const launched = chromium.launch({
+        headless: config.headless ?? true,
+        ...(executablePath === undefined ? {} : { executablePath }),
+        ignoreDefaultArgs: ["--no-sandbox"]
+      })
+      browser = launched
+      // Упавший или закрытый браузер при следующей задаче запускается заново.
+      launched.then(
+        (opened) => opened.on("disconnected", () => { if (browser === launched) browser = null }),
+        () => { if (browser === launched) browser = null }
+      )
+    }
+    return browser
+  }
+
+  /** Сравнение cookies без шума: `expires` и порядок не считаются изменением. */
+  const fingerprint = (state: string): string => {
+    try {
+      const parsed = JSON.parse(state) as { cookies?: ReadonlyArray<{ name: string; value: string; domain: string; path: string }> }
+      return JSON.stringify(
+        (parsed.cookies ?? [])
+          .map((c) => `${c.domain}|${c.path}|${c.name}=${c.value}`)
+          .sort()
+      )
+    } catch {
+      return state
+    }
+  }
+
+  const openContext = async (profile: string | null | undefined): Promise<{ context: BrowserContext; loaded: LoadedSession | null }> => {
+    const name = (profile ?? "").trim() === "" ? "default" : (profile as string)
+    const loaded = await sessions.load(name)
+    const opened = await getBrowser()
+    const context = await opened.newContext(
+      loaded === null ? {} : { storageState: JSON.parse(loaded.state) }
+    )
     // Analytics and ad beacons only slow hh's pages down.
     await context.route(
       (url) => isTrackerUrl(url.href),
       (route) => route.abort()
     )
-    return context
+    return { context, loaded }
   }
 
-  const joinContext = async (dir: string): Promise<BrowserContext> => {
-    await closing.get(dir)
-    let entry = shared.get(dir)
-    if (entry === undefined) {
-      entry = { context: launch(dir), users: 0 }
-      shared.set(dir, entry)
-    }
-    entry.users += 1
+  /** Возвращает обновлённые cookies, только если они изменились. Сбой записи задачу не ломает. */
+  const closeContext = async (
+    profile: string | null | undefined,
+    context: BrowserContext,
+    loaded: LoadedSession | null
+  ): Promise<void> => {
+    const name = (profile ?? "").trim() === "" ? "default" : (profile as string)
     try {
-      return await entry.context
-    } catch (error) {
-      leaveContext(dir)
-      throw error
+      const state = JSON.stringify(await context.storageState())
+      if (loaded === null || fingerprint(state) !== fingerprint(loaded.state)) {
+        await sessions.save(name, state, loaded?.version ?? null)
+      }
+    } catch {
+      // Cookies обновятся при следующей задаче; эта уже выполнена.
+    } finally {
+      await context.close().catch(() => undefined)
     }
-  }
-
-  const leaveContext = (dir: string): void => {
-    const entry = shared.get(dir)
-    if (entry === undefined) return
-    entry.users -= 1
-    if (entry.users > 0) return
-    shared.delete(dir)
-    const done = entry.context
-      .then((context) => context.close())
-      .catch(() => undefined)
-      .finally(() => {
-        if (closing.get(dir) === done) closing.delete(dir)
-      })
-    closing.set(dir, done)
   }
 
   /**
@@ -264,12 +287,14 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
     use: (page: Page) => Effect.Effect<A, E>,
     options: { readonly parallel?: boolean; readonly label?: string } = {}
   ) => {
-    const dir = profileDir(profile)
+    const dir = (profile ?? "").trim() === "" ? "default" : (profile as string)
     const run = Effect.scoped(
       Effect.gen(function*() {
-        const context = yield* Effect.acquireRelease(
-          attempt(() => joinContext(dir)),
-          () => Effect.sync(() => leaveContext(dir))
+        const { context } = yield* Effect.acquireRelease(
+          attempt(() => openContext(profile)).pipe(
+            Effect.map((opened) => ({ ...opened, profile }))
+          ),
+          (opened) => Effect.promise(() => closeContext(opened.profile, opened.context, opened.loaded))
         )
         const page = yield* Effect.acquireRelease(
           attempt(() => context.newPage()),
