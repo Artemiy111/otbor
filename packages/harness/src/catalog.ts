@@ -10,6 +10,8 @@ import {
 } from "@otbor/acp"
 import type { AgentHarness, AgentModel } from "@otbor/contract"
 import { type Cause, Duration, Effect } from "effect"
+import { FetchHttpClient } from "effect/http"
+import { loadOpenAiEndpoints, probeOpenAiEndpoint } from "./openai.ts"
 
 /** `default` is the agent's "no explicit choice" row, not a level to pick. */
 const UNPINNED = "default"
@@ -153,15 +155,27 @@ const causeMessage = (cause: Cause.Cause<unknown>): string => {
 export const probeCatalog = Effect.fn("Harness.probeCatalog")(function*(): Effect.fn.Return<
   ReadonlyArray<AgentHarness>
 > {
+  const harnesses: Array<AgentHarness> = []
   const config = yield* loadAcpConfig().pipe(Effect.result)
   if (config._tag === "Failure") {
     yield* Effect.logWarning(`ACP catalog: invalid configuration: ${config.failure.message}`)
-    return []
+  } else {
+    const { registry, cwd, timeout } = config.success
+    for (const agent of registry.agents) {
+      harnesses.push(yield* probeAgent(agent, { cwd, timeout }))
+    }
   }
-  const { registry, cwd, timeout } = config.success
-  const harnesses: Array<AgentHarness> = []
-  for (const agent of registry.agents) {
-    harnesses.push(yield* probeAgent(agent, { cwd, timeout }))
+
+  // Локальные модели за OpenAI-совместимым API: список берётся у самого сервера.
+  const endpoints = yield* loadOpenAiEndpoints().pipe(Effect.result)
+  if (endpoints._tag === "Failure") {
+    yield* Effect.logWarning(endpoints.failure.message)
+  } else {
+    for (const endpoint of endpoints.success) {
+      harnesses.push(
+        yield* probeOpenAiEndpoint(endpoint).pipe(Effect.provide(FetchHttpClient.layer))
+      )
+    }
   }
   return harnesses
 })

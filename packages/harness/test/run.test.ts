@@ -106,6 +106,38 @@ describe("runJob", () => {
     expect(outcome.exit.message).toBe(BROWSER_UNAVAILABLE_MESSAGE)
   })
 
+  test("задача с id OpenAI-эндпоинта идёт в API, а не в ACP", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: () =>
+        Response.json({ model: "qwen3", choices: [{ message: { content: "из oMLX" } }] })
+    })
+    try {
+      const config = await makeConfig()
+      const job = makeJob({ payload: { prompt: "p", harness: "omlx", model: "qwen3" } })
+      const outcome = await Effect.runPromise(
+        runJob(config, job, {
+          // ACP-слой не должен вызываться: он падает при любом обращении.
+          acpLayer: Layer.effect(AcpClient)(Effect.die("ACP не должен запускаться")),
+          openAiEndpoints: [
+            {
+              id: "omlx",
+              name: "oMLX",
+              baseUrl: `http://127.0.0.1:${server.port}/v1`,
+              variant: "local",
+              timeoutSeconds: 5
+            }
+          ]
+        }).pipe(Effect.provide(gatewayLayer({})))
+      )
+      expect(outcome._tag).toBe("complete")
+      if (outcome._tag !== "complete") return
+      expect(outcome.exit).toMatchObject({ tag: "prepared", artifacts: { text: "из oMLX" } })
+    } finally {
+      server.stop(true)
+    }
+  })
+
   test("a job without a lease is skipped instead of completed", async () => {
     const config = await makeConfig()
     const job = makeJob({ leaseId: null })

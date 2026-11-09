@@ -69,3 +69,16 @@ export {
   makePlaywrightExecutor,
   type PlaywrightOptions
 } from "./browser/playwright.ts"
+export {
+  DEFAULT_OPENAI_ID,
+  DEFAULT_OPENAI_TIMEOUT_SECONDS,
+  chatMessages,
+  loadOpenAiEndpoints,
+  probeOpenAiEndpoint,
+  resolveOpenAiEndpoints,
+  runOpenAiChat,
+  runOpenAiExit,
+  stripThinking,
+  type OpenAiEndpoint,
+  type OpenAiEnv
+} from "./openai.ts"

@@ -20,6 +20,7 @@ import { HarnessGateway } from "./client.ts"
 import { MAX_CONCURRENCY, type HarnessConfig } from "./config.ts"
 import { probeCatalog } from "./catalog.ts"
 import { payloadHarness, runInferenceExit } from "./inference.ts"
+import { loadOpenAiEndpoints, runOpenAiExit, type OpenAiEndpoint } from "./openai.ts"
 
 /** The cloud lease is 120s; a third of it keeps a slow prompt alive. */
 export const HEARTBEAT_INTERVAL = Duration.seconds(30)
@@ -94,6 +95,8 @@ export interface RunJobOptions {
   /** What `runHarness` reports as the catalog; default: probe the real agents. */
   readonly probe?: Effect.Effect<ReadonlyArray<AgentHarness>>
   readonly catalogEvery?: Duration.Input
+  /** OpenAI-совместимые эндпоинты; по умолчанию из `OTBOR_OPENAI_*`. */
+  readonly openAiEndpoints?: ReadonlyArray<OpenAiEndpoint>
   /** Browser work. Without one, browser jobs are answered as blocked. */
   readonly browserLayer?: Layer.Layer<BrowserExecutor>
 }
@@ -305,7 +308,7 @@ export const runJob = Effect.fn("Harness.runJob")(
         Effect.map((exit): JobOutcome => ({ _tag: "complete", exit }))
       )
     } else {
-      work = runInferenceExit(job.payload).pipe(
+      const acpExit = runInferenceExit(job.payload).pipe(
         Effect.provide(
           options.acpLayer ?? AcpClient.layerFor(payloadHarness(job.payload))
         ),
@@ -318,7 +321,24 @@ export const runJob = Effect.fn("Harness.runJob")(
               ? `ACP configuration error: ${error.message}`
               : error.message
           })
-        ),
+        )
+      )
+      // Агент с таким id среди OpenAI-эндпоинтов: ходим в API, а не в ACP.
+      const inference = Effect.gen(function*() {
+        const endpoints = options.openAiEndpoints ?? (yield* loadOpenAiEndpoints())
+        const requested = payloadHarness(job.payload)
+        const endpoint = requested === undefined
+          ? undefined
+          : endpoints.find((candidate) => candidate.id === requested)
+        return endpoint === undefined
+          ? yield* acpExit
+          : yield* runOpenAiExit(endpoint, job.payload)
+      }).pipe(
+        Effect.catchTag("InferenceFailed", (error) =>
+          Effect.succeed<HarnessExit>({ tag: "inference_failed", message: error.message })
+        )
+      )
+      work = inference.pipe(
         Effect.map((exit): JobOutcome => ({ _tag: "complete", exit }))
       )
     }

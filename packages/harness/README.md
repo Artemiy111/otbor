@@ -27,6 +27,24 @@ The ACP agent itself is configured by the `@otbor/acp` package:
 its agent, model and effort with `harness`, `model`, `effort` in the payload, and
 the harness reports a catalog of what it can run every 30 minutes.
 
+### Local models over the OpenAI API (oMLX, LM Studio, llama.cpp, vLLM)
+
+Any server that speaks `/v1/models` and `/v1/chat/completions` is a harness
+too, without ACP and without a child process:
+
+```sh
+OTBOR_OPENAI_URL=http://127.0.0.1:8000/v1 otbor harness run   # id "local"
+OTBOR_OPENAI_ID=omlx OTBOR_OPENAI_API_KEY=... otbor harness run
+```
+
+`OTBOR_OPENAI_ENDPOINTS` is a JSON array of
+`{id, url, name?, apiKey?, variant?, timeoutSeconds?}` for several servers.
+The catalog lists the server's models (`GET /models`); a job picks it with
+`harness: "<id>"` and an explicit `model` (there is no default model). `effort`
+is sent as `reasoning_effort`. One non-streaming request per job, no tools; a
+leading `<think>…</think>` block is dropped. `OTBOR_OPENAI_TIMEOUT_SECONDS`
+(default 300) bounds a request. The API key is read only from the environment.
+
 ## Behaviour
 
 - Inference: decode the job payload as `InferencePayload`, apply `payload.model`
