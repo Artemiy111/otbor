@@ -221,6 +221,7 @@ export const trySubmit = Effect.fnUntraced(function*(
       ...target,
       kit,
       form: stored.form,
+      humanize: trigger === "auto",
       sequence: yield* nextSequence(tx, application.id, "submit")
     })
   }

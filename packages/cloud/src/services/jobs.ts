@@ -117,6 +117,8 @@ export const submitJob = (
     readonly kit: KitRecord
     /** 1 for the first submit of an application; later only after a provably unsent one. */
     readonly sequence?: number
+    /** Автоотклик: харнес делает разминку перед кликом. */
+    readonly humanize?: boolean
     /** Form questions, to bring a legacy kit to `FormAnswer[]`. */
     readonly form?: { readonly questions: ReadonlyArray<FormQuestion> } | null
   }
@@ -134,6 +136,7 @@ export const submitJob = (
     resumeId: input.resumeId,
     resumeTitle: input.resumeTitle ?? null,
     resumeExternalId: input.resumeExternalId ?? null,
+    humanize: input.humanize === true,
     kitId: input.kit.id,
     expectedFormHash: input.kit.formHash,
     kit: {

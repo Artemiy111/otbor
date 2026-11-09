@@ -338,6 +338,38 @@ describe.skipIf(!hasBrowser)("PlaywrightBrowserExecutor against a local hh imita
     expect(posts).toBe(0)
   }, 40_000)
 
+  test("auto humanize adds at most the budget and still sends exactly once", async () => {
+    const baseline = Date.now()
+    const plain = await withResume("resume", { resumeExternalId: "1001" })
+    const plainMs = Date.now() - baseline
+    expect(plain).toMatchObject({ tag: "submitted" })
+
+    const budgetMs = 5_000
+    mode = "resume"
+    posts = 0
+    const started = Date.now()
+    const exit = await run(
+      makePlaywrightExecutor({
+        baseUrl: origin,
+        profilesDir: profiles,
+        executablePath: null,
+        headless: true,
+        navigationTimeoutMs: 10_000,
+        settleMs: 4_000,
+        afterClickMs: 2_000,
+        humanizeBudgetMs: budgetMs
+      }).submit({
+        payload: submitPayload({ resumeExternalId: "1001", humanize: true }),
+        beforeClick: Effect.succeed(true)
+      })
+    )
+    const humanMs = Date.now() - started
+    expect(exit).toMatchObject({ tag: "submitted" })
+    expect(posts).toBe(1)
+    // Добавка не больше бюджета (с запасом на разброс самой браузерной работы).
+    expect(humanMs - plainMs).toBeLessThan(budgetMs + 1_500)
+  }, 60_000)
+
   test("a changed live form is form_changed and nothing is sent", async () => {
     mode = "renamed"
     posts = 0

@@ -87,6 +87,12 @@ export const SubmitJobPayload = Schema.Struct({
   resumeExternalId: Schema.optional(Schema.NullOr(Schema.String)),
   /** Название того же резюме, только для сообщений. */
   resumeTitle: Schema.optional(Schema.NullOr(Schema.String)),
+  /**
+   * Автоотклик (режим auto): перед кликом харнес делает короткую человеческую
+   * разминку (мышь, прокрутка) в пределах бюджета времени. Ручная отправка
+   * оператором идёт без неё.
+   */
+  humanize: Schema.optional(Schema.Boolean),
   /** The form hash the kit was written for. A live form that differs aborts. */
   expectedFormHash: Schema.String,
   kit: SubmitKit

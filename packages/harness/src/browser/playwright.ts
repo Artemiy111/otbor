@@ -51,6 +51,7 @@ import {
   wantsMoreSyncPages
 } from "./core.ts"
 import { BrowserExecutor, type LetterAttachRequest, type SubmitRequest } from "./executor.ts"
+import { makeHumanizer, noHumanizer } from "./humanize.ts"
 import { DEFAULT_CHROME_PATH, hhProfileDir } from "./profile.ts"
 
 export class BrowserError extends Schema.TaggedError<BrowserError>()("BrowserError", {
@@ -82,6 +83,10 @@ export interface PlaywrightOptions {
    * (`OTBOR_HARNESS_ACCOUNT_SUBMIT_CONCURRENCY`).
    */
   readonly accountActingConcurrency?: number
+  /** Сколько времени человеческая разминка автоотклика может добавить к задаче. */
+  readonly humanizeBudgetMs?: number
+  /** Источник случайности разминки; в тестах подменяется. */
+  readonly humanizeRandom?: () => number
 }
 
 const defaults = {
@@ -89,7 +94,8 @@ const defaults = {
   navigationTimeoutMs: 30_000,
   settleMs: 12_000,
   afterClickMs: 25_000,
-  accountActingConcurrency: 12
+  accountActingConcurrency: 12,
+  humanizeBudgetMs: 5_000
 }
 
 const attempt = <A>(use: () => Promise<A>) =>
@@ -416,6 +422,15 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
       artifacts: { ...(exit.artifacts ?? {}), clicked: true }
     })
 
+    // Разминка только у автоотклика; бюджет общий на всю задачу.
+    const human =
+      payload.humanize === true && config.humanizeBudgetMs > 0
+        ? makeHumanizer({
+            budgetMs: config.humanizeBudgetMs,
+            ...(config.humanizeRandom === undefined ? {} : { random: config.humanizeRandom })
+          })
+        : noHumanizer
+
     const run = withPage(payload.sessionProfile, (page) =>
       Effect.gen(function*() {
         yield* open(page, payload.externalId)
@@ -445,6 +460,9 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
         if (preflight._tag === "exit") {
           return clicked ? asClicked(preflight.exit) : preflight.exit
         }
+
+        // Страница отклика открыта и форма на месте: сначала «осмотреться».
+        yield* human.warmUp(page)
 
         // Fill. Nothing here sends anything.
         for (const step of preflight.steps) {
@@ -577,6 +595,10 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
           } satisfies HarnessExit
         }
 
+        // Подвести курсор к кнопке до проверки lease: сама проверка и клик
+        // остаются вплотную друг к другу.
+        const aim = yield* human.approach(page, submitButton)
+
         // The last look before the only click: is this lease still ours?
         if (!(yield* beforeClick)) {
           return { tag: "transport", message: "lease lost before the click", ...unclicked(lastUrl) } satisfies HarnessExit
@@ -584,7 +606,9 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
 
         // From here on the response may reach hh whatever happens next.
         clicked = true
-        yield* attempt(() => submitButton.click({ timeout: 10_000, noWaitAfter: true }))
+        yield* attempt(() =>
+          submitButton.click({ timeout: 10_000, noWaitAfter: true, ...(aim === undefined ? {} : { position: aim }) })
+        )
 
         const after = yield* settle(
           page,
