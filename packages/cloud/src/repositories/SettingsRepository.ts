@@ -21,7 +21,8 @@ export const BUILTIN_SETTINGS: UserSettings = {
   formReadConcurrency: 2,
   formReadIntervalSeconds: 4,
   formReadJitterPercent: 100,
-  formReadBlockedFactor: 3
+  formReadBlockedFactor: 3,
+  analysisEnabled: true
 }
 
 interface SettingsRow {
@@ -35,6 +36,7 @@ interface SettingsRow {
   readonly form_read_interval_seconds: number
   readonly form_read_jitter_percent: number
   readonly form_read_blocked_factor: number
+  readonly analysis_enabled: boolean
   readonly updated_at: Date | string
 }
 
@@ -48,7 +50,8 @@ const fromRow = (row: SettingsRow): UserSettings => ({
   formReadConcurrency: Number(row.form_read_concurrency),
   formReadIntervalSeconds: Number(row.form_read_interval_seconds),
   formReadJitterPercent: Number(row.form_read_jitter_percent),
-  formReadBlockedFactor: Number(row.form_read_blocked_factor)
+  formReadBlockedFactor: Number(row.form_read_blocked_factor),
+  analysisEnabled: row.analysis_enabled
 })
 
 export interface StoredSettings {
@@ -89,13 +92,13 @@ export const upsert = (
         user_id, account_browser_concurrency, account_acting_concurrency,
         submit_interval_seconds, submit_jitter_percent, submit_hourly_limit, harness_slots,
         form_read_concurrency, form_read_interval_seconds, form_read_jitter_percent,
-        form_read_blocked_factor
+        form_read_blocked_factor, analysis_enabled
       ) values (
         ${userId}, ${value.accountBrowserConcurrency}, ${value.accountActingConcurrency},
         ${value.submitIntervalSeconds}, ${value.submitJitterPercent},
         ${value.submitHourlyLimit}::int, ${value.harnessSlots},
         ${value.formReadConcurrency}, ${value.formReadIntervalSeconds}, ${value.formReadJitterPercent},
-        ${value.formReadBlockedFactor}
+        ${value.formReadBlockedFactor}, ${value.analysisEnabled}
       )
       on conflict (user_id) do update set
         account_browser_concurrency = excluded.account_browser_concurrency,
@@ -107,7 +110,8 @@ export const upsert = (
         form_read_concurrency = excluded.form_read_concurrency,
         form_read_interval_seconds = excluded.form_read_interval_seconds,
         form_read_jitter_percent = excluded.form_read_jitter_percent,
-        form_read_blocked_factor = excluded.form_read_blocked_factor
+        form_read_blocked_factor = excluded.form_read_blocked_factor,
+        analysis_enabled = excluded.analysis_enabled
       returning *
     `)
     .pipe(

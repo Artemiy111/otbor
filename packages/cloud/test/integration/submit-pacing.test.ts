@@ -378,7 +378,8 @@ if (!integrationEnabled || serverUrl === null) {
             formReadConcurrency: 2,
             formReadIntervalSeconds: 4,
             formReadJitterPercent: 100,
-            formReadBlockedFactor: 3
+            formReadBlockedFactor: 3,
+            analysisEnabled: true
           })
         })
       )

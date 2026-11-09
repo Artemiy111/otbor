@@ -9,6 +9,8 @@ import { sql } from "drizzle-orm"
 import { Effect, Layer } from "effect"
 import { Database } from "../../src/db/Database.ts"
 import * as VacancyAnalysisRepository from "../../src/repositories/VacancyAnalysisRepository.ts"
+import { ScheduleDispatcher } from "../../src/services/ScheduleDispatcher.ts"
+import { SettingsService } from "../../src/services/SettingsService.ts"
 import { AnalysisRunner, analysisInputHash } from "../../src/services/AnalysisRunner.ts"
 import { SystemOneClient, SystemOneError } from "../../src/services/SystemOneClient.ts"
 import * as support from "./support/index.ts"
@@ -101,6 +103,60 @@ if (!enabled || serverUrl === null) {
       employerExternalId: `emp-${label}-${Math.random().toString(36).slice(2, 8)}`,
       employerName: `Co ${label}`
     })
+
+  test("расписание analysis пропускается, пока анализ выключен в настройках", async () => {
+    await seed("toggle")
+    const tenant = await support.seedTenant("analysis-toggle")
+    await reset()
+    mode = "ok"
+    calls = []
+    const schedule = {
+      id: "00000000-0000-7000-8000-000000000001",
+      userId: tenant.userId,
+      kind: "analysis",
+      targetId: "global",
+      intervalMinutes: 30,
+      options: {},
+      enabled: true,
+      nextRunAt: null,
+      lastRunAt: null,
+      lastError: null,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    }
+    const dispatch = () =>
+      support.runAsWithOptions(
+        "owner",
+        options,
+        Effect.gen(function*() {
+          const dispatcher = yield* ScheduleDispatcher
+          return yield* dispatcher.run(schedule)
+        })
+      )
+    const setEnabled = (analysisEnabled: boolean) =>
+      support.runAsWithOptions(
+        tenant.userId,
+        options,
+        Effect.gen(function*() {
+          const settings = yield* SettingsService
+          const current = (yield* settings.get()).settings
+          yield* settings.update({ ...current, analysisEnabled })
+        })
+      )
+
+    await setEnabled(false)
+    try {
+      const skipped = await dispatch()
+      expect(skipped.ok).toBe(true)
+      expect(skipped.detail).toMatchObject({ disabled: true, analysed: 0 })
+      expect(calls).toEqual([])
+    } finally {
+      await setEnabled(true)
+    }
+    const resumed = await dispatch()
+    expect(resumed.detail).not.toHaveProperty("disabled")
+    expect(calls.length).toBeGreaterThan(0)
+  })
 
   test("analyses candidates, then skips and freshens them when the input hash is unchanged", async () => {
     const one = await seed("one")

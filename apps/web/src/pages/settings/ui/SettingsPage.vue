@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/shared/ui"
+import AnalysisToggleCard from "./AnalysisToggleCard.vue"
 import ApplySettingsCard from "./ApplySettingsCard.vue"
 import CaptchaSolverCard from "./CaptchaSolverCard.vue"
 import LocalModelsCard from "./LocalModelsCard.vue"
@@ -71,6 +72,7 @@ const { accounts, defaultAccountId } = useDefaultAccount()
         </CardContent>
       </Card>
 
+      <AnalysisToggleCard />
       <ApplySettingsCard />
 
       <ProxyCard />

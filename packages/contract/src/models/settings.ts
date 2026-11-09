@@ -31,7 +31,9 @@ export const UserSettings = Schema.Struct({
   /** Случайная надбавка к интервалу чтений, процентов от него, 0..200. */
   formReadJitterPercent: between(0, 200),
   /** Во сколько раз реже читать формы, пока аккаунт заблокирован капчей, 1..20. */
-  formReadBlockedFactor: between(1, 20)
+  formReadBlockedFactor: between(1, 20),
+  /** Запускать ли анализ вакансий моделью SystemOne по расписанию; false - расписания `analysis` пропускаются. */
+  analysisEnabled: Schema.Boolean
 })
 
 export type UserSettings = typeof UserSettings.Type

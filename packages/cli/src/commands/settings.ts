@@ -68,7 +68,8 @@ const set = Command.make(
       formReadConcurrency: Option.getOrElse(reads, () => current.formReadConcurrency),
       formReadIntervalSeconds: Option.getOrElse(readInterval, () => current.formReadIntervalSeconds),
       formReadJitterPercent: Option.getOrElse(readJitter, () => current.formReadJitterPercent),
-      formReadBlockedFactor: Option.getOrElse(readCaptchaFactor, () => current.formReadBlockedFactor)
+      formReadBlockedFactor: Option.getOrElse(readCaptchaFactor, () => current.formReadBlockedFactor),
+      analysisEnabled: current.analysisEnabled
     })
     for (const line of lines(view.settings, view.defaults)) yield* Console.log(line)
   })

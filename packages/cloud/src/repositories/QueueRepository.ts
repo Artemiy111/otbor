@@ -242,7 +242,8 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
         input.formReadIntervalSeconds ?? SettingsRepository.BUILTIN_SETTINGS.formReadIntervalSeconds
       ),
       formReadJitterPercent: SettingsRepository.BUILTIN_SETTINGS.formReadJitterPercent,
-      formReadBlockedFactor: SettingsRepository.BUILTIN_SETTINGS.formReadBlockedFactor
+      formReadBlockedFactor: SettingsRepository.BUILTIN_SETTINGS.formReadBlockedFactor,
+      analysisEnabled: SettingsRepository.BUILTIN_SETTINGS.analysisEnabled
     }
     const formReadCapSql = settingOf("form_read_concurrency", defaults.formReadConcurrency)
     const browserCapSql = settingOf("account_browser_concurrency", defaults.accountBrowserConcurrency)

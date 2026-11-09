@@ -42,6 +42,7 @@ export const settingsDefaultsFromEnv = (
       formReadIntervalSeconds: builtin.formReadIntervalSeconds,
       formReadJitterPercent: builtin.formReadJitterPercent,
       formReadBlockedFactor: builtin.formReadBlockedFactor,
+      analysisEnabled: builtin.analysisEnabled,
       ...overrides
     }
   })

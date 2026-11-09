@@ -194,7 +194,8 @@ const defaultsOf = (options: QueueServiceOptions): UserSettings => ({
   formReadIntervalSeconds:
     options.accountFormReadIntervalSeconds ?? SettingsRepository.BUILTIN_SETTINGS.formReadIntervalSeconds,
   formReadJitterPercent: SettingsRepository.BUILTIN_SETTINGS.formReadJitterPercent,
-  formReadBlockedFactor: SettingsRepository.BUILTIN_SETTINGS.formReadBlockedFactor
+  formReadBlockedFactor: SettingsRepository.BUILTIN_SETTINGS.formReadBlockedFactor,
+  analysisEnabled: SettingsRepository.BUILTIN_SETTINGS.analysisEnabled
 })
 
 export class QueueService extends Context.Service<QueueService, QueueServiceShape>()(

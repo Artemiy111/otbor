@@ -2,6 +2,7 @@ import type { ApiError, PresetId, ResumeId, ProxyMode } from "@otbor/contract"
 import { InvalidInput } from "@otbor/contract"
 import { Cause, Context, Effect, Layer } from "effect"
 import { Database } from "../db/Database.ts"
+import * as SettingsRepository from "../repositories/SettingsRepository.ts"
 import * as ScheduleRunRepository from "../repositories/ScheduleRunRepository.ts"
 import type { StoredSchedule } from "../repositories/ScheduleRepository.ts"
 import { CrawlRunner, type CrawlRunnerResult } from "./CrawlRunner.ts"
@@ -371,6 +372,18 @@ export class ScheduleDispatcher extends Context.Service<
             case "analysis": {
               // Local SystemOne model over fully hydrated vacancies whose
               // analysis is missing or stale. The target is not used.
+              // Выключатель в настройках (`analysisEnabled`): расписание завершается
+              // пустым проходом, модель не трогаем. Ручной `otbor analysis run` работает.
+              const enabled = yield* database
+                .asOwner((tx) => SettingsRepository.find(tx, schedule.userId))
+                .pipe(
+                  Effect.map((stored) => stored?.settings.analysisEnabled ?? SettingsRepository.BUILTIN_SETTINGS.analysisEnabled),
+                  Effect.orElseSucceed(() => true)
+                )
+              if (!enabled) {
+                yield* Effect.logDebug(`schedule ${schedule.id}: анализ отключён в настройках, проход пропущен`)
+                return { ok: true, error: null, detail: { disabled: true, processed: 0, analysed: 0, skipped: 0, failed: 0, stoppedBy: null, errors: [] } }
+              }
               const runId = context?.runId
               const result = yield* analysis.run({
                 limit: intOption(options, "limit", 50, 1, 500),

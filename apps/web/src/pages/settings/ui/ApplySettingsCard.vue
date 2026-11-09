@@ -165,7 +165,7 @@ const save = async () => {
     }
     parsed[field.key] = value
   }
-  const next = parsed as unknown as UserSettings
+  const next = { ...parsed, analysisEnabled: view.value?.settings.analysisEnabled ?? true } as unknown as UserSettings
   if (next.accountActingConcurrency > next.accountBrowserConcurrency) {
     error.value = "Отправок на аккаунт не может быть больше, чем браузерных задач."
     return
