@@ -504,8 +504,15 @@ export interface StyleViolation {
 const LONG_DASH = /[‐-―−]/gu
 const EMOJI = /[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}]/gu
 
-/** House style for text sent to employers: no long dashes, emoji or "!". */
-export const checkTextStyle = (text: string): ReadonlyArray<StyleViolation> => {
+/**
+ * House style for text sent to employers: no long dashes, emoji or "!".
+ * Для сопроводительного письма "!" не проверяется (`allowExclamation`): запрет
+ * остаётся только в промптах, а схема его не навязывает.
+ */
+export const checkTextStyle = (
+  text: string,
+  options?: { readonly allowExclamation?: boolean }
+): ReadonlyArray<StyleViolation> => {
   const found: Array<StyleViolation> = []
   for (const match of text.matchAll(LONG_DASH)) {
     found.push({ code: "dash", index: match.index ?? 0, value: match[0] })
@@ -513,8 +520,10 @@ export const checkTextStyle = (text: string): ReadonlyArray<StyleViolation> => {
   for (const match of text.matchAll(EMOJI)) {
     found.push({ code: "emoji", index: match.index ?? 0, value: match[0] })
   }
-  for (let index = text.indexOf("!"); index !== -1; index = text.indexOf("!", index + 1)) {
-    found.push({ code: "exclamation", index, value: "!" })
+  if (options?.allowExclamation !== true) {
+    for (let index = text.indexOf("!"); index !== -1; index = text.indexOf("!", index + 1)) {
+      found.push({ code: "exclamation", index, value: "!" })
+    }
   }
   return found.sort((a, b) => a.index - b.index)
 }

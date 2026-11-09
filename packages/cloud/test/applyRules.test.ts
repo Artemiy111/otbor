@@ -147,8 +147,13 @@ describe("checkKit", () => {
 
   test("a cover letter that breaks the house style fails the kit", () => {
     const needsLetter: ResponseForm = { ...form, coverLetter: "optional" }
-    const problems = checkKit({ form: needsLetter, hints: [], kit: kitFor(needsLetter, fullAnswers(), "Здравствуйте!") })
+    const problems = checkKit({ form: needsLetter, hints: [], kit: kitFor(needsLetter, fullAnswers(), "Здравствуйте — готов!") })
     expect(problems.map((problem) => problem.code)).toEqual(["banned_style"])
+  })
+
+  test("an exclamation mark in the cover letter is not a schema error", () => {
+    const needsLetter: ResponseForm = { ...form, coverLetter: "optional" }
+    expect(checkKit({ form: needsLetter, hints: [], kit: kitFor(needsLetter, fullAnswers(), "Здравствуйте!") })).toEqual([])
   })
 
   test("legacy question/answer pairs are matched by text and option label", () => {

@@ -138,7 +138,7 @@ export const prevalidateKit = (
   if (form.coverLetter === "required" && letter.trim() === "") {
     issues.push({ code: "letter_required", questionId: "", message: "the form requires a cover letter" })
   }
-  const violations = checkTextStyle(letter)
+  const violations = checkTextStyle(letter, { allowExclamation: true })
   if (violations.length > 0) {
     const codes = [...new Set(violations.map((violation) => violation.code))]
     issues.push({ code: "banned_style", questionId: "letter", message: `banned style: ${codes.join(", ")}` })

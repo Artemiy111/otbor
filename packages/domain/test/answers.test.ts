@@ -305,6 +305,11 @@ describe("checkTextStyle", () => {
     expect(codes("Да!")).toEqual(["exclamation"])
   })
 
+  test("allowExclamation skips only the exclamation check", () => {
+    expect(checkTextStyle("Да!", { allowExclamation: true })).toEqual([])
+    expect(checkTextStyle("Да — !", { allowExclamation: true }).map((v) => v.code)).toEqual(["dash"])
+  })
+
   test("plain hyphens and ordinary punctuation pass", () => {
     expect(checkTextStyle("Full-stack, 2020-2024. Да?")).toEqual([])
   })
