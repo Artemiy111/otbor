@@ -1,0 +1,89 @@
+# Локальный observability-стек: Loki (логи), Grafana, Tempo (трейсы), Mimir
+# (метрики) и OpenTelemetry Collector как единая точка приёма OTLP.
+#
+# Это отдельный стек от docker-compose.yml (Postgres): сервер и воркер работают
+# и без него. Экспорт включается переменными OTEL_* в .env (см. .env.example);
+# без них приложение ничего никуда не шлёт.
+#
+#   bun run obs:up     поднять стек
+#   bun run obs:down   остановить (данные остаются в томах)
+#
+# Grafana: http://127.0.0.1:3030 (без логина, только loopback).
+# Приложение шлёт OTLP/HTTP на http://127.0.0.1:4318, дальше Collector
+# раскладывает сигналы по хранилищам. Все порты публикуются только на loopback.
+name: otbor-observability
+
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.136.0
+    container_name: otbor-otel-collector
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./infra/observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "127.0.0.1:${OTBOR_OTLP_PORT:-4318}:4318"
+    depends_on:
+      - loki
+      - tempo
+      - mimir
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.5.7
+    container_name: otbor-loki
+    command: ["-config.file=/etc/loki/config.yaml"]
+    volumes:
+      - ./infra/observability/loki.yaml:/etc/loki/config.yaml:ro
+      - otbor-loki:/loki
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:2.8.2
+    container_name: otbor-tempo
+    # Именованный том создаётся от root, а образ работает под uid 10001.
+    user: "0"
+    command: ["-config.file=/etc/tempo/config.yaml"]
+    volumes:
+      - ./infra/observability/tempo.yaml:/etc/tempo/config.yaml:ro
+      - otbor-tempo:/var/tempo
+    depends_on:
+      - mimir
+    restart: unless-stopped
+
+  mimir:
+    image: grafana/mimir:2.17.1
+    container_name: otbor-mimir
+    user: "0"
+    command: ["-config.file=/etc/mimir/config.yaml"]
+    volumes:
+      - ./infra/observability/mimir.yaml:/etc/mimir/config.yaml:ro
+      - otbor-mimir:/data
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:12.2.0
+    container_name: otbor-grafana
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/otbor-overview.json
+    volumes:
+      - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - otbor-grafana:/var/lib/grafana
+    ports:
+      - "127.0.0.1:${OTBOR_GRAFANA_PORT:-3030}:3000"
+    depends_on:
+      - loki
+      - tempo
+      - mimir
+    restart: unless-stopped
+
+volumes:
+  otbor-loki:
+  otbor-tempo:
+  otbor-mimir:
+  otbor-grafana:

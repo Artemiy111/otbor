@@ -46,6 +46,7 @@ import { TelegramGatewayProvider } from "../services/TelegramGatewayProvider.ts"
 import { TelegramService } from "../services/TelegramService.ts"
 import { TelegramSync } from "../services/TelegramSync.ts"
 import { VacancyAnalysisService } from "../services/VacancyAnalysisService.ts"
+import { recordRpc } from "../observability.ts"
 import { AgentCatalogService } from "../services/AgentCatalogService.ts"
 import { WritingService } from "../services/WritingService.ts"
 
@@ -66,10 +67,13 @@ const withRpcLog = <H extends object>(handlers: H): H =>
         }
         return Effect.suspend(() => {
           const startedAt = Date.now()
-          const log = (outcome: string) =>
-            Effect.logInfo(`rpc ${tag} ${outcome}`).pipe(
-              Effect.annotateLogs({ "rpc.method": tag, "rpc.ms": Date.now() - startedAt })
+          const log = (outcome: "ok" | "failed") => {
+            const millis = Date.now() - startedAt
+            return Effect.logInfo(`rpc ${tag} ${outcome}`).pipe(
+              Effect.annotateLogs({ "rpc.method": tag, "rpc.ms": millis }),
+              Effect.andThen(recordRpc(tag, outcome, millis))
             )
+          }
           return result.pipe(
             Effect.tap(() => log("ok")),
             Effect.tapCause(() => log("failed"))

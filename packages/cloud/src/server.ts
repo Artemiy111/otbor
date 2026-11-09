@@ -8,6 +8,7 @@ import { join, resolve } from "node:path"
 import "./env.ts"
 import { Database } from "./db/Database.ts"
 import { EmployerLogoRoute } from "./http/employerLogoRoute.ts"
+import { telemetryLayer } from "./observability.ts"
 import { OtborHandlers, OtborServices } from "./rpc/handlers.ts"
 import { ensureBootstrapUser, ensureSystemPresets } from "./services/bootstrap.ts"
 import { CurrentUser } from "./services/CurrentUser.ts"
@@ -78,4 +79,7 @@ const LoggerLayer = Logger.layer([Logger.consolePretty(), fileLogger]).pipe(
   Layer.provide(NodeServices.layer)
 )
 
-Layer.launch(ServerLayer).pipe(Effect.provide(LoggerLayer), NodeRuntime.runMain)
+// Телеметрия строится поверх логгеров: OTLP-логгер добавляется к ним.
+const ObservabilityLayer = telemetryLayer("otbor-server").pipe(Layer.provideMerge(LoggerLayer))
+
+Layer.launch(ServerLayer).pipe(Effect.provide(ObservabilityLayer), NodeRuntime.runMain)

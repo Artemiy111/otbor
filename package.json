@@ -22,6 +22,8 @@
     "db:down": "docker compose down",
     "db:studio": "docker compose --profile studio up -d drizzle-studio",
     "db:migrate": "bun run cli db migrate",
+    "obs:up": "docker compose -f compose.observability.yml up -d",
+    "obs:down": "docker compose -f compose.observability.yml down",
     "db:reset": "bun run cli db reset",
     "db:seed": "bun run cli db seed",
     "link": "cd packages/cli && bun link",

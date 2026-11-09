@@ -2,6 +2,7 @@ import { Config, Effect, Layer, Schedule } from "effect"
 import { NodeRuntime } from "@effect/platform-node"
 import "./env.ts"
 import { Database } from "./db/Database.ts"
+import { telemetryLayer } from "./observability.ts"
 import * as QueueRepository from "./repositories/QueueRepository.ts"
 import { CrawlRunner } from "./services/CrawlRunner.ts"
 import { CrawlService } from "./services/CrawlService.ts"
@@ -135,5 +136,6 @@ const program = Effect.gen(function*() {
 program.pipe(
   Effect.provide(WorkerServices),
   Effect.catchCause((cause) => Effect.logError("Worker crashed", cause)),
+  Effect.provide(telemetryLayer("otbor-worker")),
   NodeRuntime.runMain
 )

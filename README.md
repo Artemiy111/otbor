@@ -199,6 +199,22 @@ cat resume.txt | otbor write resume --target-role "SRE"
 `ApplicationsSetKit`, ответы и `formHash` остаются прежними. Без kit ничего не
 создаётся. Подробности: [docs/writing.md](docs/writing.md).
 
+## Наблюдаемость
+
+Сервер и воркер отдают логи, трейсы и метрики по OTLP встроенными модулями
+Effect (`effect/observability`). Локальный стек — Loki, Grafana, Tempo, Mimir и
+OpenTelemetry Collector — живёт в `compose.observability.yml`:
+
+```bash
+bun run obs:up     # Grafana: http://127.0.0.1:3030
+bun run obs:down
+```
+
+Экспорт включается переменными `OTEL_*` в `.env` (см. `.env.example`); без них
+процессы ничего не шлют, а терминальный и файловый логи работают как раньше.
+В Grafana уже настроены источники со связями лог → трейс → метрики и дашборд
+«otbor: обзор». Конфиги лежат в `infra/observability`.
+
 ## Проверки
 
 ```bash
