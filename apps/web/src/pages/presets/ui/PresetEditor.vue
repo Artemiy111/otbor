@@ -12,6 +12,8 @@ import {
   buildFilter,
   isComplete,
   toEditable,
+  FunnelSankey,
+  funnelStages,
   useRuleFunnel
 } from "@/features/rule-builder"
 import { describeError } from "@/shared/lib"
@@ -74,7 +76,8 @@ const onJsonInput = (value: string | undefined) => {
   }
 }
 
-const { counts: funnel } = useRuleFunnel(filter)
+const { counts: funnel, total: corpusTotal } = useRuleFunnel(filter)
+const stages = computed(() => funnelStages(filter.value, funnel.value, corpusTotal.value))
 
 /** Снимок сохранённого состояния: от него считается «есть несохранённые изменения». */
 const snapshot = (): string => JSON.stringify([title.value.trim(), buildFilter(filter.value)])
@@ -199,6 +202,13 @@ onMounted(() => {
         >
           Ограничение словаря ({{ filter.keywordIds.length }}) сохранено из старой версии и не влияет на срез.
         </p>
+
+        <div v-if="mode === 'rules' && stages.length > 1" class="space-y-1 border-t border-border pt-3">
+          <h3 class="text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
+            Воронка: как правила сужают корпус
+          </h3>
+          <FunnelSankey :stages="stages" />
+        </div>
 
         <div
           class="sticky bottom-0 -mx-4 -mb-4 flex flex-wrap items-center gap-2 rounded-b-xl border-t border-border bg-card/95 px-4 py-3 backdrop-blur"
