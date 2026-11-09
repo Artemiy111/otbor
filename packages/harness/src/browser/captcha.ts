@@ -39,6 +39,17 @@ const CAPTCHA_SUBMIT_SELECTORS = [
 ]
 
 /**
+ * Кнопка «обновить картинку»: после неверного ответа берём новую капчу, а не
+ * бьёмся о ту же. Запасной вариант - первая кнопка после картинки (под ней
+ * стоит именно обновление). Селектор подтверждён только по скриншоту hh.
+ */
+const CAPTCHA_REFRESH_SELECTORS = [
+  '[data-qa="account-captcha-refresh"]',
+  '[data-qa="account-captcha-reload"]',
+  `${CAPTCHA_PICTURE_SELECTOR} >> xpath=following::button[1]`
+]
+
+/**
  * Однотонный PNG такого размера весит сотни байт, настоящая капча - десятки
  * килобайт. Порог с большим запасом: пустой кадр от картинки он отличает точно.
  */
@@ -129,6 +140,18 @@ export const makeCaptchaSolve = (
       const used = attempts.get(page) ?? 0
       if (used >= config.maxAttempts) return false
       attempts.set(page, used + 1)
+
+      // Повторная попытка на той же капче: просим у hh новую картинку.
+      if (used > 0) {
+        const refreshed = yield* Effect.tryPromise(async () => {
+          const button = await firstVisible(page, CAPTCHA_REFRESH_SELECTORS)
+          if (button === null) return false
+          await button.click({ timeout: 5_000 })
+          return true
+        }).pipe(Effect.orElseSucceed(() => false))
+        if (refreshed) yield* Effect.sleep("1500 millis")
+        else yield* Effect.logWarning("captcha: refresh button not found, retrying on the same picture")
+      }
 
       const picture = page.locator(CAPTCHA_PICTURE_SELECTOR).first()
       // Картинка дорисовывается после появления окна: скриншот раньше времени

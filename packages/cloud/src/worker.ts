@@ -20,6 +20,7 @@ import { ResumeSync } from "./services/ResumeSync.ts"
 import { ScheduleDispatcher } from "./services/ScheduleDispatcher.ts"
 import { recoverExpiredLeases, recoverInterruptedRuns } from "./services/recovery.ts"
 import { runDueSchedules } from "./services/ScheduleWorker.ts"
+import { resumeCaptchaBlocks } from "./services/captchaAutoResume.ts"
 import { TelegramGatewayProvider } from "./services/TelegramGatewayProvider.ts"
 import { TelegramSync } from "./services/TelegramSync.ts"
 
@@ -117,7 +118,18 @@ const program = Effect.gen(function*() {
     Effect.repeat(Schedule.spaced(`${scheduleSeconds} seconds`))
   )
 
-  yield* Effect.all([sweepLoop, scheduleLoop], { concurrency: "unbounded" })
+  // Блокировка после капчи снимается сама, пока работает решатель и повторы не исчерпаны.
+  const captchaLoop = resumeCaptchaBlocks().pipe(
+    Effect.flatMap((ids) =>
+      ids.length > 0
+        ? Effect.logInfo(`captcha: auto-resumed submits of ${ids.length} account(s) for another try`)
+        : Effect.void
+    ),
+    Effect.catchCause((cause) => Effect.logError("captcha auto-resume failed", cause)),
+    Effect.repeat(Schedule.spaced("60 seconds"))
+  )
+
+  yield* Effect.all([sweepLoop, scheduleLoop, captchaLoop], { concurrency: "unbounded" })
 })
 
 program.pipe(
