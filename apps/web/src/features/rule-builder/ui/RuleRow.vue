@@ -140,9 +140,10 @@ const onCurrency = (value: unknown) => {
 <template>
   <div
     ref="root"
-    class="flex flex-wrap items-center gap-1.5 border-l-2 py-0.5 pl-2"
+    class="flex items-center gap-1.5 border-l-2 py-0.5 pl-2"
     :class="isComplete(rule) ? 'border-transparent' : 'border-amber-500/70'"
   >
+    <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
     <Select :model-value="rule.field" :disabled="props.disabled" @update:model-value="onField">
       <SelectTrigger class="h-7 w-[170px] text-xs" :title="meta.hint">
         <SelectValue />
@@ -278,9 +279,11 @@ const onCurrency = (value: unknown) => {
       @update:model-value="onText"
     />
 
+    </div>
+    <div class="flex shrink-0 items-center gap-1.5">
     <span
       v-if="props.count !== undefined"
-      class="ml-auto inline-flex shrink-0 items-center gap-1 text-[11px] tabular-nums text-muted-foreground"
+      class="inline-flex shrink-0 items-center gap-1 text-[11px] tabular-nums text-muted-foreground"
       title="Сколько вакансий остаётся после этого правила"
     >
       <span
@@ -295,12 +298,12 @@ const onCurrency = (value: unknown) => {
     <button
       type="button"
       class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-      :class="props.count === undefined ? 'ml-auto' : ''"
-      title="Удалить правило"
+            title="Удалить правило"
       :disabled="props.disabled"
       @click="emit('remove')"
     >
       <X class="h-3.5 w-3.5" />
     </button>
+    </div>
   </div>
 </template>
