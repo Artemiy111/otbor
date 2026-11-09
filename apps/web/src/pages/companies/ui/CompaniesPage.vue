@@ -9,7 +9,7 @@ import { AccountChip, ALL_ACCOUNTS, useAccountFilter } from "@/entities/hh-accou
 import { accountFilterOptions } from "@/features/account-filter"
 import { companyBlacklistOptions, parseCompanyBlacklistFilter } from "@/features/blacklist-filter"
 import { RefreshButton } from "@/features/refresh-button"
-import { companyPath, describeError, formatNumber, formatRating } from "@/shared/lib"
+import { companyPath, describeError, employerLogoSrc, formatNumber, formatRating } from "@/shared/lib"
 import {
   Alert,
   AlertDescription,
@@ -87,9 +87,9 @@ const columns: ColumnDef<EmployerSummary>[] = [
     header: sortableHeader<EmployerSummary>("Компания"),
     cell: ({ row }) =>
       h("div", { class: "flex items-center gap-2.5" }, [
-        row.original.logoUrl
+        employerLogoSrc(row.original.id, row.original.logoUrl)
           ? h("img", {
-              src: row.original.logoUrl,
+              src: employerLogoSrc(row.original.id, row.original.logoUrl)!,
               alt: row.original.name,
               class: "size-8 shrink-0 rounded-md border bg-white object-contain",
               loading: "lazy"

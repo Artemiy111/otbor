@@ -67,3 +67,4 @@ export {
 } from "./vacancy-labels"
 export { makeResumeMatcher } from "./resume-match"
 export { buildRecon, reconByKey, stanceOf, RECON_GROUPS, RECON_SOURCES, type ReconGroup, type ReconRow, type ReconSource, type ReconStance } from "./recon"
+export { employerLogoSrc } from "./employer-logo"

@@ -279,6 +279,15 @@ employer (
   unique (source, external_id)
 );
 
+-- Сжатая копия логотипа (webp, сторона до 192 px). Качается лениво при первом
+-- запросе GET /employer-logo/:id и перекачивается, когда сменился employer.logo_url.
+create table employer_logo (
+  employer_id uuid primary key references employer(id) on delete cascade,
+  source_url text not null, content_type text not null,
+  bytes bytea not null, byte_size integer not null, original_byte_size integer not null,
+  width integer, height integer, fetched_at timestamptz not null
+);
+
 vacancy (
   id uuid primary key default uuidv7(),
   source text not null,

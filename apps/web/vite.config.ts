@@ -31,6 +31,10 @@ export default defineConfig(({ mode }) => {
     "/rpc": {
       target: proxyTarget,
       changeOrigin: true
+    },
+    "/employer-logo": {
+      target: proxyTarget,
+      changeOrigin: true
     }
   }
 

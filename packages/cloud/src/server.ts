@@ -7,6 +7,7 @@ import { createServer } from "node:http"
 import { join, resolve } from "node:path"
 import "./env.ts"
 import { Database } from "./db/Database.ts"
+import { EmployerLogoRoute } from "./http/employerLogoRoute.ts"
 import { OtborHandlers, OtborServices } from "./rpc/handlers.ts"
 import { ensureBootstrapUser, ensureSystemPresets } from "./services/bootstrap.ts"
 import { CurrentUser } from "./services/CurrentUser.ts"
@@ -41,6 +42,7 @@ const HealthRoute = Layer.effectDiscard(
 const AppLayer = Layer.mergeAll(
   RpcRoute,
   HealthRoute,
+  EmployerLogoRoute,
   Layer.effectDiscard(ensureBootstrapUser),
   Layer.effectDiscard(ensureSystemPresets)
 )

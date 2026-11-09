@@ -10,6 +10,7 @@ import {
   employmentFormLabel,
   experienceLabel,
   formatAge,
+  employerLogoSrc,
   formatDate,
   formatNumber,
   formatRating,
@@ -53,8 +54,8 @@ const seenAgo = computed(() => formatAge(Math.max(0, (Date.now() - Date.parse(pr
   <article :class="cn('flex gap-4 px-3 py-5', rowClass(vacancy))">
     <div :class="cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-lg font-semibold', avatar.tone)" aria-hidden="true">
       <img
-        v-if="vacancy.employerLogoUrl && !logoFailed"
-        :src="vacancy.employerLogoUrl"
+        v-if="employerLogoSrc(vacancy.employerId, vacancy.employerLogoUrl) && !logoFailed"
+        :src="employerLogoSrc(vacancy.employerId, vacancy.employerLogoUrl)!"
         alt=""
         loading="lazy"
         referrerpolicy="no-referrer"

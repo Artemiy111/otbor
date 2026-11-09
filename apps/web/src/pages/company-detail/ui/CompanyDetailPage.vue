@@ -10,6 +10,7 @@ import { hydrationApi } from "@/entities/hydration"
 import { RefreshButton } from "@/features/refresh-button"
 import {
   describeError,
+  employerLogoSrc,
   formatDate,
   formatNumber,
   formatPercent,
@@ -218,8 +219,8 @@ const errorText = computed(() =>
         </CardHeader>
         <CardContent class="flex flex-col gap-4 sm:flex-row sm:items-start">
           <img
-            v-if="employer.logoUrl"
-            :src="employer.logoUrl"
+            v-if="employerLogoSrc(employer.id, employer.logoUrl)"
+            :src="employerLogoSrc(employer.id, employer.logoUrl)!"
             :alt="employer.name"
             class="size-20 shrink-0 rounded-lg border bg-white object-contain"
           />
