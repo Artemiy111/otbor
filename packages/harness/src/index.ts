@@ -82,3 +82,11 @@ export {
   type OpenAiEndpoint,
   type OpenAiEnv
 } from "./openai.ts"
+export {
+  openAiStorePath,
+  readOpenAiStore,
+  removeOpenAiEndpoint,
+  upsertOpenAiEndpoint,
+  writeOpenAiStore
+} from "./openai-store.ts"
+export type { OpenAiEndpointDef } from "./openai-store.ts"

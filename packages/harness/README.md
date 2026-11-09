@@ -33,8 +33,17 @@ Any server that speaks `/v1/models` and `/v1/chat/completions` is a harness
 too, without ACP and without a child process:
 
 ```sh
+otbor harness model add --id omlx --url http://127.0.0.1:8000/v1 [--api-key ...]
+otbor harness model list
+otbor harness model remove --id omlx
+```
+
+This writes `~/.otbor/openai.json` (0600, next to `harness.json`; the harness
+reads it on every job, so no restart is needed for jobs, and the catalog picks it
+up within 30 minutes). Environment variables override the file by id:
+
+```sh
 OTBOR_OPENAI_URL=http://127.0.0.1:8000/v1 otbor harness run   # id "local"
-OTBOR_OPENAI_ID=omlx OTBOR_OPENAI_API_KEY=... otbor harness run
 ```
 
 `OTBOR_OPENAI_ENDPOINTS` is a JSON array of
@@ -43,7 +52,7 @@ The catalog lists the server's models (`GET /models`); a job picks it with
 `harness: "<id>"` and an explicit `model` (there is no default model). `effort`
 is sent as `reasoning_effort`. One non-streaming request per job, no tools; a
 leading `<think>…</think>` block is dropped. `OTBOR_OPENAI_TIMEOUT_SECONDS`
-(default 300) bounds a request. The API key is read only from the environment.
+(default 300) bounds a request. The API key lives only in that file or the environment, never in Postgres.
 
 ## Behaviour
 

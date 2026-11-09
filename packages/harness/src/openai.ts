@@ -2,6 +2,12 @@ import type { AgentHarness, AgentModel, HarnessExit, InferencePayload } from "@o
 import { Cause, Duration, Effect, Redacted, Schema } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
 import {
+  EndpointDef,
+  openAiStorePath,
+  readOpenAiStore,
+  type OpenAiEndpointDef
+} from "./openai-store.ts"
+import {
   decodeInferencePayload,
   InferenceFailed,
   type InferenceArtifacts
@@ -31,14 +37,7 @@ export const DEFAULT_OPENAI_TIMEOUT_SECONDS = 300
 /** Таймаут запроса списка моделей: каталог не должен вешать харнес. */
 const PROBE_TIMEOUT = Duration.seconds(10)
 
-const EndpointDef = Schema.Struct({
-  id: Schema.String,
-  name: Schema.optional(Schema.String),
-  url: Schema.String,
-  apiKey: Schema.optional(Schema.String),
-  variant: Schema.optional(Schema.String),
-  timeoutSeconds: Schema.optional(Schema.Int)
-})
+export type { OpenAiEndpointDef } from "./openai-store.ts"
 
 export interface OpenAiEnv {
   readonly OTBOR_OPENAI_URL?: string | undefined
@@ -63,7 +62,10 @@ const normalizeBaseUrl = (url: string): string => url.trim().replace(/\/+$/, "")
  * Запись с тем же id заменяет одиночную. Ключ API живёт только в окружении и
  * в логи не попадает (`Redacted`).
  */
-export const resolveOpenAiEndpoints = (env: OpenAiEnv): ReadonlyArray<OpenAiEndpoint> => {
+export const resolveOpenAiEndpoints = (
+  env: OpenAiEnv,
+  saved: ReadonlyArray<OpenAiEndpointDef> = []
+): ReadonlyArray<OpenAiEndpoint> => {
   const timeoutRaw = trimmed(env.OTBOR_OPENAI_TIMEOUT_SECONDS)
   const timeout = timeoutRaw === undefined ? DEFAULT_OPENAI_TIMEOUT_SECONDS : Number(timeoutRaw)
   if (!Number.isInteger(timeout) || timeout < 1) {
@@ -89,6 +91,9 @@ export const resolveOpenAiEndpoints = (env: OpenAiEnv): ReadonlyArray<OpenAiEndp
       timeoutSeconds: def.timeoutSeconds ?? timeout
     }
   }
+
+  // Сохранённые в ~/.otbor/openai.json: основа, окружение их переопределяет.
+  for (const def of saved) byId.set(def.id.trim(), make(def))
 
   const single = trimmed(env.OTBOR_OPENAI_URL)
   if (single !== undefined) {
@@ -121,12 +126,15 @@ export const resolveOpenAiEndpoints = (env: OpenAiEnv): ReadonlyArray<OpenAiEndp
   return Array.from(byId.values())
 }
 
-/** Эндпоинты из `process.env`; сломанная конфигурация — сообщение, а не падение. */
+/**
+ * Эндпоинты из `~/.otbor/openai.json` и `process.env`; сломанная конфигурация —
+ * сообщение, а не падение.
+ */
 export const loadOpenAiEndpoints = (
   env: Readonly<Record<string, string | undefined>> = process.env
 ): Effect.Effect<ReadonlyArray<OpenAiEndpoint>, InferenceFailed> =>
   Effect.try({
-    try: () => resolveOpenAiEndpoints(env),
+    try: () => resolveOpenAiEndpoints(env, readOpenAiStore(openAiStorePath(env))),
     catch: (cause) =>
       new InferenceFailed({
         message: `OpenAI endpoint configuration error: ${cause instanceof Error ? cause.message : String(cause)}`

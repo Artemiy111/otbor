@@ -3,8 +3,12 @@ import { HarnessExitTag, JobKind as JobKindSchema } from "@otbor/contract"
 import {
   HarnessGateway,
   PlaywrightBrowserExecutor,
+  openAiStorePath,
   parseHarnessConfig,
-  runHarness
+  readOpenAiStore,
+  removeOpenAiEndpoint,
+  runHarness,
+  upsertOpenAiEndpoint
 } from "@otbor/harness"
 import { Config, Console, Effect, Option } from "effect"
 import { Command, Flag } from "effect/cli"
@@ -285,7 +289,61 @@ const revoke = Command.make(
   })
 ).pipe(Command.withDescription("Clear a harness token so its device cannot continue"))
 
+const modelAdd = Command.make(
+  "add",
+  {
+    id: Flag.String("id").pipe(
+      Flag.withDescription("Harness id in the catalog and in job payloads (e.g. omlx)")
+    ),
+    url: Flag.String("url").pipe(
+      Flag.withDescription("OpenAI API root with /v1, e.g. http://127.0.0.1:8000/v1")
+    ),
+    name: Flag.String("name").pipe(Flag.optional),
+    apiKey: Flag.String("api-key").pipe(
+      Flag.withDescription("API key, stored in ~/.otbor/openai.json (0600)"),
+      Flag.optional
+    )
+  },
+  Effect.fn(function*({ id, url, name, apiKey }) {
+    const path = upsertOpenAiEndpoint({
+      id,
+      url,
+      ...(Option.isSome(name) ? { name: name.value } : {}),
+      ...(Option.isSome(apiKey) ? { apiKey: apiKey.value } : {})
+    })
+    yield* Console.log(`saved ${id}: ${path}`)
+  })
+).pipe(Command.withDescription("Add or replace a local OpenAI-compatible model server"))
+
+const modelList = Command.make(
+  "list",
+  {},
+  Effect.fn(function*() {
+    const endpoints = readOpenAiStore()
+    yield* Console.log(`${openAiStorePath()}`)
+    for (const endpoint of endpoints) {
+      yield* Console.log(
+        `${endpoint.id}  ${endpoint.url}  ${endpoint.apiKey === undefined ? "no key" : "key set"}`
+      )
+    }
+    if (endpoints.length === 0) yield* Console.log("(none)")
+  })
+).pipe(Command.withDescription("List saved local model servers"))
+
+const modelRemove = Command.make(
+  "remove",
+  { id: Flag.String("id") },
+  Effect.fn(function*({ id }) {
+    yield* Console.log(removeOpenAiEndpoint(id) ? `removed ${id}` : `no such server: ${id}`)
+  })
+).pipe(Command.withDescription("Remove a saved local model server"))
+
+const model = Command.make("model").pipe(
+  Command.withSubcommands([modelAdd, modelList, modelRemove]),
+  Command.withDescription("Local models over the OpenAI API (oMLX, LM Studio, llama.cpp)")
+)
+
 export const harnessCommand = Command.make("harness").pipe(
-  Command.withSubcommands([register, run, lease, heartbeat, complete, revoke]),
+  Command.withSubcommands([register, run, model, lease, heartbeat, complete, revoke]),
   Command.withDescription("The edge harness protocol")
 )
