@@ -359,7 +359,7 @@ const telegramService = TelegramService.layer.pipe(Layer.provide(telegramSync))
 
 /** All services, with their database and user dependencies satisfied. */
 export const OtborServices = Layer.mergeAll(
-  SystemService.layer,
+  SystemService.layer.pipe(Layer.provide(SystemOneClient.layer)),
   sourceStack,
   dispatcher,
   scheduleService,

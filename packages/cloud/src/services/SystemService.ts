@@ -5,6 +5,7 @@ import { Database } from "../db/Database.ts"
 import * as HarnessRepository from "../repositories/HarnessRepository.ts"
 import * as HhAccountRepository from "../repositories/HhAccountRepository.ts"
 import { CurrentUser } from "./CurrentUser.ts"
+import { SystemOneClient } from "./SystemOneClient.ts"
 import { toStorageError } from "./support.ts"
 
 export const VERSION = "0.1.0"
@@ -18,6 +19,18 @@ export class SystemService extends Context.Service<
     Effect.gen(function*() {
       const database = yield* Database
       const currentUser = yield* CurrentUser
+      const systemOneClient = yield* SystemOneClient
+
+      // Проверка связи с моделью анализа; её недоступность не делает health красным.
+      const systemOne = systemOneClient.ping().pipe(
+        Effect.map((ping) => ({
+          reachable: ping.reachable,
+          endpoint: systemOneClient.endpoint,
+          model: systemOneClient.model,
+          latencyMs: ping.latencyMs,
+          error: ping.error
+        }))
+      )
 
       // Per-account session state; a failure here must not turn health red.
       const accounts = database
@@ -42,15 +55,16 @@ export class SystemService extends Context.Service<
         database
           .asOwner((tx) => tx.execute(sql`select 1 as ok`))
           .pipe(
-            Effect.flatMap(() => Effect.all({ accounts, harnesses })),
+            Effect.flatMap(() => Effect.all({ accounts, harnesses, systemOne }, { concurrency: "unbounded" })),
             Effect.map(
-              ({ accounts, harnesses }): Health => ({
+              ({ accounts, harnesses, systemOne }): Health => ({
                 status: "ok",
                 version: VERSION,
                 database: true,
                 now: new Date().toISOString(),
                 accounts,
-                harnesses: harnesses.map((h) => ({ ...h, accounts: h.accounts as never }))
+                harnesses: harnesses.map((h) => ({ ...h, accounts: h.accounts as never })),
+                systemOne
               })
             ),
             Effect.mapError(toStorageError("system.health")),

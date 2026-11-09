@@ -21,13 +21,24 @@ export const HealthHarness = Schema.Struct({
 })
 export type HealthHarness = typeof HealthHarness.Type
 
+/** Локальная модель анализа вакансий (SystemOne): отвечает ли сервер прямо сейчас. */
+export const HealthSystemOne = Schema.Struct({
+  reachable: Schema.Boolean,
+  endpoint: Schema.String,
+  model: Schema.String,
+  latencyMs: Schema.NullOr(Schema.Number),
+  error: Schema.NullOr(Schema.String)
+})
+export type HealthSystemOne = typeof HealthSystemOne.Type
+
 export const Health = Schema.Struct({
   status: Schema.Literals(["ok", "degraded"]),
   version: Schema.String,
   database: Schema.Boolean,
   now: Schema.String,
   accounts: Schema.optional(Schema.Array(HealthAccount)),
-  harnesses: Schema.optional(Schema.Array(HealthHarness))
+  harnesses: Schema.optional(Schema.Array(HealthHarness)),
+  systemOne: Schema.optional(HealthSystemOne)
 })
 
 export type Health = typeof Health.Type

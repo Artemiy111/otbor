@@ -32,8 +32,20 @@ export interface SystemOneAnalysis {
   readonly tokens: number | null
 }
 
+/** Результат лёгкой проверки связи с сервером модели (без запуска анализа). */
+export interface SystemOnePing {
+  readonly reachable: boolean
+  readonly latencyMs: number | null
+  /** Причина недоступности по-русски; ключ в сообщение не попадает. */
+  readonly error: string | null
+}
+
 export interface SystemOneClientShape {
   readonly model: string
+  /** Адрес сервера для показа оператору (без ключа). */
+  readonly endpoint: string
+  /** Достучаться до сервера: любой HTTP-ответ кроме 5xx и отказа ключа считается «жив». */
+  readonly ping: (timeoutMs?: number) => Effect.Effect<SystemOnePing>
   readonly analyze: (state: AnalysisState) => Effect.Effect<SystemOneAnalysis, SystemOneError>
 }
 
@@ -151,7 +163,39 @@ const make = (config: SystemOneConfig) =>
       }
     )
 
-    return SystemOneClient.of({ model: config.model, analyze })
+    const ping: SystemOneClientShape["ping"] = (timeoutMs = 3_000) =>
+      Effect.gen(function*() {
+        const started = Date.now()
+        // `/v1/models`: дешёвый GET у OpenAI-совместимых серверов; 404 тоже значит «сервер жив».
+        let request = HttpClientRequest.get(`${config.url.replace(/\/+$/, "")}/v1/models`).pipe(
+          HttpClientRequest.acceptJson
+        )
+        if (config.apiKey !== undefined) request = HttpClientRequest.bearerToken(request, config.apiKey)
+        const response = yield* http.execute(request).pipe(
+          Effect.timeoutOrElse({
+            duration: Duration.millis(timeoutMs),
+            orElse: () => Effect.fail(unreachable(`таймаут ${timeoutMs} мс`))
+          }),
+          Effect.mapError((error) => (error instanceof SystemOneError ? error : unreachable(error.message)))
+        )
+        const latencyMs = Date.now() - started
+        if (response.status === 401 || response.status === 403) {
+          return { reachable: false, latencyMs, error: `ключ отклонён (HTTP ${response.status})` } satisfies SystemOnePing
+        }
+        if (response.status >= 500) {
+          return { reachable: false, latencyMs, error: `HTTP ${response.status}` } satisfies SystemOnePing
+        }
+        return { reachable: true, latencyMs, error: null } satisfies SystemOnePing
+      }).pipe(
+        Effect.catch((error: SystemOneError) =>
+          Effect.succeed({ reachable: false, latencyMs: null, error: error.message } satisfies SystemOnePing)
+        ),
+        Effect.catchCause(() =>
+          Effect.succeed({ reachable: false, latencyMs: null, error: "проверка не удалась" } satisfies SystemOnePing)
+        )
+      )
+
+    return SystemOneClient.of({ model: config.model, endpoint: config.url.replace(/\/+$/, ""), ping, analyze })
   })
 
 /** Local model server on the operator's Mac (omlx). Not a chat model. */

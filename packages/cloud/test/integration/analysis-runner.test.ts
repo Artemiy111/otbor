@@ -43,6 +43,8 @@ if (!enabled || serverUrl === null) {
     SystemOneClient,
     SystemOneClient.of({
       model: "fake-model",
+      endpoint: "http://fake",
+      ping: () => Effect.succeed({ reachable: true, latencyMs: 1, error: null }),
       analyze: (state) => {
         calls.push(state.title)
         if (mode === "down") {

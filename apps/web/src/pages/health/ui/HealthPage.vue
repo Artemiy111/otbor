@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useQuery } from "@pinia/colada"
+import { useIntervalFn } from "@vueuse/core"
 import { CircleAlert } from "@lucide/vue"
 import { healthApi, healthKeys } from "@/entities/health"
 import { RefreshButton } from "@/features/refresh-button"
@@ -24,11 +25,14 @@ const query = useQuery({
   key: healthKeys.current(),
   query: healthApi.get
 })
+
+/** Связь с локальной моделью проверяется постоянно: раз в 15 секунд, пока страница открыта. */
+useIntervalFn(() => void query.refetch(), 15_000)
 </script>
 
 <template>
   <section>
-    <PageHeader title="Здоровье" description="Состояние RPC-сервера облака и подключения к базе данных.">
+    <PageHeader title="Здоровье" description="Состояние RPC-сервера облака, базы данных, харнессов и локальной модели анализа.">
       <template #actions>
         <RefreshButton :loading="query.isLoading.value" @refresh="query.refetch()" />
       </template>
@@ -90,6 +94,33 @@ const query = useQuery({
         <p v-if="!(query.data.value.harnesses ?? []).length" class="text-sm text-muted-foreground">
           Ни один harness не зарегистрирован.
         </p>
+      </CardContent>
+    </Card>
+
+    <Card v-if="query.data.value?.systemOne" class="mt-4">
+      <CardHeader>
+        <CardTitle>Локальная модель анализа</CardTitle>
+        <CardDescription>
+          SystemOne разбирает вакансии (уровень, роль, условия). Без неё правила по <code>analysis_*</code> отсекают
+          неразобранные вакансии. Проверка каждые 15 секунд.
+        </CardDescription>
+      </CardHeader>
+      <CardContent class="space-y-2">
+        <Alert v-if="!query.data.value.systemOne.reachable" variant="destructive">
+          <CircleAlert />
+          <AlertTitle>Модель анализа недоступна</AlertTitle>
+          <AlertDescription>
+            {{ query.data.value.systemOne.error }}. Анализ вакансий не идёт; запустите сервер модели.
+          </AlertDescription>
+        </Alert>
+        <div class="flex flex-wrap items-center gap-3 rounded-md border p-3 text-sm">
+          <StatusBadge :value="query.data.value.systemOne.reachable ? 'ok' : 'down'" raw />
+          <span class="font-medium">{{ query.data.value.systemOne.model }}</span>
+          <code class="text-xs text-muted-foreground">{{ query.data.value.systemOne.endpoint }}</code>
+          <span v-if="query.data.value.systemOne.latencyMs !== null && query.data.value.systemOne.reachable" class="text-muted-foreground">
+            ответ за {{ query.data.value.systemOne.latencyMs }} мс
+          </span>
+        </div>
       </CardContent>
     </Card>
 

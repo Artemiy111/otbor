@@ -146,4 +146,33 @@ describe("SystemOneClient", () => {
     reply = () => new Response("teapot", { status: 418 })
     expect((await fail()).kind).toBe("bad_response")
   })
+
+  test("ping: a live server is reachable, a 5xx or a refused key is not, a dead port is not", async () => {
+    const ping = (patch?: Partial<SystemOneConfig>) =>
+      Effect.runPromise(
+        Effect.gen(function*() {
+          return yield* (yield* SystemOneClient).ping(1_000)
+        }).pipe(Effect.provide(SystemOneClient.layerWith(config(patch))))
+      )
+
+    seen.length = 0
+    reply = () => Response.json({ data: [] })
+    expect(await ping()).toMatchObject({ reachable: true, error: null })
+    expect(seen[0]).toMatchObject({ method: "GET", path: "/v1/models", auth: "Bearer sekret-key" })
+
+    reply = () => new Response("no such route", { status: 404 })
+    expect((await ping()).reachable).toBe(true)
+
+    reply = () => new Response("boom", { status: 503 })
+    expect(await ping()).toMatchObject({ reachable: false, error: "HTTP 503" })
+
+    reply = () => new Response("nope", { status: 401 })
+    const refused = await ping()
+    expect(refused.reachable).toBe(false)
+    expect(refused.error).not.toContain("sekret-key")
+
+    const dead = await ping({ url: "http://127.0.0.1:1" })
+    expect(dead.reachable).toBe(false)
+    expect(dead.error).toContain("SystemOne недоступен")
+  })
 })
