@@ -1,6 +1,7 @@
 import { RPC_PATH, type OtborApi, OtborRpcs } from "@otbor/contract"
 import { Context, Effect, Layer, ManagedRuntime } from "effect"
 import { FetchHttpClient } from "effect/http"
+import { OtlpSerialization, OtlpTracer } from "effect/observability"
 import { RpcClient, RpcSerialization } from "effect/rpc"
 
 /**
@@ -17,7 +18,22 @@ const ApiLayer = Layer.effect(Api, RpcClient.make(OtborRpcs)).pipe(
   Layer.provide(FetchHttpClient.layer)
 )
 
-const runtime = ManagedRuntime.make(ApiLayer)
+/**
+ * Трейсы браузера: RPC-клиент создаёт спан на каждый вызов и передаёт его
+ * серверу, так что в Tempo вызов из интерфейса и его обработка на сервере
+ * видны одним трейсом. Слой пуст, пока экспорт не включён при сборке.
+ */
+const TelemetryLayer = __OTBOR_OTLP_URL__ === ""
+  ? Layer.empty
+  : OtlpTracer.layer({
+    url: `${__OTBOR_OTLP_URL__}/v1/traces`,
+    resource: { serviceName: "otbor-web", attributes: { "service.namespace": "otbor" } }
+  }).pipe(
+    Layer.provide(OtlpSerialization.layerJson),
+    Layer.provide(FetchHttpClient.layer)
+  )
+
+const runtime = ManagedRuntime.make(Layer.provideMerge(ApiLayer, TelemetryLayer))
 
 export const call = <A, E>(f: (api: OtborApi) => Effect.Effect<A, E>): Promise<A> =>
   runtime.runPromise(Effect.flatMap(Api, f))

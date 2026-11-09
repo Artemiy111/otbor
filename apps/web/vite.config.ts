@@ -12,6 +12,8 @@ import { defineConfig, loadEnv } from "vite"
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url))
 const srcRoot = fileURLToPath(new URL("./src", import.meta.url))
 
+const OTLP_PATH = "/otlp"
+
 export default defineConfig(({ mode }) => {
   // Load only the OTBOR_ namespace: no crawler proxy secret can leak into the
   // browser bundle, and only the single URL is published.
@@ -38,6 +40,21 @@ export default defineConfig(({ mode }) => {
     }
   }
 
+  // Телеметрия браузера идёт на тот же origin и проксируется в коллектор,
+  // поэтому CORS не нужен, а адрес коллектора не попадает в бандл. Без
+  // OTEL_EXPORTER_OTLP_ENDPOINT прокси нет и приложение ничего не шлёт.
+  const otlpTarget = loadEnv(mode, repoRoot, "OTEL_EXPORTER_OTLP_")
+    .OTEL_EXPORTER_OTLP_ENDPOINT?.trim() ?? ""
+  if (otlpTarget !== "") {
+    Object.assign(proxy, {
+      [OTLP_PATH]: {
+        target: otlpTarget,
+        changeOrigin: true,
+        rewrite: (path: string) => path.slice(OTLP_PATH.length)
+      }
+    })
+  }
+
   return {
     plugins: [vue(), tailwindcss()],
     envDir: repoRoot,
@@ -47,7 +64,8 @@ export default defineConfig(({ mode }) => {
       }
     },
     define: {
-      __OTBOR_API_URL__: JSON.stringify(configured)
+      __OTBOR_API_URL__: JSON.stringify(configured),
+      __OTBOR_OTLP_URL__: JSON.stringify(otlpTarget === "" ? "" : OTLP_PATH)
     },
     server: {
       host: "127.0.0.1",
