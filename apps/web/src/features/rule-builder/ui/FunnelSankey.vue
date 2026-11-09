@@ -18,6 +18,8 @@ const TOP = 6
 const LABEL_Y = TOP + H + GAP + 18
 
 const nf = new Intl.NumberFormat("ru-RU")
+/** Много этапов: подписи слипаются, оставляем числа, названия видны по наведению. */
+const showLabels = computed(() => props.stages.length <= 5)
 const max = computed(() => Math.max(1, props.stages[0]?.count ?? 1))
 const height = (count: number) => Math.max(count === 0 ? 0 : 2, (count / max.value) * H)
 
@@ -59,7 +61,7 @@ const parts = computed(() =>
 </script>
 
 <template>
-  <svg :viewBox="`0 0 ${W} ${LABEL_Y + 18}`" class="w-full" role="img" aria-label="Воронка правил">
+  <svg :viewBox="`0 0 ${W} ${showLabels ? LABEL_Y + 8 : LABEL_Y - 4}`" class="w-full" role="img" aria-label="Воронка правил">
     <g v-for="(part, index) in parts" :key="part.stage.id">
       <path v-if="part.pass" :d="part.pass" class="fill-emerald-500/20" />
       <path v-if="part.drop" :d="part.drop" class="fill-amber-500/35" />
@@ -92,6 +94,7 @@ const parts = computed(() =>
         {{ nf.format(part.stage.count) }}
       </text>
       <text
+        v-if="showLabels"
         :x="part.x + NODE / 2"
         :y="LABEL_Y + 2"
         :text-anchor="index === 0 ? 'start' : index === parts.length - 1 ? 'end' : 'middle'"
