@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, ref } from "vue"
 import type { KeywordMatchLocation, PresetField } from "@otbor/contract"
 import { Plus, X } from "@lucide/vue"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui"
@@ -13,10 +13,15 @@ import RuleRow from "./RuleRow.vue"
  * rules are ANDed. An "any of" group is OR over branches, and the rules inside
  * one branch are ANDed: `RUB >= 200k` / `USD >= 3k` is two branches.
  */
-const props = withDefaults(defineProps<{ disabled?: boolean; flags?: boolean }>(), {
-  disabled: false,
-  flags: true
-})
+const props = withDefaults(
+  defineProps<{
+    disabled?: boolean
+    flags?: boolean
+    /** Воронка: id правила или группы → сколько вакансий остаётся после него. */
+    counts?: ReadonlyMap<number, number>
+  }>(),
+  { disabled: false, flags: true, counts: undefined }
+)
 
 const state = defineModel<EditableFilter>({ required: true })
 
@@ -26,8 +31,27 @@ const empty = computed(() => state.value.rules.length === 0 && state.value.group
 const QUICK_FIELDS: ReadonlyArray<PresetField> = ["title", "skills", "seniority", "work_format", "salary"]
 const quickFields = computed(() => QUICK_FIELDS.map((field) => presetFieldMeta(field)))
 
+/** Правило, которое пользователь только что добавил: его значение получает фокус. */
+const freshId = ref<number | null>(null)
+
 const addRule = (field: PresetField) => {
-  state.value.rules.push(newRule(field))
+  const rule = newRule(field)
+  freshId.value = rule.id
+  state.value.rules.push(rule)
+}
+
+/** Сколько вакансий отсекло правило или группа относительно предыдущего шага. */
+const orderedIds = computed(() => [...state.value.rules.map((rule) => rule.id), ...state.value.groups.map((group) => group.id)])
+const stepOf = (id: number): { count: number; dropped: number } | undefined => {
+  const count = props.counts?.get(id)
+  if (count === undefined) return undefined
+  const index = orderedIds.value.indexOf(id)
+  const previous = orderedIds.value
+    .slice(0, index)
+    .reverse()
+    .map((item) => props.counts?.get(item))
+    .find((value) => value !== undefined)
+  return { count, dropped: previous === undefined ? 0 : Math.max(0, previous - count) }
 }
 const removeRule = (id: number) => {
   state.value.rules = state.value.rules.filter((rule) => rule.id !== id)
@@ -77,6 +101,9 @@ const onLocation = (value: unknown) => {
         :key="rule.id"
         :rule="rule"
         :disabled="props.disabled"
+        :count="stepOf(rule.id)?.count"
+        :dropped="stepOf(rule.id)?.dropped"
+        :autofocus="rule.id === freshId"
         @remove="removeRule(rule.id)"
       />
     </div>
@@ -86,6 +113,15 @@ const onLocation = (value: unknown) => {
       :key="group.id"
       class="space-y-1.5 border-l-2 border-l-violet-400/70 pl-2"
     >
+      <p class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
+        Любой из вариантов
+        <span v-if="stepOf(group.id)" class="ml-auto font-normal normal-case tracking-normal tabular-nums">
+          <span v-if="stepOf(group.id)!.dropped > 0" class="mr-1 text-amber-600 dark:text-amber-400">
+            −{{ stepOf(group.id)!.dropped.toLocaleString("ru-RU") }}
+          </span>
+          <span class="text-foreground/80">{{ stepOf(group.id)!.count.toLocaleString("ru-RU") }}</span>
+        </span>
+      </p>
       <template v-for="(branch, index) in group.branches" :key="branch.id">
         <div v-if="index > 0" class="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground">
           или<span class="h-px flex-1 bg-border" />

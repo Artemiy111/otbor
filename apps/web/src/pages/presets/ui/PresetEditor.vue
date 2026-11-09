@@ -1,11 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue"
-import { useDebounceFn } from "@vueuse/core"
+import { useDebounceFn, useEventListener } from "@vueuse/core"
 import { parsePresetFilter } from "@otbor/contract"
 import type { PresetFilter, PresetKind, PresetPreview, PresetRecord } from "@otbor/contract"
 import { CircleAlert, Save } from "@lucide/vue"
 import { presetApi } from "@/entities/preset"
-import { NEW_PRESET_FILTER, RuleBuilder, allRules, buildFilter, isComplete, toEditable } from "@/features/rule-builder"
+import {
+  NEW_PRESET_FILTER,
+  RuleBuilder,
+  allRules,
+  buildFilter,
+  isComplete,
+  toEditable,
+  useRuleFunnel
+} from "@/features/rule-builder"
 import { describeError } from "@/shared/lib"
 import {
   Alert,
@@ -65,6 +73,29 @@ const onJsonInput = (value: string | undefined) => {
     jsonError.value = describeError(cause)
   }
 }
+
+const { counts: funnel } = useRuleFunnel(filter)
+
+/** Снимок сохранённого состояния: от него считается «есть несохранённые изменения». */
+const snapshot = (): string => JSON.stringify([title.value.trim(), buildFilter(filter.value)])
+const saved = ref(snapshot())
+const dirty = computed(() => snapshot() !== saved.value)
+const confirmDiscard = ref(false)
+
+const requestCancel = () => {
+  if (!dirty.value) return emit("cancel")
+  confirmDiscard.value = true
+}
+
+useEventListener(window, "beforeunload", (event) => {
+  if (dirty.value) event.preventDefault()
+})
+useEventListener(window, "keydown", (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+    event.preventDefault()
+    if (!props.saving) submit()
+  }
+})
 
 const incomplete = computed(() => allRules(filter.value).some((rule) => !isComplete(rule)))
 
@@ -132,8 +163,9 @@ onMounted(() => {
           <Input
             v-model="title"
             type="text"
-            class="h-8 min-w-[220px] flex-1"
+            class="h-10 min-w-[220px] flex-1 border-transparent bg-transparent px-1 text-lg font-semibold shadow-none hover:border-input focus-visible:border-input"
             placeholder="Название пресета"
+            autofocus
             :disabled="props.saving"
             @keydown.enter="submit"
           />
@@ -146,7 +178,7 @@ onMounted(() => {
           <Button size="sm" :variant="mode === 'json' ? 'secondary' : 'ghost'" @click="showJson">JSON</Button>
         </div>
 
-        <RuleBuilder v-if="mode === 'rules'" v-model="filter" :disabled="props.saving" />
+        <RuleBuilder v-if="mode === 'rules'" v-model="filter" :disabled="props.saving" :counts="funnel" />
         <div v-else class="space-y-1.5">
           <Textarea
             :model-value="jsonText"
@@ -168,17 +200,33 @@ onMounted(() => {
           Ограничение словаря ({{ filter.keywordIds.length }}) сохранено из старой версии и не влияет на срез.
         </p>
 
-        <div class="flex flex-wrap items-center gap-2 border-t border-border pt-3">
-          <Button size="sm" :disabled="props.saving" @click="submit">
-            <Save class="h-4 w-4" />
-            {{ props.saving ? "Сохраняю…" : "Сохранить" }}
-          </Button>
-          <Button variant="ghost" size="sm" :disabled="props.saving" @click="emit('cancel')">
-            Отмена
-          </Button>
+        <div
+          class="sticky bottom-0 -mx-4 -mb-4 flex flex-wrap items-center gap-2 rounded-b-xl border-t border-border bg-card/95 px-4 py-3 backdrop-blur"
+        >
+          <template v-if="confirmDiscard">
+            <span class="text-xs text-muted-foreground">Отбросить несохранённые изменения?</span>
+            <Button size="sm" variant="destructive" @click="emit('cancel')">Отбросить</Button>
+            <Button size="sm" variant="ghost" @click="confirmDiscard = false">Продолжить правку</Button>
+          </template>
+          <template v-else>
+            <Button size="sm" :disabled="props.saving || (!dirty && props.preset !== null)" @click="submit">
+              <Save class="h-4 w-4" />
+              {{ props.saving ? "Сохраняю…" : "Сохранить" }}
+              <kbd class="ml-1 hidden rounded border border-primary-foreground/30 px-1 text-[10px] font-normal opacity-70 sm:inline">⌘S</kbd>
+            </Button>
+            <Button variant="ghost" size="sm" :disabled="props.saving" @click="requestCancel">
+              Отмена
+            </Button>
+            <span v-if="dirty" class="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+              <span class="size-1.5 rounded-full bg-current" />
+              не сохранено
+            </span>
+          </template>
           <span class="ml-auto text-xs text-muted-foreground">
             <template v-if="previewing">Считаю…</template>
-            <template v-else-if="preview !== null">Найдено: <b class="text-foreground">{{ preview.count }}</b></template>
+            <template v-else-if="preview !== null">
+              Найдено: <b class="text-base text-foreground tabular-nums">{{ preview.count.toLocaleString("ru-RU") }}</b>
+            </template>
             <template v-if="incomplete"> · неполные правила не учитываются</template>
           </span>
         </div>

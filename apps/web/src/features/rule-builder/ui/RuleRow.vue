@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, onMounted, ref } from "vue"
 import { areaLabel } from "@/shared/lib"
 import { useQuery } from "@pinia/colada"
 import type { PresetField, PresetOperator } from "@otbor/contract"
@@ -31,10 +31,30 @@ import {
 import { changeField, changeOperator, isComplete, usesList, type EditableRule } from "../model/editable"
 import AreaPicker from "./AreaPicker.vue"
 import KeywordPicker from "./KeywordPicker.vue"
+import TagInput from "./TagInput.vue"
 
 /** One rule on one line: field, operator, value (and currency for salary). Edited in place. */
-const props = withDefaults(defineProps<{ rule: EditableRule; disabled?: boolean }>(), { disabled: false })
+const props = withDefaults(
+  defineProps<{
+    rule: EditableRule
+    disabled?: boolean
+    /** Сколько вакансий остаётся после этого правила (воронка). */
+    count?: number
+    /** Сколько вакансий это правило отсекло относительно предыдущего шага. */
+    dropped?: number
+    /** Только что добавленное правило: фокус на значение или открытый список. */
+    autofocus?: boolean
+  }>(),
+  { disabled: false, count: undefined, dropped: undefined, autofocus: false }
+)
 const emit = defineEmits<{ remove: [] }>()
+
+const root = ref<HTMLElement | null>(null)
+const openList = ref(props.autofocus)
+onMounted(() => {
+  if (!props.autofocus) return
+  root.value?.querySelector<HTMLInputElement>("input[type=text], input[type=number], input:not([type])")?.focus()
+})
 
 const rule = computed(() => props.rule)
 const meta = computed(() => presetFieldMeta(props.rule.field))
@@ -119,6 +139,7 @@ const onCurrency = (value: unknown) => {
 
 <template>
   <div
+    ref="root"
     class="flex flex-wrap items-center gap-1.5 rounded-md border bg-card px-1.5 py-1"
     :class="isComplete(rule) ? 'border-border' : 'border-dashed border-amber-500/60'"
   >
@@ -135,7 +156,7 @@ const onCurrency = (value: unknown) => {
     </Select>
 
     <Select :model-value="rule.op" :disabled="props.disabled" @update:model-value="onOp">
-      <SelectTrigger class="h-7 text-xs" :class="meta.kind === 'number' ? 'w-[72px] font-mono' : 'w-[124px]'">
+      <SelectTrigger class="h-7 text-xs" :class="meta.kind === 'number' ? 'w-[72px] font-mono' : rule.op.endsWith('_any') ? 'w-[190px]' : 'w-[124px]'">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -181,7 +202,7 @@ const onCurrency = (value: unknown) => {
       </template>
     </template>
 
-    <Popover v-else-if="usesList(rule.field) && isMultiValueOperator(rule.op)">
+    <Popover v-else-if="usesList(rule.field) && isMultiValueOperator(rule.op)" :default-open="openList">
       <PopoverTrigger as-child>
         <button
           type="button"
@@ -240,19 +261,41 @@ const onCurrency = (value: unknown) => {
       </SelectContent>
     </Select>
 
+    <TagInput
+      v-else-if="isMultiValueOperator(rule.op)"
+      :text="rule.text"
+      :disabled="props.disabled"
+      @update:text="onText"
+    />
+
     <Input
       v-else
       type="text"
       class="h-7 min-w-[140px] flex-1 text-xs"
-      :placeholder="isMultiValueOperator(rule.op) ? 'через запятую' : 'Значение'"
+      placeholder="Значение"
       :model-value="rule.text"
       :disabled="props.disabled"
       @update:model-value="onText"
     />
 
+    <span
+      v-if="props.count !== undefined"
+      class="ml-auto inline-flex shrink-0 items-center gap-1 text-[11px] tabular-nums text-muted-foreground"
+      title="Сколько вакансий остаётся после этого правила"
+    >
+      <span
+        v-if="props.dropped !== undefined && props.dropped > 0"
+        :class="props.dropped > 0 && props.count === 0 ? 'text-destructive' : 'text-amber-600 dark:text-amber-400'"
+      >
+        −{{ props.dropped.toLocaleString("ru-RU") }}
+      </span>
+      <span class="text-foreground/80">{{ props.count.toLocaleString("ru-RU") }}</span>
+    </span>
+
     <button
       type="button"
-      class="ml-auto inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+      class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+      :class="props.count === undefined ? 'ml-auto' : ''"
       title="Удалить правило"
       :disabled="props.disabled"
       @click="emit('remove')"

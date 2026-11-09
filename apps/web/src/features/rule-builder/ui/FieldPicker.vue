@@ -25,6 +25,11 @@ const groups = computed(() => {
   })).filter((group) => group.fields.length > 0)
 })
 
+const pickFirst = () => {
+  const first = groups.value[0]?.fields[0]
+  if (first !== undefined) pick(first.field)
+}
+
 const pick = (field: PresetField) => {
   emit("pick", field)
   open.value = false
@@ -47,7 +52,12 @@ const pick = (field: PresetField) => {
     <PopoverContent class="w-64 p-2" align="start">
       <div class="relative mb-1.5">
         <Search class="pointer-events-none absolute left-2 top-2 h-3.5 w-3.5 text-muted-foreground" />
-        <Input v-model="search" class="h-7 pl-7 text-xs" placeholder="Поле…" />
+        <Input
+          v-model="search"
+          class="h-7 pl-7 text-xs"
+          placeholder="Поле…"
+          @keydown.enter.prevent="pickFirst"
+        />
       </div>
       <div class="max-h-72 overflow-auto">
         <div v-for="group in groups" :key="group.group" class="mb-1">
