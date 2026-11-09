@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue"
 import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
 import type { CaptchaSolverSettings, CaptchaSolverTestResult } from "@otbor/contract"
+import { hhAccountApi } from "@/entities/hh-account"
 import { localModelApi, localModelKeys } from "@/entities/local-model"
 import { useHarnessCatalog } from "@/features/harness-catalog"
 import { describeError } from "@/shared/lib"
@@ -24,6 +25,15 @@ const settingsQuery = useQuery({
   key: () => localModelKeys.captcha(),
   query: () => localModelApi.captchaGet()
 })
+const solvesQuery = useQuery({
+  key: () => [...localModelKeys.captcha(), "solves"],
+  query: () => hhAccountApi.captchaSolves(15),
+  staleTime: 10_000
+})
+const journal = computed(() => solvesQuery.data.value ?? { solves: [], models: [] })
+const stamp = (iso: string) =>
+  new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+
 const {
   harnesses,
   models,
@@ -165,6 +175,37 @@ const test = async () => {
         </template>
         <template v-else>Проверка не удалась: {{ testResult.error }}</template>
       </p>
+
+      <div class="space-y-2 border-t pt-4">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-medium">Журнал капчи</h3>
+          <Button size="sm" variant="ghost" :disabled="solvesQuery.isLoading.value" @click="solvesQuery.refetch()">
+            Обновить
+          </Button>
+        </div>
+        <p v-if="journal.solves.length === 0" class="text-sm text-muted-foreground">
+          Капч с распознаванием пока не было.
+        </p>
+        <template v-else>
+          <ul class="space-y-1 text-sm">
+            <li v-for="item in journal.models" :key="item.harness + item.model">
+              <code class="text-xs">{{ item.harness }}/{{ item.model }}</code>:
+              решено {{ item.solved }} из {{ item.captchas }}, в среднем
+              {{ (item.attempts / item.captchas).toFixed(1) }} попытки на капчу
+            </li>
+          </ul>
+          <ul class="divide-y rounded-md border text-sm">
+            <li v-for="item in journal.solves" :key="item.jobId + item.model" class="flex flex-wrap items-center gap-x-3 gap-y-1 p-2">
+              <span class="text-muted-foreground">{{ stamp(item.at) }}</span>
+              <span :class="item.solved ? 'text-emerald-600' : 'text-destructive'">{{ item.solved ? "решена" : "не решена" }}</span>
+              <span>попыток: {{ item.attempts }}</span>
+              <code class="text-xs">{{ item.harness }}/{{ item.model }}</code>
+              <span v-if="item.answer" class="text-muted-foreground">ответ «{{ item.answer }}»</span>
+              <span class="text-muted-foreground">{{ item.stage }}, {{ (item.durationMs / 1000).toFixed(1) }} с</span>
+            </li>
+          </ul>
+        </template>
+      </div>
 
       <div class="flex gap-2">
         <Button :disabled="busy" @click="save">Сохранить</Button>

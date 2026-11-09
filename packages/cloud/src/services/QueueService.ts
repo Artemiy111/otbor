@@ -1,5 +1,6 @@
 import type {
   ApiError,
+  CaptchaAttemptReport,
   HarnessExit,
   HarnessId,
   HarnessJob,
@@ -15,6 +16,7 @@ import { sql } from "drizzle-orm"
 import { Cause, Config, Context, Effect, Layer } from "effect"
 import { generateHarnessToken, hashHarnessToken } from "../auth/harnessToken.ts"
 import { Database } from "../db/Database.ts"
+import * as CaptchaAttemptRepository from "../repositories/CaptchaAttemptRepository.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
 import * as HhAccountRepository from "../repositories/HhAccountRepository.ts"
 import * as HarnessRepository from "../repositories/HarnessRepository.ts"
@@ -112,6 +114,8 @@ export interface HeartbeatInput {
 
 export interface CompleteInput extends HeartbeatInput {
   readonly exit: HarnessExit
+  /** Попытки распознать капчу за время задачи. */
+  readonly captcha?: ReadonlyArray<CaptchaAttemptReport> | undefined
 }
 
 export interface RevokeResult {
@@ -538,6 +542,17 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                     accepted: false,
                     message: "stale lease",
                     advance: []
+                  })
+                }
+
+                // Журнал капчи: какая модель читала, что ответила и приняла ли hh.
+                if (input.captcha !== undefined && input.captcha.length > 0) {
+                  yield* CaptchaAttemptRepository.record(tx, {
+                    userId: ctx.userId,
+                    hhAccountId: ctx.hhAccountId,
+                    jobId: job.id,
+                    stage: job.stage,
+                    attempts: input.captcha
                   })
                 }
 

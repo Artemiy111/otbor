@@ -1,6 +1,7 @@
 import { AcpClient } from "@otbor/acp"
 import {
   type AgentHarness,
+  type CaptchaAttemptReport,
   type HarnessExit,
   type HarnessJob,
   type LeaseId,
@@ -15,6 +16,7 @@ import {
   SubmitJobPayload
 } from "@otbor/contract"
 import { Cause, Deferred, Duration, Effect, Fiber, type Layer, Option, Ref, Schema } from "effect"
+import { CaptchaRecorder } from "./browser/captcha.ts"
 import { BrowserExecutor } from "./browser/executor.ts"
 import { HarnessGateway } from "./client.ts"
 import { statSync } from "node:fs"
@@ -55,7 +57,12 @@ export const BROWSER_STAGE_UNSUPPORTED_MESSAGE =
  * lease id cannot be fenced.
  */
 export type JobOutcome =
-  | { readonly _tag: "complete"; readonly exit: HarnessExit }
+  | {
+    readonly _tag: "complete"
+    readonly exit: HarnessExit
+    /** Попытки распознать капчу, пока шла браузерная задача. */
+    readonly captcha?: ReadonlyArray<CaptchaAttemptReport>
+  }
   | { readonly _tag: "lease_lost"; readonly reason: string }
   | { readonly _tag: "skip"; readonly reason: string }
 
@@ -317,8 +324,14 @@ export const runJob = Effect.fn("Harness.runJob")(
           exit: { tag: "blocked", message: BROWSER_UNAVAILABLE_MESSAGE }
         }
       }
+      const recorder: { attempts: Array<CaptchaAttemptReport> } = { attempts: [] }
       work = runBrowserExit(config, job, leaseId, gateway, executor.value).pipe(
-        Effect.map((exit): JobOutcome => ({ _tag: "complete", exit }))
+        Effect.provideService(CaptchaRecorder, recorder),
+        Effect.map((exit): JobOutcome => ({
+          _tag: "complete",
+          exit,
+          ...(recorder.attempts.length > 0 ? { captcha: recorder.attempts } : {})
+        }))
       )
     } else {
       const acpExit = runInferenceExit(job.payload).pipe(
@@ -377,7 +390,12 @@ export const runJob = Effect.fn("Harness.runJob")(
   }
 )
 
-const deliver = (config: HarnessConfig, job: HarnessJob, exit: HarnessExit) =>
+const deliver = (
+  config: HarnessConfig,
+  job: HarnessJob,
+  exit: HarnessExit,
+  captcha: ReadonlyArray<CaptchaAttemptReport> = []
+) =>
   Effect.gen(function*() {
     const leaseId = job.leaseId
     if (leaseId === null) return
@@ -389,7 +407,8 @@ const deliver = (config: HarnessConfig, job: HarnessJob, exit: HarnessExit) =>
       jobId: job.id,
       leaseId,
       epoch: job.leaseEpoch,
-      exit
+      exit,
+      ...(captcha.length > 0 ? { captcha } : {})
     })
 
     yield* Effect.logInfo(
@@ -445,7 +464,7 @@ const leaseOnce = (config: HarnessConfig, runOptions: RunJobOptions, slots: Ref.
     const outcome = yield* runJob(config, job, runOptions)
     switch (outcome._tag) {
       case "complete":
-        yield* deliver(config, job, outcome.exit)
+        yield* deliver(config, job, outcome.exit, outcome.captcha)
         break
       case "lease_lost":
         yield* Effect.logWarning(`job ${job.id}: ${outcome.reason}`)

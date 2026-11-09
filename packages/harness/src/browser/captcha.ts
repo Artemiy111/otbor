@@ -9,9 +9,21 @@ import {
   type CaptchaRecognition,
   type CaptchaSolverConfig
 } from "@otbor/local-models"
-import { Effect, Stream } from "effect"
+import type { CaptchaAttemptReport } from "@otbor/contract"
+import { classifyResponsePage } from "@otbor/hh"
+import { Context, Effect, Option, Stream } from "effect"
 import type { Page } from "playwright"
 import { selectModelAndEffort } from "../inference.ts"
+
+/**
+ * Сборщик попыток текущей задачи: `runJob` кладёт его в контекст на время
+ * браузерной задачи, решатель дописывает попытки, а `complete` отправляет их
+ * облаку, которое ведёт журнал. Нет сборщика (тесты) - попытки просто не копятся.
+ */
+export class CaptchaRecorder extends Context.Service<
+  CaptchaRecorder,
+  { readonly attempts: Array<CaptchaAttemptReport> }
+>()("otbor/harness/CaptchaRecorder") {}
 
 /** Картинка капчи на странице hh (тот же селектор, что у отладочного снимка). */
 export const CAPTCHA_PICTURE_SELECTOR = '[data-qa="account-captcha-picture"]'
@@ -118,8 +130,29 @@ export const makeCaptchaSolve = (
         return false
       }
 
+      const recorder = yield* Effect.serviceOption(CaptchaRecorder)
+      const note = (
+        outcome: CaptchaAttemptReport["outcome"],
+        answer: string | null,
+        durationMs: number,
+        error: string | null
+      ) => {
+        if (Option.isSome(recorder)) {
+          recorder.value.attempts.push({
+            harness: config.harnessId,
+            model: config.model,
+            attempt: used + 1,
+            answer,
+            outcome,
+            durationMs,
+            error
+          })
+        }
+      }
+
       const result = yield* recognize(config, image)
       if (!result.ok || result.text === null) {
+        note("error", null, result.durationMs, result.error)
         yield* Effect.logWarning(`captcha: ${config.harnessId}/${config.model} failed: ${result.error}`)
         return false
       }
@@ -141,6 +174,7 @@ export const makeCaptchaSolve = (
         return true
       }).pipe(Effect.orElseSucceed(() => false))
       if (!typed) {
+        note("error", text, result.durationMs, "answer field not found on the page")
         yield* Effect.logWarning("captcha: answer field not found on the page")
         return false
       }
@@ -149,6 +183,10 @@ export const makeCaptchaSolve = (
         `captcha: answered "${text}" with ${config.harnessId}/${config.model} in ${result.durationMs} ms (attempt ${used + 1}/${config.maxAttempts})`
       )
       yield* Effect.sleep(`${AFTER_SUBMIT_MS} millis`)
+      // Приняла ли hh ответ: капча на странице осталась - значит, нет.
+      const html = yield* Effect.tryPromise(() => page.content()).pipe(Effect.orElseSucceed(() => null as string | null))
+      const rejected = html !== null && classifyResponsePage(html, page.url()) === "captcha"
+      note(rejected ? "rejected" : "solved", text, result.durationMs, null)
       return true
     })
 }

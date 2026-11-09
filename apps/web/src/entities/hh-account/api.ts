@@ -1,4 +1,4 @@
-import type { AutoApplyRetryResult, CaptchaEpisode, HhAccountId, HhAccountRecord } from "@otbor/contract"
+import type { AutoApplyRetryResult, CaptchaEpisode, CaptchaModelStat, CaptchaSolveRecord, HhAccountId, HhAccountRecord } from "@otbor/contract"
 import { call } from "@/shared/api"
 
 export const hhAccountApi = {
@@ -36,6 +36,11 @@ export const hhAccountApi = {
   /** Повторяет заявки аккаунта, остановленные капчей (теперь их пройдёт модель). */
   retryCaptcha: (hhAccountId: string): Promise<AutoApplyRetryResult> =>
     call((client) => client.ApplicationsRetryCaptcha({ hhAccountId: hhAccountId as HhAccountId })),
+  /** Журнал распознавания капчи: какая модель, за сколько попыток, решена ли. */
+  captchaSolves: (
+    limit = 15
+  ): Promise<{ readonly solves: ReadonlyArray<CaptchaSolveRecord>; readonly models: ReadonlyArray<CaptchaModelStat> }> =>
+    call((client) => client.CaptchaSolvesList({ limit })),
   captchaEpisodes: (limit = 10): Promise<ReadonlyArray<CaptchaEpisode>> =>
     call((client) => client.HhCaptchaEpisodesList({ limit }))
 }

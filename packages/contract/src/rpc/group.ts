@@ -63,6 +63,7 @@ import {
   HhAccountSubmitResume,
   HhAccountUpsert,
   HhAccountsList,
+  CaptchaSolvesList,
   HhCaptchaEpisodesList
 } from "./hh-accounts.ts"
 import {
@@ -238,6 +239,7 @@ export const OtborRpcs = RpcGroup.make(
   HhAccountRemove,
   HhAccountSubmitResume,
   HhCaptchaEpisodesList,
+  CaptchaSolvesList,
   SettingsGet,
   SettingsUpdate,
   LexiconList,

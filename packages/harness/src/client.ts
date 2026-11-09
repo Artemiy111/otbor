@@ -1,5 +1,6 @@
 import type {
   AgentHarness,
+  CaptchaAttemptReport,
   HarnessExit,
   HarnessId,
   HarnessJob,
@@ -40,6 +41,8 @@ export interface HeartbeatInput {
 
 export interface CompleteInput extends HeartbeatInput {
   readonly exit: HarnessExit
+  /** Попытки распознать капчу за время задачи (журнал ведёт облако). */
+  readonly captcha?: ReadonlyArray<CaptchaAttemptReport>
 }
 
 export interface CompleteResult {

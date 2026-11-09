@@ -2,7 +2,7 @@ import { Schema } from "effect"
 import { Rpc } from "effect/rpc"
 import { ApiError } from "../errors.ts"
 import { HhAccountId } from "../ids.ts"
-import { CaptchaEpisode, HhAccountRecord, HhSessionState } from "../models/index.ts"
+import { CaptchaEpisode, CaptchaModelStat, CaptchaSolveRecord, HhAccountRecord, HhSessionState } from "../models/index.ts"
 
 export const HhAccountsList = Rpc.make("HhAccountsList", {
   success: Schema.Array(HhAccountRecord),
@@ -62,5 +62,21 @@ export const HhCaptchaEpisodesList = Rpc.make("HhCaptchaEpisodesList", {
     limit: Schema.optional(Schema.Int)
   }),
   success: Schema.Array(CaptchaEpisode),
+  error: ApiError
+})
+
+/**
+ * Журнал распознавания капчи: последние капчи (модель, число попыток, решена ли)
+ * и сводка по моделям. Сохраняется облаком из отчёта харнеса.
+ */
+export const CaptchaSolvesList = Rpc.make("CaptchaSolvesList", {
+  payload: Schema.Struct({
+    hhAccountId: Schema.optional(HhAccountId),
+    limit: Schema.optional(Schema.Int)
+  }),
+  success: Schema.Struct({
+    solves: Schema.Array(CaptchaSolveRecord),
+    models: Schema.Array(CaptchaModelStat)
+  }),
   error: ApiError
 })

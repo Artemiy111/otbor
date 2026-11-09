@@ -4,6 +4,7 @@ import { JobKind } from "../enums.ts"
 import { ApiError } from "../errors.ts"
 import { HarnessId, HarnessJobId, HhAccountId, LeaseId } from "../ids.ts"
 import {
+  CaptchaAttemptReport,
   HarnessExit,
   HarnessJob,
   HarnessRegistration,
@@ -87,7 +88,9 @@ export const HarnessComplete = Rpc.make("HarnessComplete", {
     jobId: HarnessJobId,
     leaseId: LeaseId,
     epoch: Schema.Int,
-    exit: HarnessExit
+    exit: HarnessExit,
+    /** Попытки распознать капчу, пока шла задача (пусто, если капчи не было). */
+    captcha: Schema.optional(Schema.Array(CaptchaAttemptReport))
   }),
   success: Schema.Struct({
     status: Schema.String,

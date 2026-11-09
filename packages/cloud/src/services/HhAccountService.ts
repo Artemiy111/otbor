@@ -1,7 +1,8 @@
-import type { ApiError, CaptchaEpisode, HhAccountId, HhAccountRecord, HhSessionState } from "@otbor/contract"
+import type { ApiError, CaptchaEpisode, CaptchaModelStat, CaptchaSolveRecord, HhAccountId, HhAccountRecord, HhSessionState } from "@otbor/contract"
 import { InvalidInput, NotFound } from "@otbor/contract"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "../db/Database.ts"
+import * as CaptchaAttemptRepository from "../repositories/CaptchaAttemptRepository.ts"
 import * as HhAccountRepository from "../repositories/HhAccountRepository.ts"
 import * as SubmitPacingRepository from "../repositories/SubmitPacingRepository.ts"
 import { CurrentUser } from "./CurrentUser.ts"
@@ -36,6 +37,14 @@ export interface HhAccountServiceShape {
    */
   readonly resumeSubmits: (id: string) => Effect.Effect<
     { readonly account: HhAccountRecord; readonly applicationIds: ReadonlyArray<string> },
+    ApiError
+  >
+  /** Журнал распознавания капчи моделью: последние капчи и сводка по моделям. */
+  readonly captchaSolves: (input: {
+    readonly hhAccountId?: string | undefined
+    readonly limit?: number | undefined
+  }) => Effect.Effect<
+    { readonly solves: ReadonlyArray<CaptchaSolveRecord>; readonly models: ReadonlyArray<CaptchaModelStat> },
     ApiError
   >
   /** Последние эпизоды капчи, новые первыми. */
@@ -160,7 +169,17 @@ export class HhAccountService extends Context.Service<HhAccountService, HhAccoun
           )
           .pipe(Effect.mapError(toStorageError("hhAccount.captchaEpisodes")))
 
-      return HhAccountService.of({ list, upsert, setSession, remove, findById, resumeSubmits, captchaEpisodes })
+      const captchaSolves: HhAccountServiceShape["captchaSolves"] = (input) =>
+        database
+          .asUser(currentUser.userId, (tx) =>
+            CaptchaAttemptRepository.recent(tx, currentUser.userId, {
+              hhAccountId: input.hhAccountId,
+              limit: Math.min(Math.max(input.limit ?? 30, 1), 200)
+            })
+          )
+          .pipe(Effect.mapError(toStorageError("hhAccount.captchaSolves")))
+
+      return HhAccountService.of({ list, upsert, setSession, remove, findById, resumeSubmits, captchaEpisodes, captchaSolves })
     })
   )
 }

@@ -213,4 +213,49 @@ export const CaptchaEpisode = Schema.Struct({
 
 export type CaptchaEpisode = typeof CaptchaEpisode.Type
 
+/**
+ * Одна попытка распознать капчу, как её видит харнес: что ответила модель и
+ * приняла ли hh. Приходит вместе с выходом задачи (`HarnessComplete`).
+ */
+export const CaptchaAttemptReport = Schema.Struct({
+  /** Харнес, который читал картинку: `omlx`, `opencode`, `claude`... */
+  harness: Schema.String,
+  model: Schema.String,
+  /** Номер попытки на этой капче, с 1. */
+  attempt: Schema.Int,
+  /** Что модель вернула; `null`, если ответа не было. */
+  answer: Schema.NullOr(Schema.String),
+  /** `solved` - капча ушла; `rejected` - hh показал её снова; `error` - модель не ответила. */
+  outcome: Schema.Literals(["solved", "rejected", "error"]),
+  durationMs: Schema.Int,
+  error: Schema.NullOr(Schema.String)
+})
+export type CaptchaAttemptReport = typeof CaptchaAttemptReport.Type
+
+/** Одна капча целиком: все попытки одной задачи, чем кончилось и за сколько. */
+export const CaptchaSolveRecord = Schema.Struct({
+  jobId: HarnessJobId,
+  at: Schema.String,
+  stage: Schema.String,
+  hhAccountId: Schema.NullOr(HhAccountId),
+  harness: Schema.String,
+  model: Schema.String,
+  attempts: Schema.Int,
+  solved: Schema.Boolean,
+  /** Ответ последней попытки. */
+  answer: Schema.NullOr(Schema.String),
+  durationMs: Schema.Int
+})
+export type CaptchaSolveRecord = typeof CaptchaSolveRecord.Type
+
+/** Сводка по модели: сколько капч она видела, сколько решила и за сколько попыток. */
+export const CaptchaModelStat = Schema.Struct({
+  harness: Schema.String,
+  model: Schema.String,
+  captchas: Schema.Int,
+  solved: Schema.Int,
+  attempts: Schema.Int
+})
+export type CaptchaModelStat = typeof CaptchaModelStat.Type
+
 /* -------------------------------------------------------------------------- */

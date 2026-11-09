@@ -188,6 +188,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
           Effect.map(({ account, applicationIds }) => ({ account, released: applicationIds.length }))
         ),
       HhCaptchaEpisodesList: (payload) => hhAccounts.captchaEpisodes(payload),
+      CaptchaSolvesList: (payload) => hhAccounts.captchaSolves(payload),
       SettingsGet: () => settings.get(),
       SettingsUpdate: (payload) => settings.update(payload),
 
