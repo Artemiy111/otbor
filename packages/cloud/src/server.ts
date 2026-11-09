@@ -15,7 +15,12 @@ const RpcRoute = RpcServer.layerHttp({
   group: OtborRpcs,
   path: RPC_PATH,
   protocol: "http"
-}).pipe(Layer.provide(OtborHandlers), Layer.provide(RpcSerialization.layerNdjson))
+}).pipe(
+  Layer.provide(OtborHandlers),
+  Layer.provide(RpcSerialization.layerNdjson),
+  // Общий HTTP-лог бесполезен для RPC: метод логируется в handlers.ts
+  Layer.provide(HttpRouter.disableLogger)
+)
 
 const HealthRoute = Layer.effectDiscard(
   Effect.gen(function*() {

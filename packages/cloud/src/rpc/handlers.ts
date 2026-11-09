@@ -50,6 +50,36 @@ import { AgentCatalogService } from "../services/AgentCatalogService.ts"
 import { WritingService } from "../services/WritingService.ts"
 
 /**
+ * HTTP-лог видит только `POST /rpc/` и не знает, какой метод вызван (в одном
+ * запросе их может быть несколько). Поэтому лог пишется здесь: на каждый
+ * вызов - имя метода, длительность и исход. Стримы логируются при открытии.
+ */
+const withRpcLog = <H extends object>(handlers: H): H =>
+  Object.fromEntries(
+    Object.entries(handlers).map(([tag, handler]) => [
+      tag,
+      (...args: Array<unknown>) => {
+        const result = (handler as (...a: Array<unknown>) => unknown)(...args)
+        if (!Effect.isEffect(result)) {
+          Effect.runFork(Effect.logInfo(`rpc ${tag} (stream)`))
+          return result
+        }
+        return Effect.suspend(() => {
+          const startedAt = Date.now()
+          const log = (outcome: string) =>
+            Effect.logInfo(`rpc ${tag} ${outcome}`).pipe(
+              Effect.annotateLogs({ "rpc.method": tag, "rpc.ms": Date.now() - startedAt })
+            )
+          return result.pipe(
+            Effect.tap(() => log("ok")),
+            Effect.tapCause(() => log("failed"))
+          )
+        })
+      }
+    ])
+  ) as H
+
+/**
  * The RPC boundary is a thin mapping. Every handler is a service method, so
  * the same operations are reachable from the CLI and from a future web app
  * without a second API surface.
@@ -116,7 +146,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
         return { hydrated }
       })
 
-    return {
+    return withRpcLog({
       SystemHealth: () => system.health(),
 
       VacanciesList: (payload) => corpus.list(payload),
@@ -183,6 +213,9 @@ export const OtborHandlers = OtborRpcs.toLayer(
       LocalModelsCheck: () => localModels.check(),
       LocalModelUpsert: (payload) => localModels.upsert(payload),
       LocalModelRemove: ({ id }) => localModels.remove(id),
+      CaptchaSolverGet: () => localModels.captchaGet(),
+      CaptchaSolverSet: (payload) => localModels.captchaSet(payload),
+      CaptchaSolverTest: (payload) => localModels.captchaTest(payload),
       HydrationStats: () => hydrationStats.stats(),
       EmployersHydrationTargets: (payload) => hydrationStats.employerTargets(payload),
       EmployersHydrateOne: ({ id, proxyMode }) =>
@@ -213,9 +246,6 @@ export const OtborHandlers = OtborRpcs.toLayer(
       ScheduleRunNow: ({ id }) => schedules.runNow(id),
       ScheduleRunsList: (payload) => schedules.runs(payload),
 
-      CaptchaSolverGet: () => localModels.captchaGet(),
-      CaptchaSolverSet: (payload) => localModels.captchaSet(payload),
-      CaptchaSolverTest: (payload) => localModels.captchaTest(payload),
       NegotiationsSyncRun: ({ hhAccountId }) => negotiations.run(hhAccountId),
       NegotiationsSyncStatus: ({ hhAccountId }) => negotiations.status(hhAccountId),
       ResumeSyncRun: ({ hhAccountId }) => resumeSync.run(hhAccountId),
@@ -287,6 +317,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
       ApplicationsApprove: ({ id }) => applications.approve(id),
       ApplicationsSkip: (payload) => applications.skip(payload),
       ApplicationsRetry: ({ id }) => applications.retry(id),
+      ApplicationsRetryCaptcha: (payload) => applications.retryCaptcha(payload),
       ApplicationsSetKit: (payload) => applications.setKit(payload),
 
       PresetsList: (payload) => presets.list(payload),
@@ -317,12 +348,11 @@ export const OtborHandlers = OtborRpcs.toLayer(
       InferenceGet: ({ id }) => inference.get(id),
       HarnessReportCatalog: (payload) => agentCatalog.report(payload),
       AgentCatalogGet: () => agentCatalog.get(),
-      ApplicationsRetryCaptcha: (payload) => applications.retryCaptcha(payload),
       DraftGenerate: (payload) => writing.draft(payload),
       DraftPromptPreview: (payload) => writing.draftPrompt(payload),
 
       WritingResume: (payload) => writing.resume(payload)
-    }
+    })
   })
 )
 
