@@ -247,3 +247,42 @@ export const ChatReadEvidence = Schema.Struct({
 })
 
 export type ChatReadEvidence = typeof ChatReadEvidence.Type
+
+/**
+ * `resume_bump`: открыть страницу резюме и нажать «Поднять в поиске» не больше
+ * одного раза. hh разрешает подъём раз в 4 часа, поэтому «кнопка недоступна» -
+ * обычный исход, а не ошибка.
+ */
+export const ResumeBumpJobPayload = Schema.Struct({
+  hhAccountId: Schema.String,
+  /** Id резюме в облаке. */
+  resumeId: Schema.String,
+  /** Id резюме на hh. */
+  externalId: Schema.String,
+  /** Хеш из ссылки `/resume/<hash>`. */
+  hash: Schema.String,
+  canonicalUrl: Schema.String,
+  sessionProfile: Schema.optional(Schema.NullOr(Schema.String))
+})
+
+export type ResumeBumpJobPayload = typeof ResumeBumpJobPayload.Type
+
+/**
+ * `resume_bump` artifacts: что харнесс видел и сделал. Это свидетельство, а не
+ * вердикт: успех подъёма решает облако.
+ */
+export const ResumeBumpEvidence = Schema.Struct({
+  /** Кнопка была нажата. */
+  clicked: Schema.Boolean,
+  /** Подпись кнопки (или найденной вместо неё), как её видел харнесс. */
+  label: Schema.NullOr(Schema.String),
+  /** Строка «Последнее — ...» до нажатия. */
+  lastBumpBefore: Schema.NullOr(Schema.String),
+  /** Она же после нажатия; без нажатия повторяет «до». */
+  lastBumpAfter: Schema.NullOr(Schema.String),
+  /** После нажатия кнопка пропала или стала недоступной. */
+  unavailableAfter: Schema.optional(Schema.Boolean),
+  url: Schema.String
+})
+
+export type ResumeBumpEvidence = typeof ResumeBumpEvidence.Type

@@ -253,6 +253,7 @@ const SCHEDULE_KIND_LABELS: Record<string, string> = {
   telegram_sync: "Синхронизация Telegram",
   hh_chat_sync: "Чаты hh",
   resume_sync: "Резюме hh",
+  resume_bump: "Подъём резюме",
   evaluate: "Оценка вакансий",
   analysis: "Анализ вакансий",
   apply: "Автоотбор откликов"

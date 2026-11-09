@@ -112,7 +112,8 @@ export const JobStage = Schema.Literals([
   "resume_sync",
   "form_read",
   "letter_attach",
-  "chat_read"
+  "chat_read",
+  "resume_bump"
 ])
 
 export type JobStage = typeof JobStage.Type
@@ -258,7 +259,8 @@ export const ScheduleKind = Schema.Literals([
   "fit",
   "resume_sync",
   "analysis",
-  "apply"
+  "apply",
+  "resume_bump"
 ])
 
 export type ScheduleKind = typeof ScheduleKind.Type
@@ -276,7 +278,8 @@ export const SourceSyncKind = Schema.Literals([
   "fit",
   "resume_sync",
   "analysis",
-  "apply"
+  "apply",
+  "resume_bump"
 ])
 
 export type SourceSyncKind = typeof SourceSyncKind.Type

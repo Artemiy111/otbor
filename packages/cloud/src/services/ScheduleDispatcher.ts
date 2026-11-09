@@ -15,6 +15,7 @@ import { EvaluationRunner } from "./EvaluationRunner.ts"
 import { FitJudgeRunner } from "./FitJudgeRunner.ts"
 import { HydrationRunner } from "./HydrationRunner.ts"
 import { MailSync } from "./MailSync.ts"
+import { enqueueResumeBumps } from "./ResumeBump.ts"
 import { ResumeSync } from "./ResumeSync.ts"
 import { toStorageError } from "./support.ts"
 import { TelegramSync } from "./TelegramSync.ts"
@@ -469,6 +470,30 @@ export class ScheduleDispatcher extends Context.Service<
                 ok: true,
                 error: null,
                 detail: { queued: result.queued, alreadyActive: result.alreadyActive }
+              }
+            }
+
+            case "resume_bump": {
+              // Только ставит `resume_bump` по одному на опубликованное резюме,
+              // которому пора на подъём (срок отдыха 4 часа считает облако):
+              // нажимает кнопку браузерный harness. Цель - id аккаунта hh или
+              // `global`/пусто для всех аккаунтов пользователя.
+              const target = schedule.targetId.trim()
+              const named = target !== "" && target !== "default" && target !== "global"
+              const result = yield* database
+                .asUser(schedule.userId, (tx) =>
+                  enqueueResumeBumps(tx, schedule.userId, {
+                    ...(named ? { hhAccountId: target } : {}),
+                    cooldownHours: intOption(options, "cooldownHours", 4, 1, 48),
+                    jitterMinutes: intOption(options, "jitterMinutes", 10, 0, 120),
+                    limit: intOption(options, "limit", 50, 1, 200)
+                  })
+                )
+                .pipe(Effect.mapError(toStorageError("schedule.resume_bump")))
+              return {
+                ok: true,
+                error: null,
+                detail: { queued: result.queued, candidates: result.candidates }
               }
             }
 

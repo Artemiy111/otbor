@@ -3,6 +3,7 @@ import type {
   HarnessExit,
   NegotiationsSyncEvidence,
   ChatReadEvidence,
+  ResumeBumpEvidence,
   ResumeSyncEvidence,
   PrepareArtifacts,
   ReconcileEvidence,
@@ -545,4 +546,43 @@ export const chatReadExit = (chatId: string, status: number, body: string): Harn
   if (status !== 200) return { tag: "transport", message: `hh answered ${status} for the chat` }
   const evidence: ChatReadEvidence = { chatId, status, body: body.slice(0, 2_000_000) }
   return { tag: "reconciled", artifacts: { ...evidence } }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Resume bump                                                                */
+/* -------------------------------------------------------------------------- */
+
+/** Выход подъёма, при котором кнопка не нажималась. */
+export const bumpUnclicked = (
+  url: string,
+  tag: HarnessExit["tag"],
+  message: string,
+  seen: { readonly label?: string | null; readonly lastBump?: string | null } = {}
+): HarnessExit => {
+  const evidence: ResumeBumpEvidence = {
+    clicked: false,
+    label: seen.label ?? null,
+    lastBumpBefore: seen.lastBump ?? null,
+    lastBumpAfter: seen.lastBump ?? null,
+    url
+  }
+  return { tag, message, artifacts: { ...evidence } }
+}
+
+/**
+ * Выход подъёма после нажатия. Это только подсказка для журнала: изменилась ли
+ * строка «Последнее» или кнопка стала недоступной, харнесс сообщает, а решает
+ * облако. Нажатие без видимого изменения - `ambiguous`, повторного нажатия нет.
+ */
+export const resumeBumpExit = (evidence: ResumeBumpEvidence): HarnessExit => {
+  const changed =
+    evidence.lastBumpAfter !== null && evidence.lastBumpAfter !== evidence.lastBumpBefore
+  if (changed || evidence.unavailableAfter === true) {
+    return { tag: "submitted", message: "resume bumped", artifacts: { ...evidence } }
+  }
+  return {
+    tag: "ambiguous",
+    message: "the bump button was clicked but the card did not change",
+    artifacts: { ...evidence }
+  }
 }

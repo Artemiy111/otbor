@@ -1,8 +1,9 @@
 /** Стадии, где харнесс отдаёт страницы, а облако их читает и импортирует. */
 import { Effect } from "effect"
-import { judgeChatRead, judgeNegotiationsSync, judgeResumeSync } from "../applyRules.ts"
+import { judgeChatRead, judgeNegotiationsSync, judgeResumeBump, judgeResumeSync } from "../applyRules.ts"
 import { importChat } from "../ChatSync.ts"
 import { importTopics } from "../NegotiationsSync.ts"
+import { recordBump } from "../ResumeBump.ts"
 import { importProfileContacts, importResumes } from "../ResumeSync.ts"
 import { retryLater } from "./common.ts"
 import { outcome, type StageHandler } from "./types.ts"
@@ -114,4 +115,42 @@ export const completeChatRead: StageHandler = (tx, ctx, exit) =>
     return outcome("pending", `chat read retry ${job.attempts + 1}/${job.maxAttempts}: ${verdict.reason}`, {
       runAt: retryLater(exit, 30)
     })
+  })
+
+/**
+ * Подъём резюме. Харнесс только нажимает и сообщает, что видел; исход решает
+ * облако по свидетельству (`judgeResumeBump`) и записывает его в резюме.
+ * «Кнопка недоступна» - обычный исход (hh даёт подъём раз в 4 часа), задача
+ * при этом завершается как `done`. Нажатие без подтверждения не повторяется.
+ */
+export const completeResumeBump: StageHandler = (tx, ctx, exit) =>
+  Effect.gen(function*() {
+    const { job } = ctx
+    const payload = job.payload as { resumeId?: string }
+    const verdict = judgeResumeBump(exit)
+    if (verdict._tag === "human") return outcome("needs_human", `resume bump needs a human: ${verdict.reason}`)
+    if (verdict._tag === "retry") {
+      if (job.attempts >= job.maxAttempts) return outcome("dead", `resume bump gave up: ${verdict.reason}`)
+      return outcome("pending", `resume bump retry ${job.attempts + 1}/${job.maxAttempts}: ${verdict.reason}`, {
+        runAt: retryLater(exit, 300)
+      })
+    }
+    if (typeof payload.resumeId !== "string") {
+      return outcome("dead", "resume bump gave up: job has no resume id")
+    }
+    yield* recordBump(tx, { userId: ctx.userId, resumeId: payload.resumeId, verdict })
+    switch (verdict._tag) {
+      case "bumped":
+        return outcome("done", `resume bumped${verdict.lastBump === null ? "" : `: last ${verdict.lastBump}`}`, {
+          jobResult: { outcome: "bumped", lastBump: verdict.lastBump }
+        })
+      case "unconfirmed":
+        return outcome("done", `resume bump unconfirmed: ${verdict.reason}`, {
+          jobResult: { outcome: "unconfirmed", lastBump: verdict.lastBump }
+        })
+      case "unavailable":
+        return outcome("done", `bump not available: ${verdict.label ?? "no button"}`, {
+          jobResult: { outcome: "unavailable", label: verdict.label, lastBump: verdict.lastBump }
+        })
+    }
   })

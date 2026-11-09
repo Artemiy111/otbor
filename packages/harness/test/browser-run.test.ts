@@ -216,6 +216,46 @@ describe("runJob with a browser executor", () => {
     expect(outcome._tag === "complete" && outcome.exit.tag).toBe("permanent")
   })
 
+  test("resume_bump передаётся исполнителю с проверкой аренды перед нажатием", async () => {
+    const seen: { hash: string | null; allowed: boolean | null } = { hash: null, allowed: null }
+    const exit: HarnessExit = { tag: "blocked", message: "bump not available: x" }
+    const outcome = await Effect.runPromise(
+      runJob(
+        await config(),
+        makeJob("resume_bump", {
+          hhAccountId: "acc",
+          resumeId: "r1",
+          externalId: "555",
+          hash: "abc123",
+          canonicalUrl: "https://hh.ru/resume/abc123",
+          sessionProfile: "acc"
+        }),
+        {
+          browserLayer: BrowserExecutor.fake({
+            resumeBump: ({ payload, beforeClick }) =>
+              Effect.gen(function*() {
+                seen.hash = payload.hash
+                seen.allowed = yield* beforeClick
+                return exit
+              }),
+            submit: () => Effect.die("bump called submit")
+          })
+        }
+      ).pipe(Effect.provide(gateway()))
+    )
+    expect(outcome).toEqual({ _tag: "complete", exit })
+    expect(seen).toEqual({ hash: "abc123", allowed: true })
+  })
+
+  test("неверная нагрузка resume_bump: permanent, исполнитель не вызывается", async () => {
+    const outcome = await Effect.runPromise(
+      runJob(await config(), makeJob("resume_bump", { nonsense: true }), {
+        browserLayer: BrowserExecutor.fake({ resumeBump: () => Effect.die("must not run") })
+      }).pipe(Effect.provide(gateway()))
+    )
+    expect(outcome._tag === "complete" && outcome.exit.tag).toBe("permanent")
+  })
+
   test("a session job still has no browser routine and is blocked", async () => {
     const outcome = await Effect.runPromise(
       runJob(await config(), makeJob("session", target), {

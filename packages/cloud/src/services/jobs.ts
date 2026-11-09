@@ -365,3 +365,45 @@ export const chatReadJob = (
     },
     idempotencyKey: `vacancy:${input.vacancyId}:account:${input.hhAccountId}:chat:${input.chatId}:chat_read:${input.sequence}`
   })
+
+/**
+ * Поднимает одно резюме в поиске. Не привязана к заявке: цель - резюме. Нажатие
+ * безвозвратно, поэтому попыток не больше двух, и повтор возможен, только если
+ * кнопка не нажималась (ошибка сети до клика).
+ */
+export const resumeBumpJob = (
+  tx: Executor,
+  input: {
+    readonly userId: string
+    readonly hhAccountId: string
+    readonly resumeId: string
+    readonly externalId: string
+    readonly hash: string
+    readonly canonicalUrl: string
+    readonly sessionProfile: string | null
+    /** Растёт с каждой прежней задачей этого резюме. */
+    readonly sequence: number
+    /** Когда задаче можно стартовать (небольшой случайный сдвиг от расписания). */
+    readonly runAt?: Date
+  }
+) =>
+  QueueRepository.enqueue(tx, {
+    userId: input.userId,
+    hhAccountId: input.hhAccountId,
+    applicationId: null,
+    stage: "resume_bump",
+    kind: "browser",
+    // Фоновая работа: позади отправок, сверок и чтения форм.
+    priority: 10,
+    maxAttempts: 2,
+    ...(input.runAt === undefined ? {} : { runAt: input.runAt }),
+    payload: {
+      hhAccountId: input.hhAccountId,
+      resumeId: input.resumeId,
+      externalId: input.externalId,
+      hash: input.hash,
+      canonicalUrl: input.canonicalUrl,
+      sessionProfile: input.sessionProfile
+    },
+    idempotencyKey: `resume:${input.resumeId}:resume_bump:${input.sequence}`
+  })

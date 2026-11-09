@@ -9,6 +9,7 @@ import {
   PrepareJobPayload,
   NegotiationsSyncJobPayload,
   ChatReadJobPayload,
+  ResumeBumpJobPayload,
   ResumeSyncJobPayload,
   ReconcileJobPayload,
   SubmitJobPayload
@@ -228,6 +229,33 @@ const runBrowserExit = (
               message: `invalid chat_read payload: ${error.message}`
             }),
           onSuccess: (payload) => executor.chatRead(payload)
+        })
+      )
+    case "resume_bump":
+      return Schema.decodeUnknownEffect(ResumeBumpJobPayload)(job.payload).pipe(
+        Effect.matchEffect({
+          // Нажатия не было, так что плохая нагрузка ничего не подняла.
+          onFailure: (error) =>
+            Effect.succeed<HarnessExit>({
+              tag: "permanent",
+              message: `invalid resume_bump payload: ${error.message}`
+            }),
+          onSuccess: (payload) =>
+            executor.resumeBump({
+              payload,
+              beforeClick: gateway
+                .heartbeat({
+                  harnessId: config.harnessId,
+                  token: config.token,
+                  jobId: job.id,
+                  leaseId,
+                  epoch: job.leaseEpoch
+                })
+                .pipe(
+                  Effect.map((result) => result.ok),
+                  Effect.orElseSucceed(() => false)
+                )
+            })
         })
       )
     default:

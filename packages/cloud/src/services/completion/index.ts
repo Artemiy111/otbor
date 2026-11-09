@@ -9,7 +9,7 @@ import { completeInference } from "./inference.ts"
 import { completeReconcile } from "./reconcile.ts"
 import { completeLetterAttach, completePrepare, completeSession } from "./simple.ts"
 import { completeSubmit } from "./submit.ts"
-import { completeChatRead, completeNegotiationsSync, completeResumeSync } from "./syncs.ts"
+import { completeChatRead, completeNegotiationsSync, completeResumeBump, completeResumeSync } from "./syncs.ts"
 import type { StageHandler } from "./types.ts"
 
 export { exitDetail, retryLater } from "./common.ts"
@@ -25,6 +25,7 @@ export const stageHandlers: Record<HarnessJob["stage"], StageHandler> = {
   letter_attach: completeLetterAttach,
   resume_sync: completeResumeSync,
   chat_read: completeChatRead,
+  resume_bump: completeResumeBump,
   session: completeSession,
   inference: completeInference
 }

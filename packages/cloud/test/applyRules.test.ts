@@ -3,7 +3,7 @@ import { parseResponseForm } from "@otbor/hh"
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { checkKit, judgeLetterAttach, judgeNegotiationsSync, judgeReconcile, judgePrepare, judgeSubmit, toFormAnswers } from "../src/services/applyRules.ts"
+import { checkKit, judgeLetterAttach, judgeNegotiationsSync, judgeResumeBump, judgeReconcile, judgePrepare, judgeSubmit, toFormAnswers } from "../src/services/applyRules.ts"
 
 const fixture = (name: string) =>
   readFileSync(join(import.meta.dir, "../../hh/test/fixtures", name), "utf8")
@@ -372,5 +372,64 @@ describe("judgeReconcile with two resumes", () => {
   test("without a known resume any topic of the vacancy still counts", () => {
     const verdict = judgeReconcile(exitFor([topic(290733333)]), "138177094")
     expect(verdict._tag).toBe("submitted")
+  })
+})
+
+describe("judgeResumeBump", () => {
+  const evidence = (extra: Record<string, unknown>) => ({
+    clicked: true,
+    label: "Поднять в поиске",
+    lastBumpBefore: "08 ноября в 19:15",
+    lastBumpAfter: "09 ноября в 23:40",
+    url: "https://hh.ru/resume/x",
+    ...extra
+  })
+
+  test("нажатие и изменившаяся строка: подъём состоялся", () => {
+    const verdict = judgeResumeBump({ tag: "submitted", artifacts: evidence({}) })
+    expect(verdict._tag).toBe("bumped")
+  })
+
+  test("нажатие, кнопка пропала при той же строке: подъём состоялся", () => {
+    const verdict = judgeResumeBump({
+      tag: "submitted",
+      artifacts: evidence({ lastBumpAfter: "08 ноября в 19:15", unavailableAfter: true })
+    })
+    expect(verdict._tag).toBe("bumped")
+  })
+
+  test("тег submitted не решает: без нажатия в свидетельстве подъёма нет", () => {
+    const verdict = judgeResumeBump({ tag: "submitted", artifacts: evidence({ clicked: false }) })
+    expect(verdict._tag).toBe("retry")
+  })
+
+  test("нажатие без изменения карточки: unconfirmed", () => {
+    const verdict = judgeResumeBump({
+      tag: "ambiguous",
+      artifacts: evidence({ lastBumpAfter: "08 ноября в 19:15" })
+    })
+    expect(verdict._tag).toBe("unconfirmed")
+  })
+
+  test("ambiguous без свидетельства: unconfirmed, а не повтор", () => {
+    expect(judgeResumeBump({ tag: "ambiguous" })._tag).toBe("unconfirmed")
+  })
+
+  test("недоступная кнопка: unavailable", () => {
+    const verdict = judgeResumeBump({
+      tag: "blocked",
+      artifacts: evidence({ clicked: false, label: "Поднимать автоматически", lastBumpAfter: "08 ноября в 19:15" })
+    })
+    expect(verdict).toEqual({
+      _tag: "unavailable",
+      label: "Поднимать автоматически",
+      lastBump: "08 ноября в 19:15"
+    })
+  })
+
+  test("сессия и капча требуют человека, сеть - повтор", () => {
+    expect(judgeResumeBump({ tag: "session_expired" })._tag).toBe("human")
+    expect(judgeResumeBump({ tag: "captcha" })._tag).toBe("human")
+    expect(judgeResumeBump({ tag: "transport", message: "timeout" })._tag).toBe("retry")
   })
 })

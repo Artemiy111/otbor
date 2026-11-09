@@ -5,12 +5,13 @@ import type {
   LetterAttachJobPayload,
   ReconcileJobPayload,
   ChatReadJobPayload,
+  ResumeBumpEvidence,
   ResumeSyncJobPayload,
   ReconcilePage,
   SubmitEvidence
 } from "@otbor/contract"
 import { isTrackerUrl } from "./trackers.ts"
-import { classifyResponsePage, parseResumeRefs, readResponseStatus, responseResumeHash } from "@otbor/hh"
+import { BUMP_BUTTON_SELECTOR, BUMP_PAYWALL_SELECTOR, decideBump, normalizeBumpText, parseLastBump, classifyResponsePage, parseResumeRefs, readResponseStatus, responseResumeHash } from "@otbor/hh"
 import { Effect, Layer, Schema, Semaphore } from "effect"
 import { existsSync } from "node:fs"
 import { mkdir } from "node:fs/promises"
@@ -43,6 +44,8 @@ import {
   contactsWindow,
   chatDataUrl,
   chatReadExit,
+  bumpUnclicked,
+  resumeBumpExit,
   resumeSyncExit,
   resumeUrl,
   prepareExit,
@@ -53,7 +56,7 @@ import {
   wantsMoreNegotiations,
   wantsMoreSyncPages
 } from "./core.ts"
-import { BrowserExecutor, type LetterAttachRequest, type SubmitRequest } from "./executor.ts"
+import { BrowserExecutor, type LetterAttachRequest, type ResumeBumpRequest, type SubmitRequest } from "./executor.ts"
 import { makeHumanizer, noHumanizer } from "./humanize.ts"
 import { DEFAULT_CHROME_PATH, hhProfileDir } from "./profile.ts"
 
@@ -919,7 +922,132 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
       )
     )
 
-  return BrowserExecutor.of({ prepare, submit, attachLetter, reconcile, negotiationsSync, resumeSync, chatRead })
+  /**
+   * Нажимает «Поднять в поиске» на странице резюме не больше одного раза.
+   * Нажимается только настоящая кнопка `resume-update-button` (правила в
+   * `decideBump`); кнопка-реклама подписки не трогается никогда. Если после
+   * нажатия что-то сломалось, выход `ambiguous`: второго нажатия не будет.
+   */
+  const resumeBump = ({ payload, beforeClick }: ResumeBumpRequest): Effect.Effect<HarnessExit> => {
+    let clicked = false
+    let lastUrl = resumeUrl(baseUrl, payload.hash)
+    let label: string | null = null
+    let before: string | null = null
+
+    const view = (page: Page, selector: string) =>
+      Effect.gen(function*() {
+        const target = page.locator(selector).first()
+        if ((yield* attempt(() => target.count())) === 0) return null
+        const text = yield* attempt(() => target.textContent({ timeout: 5_000 }))
+        const href = yield* attempt(() => target.getAttribute("href", { timeout: 5_000 }))
+        const disabled = yield* attempt(() => target.getAttribute("disabled", { timeout: 5_000 }))
+        const aria = yield* attempt(() => target.getAttribute("aria-disabled", { timeout: 5_000 }))
+        return {
+          label: text ?? "",
+          href,
+          disabled: disabled !== null || aria === "true"
+        }
+      })
+
+    const cardText = (page: Page) =>
+      attempt(() => page.locator("body").innerText({ timeout: 5_000 })).pipe(Effect.orElseSucceed(() => ""))
+
+    const run = withPage(
+      payload.sessionProfile,
+      (page) =>
+        Effect.gen(function*() {
+          yield* attempt(() =>
+            page.goto(lastUrl, { waitUntil: "domcontentloaded", timeout: config.navigationTimeoutMs })
+          )
+          // Карточка рисуется на клиенте: ждём кнопку, но не дольше settleMs.
+          const deadline = Date.now() + config.settleMs
+          let paywallSince: number | null = null
+          while (true) {
+            const html = yield* content(page)
+            if (html !== null) {
+              const kind = classifyResponsePage(html, page.url())
+              if (kind === "login" || kind === "captcha") break
+            }
+            if ((yield* attempt(() => page.locator(BUMP_BUTTON_SELECTOR).count())) > 0) break
+            if ((yield* attempt(() => page.locator(BUMP_PAYWALL_SELECTOR).count())) > 0) {
+              // Реклама видна, а настоящей кнопки нет: даём ей ещё немного времени.
+              paywallSince ??= Date.now()
+              if (Date.now() - paywallSince > 2_500) break
+            }
+            if (Date.now() >= deadline) break
+            yield* sleep(250)
+          }
+          lastUrl = page.url()
+          const html = (yield* content(page)) ?? ""
+          const kind = classifyResponsePage(html, lastUrl)
+          if (kind === "login") return bumpUnclicked(lastUrl, "session_expired", "hh redirected to the login page")
+          if (kind === "captcha") return bumpUnclicked(lastUrl, "captcha", "hh asked for a captcha")
+
+          before = parseLastBump(yield* cardText(page))
+          const button = yield* view(page, BUMP_BUTTON_SELECTOR)
+          const paywall = yield* view(page, BUMP_PAYWALL_SELECTOR)
+          const decision = decideBump(button, paywall)
+          label = button === null ? (paywall === null ? null : normalizeBumpText(paywall.label)) : normalizeBumpText(button.label)
+          if (decision._tag === "unavailable") {
+            return bumpUnclicked(lastUrl, "blocked", `bump not available: ${decision.label}`, {
+              label,
+              lastBump: before
+            })
+          }
+
+          // Последний взгляд перед единственным нажатием: аренда ещё наша?
+          if (!(yield* beforeClick)) {
+            return bumpUnclicked(lastUrl, "transport", "lease lost before the click", { label, lastBump: before })
+          }
+          clicked = true
+          yield* attempt(() => page.locator(BUMP_BUTTON_SELECTOR).first().click({ timeout: 5_000 }))
+
+          // Ждём, пока карточка изменится или кнопка станет недоступной.
+          const waitUntil = Date.now() + 15_000
+          let after: string | null = before
+          let unavailableAfter = false
+          while (true) {
+            yield* sleep(500)
+            after = parseLastBump(yield* cardText(page))
+            const now = yield* view(page, BUMP_BUTTON_SELECTOR)
+            unavailableAfter = decideBump(now, null)._tag === "unavailable"
+            if ((after !== null && after !== before) || unavailableAfter || Date.now() >= waitUntil) break
+          }
+          const evidence: ResumeBumpEvidence = {
+            clicked: true,
+            label,
+            lastBumpBefore: before,
+            lastBumpAfter: after,
+            unavailableAfter,
+            url: page.url()
+          }
+          return resumeBumpExit(evidence)
+        }),
+      { label: `bump-${payload.hash}` }
+    )
+
+    const failed = (message: string): HarnessExit =>
+      clicked
+        ? {
+            tag: "ambiguous",
+            message: `browser failed after the click: ${message}`,
+            artifacts: {
+              clicked: true,
+              label,
+              lastBumpBefore: before,
+              lastBumpAfter: before,
+              url: lastUrl
+            } satisfies ResumeBumpEvidence
+          }
+        : bumpUnclicked(lastUrl, "transport", message, { label, lastBump: before })
+
+    return run.pipe(
+      Effect.catch((error) => Effect.succeed(failed(error.message))),
+      Effect.catchDefect((defect) => Effect.succeed(failed(String(defect))))
+    )
+  }
+
+  return BrowserExecutor.of({ prepare, submit, attachLetter, reconcile, negotiationsSync, resumeSync, chatRead, resumeBump })
 }
 
 export const PlaywrightBrowserExecutor = {

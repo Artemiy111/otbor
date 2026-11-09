@@ -15,7 +15,9 @@ import {
   vacancyUrl,
   wantsMoreNegotiations,
   wantsMoreSyncPages,
-  chatUrl
+  chatUrl,
+  bumpUnclicked,
+  resumeBumpExit
 } from "../src/browser/core.ts"
 import { hhProfileDir, safeProfileName } from "../src/browser/profile.ts"
 
@@ -292,5 +294,39 @@ describe("negotiations sync", () => {
 describe("chatUrl", () => {
   test("opens the chat of one response", () => {
     expect(chatUrl("https://hh.ru/", "5770068788")).toBe("https://hh.ru/chat/5770068788")
+  })
+})
+
+describe("подъём резюме: выходы харнесса", () => {
+  const base = {
+    clicked: true,
+    label: "Поднять в поиске",
+    lastBumpBefore: "08 ноября в 19:15",
+    url: "https://hh.ru/resume/abc"
+  }
+
+  test("строка «Последнее» изменилась: submitted", () => {
+    const exit = resumeBumpExit({ ...base, lastBumpAfter: "09 ноября в 23:40" })
+    expect(exit.tag).toBe("submitted")
+    expect(exit.artifacts?.clicked).toBe(true)
+  })
+
+  test("кнопка стала недоступной при той же строке: тоже submitted", () => {
+    expect(resumeBumpExit({ ...base, lastBumpAfter: base.lastBumpBefore, unavailableAfter: true }).tag).toBe(
+      "submitted"
+    )
+  })
+
+  test("нажали, а карточка не изменилась: ambiguous, без повторного нажатия", () => {
+    expect(resumeBumpExit({ ...base, lastBumpAfter: base.lastBumpBefore }).tag).toBe("ambiguous")
+  })
+
+  test("недоступная кнопка: blocked с clicked=false и подписью", () => {
+    const exit = bumpUnclicked(base.url, "blocked", "bump not available: Поднимать автоматически", {
+      label: "Поднимать автоматически",
+      lastBump: base.lastBumpBefore
+    })
+    expect(exit.tag).toBe("blocked")
+    expect(exit.artifacts).toMatchObject({ clicked: false, label: "Поднимать автоматически" })
   })
 })

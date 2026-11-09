@@ -16,7 +16,8 @@ const kinds: ReadonlyArray<SourceSyncKind> = [
   "fit",
   "resume_sync",
   "analysis",
-  "apply"
+  "apply",
+  "resume_bump"
 ]
 
 const list = Command.make(
@@ -60,7 +61,7 @@ const upsert = Command.make(
   {
     target: Flag.String("target").pipe(
       Flag.withDescription(
-        "hh.ru search URL for search, an account id for mail_sync/telegram_sync/evaluate, or 'global'"
+        "hh.ru search URL for search, an account id for mail_sync/telegram_sync/evaluate/resume_bump, or 'global'"
       )
     ),
     kind: Flag.String("kind").pipe(
@@ -68,8 +69,8 @@ const upsert = Command.make(
       Flag.withDefault("search")
     ),
     interval: Flag.Int("interval").pipe(
-      Flag.withDescription("Minutes between runs"),
-      Flag.withDefault(60)
+      Flag.withDescription("Minutes between runs (default 60; 245 for resume_bump: hh bumps once per 4 hours)"),
+      Flag.optional
     ),
     options: Flag.String("options").pipe(
       Flag.withDescription("Per-kind JSON options, e.g. '{\"limit\":25,\"delayMs\":1000}'"),
@@ -114,7 +115,7 @@ const upsert = Command.make(
       id: Option.getOrUndefined(id) as ScheduleId | undefined,
       kind: kind as SourceSyncKind,
       targetId: target,
-      intervalMinutes: interval,
+      intervalMinutes: Option.getOrElse(interval, () => (kind === "resume_bump" ? 245 : 60)),
       enabled,
       options: parsedOptions
     })

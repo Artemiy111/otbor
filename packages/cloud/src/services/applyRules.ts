@@ -8,6 +8,7 @@ import {
   NegotiationsSyncEvidence,
   PrepareArtifacts,
   ReconcileEvidence,
+  ResumeBumpEvidence,
   ResumeSyncEvidence,
   type ResponseForm,
   type StoredHint,
@@ -767,4 +768,55 @@ export const judgeChatRead = (exit: HarnessExit, chatId: string): ChatReadVerdic
   if (chat === null) return { _tag: "retry", reason: "hh sent something that is not a chat" }
   if (chat.chatId !== chatId) return { _tag: "retry", reason: "hh sent a different chat" }
   return { _tag: "read", chat }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Resume bump                                                                */
+/* -------------------------------------------------------------------------- */
+
+export type ResumeBumpVerdict =
+  /** Нажатие было, и страница это подтвердила. */
+  | { readonly _tag: "bumped"; readonly lastBump: string | null; readonly label: string | null }
+  /** Нажатие могло дойти до hh, но подтверждения нет; повторять нельзя. */
+  | { readonly _tag: "unconfirmed"; readonly reason: string; readonly lastBump: string | null }
+  /** Кнопки нет или она недоступна; нажатия не было. Это обычный исход. */
+  | { readonly _tag: "unavailable"; readonly label: string | null; readonly lastBump: string | null }
+  | { readonly _tag: "human"; readonly reason: string }
+  | { readonly _tag: "retry"; readonly reason: string }
+
+/**
+ * Читает выход `resume_bump`. Харнесс не доверенный: подъём считается состоявшимся,
+ * только если в свидетельстве есть нажатие и страница после него изменилась
+ * (строка «Последнее» другая или кнопка стала недоступной). Тег выхода сам по себе
+ * ничего не решает. Нажатие без подтверждения - `unconfirmed`, а не повтор: второго
+ * нажатия не будет.
+ */
+export const judgeResumeBump = (exit: HarnessExit): ResumeBumpVerdict => {
+  if (exit.tag === "session_expired") return { _tag: "human", reason: "hh session expired; log in again" }
+  if (exit.tag === "captcha") return { _tag: "human", reason: "hh asked for a captcha" }
+
+  const decoded = Schema.decodeUnknownOption(ResumeBumpEvidence)(exit.artifacts)
+  if (Option.isNone(decoded)) {
+    // Без свидетельства нельзя исключить, что кнопку нажали.
+    if (exit.tag === "ambiguous" || exit.tag === "submitted" || exit.tag === "clicked") {
+      return { _tag: "unconfirmed", reason: `${exit.tag} without evidence`, lastBump: null }
+    }
+    return { _tag: "retry", reason: `resume bump came without evidence (${exit.tag})` }
+  }
+  const evidence = decoded.value
+  if (evidence.clicked) {
+    const changed = evidence.lastBumpAfter !== null && evidence.lastBumpAfter !== evidence.lastBumpBefore
+    if (changed || evidence.unavailableAfter === true) {
+      return { _tag: "bumped", lastBump: evidence.lastBumpAfter, label: evidence.label }
+    }
+    return {
+      _tag: "unconfirmed",
+      reason: "the card did not change after the click",
+      lastBump: evidence.lastBumpAfter
+    }
+  }
+  if (exit.tag === "blocked") {
+    return { _tag: "unavailable", label: evidence.label, lastBump: evidence.lastBumpBefore }
+  }
+  return { _tag: "retry", reason: `resume bump did not click (${exit.tag})` }
 }

@@ -1,4 +1,4 @@
-import type { ChatReadJobPayload, FormReadJobPayload, LetterAttachJobPayload, HarnessExit, NegotiationsSyncJobPayload, ResumeSyncJobPayload, ReconcileJobPayload, SubmitJobPayload } from "@otbor/contract"
+import type { ChatReadJobPayload, ResumeBumpJobPayload, FormReadJobPayload, LetterAttachJobPayload, HarnessExit, NegotiationsSyncJobPayload, ResumeSyncJobPayload, ReconcileJobPayload, SubmitJobPayload } from "@otbor/contract"
 import { Context, Effect, Layer } from "effect"
 
 /**
@@ -19,6 +19,12 @@ export interface SubmitRequest {
 export interface LetterAttachRequest {
   readonly payload: LetterAttachJobPayload
   /** Called immediately before the send button is pressed; `false` means do not click. */
+  readonly beforeClick: Effect.Effect<boolean>
+}
+
+export interface ResumeBumpRequest {
+  readonly payload: ResumeBumpJobPayload
+  /** Called immediately before the bump button is pressed; `false` means do not click. */
   readonly beforeClick: Effect.Effect<boolean>
 }
 
@@ -48,6 +54,11 @@ export interface BrowserExecutorShape {
    * navigated and nothing is clicked; the cloud parses the body.
    */
   readonly chatRead: (payload: ChatReadJobPayload) => Effect.Effect<HarnessExit>
+  /**
+   * Opens the resume page and presses "Поднять в поиске" at most once, only when
+   * the real button is there. Returns what the card said before and after.
+   */
+  readonly resumeBump: (request: ResumeBumpRequest) => Effect.Effect<HarnessExit>
 }
 
 export class BrowserExecutor extends Context.Service<BrowserExecutor, BrowserExecutorShape>()(
@@ -78,7 +89,10 @@ export class BrowserExecutor extends Context.Service<BrowserExecutor, BrowserExe
           (() => Effect.succeed<HarnessExit>({ tag: "blocked", message: "fake executor: resume sync" })),
         chatRead:
           handlers.chatRead ??
-          (() => Effect.succeed<HarnessExit>({ tag: "blocked", message: "fake executor: chat read" }))
+          (() => Effect.succeed<HarnessExit>({ tag: "blocked", message: "fake executor: chat read" })),
+        resumeBump:
+          handlers.resumeBump ??
+          (() => Effect.succeed<HarnessExit>({ tag: "blocked", message: "fake executor: resume bump" }))
       })
     )
 }
