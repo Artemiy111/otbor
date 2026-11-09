@@ -8,6 +8,7 @@ import type {
 } from "@otbor/contract"
 import { parseNegotiations, parseResponseForm, parseResponseResumes } from "@otbor/hh"
 import type { Request, Settings } from "@/messages.ts"
+import { hhidOfText } from "@/hhid.ts"
 import { chooseDraft, isResumeHash, resumeHashOfId, resumeIdOfHash, resumeToSelect } from "@/resumePick.ts"
 
 /**
@@ -85,15 +86,14 @@ const vacancyExternalId = (): string | null => {
  * hh's id of the user logged in on this page, from its initial state. One
  * browser may hold several hh users (Zen containers); this says which one.
  */
-const HHID_RE = /"hhid"\s*:\s*"?(\d+)/
 const HHID_KEY = "otbor:hhid"
 let hhidLookup: Promise<string | null> | null = null
 
 const pageHhid = (): Promise<string | null> => {
   const template = document.getElementById("HH-Lux-InitialState")
   const text = template instanceof HTMLTemplateElement ? template.content.textContent : template?.textContent
-  const own = HHID_RE.exec(text ?? "")?.[1]
-  if (own !== undefined) return Promise.resolve(own)
+  const own = hhidOfText(text ?? "")
+  if (own !== null) return Promise.resolve(own)
   try {
     const kept = sessionStorage.getItem(HHID_KEY)
     if (kept !== null) return Promise.resolve(kept)
@@ -104,7 +104,7 @@ const pageHhid = (): Promise<string | null> => {
   hhidLookup ??= fetch("/", { credentials: "same-origin" })
     .then((response) => response.text())
     .then((html) => {
-      const found = HHID_RE.exec(html)?.[1] ?? null
+      const found = hhidOfText(html)
       try {
         if (found !== null) sessionStorage.setItem(HHID_KEY, found)
       } catch {
