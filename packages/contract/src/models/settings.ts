@@ -23,7 +23,15 @@ export const UserSettings = Schema.Struct({
   /** Не больше стольких отправок аккаунта за скользящий час, 1..1000; null - без лимита. */
   submitHourlyLimit: Schema.NullOr(between(1, 1000)),
   /** Потоки харнесса, 1..12. */
-  harnessSlots: between(1, MAX_HARNESS_SLOTS)
+  harnessSlots: between(1, MAX_HARNESS_SLOTS),
+  /** Чтений формы отклика (`form_read`, `prepare`) одного аккаунта разом, 1..12. */
+  formReadConcurrency: between(1, MAX_HARNESS_SLOTS),
+  /** Минимум секунд между стартами чтений формы одного аккаунта, 0..600; 0 - без темпа. */
+  formReadIntervalSeconds: between(0, 600),
+  /** Случайная надбавка к интервалу чтений, процентов от него, 0..200. */
+  formReadJitterPercent: between(0, 200),
+  /** Во сколько раз реже читать формы, пока аккаунт заблокирован капчей, 1..20. */
+  formReadBlockedFactor: between(1, 20)
 })
 
 export type UserSettings = typeof UserSettings.Type

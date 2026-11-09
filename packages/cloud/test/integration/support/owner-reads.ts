@@ -185,6 +185,8 @@ export const claimAsHolder = async (input: {
         kinds: input.kinds ?? ["browser"],
         leaseSeconds: input.leaseSeconds,
         submitIntervalSeconds: input.submitIntervalSeconds ?? 0,
+        formReadIntervalSeconds: 0,
+        formReadConcurrency: 12,
         submitHourlyLimit: input.submitHourlyLimit ?? null,
         ...(input.browserConcurrency === undefined ? {} : { browserConcurrency: input.browserConcurrency }),
         ...(input.actingConcurrency === undefined ? {} : { actingConcurrency: input.actingConcurrency })

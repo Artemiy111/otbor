@@ -170,6 +170,8 @@ export interface QueueServiceOptions {
   readonly accountSubmitJitterPercent?: number
   /** Потоки харнесса (`OTBOR_HARNESS_CONCURRENCY`, 6). */
   readonly harnessSlots?: number
+  /** Пауза между чтениями формы аккаунта, секунд (по умолчанию 4). 0 - без темпа. */
+  readonly accountFormReadIntervalSeconds?: number
 }
 
 /** Настройки по умолчанию из опций сервиса. */
@@ -183,7 +185,12 @@ const defaultsOf = (options: QueueServiceOptions): UserSettings => ({
   submitJitterPercent:
     options.accountSubmitJitterPercent ?? SettingsRepository.BUILTIN_SETTINGS.submitJitterPercent,
   submitHourlyLimit: null,
-  harnessSlots: options.harnessSlots ?? SettingsRepository.BUILTIN_SETTINGS.harnessSlots
+  harnessSlots: options.harnessSlots ?? SettingsRepository.BUILTIN_SETTINGS.harnessSlots,
+  formReadConcurrency: SettingsRepository.BUILTIN_SETTINGS.formReadConcurrency,
+  formReadIntervalSeconds:
+    options.accountFormReadIntervalSeconds ?? SettingsRepository.BUILTIN_SETTINGS.formReadIntervalSeconds,
+  formReadJitterPercent: SettingsRepository.BUILTIN_SETTINGS.formReadJitterPercent,
+  formReadBlockedFactor: SettingsRepository.BUILTIN_SETTINGS.formReadBlockedFactor
 })
 
 export class QueueService extends Context.Service<QueueService, QueueServiceShape>()(
@@ -204,6 +211,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
           accountSubmitIntervalSeconds: env.submitIntervalSeconds,
           accountSubmitJitterPercent: env.submitJitterPercent,
           harnessSlots: env.harnessSlots,
+          accountFormReadIntervalSeconds: env.formReadIntervalSeconds,
           ...overrides
         })
       })
@@ -253,7 +261,11 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                 submitIntervalSeconds: settings.submitIntervalSeconds,
                 submitJitterPercent: settings.submitJitterPercent,
                 submitHourlyLimit: settings.submitHourlyLimit,
-                harnessSlots: settings.harnessSlots
+                harnessSlots: settings.harnessSlots,
+                formReadConcurrency: settings.formReadConcurrency,
+                formReadIntervalSeconds: settings.formReadIntervalSeconds,
+                formReadJitterPercent: settings.formReadJitterPercent,
+                formReadBlockedFactor: settings.formReadBlockedFactor
               })
             })
           )
@@ -341,7 +353,9 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                 actingConcurrency: defaults.accountActingConcurrency,
                 submitIntervalSeconds: defaults.submitIntervalSeconds,
                 submitJitterPercent: defaults.submitJitterPercent,
-                submitHourlyLimit: defaults.submitHourlyLimit
+                submitHourlyLimit: defaults.submitHourlyLimit,
+                formReadConcurrency: defaults.formReadConcurrency,
+                formReadIntervalSeconds: defaults.formReadIntervalSeconds
               })
               if (claimed === null) return null
 

@@ -44,7 +44,7 @@ defineExpose({ refetch, loading: computed(() => query.isLoading.value) })
       <div class="flex items-center gap-2">
         <p class="text-sm font-semibold">Параллельность</p>
         <HelpHint
-          text="Читающие задания (форма, сверка, чаты, синхронизации) идут параллельно до потолка браузерных задач на аккаунт. Отправки и письма ограничены меньшим потолком и идут с паузой между собой. Капча останавливает отправки аккаунта, пока вы не решите её и не нажмёте «Продолжить». Генерация от аккаунтов не зависит, её ограничивают только потоки харнесса. Все числа меняются в настройках."
+          text="Читающие задания (сверка, чаты, синхронизации) идут параллельно до потолка браузерных задач на аккаунт; чтение формы отклика идёт со своим потолком и паузой. Отправки и письма ограничены меньшим потолком и идут с паузой между собой. Капча останавливает отправки аккаунта, пока вы не решите её и не нажмёте «Продолжить». Генерация от аккаунтов не зависит, её ограничивают только потоки харнесса. Все числа меняются в настройках."
         />
         <a href="/settings" class="ml-auto text-xs text-muted-foreground underline underline-offset-2">Изменить в настройках</a>
       </div>
@@ -57,6 +57,11 @@ defineExpose({ refetch, loading: computed(() => query.isLoading.value) })
           Браузерных задач на аккаунт {{ data.browserCap }}, из них отправок {{ data.actingCap }} · пауза между отправками
           {{ data.submitIntervalSeconds }} с + до {{ data.submitJitterPercent }}% · не больше
           {{ data.submitHourlyLimit ?? "∞" }} в час · потоки харнесса {{ data.harnessSlots }}
+        </p>
+        <p class="text-xs tabular-nums text-muted-foreground">
+          Чтений формы на аккаунт {{ data.formReadConcurrency }} · пауза между чтениями
+          {{ data.formReadIntervalSeconds }} с + до {{ data.formReadJitterPercent }}% · при капче реже в
+          {{ data.formReadBlockedFactor }} раз
         </p>
 
         <div class="space-y-1 text-sm">

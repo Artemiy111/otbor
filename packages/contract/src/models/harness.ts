@@ -170,6 +170,14 @@ export const QueueConcurrency = Schema.Struct({
   submitHourlyLimit: Schema.NullOr(Schema.Int),
   /** Сколько потоков харнессы должны держать (настройки). */
   harnessSlots: Schema.Int,
+  /** Чтений формы аккаунта разом (настройки). */
+  formReadConcurrency: Schema.Int,
+  /** Минимум секунд между стартами чтений формы одного аккаунта (настройки). */
+  formReadIntervalSeconds: Schema.Int,
+  /** Случайная надбавка к интервалу чтений, процентов. */
+  formReadJitterPercent: Schema.Int,
+  /** Во сколько раз реже читать формы при блокировке капчей. */
+  formReadBlockedFactor: Schema.Int,
   actingStages: Schema.Array(JobStage),
   harnesses: Schema.Array(ConcurrencyHarness),
   accounts: Schema.Array(ConcurrencyAccount),

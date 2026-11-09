@@ -133,6 +133,10 @@ export interface ClaimInput {
   readonly submitJitterPercent?: number
   /** Не больше стольких отправок аккаунта за скользящий час; `null` - без лимита. */
   readonly submitHourlyLimit?: number | null
+  /** Чтений формы аккаунта разом, когда у владельца нет строки настроек. */
+  readonly formReadConcurrency?: number
+  /** Пауза между чтениями формы в секундах, когда у владельца нет строки настроек. */
+  readonly formReadIntervalSeconds?: number
 }
 
 export const DEFAULT_ACCOUNT_BROWSER_CONCURRENCY = 4
@@ -148,6 +152,13 @@ export const DEFAULT_SUBMIT_JITTER_PERCENT = 50
  * неэксклюзивных `withPage` в харнессе: читающие идут параллельно.
  */
 export const ACTING_STAGES: ReadonlyArray<JobStage> = ["submit", "letter_attach"]
+
+/**
+ * Стадии, которые открывают страницу отклика только чтобы прочитать форму.
+ * hh показывает капчу и на них, поэтому у них свой потолок и своя пауза
+ * (`formRead*` в настройках), независимые от отправок.
+ */
+export const FORM_READ_STAGES: ReadonlyArray<JobStage> = ["form_read", "prepare"]
 
 export interface ClaimedJob {
   readonly job: HarnessJob
@@ -170,6 +181,7 @@ const kindClause = (kinds: ReadonlyArray<JobKind>) =>
     : sql`kind in (${sql.join(kinds.map((kind) => sql`${kind}`), sql`, `)})`
 
 const actingList = sql.join(ACTING_STAGES.map((stage) => sql`${stage}`), sql`, `)
+const formReadList = sql.join(FORM_READ_STAGES.map((stage) => sql`${stage}`), sql`, `)
 
 /**
  * Числовая настройка владельца задачи (`user_settings`) или `fallback`, пока
@@ -223,8 +235,16 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
       submitIntervalSeconds: Math.max(0, input.submitIntervalSeconds ?? DEFAULT_ACCOUNT_SUBMIT_INTERVAL_SECONDS),
       submitJitterPercent: Math.max(0, input.submitJitterPercent ?? DEFAULT_SUBMIT_JITTER_PERCENT),
       submitHourlyLimit: input.submitHourlyLimit ?? null,
-      harnessSlots: 6
+      harnessSlots: 6,
+      formReadConcurrency: Math.max(1, input.formReadConcurrency ?? SettingsRepository.BUILTIN_SETTINGS.formReadConcurrency),
+      formReadIntervalSeconds: Math.max(
+        0,
+        input.formReadIntervalSeconds ?? SettingsRepository.BUILTIN_SETTINGS.formReadIntervalSeconds
+      ),
+      formReadJitterPercent: SettingsRepository.BUILTIN_SETTINGS.formReadJitterPercent,
+      formReadBlockedFactor: SettingsRepository.BUILTIN_SETTINGS.formReadBlockedFactor
     }
+    const formReadCapSql = settingOf("form_read_concurrency", defaults.formReadConcurrency)
     const browserCapSql = settingOf("account_browser_concurrency", defaults.accountBrowserConcurrency)
     const actingCapSql = sql`least(${browserCapSql}, ${
       settingOf("account_acting_concurrency", defaults.accountActingConcurrency)
@@ -291,6 +311,25 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
                     where pa.id = harness_jobs.hh_account_id
                       and (pa.submit_next_at is null or pa.submit_next_at <= now())
                       and pa.submit_blocked_at is null
+                  )
+                )
+                and (
+                  -- Чтение формы: свой потолок параллельности и пауза между стартами.
+                  harness_jobs.stage not in (${formReadList})
+                  or (
+                    (
+                      select count(*) from harness_jobs r
+                      where r.hh_account_id = harness_jobs.hh_account_id
+                        and r.kind = 'browser'
+                        and r.status in ('leased', 'running')
+                        and r.locked_by = ${input.holder}
+                        and r.stage in (${formReadList})
+                    ) < ${formReadCapSql}
+                    and exists (
+                      select 1 from hh_account fa
+                      where fa.id = harness_jobs.hh_account_id
+                        and (fa.form_read_next_at is null or fa.form_read_next_at <= now())
+                    )
                   )
                 )
                 and (
@@ -362,6 +401,37 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
         if (total >= browserCap || (isActing && acting >= actingCap)) {
           rejectedAccounts.push(hhAccountId)
           continue
+        }
+
+        // Чтение формы: потолок и пауза проверяются и назначаются под той же
+        // блокировкой account_lease. Пока аккаунт заблокирован капчей, пауза
+        // растягивается в `formReadBlockedFactor` раз.
+        if (FORM_READ_STAGES.includes(candidate.stage as JobStage)) {
+          const reading = yield* tx.execute(sql`
+            select count(*)::int as n from harness_jobs r
+            where r.hh_account_id = ${hhAccountId} and r.kind = 'browser'
+              and r.status in ('leased', 'running') and r.locked_by = ${input.holder}
+              and r.stage in (${formReadList})
+          `)
+          if (Number((reading.rows[0] as { n?: number } | undefined)?.n ?? 0) >= settings.formReadConcurrency) {
+            rejectedAccounts.push(hhAccountId)
+            continue
+          }
+          const base = settings.formReadIntervalSeconds
+          const jitter = base * (settings.formReadJitterPercent / 100) * Math.random()
+          const paced = yield* tx.execute(sql`
+            update hh_account
+            set form_read_next_at = now() + make_interval(
+              secs => (${base} + ${jitter}) * case when submit_blocked_at is not null then ${settings.formReadBlockedFactor} else 1 end
+            )
+            where id = ${hhAccountId}
+              and (form_read_next_at is null or form_read_next_at <= now())
+            returning id
+          `)
+          if (paced.rows.length === 0) {
+            rejectedAccounts.push(hhAccountId)
+            continue
+          }
         }
 
         // Часовой лимит перепроверяем под той же блокировкой: выбор кандидата - снимок.
@@ -582,6 +652,10 @@ interface ConcurrencyCaps {
   readonly submitJitterPercent: number
   readonly submitHourlyLimit: number | null
   readonly harnessSlots: number
+  readonly formReadConcurrency: number
+  readonly formReadIntervalSeconds: number
+  readonly formReadJitterPercent: number
+  readonly formReadBlockedFactor: number
 }
 
 const stageCounts = (rows: ReadonlyArray<Record<string, unknown>>) =>
@@ -665,6 +739,10 @@ export const concurrency = (
       submitJitterPercent: caps.submitJitterPercent,
       submitHourlyLimit: caps.submitHourlyLimit,
       harnessSlots: caps.harnessSlots,
+      formReadConcurrency: caps.formReadConcurrency,
+      formReadIntervalSeconds: caps.formReadIntervalSeconds,
+      formReadJitterPercent: caps.formReadJitterPercent,
+      formReadBlockedFactor: caps.formReadBlockedFactor,
       actingStages: ACTING_STAGES,
       harnesses: harnesses.map((row) => ({
         id: String(row.id),

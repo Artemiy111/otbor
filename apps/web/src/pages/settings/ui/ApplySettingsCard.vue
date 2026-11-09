@@ -19,7 +19,7 @@ import {
 } from "@/shared/ui"
 
 /**
- * Темп откликов, параллельность и потоки харнесса. Лежат в базе и действуют
+ * Темп откликов и чтения форм, параллельность и потоки харнесса. Лежат в базе и действуют
  * со следующей выдачи задачи, без перезапуска.
  */
 const queryCache = useQueryCache()
@@ -33,7 +33,11 @@ const form = ref({
   submitIntervalSeconds: "",
   submitJitterPercent: "",
   submitHourlyLimit: "",
-  harnessSlots: ""
+  harnessSlots: "",
+  formReadConcurrency: "",
+  formReadIntervalSeconds: "",
+  formReadJitterPercent: "",
+  formReadBlockedFactor: ""
 })
 
 const fill = (settings: UserSettings) => {
@@ -43,7 +47,11 @@ const fill = (settings: UserSettings) => {
     submitIntervalSeconds: String(settings.submitIntervalSeconds),
     submitJitterPercent: String(settings.submitJitterPercent),
     submitHourlyLimit: settings.submitHourlyLimit === null ? "" : String(settings.submitHourlyLimit),
-    harnessSlots: String(settings.harnessSlots)
+    harnessSlots: String(settings.harnessSlots),
+    formReadConcurrency: String(settings.formReadConcurrency),
+    formReadIntervalSeconds: String(settings.formReadIntervalSeconds),
+    formReadJitterPercent: String(settings.formReadJitterPercent),
+    formReadBlockedFactor: String(settings.formReadBlockedFactor)
   }
 }
 watch(view, (next) => next && fill(next.settings), { immediate: true })
@@ -100,6 +108,34 @@ const fields: ReadonlyArray<Field> = [
     hint: "Сколько задач харнесс держит разом (1–12). Работающий харнесс подхватывает число сам, переменная OTBOR_HARNESS_CONCURRENCY остаётся запасной.",
     min: 1,
     max: 12
+  },
+  {
+    key: "formReadConcurrency",
+    label: "Чтений формы на аккаунт разом",
+    hint: "Сколько форм откликов аккаунта читается одновременно (подготовка автоотклика и черновиков). Меньше — реже капча.",
+    min: 1,
+    max: 12
+  },
+  {
+    key: "formReadIntervalSeconds",
+    label: "Пауза между чтениями формы, секунд",
+    hint: "Минимум между стартами двух чтений форм одного аккаунта. 0 выключает паузу.",
+    min: 0,
+    max: 600
+  },
+  {
+    key: "formReadJitterPercent",
+    label: "Случайная добавка к паузе чтений, %",
+    hint: "К паузе прибавляется случайная доля до этого процента, чтобы чтения шли не по метроному.",
+    min: 0,
+    max: 200
+  },
+  {
+    key: "formReadBlockedFactor",
+    label: "Замедление чтений при капче, раз",
+    hint: "Пока аккаунт заблокирован капчей, пауза между чтениями форм умножается на это число. 1 — не замедлять.",
+    min: 1,
+    max: 20
   }
 ]
 

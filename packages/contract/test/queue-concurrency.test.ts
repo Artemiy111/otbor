@@ -9,6 +9,10 @@ const base = {
   submitJitterPercent: 50,
   submitHourlyLimit: null,
   harnessSlots: 6,
+  formReadConcurrency: 2,
+  formReadIntervalSeconds: 4,
+  formReadJitterPercent: 100,
+  formReadBlockedFactor: 3,
   actingStages: ["submit", "letter_attach"],
   harnesses: [],
   accounts: [],
@@ -44,7 +48,11 @@ describe("UserSettings", () => {
     submitIntervalSeconds: 75,
     submitJitterPercent: 50,
     submitHourlyLimit: null,
-    harnessSlots: 6
+    harnessSlots: 6,
+    formReadConcurrency: 2,
+    formReadIntervalSeconds: 4,
+    formReadJitterPercent: 100,
+    formReadBlockedFactor: 3
   }
 
   test("accepts a full row and a limit", () => {
@@ -58,7 +66,11 @@ describe("UserSettings", () => {
       { accountBrowserConcurrency: 0 },
       { submitIntervalSeconds: -1 },
       { submitJitterPercent: 201 },
-      { submitHourlyLimit: 0 }
+      { submitHourlyLimit: 0 },
+      { formReadConcurrency: 0 },
+      { formReadIntervalSeconds: 601 },
+      { formReadJitterPercent: 201 },
+      { formReadBlockedFactor: 21 }
     ]) {
       expect(() => Schema.decodeUnknownSync(UserSettings)({ ...ok, ...bad })).toThrow()
     }

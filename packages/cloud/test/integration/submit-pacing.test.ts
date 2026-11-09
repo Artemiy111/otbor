@@ -374,7 +374,11 @@ if (!integrationEnabled || serverUrl === null) {
             submitIntervalSeconds: 0,
             submitJitterPercent: 0,
             submitHourlyLimit: limit,
-            harnessSlots: 6
+            harnessSlots: 6,
+            formReadConcurrency: 2,
+            formReadIntervalSeconds: 4,
+            formReadJitterPercent: 100,
+            formReadBlockedFactor: 3
           })
         })
       )
@@ -436,6 +440,55 @@ if (!integrationEnabled || serverUrl === null) {
           return yield* settings.update({ ...current, ...patch })
         })
       )
+
+    test("form reads are paced per account and slow down while a captcha blocks it", async () => {
+      const tenant = await seedTenant("form-read-pacing")
+      await update(tenant.userId, {
+        accountBrowserConcurrency: 6,
+        formReadConcurrency: 5,
+        formReadIntervalSeconds: 100,
+        formReadJitterPercent: 0,
+        formReadBlockedFactor: 3
+      })
+      for (let i = 0; i < 3; i++) {
+        await enqueueJob({ userId: tenant.userId, accountId: tenant.accountId, stage: "form_read" })
+      }
+      const holder = holderName()
+      const claim = () => claimAsHolder({ holder, accounts: [tenant.accountId], browserConcurrency: 6, actingConcurrency: 5 })
+      const nextIn = async () =>
+        (
+          (await runAs(
+            "owner",
+            ownerTx((tx) =>
+              tx
+                .execute(sql`select extract(epoch from (form_read_next_at - now()))::float as n from hh_account where id = ${tenant.accountId}`)
+                .pipe(Effect.map((result) => (result.rows[0] as { n: number }).n))
+            )
+          )) as number
+        )
+      expect(await claim()).not.toBeNull()
+      const first = await nextIn()
+      expect(first).toBeGreaterThan(95)
+      expect(first).toBeLessThanOrEqual(100)
+      // Вторая чтение того же аккаунта ждёт паузу.
+      expect(await claim()).toBeNull()
+
+      // Капча: пауза в 3 раза длиннее.
+      await runAs(
+        "owner",
+        ownerTx((tx) =>
+          tx.execute(sql`
+            update hh_account
+            set submit_blocked_at = now(), submit_block_reason = 'captcha', form_read_next_at = null
+            where id = ${tenant.accountId}
+          `)
+        )
+      )
+      expect(await claim()).not.toBeNull()
+      const slowed = await nextIn()
+      expect(slowed).toBeGreaterThan(295)
+      expect(slowed).toBeLessThanOrEqual(300)
+    })
 
     test("without a row the defaults from the environment apply and the view says nothing is stored", async () => {
       const tenant = await seedTenant("settings-default")

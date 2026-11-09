@@ -145,14 +145,17 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
     QueueService.layerConfigured({
       advanceOnComplete: options.advanceOnComplete === true,
       // Тесты по умолчанию без темпа отправок; темп проверяют отдельные тесты.
-      accountSubmitIntervalSeconds: options.submitIntervalSeconds ?? 0
+      accountSubmitIntervalSeconds: options.submitIntervalSeconds ?? 0,
+      // И без темпа чтения формы: его проверяет отдельный тест.
+      accountFormReadIntervalSeconds: 0
     }).pipe(
       Layer.provide(shared)
     ),
     HhAccountService.layer.pipe(Layer.provide(shared)),
     SettingsService.layerConfigured({
       // Те же значения по умолчанию, что у очереди: темп по умолчанию выключен.
-      submitIntervalSeconds: options.submitIntervalSeconds ?? 0
+      submitIntervalSeconds: options.submitIntervalSeconds ?? 0,
+      formReadIntervalSeconds: 0
     }).pipe(Layer.provide(shared)),
     NegotiationsSync.layer.pipe(Layer.provide(shared)),
     ApplicationService.layer.pipe(Layer.provide(shared)),

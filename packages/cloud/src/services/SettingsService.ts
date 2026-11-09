@@ -38,6 +38,10 @@ export const settingsDefaultsFromEnv = (
       submitJitterPercent,
       submitHourlyLimit: builtin.submitHourlyLimit,
       harnessSlots,
+      formReadConcurrency: builtin.formReadConcurrency,
+      formReadIntervalSeconds: builtin.formReadIntervalSeconds,
+      formReadJitterPercent: builtin.formReadJitterPercent,
+      formReadBlockedFactor: builtin.formReadBlockedFactor,
       ...overrides
     }
   })

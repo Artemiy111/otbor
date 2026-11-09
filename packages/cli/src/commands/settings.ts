@@ -12,7 +12,11 @@ const lines = (settings: UserSettings, defaults: UserSettings) => {
     row("submit interval, seconds", settings.submitIntervalSeconds, defaults.submitIntervalSeconds),
     row("submit jitter, percent", settings.submitJitterPercent, defaults.submitJitterPercent),
     row("submits per hour per account", settings.submitHourlyLimit, defaults.submitHourlyLimit),
-    row("harness slots", settings.harnessSlots, defaults.harnessSlots)
+    row("harness slots", settings.harnessSlots, defaults.harnessSlots),
+    row("form reads per account", settings.formReadConcurrency, defaults.formReadConcurrency),
+    row("form read interval, seconds", settings.formReadIntervalSeconds, defaults.formReadIntervalSeconds),
+    row("form read jitter, percent", settings.formReadJitterPercent, defaults.formReadJitterPercent),
+    row("form read slowdown on captcha", settings.formReadBlockedFactor, defaults.formReadBlockedFactor)
   ]
 }
 
@@ -42,9 +46,16 @@ const set = Command.make(
       Flag.withDescription("Submits per hour per account, 1-1000; 0 turns the limit off"),
       Flag.optional
     ),
-    slots: Flag.Int("slots").pipe(Flag.withDescription("Harness slots, 1-12"), Flag.optional)
+    slots: Flag.Int("slots").pipe(Flag.withDescription("Harness slots, 1-12"), Flag.optional),
+    reads: Flag.Int("reads").pipe(Flag.withDescription("Form reads per account at once, 1-12"), Flag.optional),
+    readInterval: Flag.Int("read-interval").pipe(Flag.withDescription("Form read interval, seconds, 0-600"), Flag.optional),
+    readJitter: Flag.Int("read-jitter").pipe(Flag.withDescription("Form read jitter, percent, 0-200"), Flag.optional),
+    readCaptchaFactor: Flag.Int("read-captcha-factor").pipe(
+      Flag.withDescription("Form read slowdown while a captcha blocks the account, 1-20"),
+      Flag.optional
+    )
   },
-  Effect.fn(function*({ browser, acting, interval, jitter, hourly, slots }) {
+  Effect.fn(function*({ browser, acting, interval, jitter, hourly, slots, reads, readInterval, readJitter, readCaptchaFactor }) {
     const api = yield* Api
     const current = (yield* api.SettingsGet({})).settings
     const view = yield* api.SettingsUpdate({
@@ -53,7 +64,11 @@ const set = Command.make(
       submitIntervalSeconds: Option.getOrElse(interval, () => current.submitIntervalSeconds),
       submitJitterPercent: Option.getOrElse(jitter, () => current.submitJitterPercent),
       submitHourlyLimit: Option.isSome(hourly) ? (hourly.value === 0 ? null : hourly.value) : current.submitHourlyLimit,
-      harnessSlots: Option.getOrElse(slots, () => current.harnessSlots)
+      harnessSlots: Option.getOrElse(slots, () => current.harnessSlots),
+      formReadConcurrency: Option.getOrElse(reads, () => current.formReadConcurrency),
+      formReadIntervalSeconds: Option.getOrElse(readInterval, () => current.formReadIntervalSeconds),
+      formReadJitterPercent: Option.getOrElse(readJitter, () => current.formReadJitterPercent),
+      formReadBlockedFactor: Option.getOrElse(readCaptchaFactor, () => current.formReadBlockedFactor)
     })
     for (const line of lines(view.settings, view.defaults)) yield* Console.log(line)
   })
