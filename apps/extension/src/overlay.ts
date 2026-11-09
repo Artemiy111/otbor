@@ -229,6 +229,37 @@ const accountChip = (group: AccountResponses, size = 24): HTMLElement => {
   return chip
 }
 
+/* ----------------------------- company link ----------------------------- */
+
+/** Ссылка на компанию внутри otbor, вставляется сразу после названия компании на hh. */
+const companyLink = (webUrl: string, employerId: string): HTMLElement => {
+  const link = document.createElement("a")
+  link.href = `${webUrl}/companies/${encodeURIComponent(employerId)}`
+  link.target = "_blank"
+  link.rel = "noreferrer"
+  link.textContent = "otbor ↗"
+  link.title = "Открыть компанию в otbor"
+  link.setAttribute(MARK, "")
+  link.style.cssText =
+    "margin-left:8px;font:600 12px/1 system-ui,sans-serif;color:#6b7280;text-decoration:none;border:1px solid currentColor;border-radius:999px;padding:2px 7px;white-space:nowrap;vertical-align:middle"
+  // Клик не должен уходить в карточку или ссылку hh, внутри которой может лежать название.
+  link.addEventListener("click", (event) => event.stopPropagation())
+  return link
+}
+
+/** Вставляет ссылку после названия компании, если оно найдено и ссылки ещё нет рядом. */
+const insertCompanyLink = (scope: ParentNode, item: VacancyLookupItem, webUrl: string): void => {
+  const employerId = item.vacancy.employerId
+  if (employerId == null) return
+  const name = scope.querySelector(
+    "[data-qa='vacancy-company-name'], [data-qa='vacancy-serp__vacancy-employer']"
+  )
+  if (name === null) return
+  // Если название обёрнуто в ссылку, ставим нашу после обёртки, а не внутрь чужой ссылки.
+  const host = name.closest("a") ?? name
+  host.after(companyLink(webUrl, employerId))
+}
+
 /* ------------------------------ search cards ------------------------------ */
 
 /** Tags shown on a search card: compact, and only the ones that help choosing. */
@@ -268,10 +299,16 @@ const makeTag = (template: Element | null, text: string, tone: Tone): HTMLElemen
 }
 
 /** Our row of hh-style tags, set apart from hh's own tags right under them. */
-const paintCard = (card: Element, item: VacancyLookupItem | undefined, template: Element | null): void => {
+const paintCard = (
+  card: Element,
+  item: VacancyLookupItem | undefined,
+  template: Element | null,
+  webUrl: string
+): void => {
   card.querySelectorAll(`[${MARK}]`).forEach((node) => node.remove())
   card.setAttribute(DONE, "")
   if (item === undefined) return
+  insertCompanyLink(card, item, webUrl)
   const tags = cardTags(item)
   const accounts = byAccount(item.applications)
   if (tags.length === 0 && accounts.length === 0) return
@@ -293,13 +330,13 @@ const paintCard = (card: Element, item: VacancyLookupItem | undefined, template:
   anchor?.before(row)
 }
 
-export const paintCards = (items: ReadonlyMap<string, VacancyLookupItem>): void => {
+export const paintCards = (items: ReadonlyMap<string, VacancyLookupItem>, webUrl: string): void => {
   const template = document.querySelector("[class*='magritte-tag']:not([data-otbor])")
   for (const card of document.querySelectorAll("[data-qa='vacancy-serp__vacancy']")) {
     const id = /\/vacancy\/(\d+)/.exec(
       card.querySelector("a[data-qa='serp-item__title']")?.getAttribute("href") ?? ""
     )?.[1]
-    paintCard(card, id === undefined ? undefined : items.get(id), template)
+    paintCard(card, id === undefined ? undefined : items.get(id), template, webUrl)
   }
 }
 
@@ -432,6 +469,7 @@ export const renderVacancy = (state: PanelState, settings: Settings): void => {
   } else if (state.status === "error") {
     rows.push(makeRow(template, "otbor", state.message ?? "ошибка", "bad"))
   } else if (state.item !== undefined) {
+    insertCompanyLink(document, state.item, settings.webUrl)
     const href = `${settings.webUrl}/vacancies/${state.item.vacancy.id}`
     rows.push(makeRow(template, "otbor", state.saved === "inserted" ? "сохранено, открыть" : "в базе, открыть", "muted", href))
     for (const fact of factsFor(state.item)) rows.push(makeRow(template, fact.label, fact.value, fact.tone))

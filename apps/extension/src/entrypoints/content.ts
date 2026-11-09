@@ -71,7 +71,7 @@ export default defineContentScript({
             ? (await send<CaptureReply>({ type: "capture", drafts, evaluate: false })).items
             : await send<CaptureReply["items"]>({ type: "lookup", externalIds: ids })
           cards = new Map(items.map((i) => [i.externalId, i]))
-        paintCards(cards)
+          paintCards(cards, settings.webUrl)
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
@@ -100,7 +100,9 @@ export default defineContentScript({
           responses?.check()
           if (pageKind() === "search") lazyImages()
           if (running) return
-          if (pageKind() === "search" && cards.size > 0 && hasUnpaintedCards()) paintCards(cards)
+          if (pageKind() === "search" && cards.size > 0 && hasUnpaintedCards()) {
+            void loadSettings().then((settings) => paintCards(cards, settings.webUrl))
+          }
           if (pageKind() === "vacancy" && panel !== null && vacancyRowsMissing()) {
             renderVacancy(panel.state, panel.settings)
           }
