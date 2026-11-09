@@ -29,6 +29,7 @@ import {
   presetOperatorLabel
 } from "../model/fields"
 import { changeField, changeOperator, isComplete, usesList, type EditableRule } from "../model/editable"
+import FieldPicker from "./FieldPicker.vue"
 import AreaPicker from "./AreaPicker.vue"
 import KeywordPicker from "./KeywordPicker.vue"
 import TagInput from "./TagInput.vue"
@@ -127,7 +128,7 @@ const toggleValue = (value: string) => {
     : [...rule.value.values, value]
 }
 
-const onField = (value: unknown) => changeField(rule.value, String(value) as PresetField)
+const onField = (field: PresetField) => changeField(rule.value, field)
 const onOp = (value: unknown) => changeOperator(rule.value, String(value) as PresetOperator)
 const onText = (value: unknown) => {
   rule.value.text = value === undefined || value === null ? "" : String(value)
@@ -144,22 +145,7 @@ const onCurrency = (value: unknown) => {
     :class="isComplete(rule) ? 'border-transparent' : 'border-amber-500/70'"
   >
     <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-    <Select :model-value="rule.field" :disabled="props.disabled" @update:model-value="onField">
-      <SelectTrigger
-        class="h-7 w-[170px] text-xs"
-        :class="meta.ai ? 'border-violet-500/50 bg-violet-500/10 text-violet-500' : ''"
-        :title="meta.hint"
-      >
-        <Sparkles v-if="meta.ai" class="h-3 w-3 shrink-0" />
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent class="max-h-80">
-        <template v-for="group in PRESET_FIELD_GROUPS" :key="group.group">
-          <SelectItem v-for="m in group.fields" :key="m.field" :value="m.field">{{ m.label }}</SelectItem>
-        </template>
-        <SelectItem v-if="meta.legacy" :value="rule.field">{{ meta.label }}</SelectItem>
-      </SelectContent>
-    </Select>
+    <FieldPicker :current="rule.field" :disabled="props.disabled" @pick="onField" />
 
     <Select :model-value="rule.op" :disabled="props.disabled" @update:model-value="onOp">
       <SelectTrigger class="h-7 text-xs" :class="meta.kind === 'number' ? 'w-[72px] font-mono' : rule.op.endsWith('_any') ? 'w-[190px]' : 'w-[124px]'">

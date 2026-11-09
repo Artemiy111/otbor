@@ -1,15 +1,20 @@
 <script setup lang="ts">
 import { computed, ref } from "vue"
 import type { PresetField } from "@otbor/contract"
-import { Plus, Search, Sparkles } from "@lucide/vue"
+import { ChevronDown, Plus, Search, Sparkles } from "@lucide/vue"
 import { Input, Popover, PopoverContent, PopoverTrigger } from "@/shared/ui"
-import { PRESET_FIELD_GROUPS } from "../model/fields"
+import { PRESET_FIELD_GROUPS, presetFieldMeta } from "../model/fields"
 
-/** "+ label" button that opens a searchable, grouped list of fields. */
-const props = withDefaults(defineProps<{ label?: string; disabled?: boolean }>(), {
-  label: "Правило",
-  disabled: false
-})
+/**
+ * Searchable, grouped list of fields. Without `current` the trigger is a
+ * "+ label" button (add a rule); with it the trigger looks like a select showing
+ * the current field, so changing and adding a field share one list and one style.
+ */
+const props = withDefaults(
+  defineProps<{ label?: string; disabled?: boolean; current?: PresetField }>(),
+  { label: "Правило", disabled: false, current: undefined }
+)
+const currentMeta = computed(() => (props.current === undefined ? null : presetFieldMeta(props.current)))
 const emit = defineEmits<{ pick: [field: PresetField] }>()
 
 const open = ref(false)
@@ -41,12 +46,27 @@ const pick = (field: PresetField) => {
   <Popover v-model:open="open">
     <PopoverTrigger as-child>
       <button
+        v-if="currentMeta === null"
         type="button"
         class="inline-flex h-7 items-center gap-1 rounded-md border border-dashed border-border px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
         :disabled="props.disabled"
       >
         <Plus class="h-3.5 w-3.5" />
         {{ props.label }}
+      </button>
+      <button
+        v-else
+        type="button"
+        class="inline-flex h-7 w-[170px] items-center justify-between gap-1 whitespace-nowrap rounded-md border bg-transparent px-2 text-xs shadow-sm hover:bg-accent disabled:opacity-50"
+        :class="currentMeta.ai ? 'border-violet-500/50 bg-violet-500/10 text-violet-500' : 'border-input'"
+        :title="currentMeta.hint"
+        :disabled="props.disabled"
+      >
+        <span class="flex min-w-0 items-center gap-1">
+          <Sparkles v-if="currentMeta.ai" class="h-3 w-3 shrink-0" />
+          <span class="truncate">{{ currentMeta.label }}</span>
+        </span>
+        <ChevronDown class="h-4 w-4 shrink-0 opacity-50" />
       </button>
     </PopoverTrigger>
     <PopoverContent class="w-64 p-2" align="start">
@@ -74,6 +94,7 @@ const pick = (field: PresetField) => {
             type="button"
             class="flex w-full items-center gap-1.5 rounded-sm px-2 py-1 text-left text-xs hover:bg-accent"
             :title="m.hint"
+            :class="m.field === props.current ? 'bg-accent' : ''"
             @click="pick(m.field)"
           >
             {{ m.label }}
