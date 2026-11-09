@@ -646,6 +646,9 @@ export const validateAnswers = (
     // stated minimum): the user's own answer replaces it instead of being
     // forced back to it. Without this the user could never answer differently.
     if (hint.blockers.length > 0 && answer.source === "human" && !answer.needsHuman) continue
+    // Жёсткая подсказка связывает модель, а не оператора: ответ, который человек
+    // написал или изменил сам (source "human"), всегда его решение.
+    if (answer.source === "human" && !answer.needsHuman) continue
     if (!matchesHint(answer, hint, hint.kind)) {
       push("hard_hint_overridden", hint.questionId, `a hard ${hint.kind} hint was changed`)
     }

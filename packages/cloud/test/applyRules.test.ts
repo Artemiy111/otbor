@@ -85,10 +85,16 @@ describe("checkKit", () => {
       blockers: []
     }
     const answers = fullAnswers().map((item) =>
-      item.questionId === "387049555" ? { ...item, text: "Москва" } : item
+      item.questionId === "387049555" ? { ...item, text: "Москва", source: "model" as const } : item
     )
     const problems = checkKit({ form, hints: [hint], kit: kitFor(form, answers) })
     expect(problems.map((problem) => problem.code)).toContain("hard_hint_overridden")
+
+    // Человек вправе перекрыть жёсткую подсказку: его ответ не блокируется.
+    const byHuman = answers.map((item) =>
+      item.questionId === "387049555" ? { ...item, source: "human" as const } : item
+    )
+    expect(checkKit({ form, hints: [hint], kit: kitFor(form, byHuman) })).toEqual([])
 
     const kept = fullAnswers().map((item) =>
       item.questionId === "387049555" ? { ...item, text: "Казань" } : item

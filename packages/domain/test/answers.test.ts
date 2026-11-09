@@ -366,6 +366,13 @@ describe("validateAnswers", () => {
     expect(codes([valid[0]!, ans("2", { text: "300000" }), valid[2]!])).toEqual([])
   })
 
+  test("a hard hint yields to an answer the human wrote, but not to the model", () => {
+    const check = (answer: FormAnswer) =>
+      validateAnswers(form, [valid[0]!, answer, valid[2]!], hints).map((error) => `${error.code}:${error.questionId}`)
+    expect(check(ans("2", { text: "от 250000", source: "human" }))).toEqual([])
+    expect(check(ans("2", { text: "от 250000", source: "model" }))).toEqual(["hard_hint_overridden:2"])
+  })
+
   test("a hard hint with blockers yields to the user's own answer, and only to it", () => {
     const blocked = hints.map((hint) =>
       hint.questionId === "2" ? { ...hint, blockers: ["upper_bound_below_minimum"] as unknown as typeof hint.blockers } : hint
