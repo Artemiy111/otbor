@@ -21,12 +21,8 @@ import {
   AlertTitle,
   Badge,
   Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
   EmptyState,
+  HarnessLogo,
   Skeleton,
   StatusBadge,
   Table,
@@ -37,7 +33,6 @@ import {
   TableRow
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
-import { StatCard } from "@/widgets/stat-card"
 
 const props = defineProps<{ id: string }>()
 
@@ -74,32 +69,37 @@ const kitAnswers = computed(() =>
 const num = (value: number | null | undefined): string | null =>
   value === null || value === undefined ? null : value.toLocaleString("ru-RU")
 
-/** Who wrote the letter and what it took; only the facts that are known. */
-const writingFacts = computed(() => {
+/** Кто написал письмо и во что это обошлось; только известные факты. */
+const writer = computed(() => {
   const kit = data.value?.kit
   const writing = data.value?.writing
-  if (!kit) return []
-  const facts: Array<{ label: string; value: string }> = []
-  const add = (label: string, value: string | null | undefined) => {
-    if (value !== null && value !== undefined && value !== "") facts.push({ label, value })
-  }
-  add("Харнис", writing?.harness)
+  if (!kit) return null
   const alias = writing?.model ?? kit.model
-  add("Модель", writing?.modelId && alias && writing.modelId !== alias ? `${alias} (${writing.modelId})` : (writing?.modelId ?? alias))
-  add("Effort", writing?.effort)
-  if (writing) {
-    add("Токены", num(writing.totalTokens))
-    const parts = [
-      writing.inputTokens !== null ? `вход ${num(writing.inputTokens)}` : null,
-      writing.outputTokens !== null ? `выход ${num(writing.outputTokens)}` : null,
-      writing.cachedReadTokens ? `из кэша ${num(writing.cachedReadTokens)}` : null,
-      writing.cachedWriteTokens ? `в кэш ${num(writing.cachedWriteTokens)}` : null
-    ].filter((part) => part !== null)
-    add("Из них", parts.join(" · "))
-    add("Время", writing.durationMs === null ? null : `${(writing.durationMs / 1000).toFixed(1)} с`)
+  const model = writing?.modelId ?? alias ?? null
+  const harness = writing?.harness ?? null
+  const tokenParts = writing
+    ? [
+        writing.inputTokens !== null ? `вход ${num(writing.inputTokens)}` : null,
+        writing.outputTokens !== null ? `выход ${num(writing.outputTokens)}` : null,
+        writing.cachedReadTokens ? `кэш ${num(writing.cachedReadTokens)}` : null
+      ].filter((part) => part !== null)
+    : []
+  return {
+    harness,
+    harnessName: harness === null ? null : (harnessNames[harness] ?? harness),
+    model,
+    alias: alias !== null && alias !== model ? alias : null,
+    effort: writing?.effort ?? null,
+    tokens: num(writing?.totalTokens),
+    tokenDetail: tokenParts.join(" · "),
+    duration:
+      writing?.durationMs === null || writing?.durationMs === undefined
+        ? null
+        : `${(writing.durationMs / 1000).toFixed(1)} с`
   }
-  return facts
 })
+
+const harnessNames: Record<string, string> = { claude: "Claude Code", opencode: "OpenCode" }
 
 const subtitle = computed(() => {
   const application = data.value?.application
@@ -137,116 +137,62 @@ const cost = (value: number | null | undefined): string =>
       <AlertDescription>{{ describeError(query.error.value) }}</AlertDescription>
     </Alert>
 
-    <div v-if="query.isPending.value" class="space-y-4">
-      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Skeleton v-for="index in 4" :key="index" class="h-24 w-full" />
-      </div>
-      <Skeleton class="h-48 w-full" />
+    <div v-if="query.isPending.value" class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <Skeleton class="h-96 w-full" />
       <Skeleton class="h-64 w-full" />
     </div>
 
     <template v-else-if="data">
-      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Аккаунт">
-          <AccountChip
-            :account-id="data.application.hhAccountId"
-            :accounts="accountsQuery.data.value ?? []"
-            :resume-ids="[data.application.resumeId]"
-            :resumes="resumesQuery.data.value ?? []"
-          />
-        </StatCard>
-        <StatCard label="Создан" :value="formatDate(data.application.createdAt)" />
-        <StatCard label="Обновлён" :value="formatDate(data.application.updatedAt)" />
-        <StatCard label="Попыток" :value="data.attempts.length" />
+      <div class="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
+        <AccountChip
+          :account-id="data.application.hhAccountId"
+          :accounts="accountsQuery.data.value ?? []"
+          :resume-ids="[data.application.resumeId]"
+          :resumes="resumesQuery.data.value ?? []"
+        />
+        <span>создан {{ formatDate(data.application.createdAt) }}</span>
+        <span>обновлён {{ formatDate(data.application.updatedAt) }}</span>
+        <span>попыток: {{ data.attempts.length }}</span>
       </div>
 
-      <Card class="mt-4">
-        <CardHeader>
-          <CardTitle>Попытки</CardTitle>
-          <CardDescription>Что harness сообщил после каждой попытки.</CardDescription>
-        </CardHeader>
-        <CardContent class="p-0">
-          <Table v-if="data.attempts.length > 0">
-            <TableHeader>
-              <TableRow>
-                <TableHead>№</TableHead>
-                <TableHead>Этап</TableHead>
-                <TableHead>Итог</TableHead>
-                <TableHead>Исполнитель</TableHead>
-                <TableHead>Начат</TableHead>
-                <TableHead>Завершён</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableRow v-for="attempt in data.attempts" :key="attempt.id">
-                <TableCell>{{ attempt.seq }}</TableCell>
-                <TableCell><StatusBadge :value="attempt.stage" raw /></TableCell>
-                <TableCell>
-                  <StatusBadge v-if="attempt.exit" :value="attempt.exit.tag" raw />
-                  <span v-else class="text-muted-foreground">—</span>
-                  <div v-if="attempt.exit?.message" class="mt-1 text-xs text-muted-foreground">
-                    {{ attempt.exit.message }}
-                  </div>
-                </TableCell>
-                <TableCell class="font-mono text-xs">{{ attempt.harnessId ?? "—" }}</TableCell>
-                <TableCell class="whitespace-nowrap text-muted-foreground">
-                  {{ formatDate(attempt.startedAt) }}
-                </TableCell>
-                <TableCell class="whitespace-nowrap text-muted-foreground">
-                  {{ formatDate(attempt.finishedAt) }}
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-          <EmptyState v-else title="Попыток нет" description="Harness ещё не брал этот отклик." />
-        </CardContent>
-      </Card>
-
-      <Card class="mt-4">
-        <CardHeader>
-          <CardTitle>Комплект отклика</CardTitle>
-          <CardDescription>Письмо и ответы на вопросы формы.</CardDescription>
-        </CardHeader>
-        <CardContent>
+      <div class="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <!-- Основное: письмо и ответы -->
+        <div class="min-w-0 space-y-6">
           <template v-if="data.kit">
-            <div class="mb-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <Badge variant="outline" class="font-mono">форма {{ data.kit.formHash }}</Badge>
-              <Badge variant="outline" class="font-mono">стоимость {{ cost(data.kit.costUsd) }}</Badge>
-            </div>
-
-            <dl
-              v-if="writingFacts.length > 0"
-              class="mb-4 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 rounded-md border border-border bg-muted/20 p-3 text-xs"
-            >
-              <template v-for="fact in writingFacts" :key="fact.label">
-                <dt class="text-muted-foreground">{{ fact.label }}</dt>
-                <dd class="font-mono">{{ fact.value }}</dd>
-              </template>
-            </dl>
-
-            <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Письмо
-            </h3>
-            <pre
-              class="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/30 p-4 text-xs leading-relaxed text-muted-foreground"
-            >{{ data.kit.letter ?? "Письмо не подготовлено." }}</pre>
-
-            <h3 class="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Ответы
-            </h3>
-            <div v-if="data.kit.answers.length > 0" class="space-y-2">
+            <section>
+              <h2 class="mb-2 text-sm font-semibold">Письмо</h2>
               <div
-                v-for="(answer, index) in kitAnswers"
-                :key="index"
-                class="rounded-md border border-border bg-muted/20 p-3"
-              >
-                <div class="mb-1 text-xs text-muted-foreground">{{ answer.question }}</div>
-                <div class="whitespace-pre-wrap text-sm">{{ answer.answer }}</div>
-              </div>
-            </div>
-            <p v-else class="text-sm text-muted-foreground">Ответов на вопросы нет.</p>
+                class="max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-card px-5 py-4 text-sm leading-relaxed"
+              >{{ data.kit.letter ?? "Письмо не подготовлено." }}</div>
+            </section>
+
+            <section>
+              <h2 class="mb-2 flex items-baseline gap-2 text-sm font-semibold">
+                Ответы на форму
+                <span class="text-xs font-normal text-muted-foreground">{{ data.kit.answers.length }}</span>
+              </h2>
+              <ol v-if="data.kit.answers.length > 0" class="space-y-3">
+                <li
+                  v-for="(answer, index) in kitAnswers"
+                  :key="index"
+                  class="overflow-hidden rounded-lg border border-border bg-card"
+                >
+                  <div class="flex gap-3 border-b border-border bg-muted/50 px-4 py-2.5">
+                    <span
+                      class="mt-px flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground"
+                    >{{ index + 1 }}</span>
+                    <p class="text-sm font-medium leading-snug text-foreground">{{ answer.question }}</p>
+                  </div>
+                  <div class="whitespace-pre-wrap px-4 py-3 pl-12 text-sm leading-relaxed">
+                    {{ answer.answer }}
+                  </div>
+                </li>
+              </ol>
+              <p v-else class="text-sm text-muted-foreground">Ответов на вопросы нет.</p>
+            </section>
           </template>
-          <div v-else-if="progress" class="space-y-3">
+
+          <section v-else-if="progress" class="space-y-3 rounded-lg border border-border bg-card p-4">
             <div class="flex flex-wrap items-center gap-2">
               <Badge variant="outline">{{ autoApplyStageMeta(progress.stage).label }}</Badge>
               <span class="text-sm text-muted-foreground">{{ progress.stageDetail }}</span>
@@ -257,47 +203,135 @@ const cost = (value: number | null | undefined): string =>
                 Ответ модели (не сохранён как письмо)
               </h3>
               <pre
-                class="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/30 p-4 text-xs leading-relaxed text-muted-foreground"
+                class="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground"
               >{{ progress.writingJob.resultText }}</pre>
             </template>
-          </div>
+          </section>
           <EmptyState
             v-else
             title="Комплект не подготовлен"
             description="Письмо и ответы появятся после генерации."
           />
-        </CardContent>
-      </Card>
 
-      <Card v-if="data.decision" class="mt-4">
-        <CardHeader>
-          <CardTitle>Решение</CardTitle>
-          <CardDescription>Вердикт, из которого создан отклик.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div class="flex flex-wrap items-center gap-2">
-            <StatusBadge :value="data.decision.verdict" raw />
-            <Badge variant="outline">соответствие {{ data.decision.fit }}</Badge>
-            <Badge variant="outline" class="font-mono">
-              приоритет {{ formatPriority(data.decision.priority) }}
-            </Badge>
-            <span class="text-xs text-muted-foreground">
-              {{ formatDate(data.decision.createdAt) }}
-            </span>
-          </div>
-          <div v-if="data.decision.reasons.length > 0" class="mt-3 flex flex-wrap gap-1">
-            <Badge
-              v-for="reason in data.decision.reasons"
-              :key="reason.code + (reason.detail ?? '')"
-              variant="secondary"
-              class="font-normal"
-              :title="reason.code"
+          <section>
+            <h2 class="mb-2 flex items-baseline gap-2 text-sm font-semibold">
+              Попытки
+              <span class="text-xs font-normal text-muted-foreground">что harness сообщил после каждой</span>
+            </h2>
+            <div v-if="data.attempts.length > 0" class="overflow-hidden rounded-lg border border-border bg-card">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>№</TableHead>
+                    <TableHead>Этап</TableHead>
+                    <TableHead>Итог</TableHead>
+                    <TableHead>Исполнитель</TableHead>
+                    <TableHead>Начат</TableHead>
+                    <TableHead>Завершён</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow v-for="attempt in data.attempts" :key="attempt.id">
+                    <TableCell>{{ attempt.seq }}</TableCell>
+                    <TableCell><StatusBadge :value="attempt.stage" raw /></TableCell>
+                    <TableCell>
+                      <StatusBadge v-if="attempt.exit" :value="attempt.exit.tag" raw />
+                      <span v-else class="text-muted-foreground">—</span>
+                      <div v-if="attempt.exit?.message" class="mt-1 text-xs text-muted-foreground">
+                        {{ attempt.exit.message }}
+                      </div>
+                    </TableCell>
+                    <TableCell class="font-mono text-xs">{{ attempt.harnessId ?? "—" }}</TableCell>
+                    <TableCell class="whitespace-nowrap text-muted-foreground">
+                      {{ formatDate(attempt.startedAt) }}
+                    </TableCell>
+                    <TableCell class="whitespace-nowrap text-muted-foreground">
+                      {{ formatDate(attempt.finishedAt) }}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+            <p v-else class="text-sm text-muted-foreground">Harness ещё не брал этот отклик.</p>
+          </section>
+        </div>
+
+        <!-- Сбоку: кто писал и почему создан -->
+        <aside class="space-y-4">
+          <div v-if="writer" class="overflow-hidden rounded-lg border border-border bg-card">
+            <div class="flex items-center gap-3 p-4">
+              <HarnessLogo :harness="writer.harness" class="size-11" />
+              <div class="min-w-0">
+                <div class="truncate font-mono text-sm font-semibold" :title="writer.model ?? undefined">
+                  {{ writer.model ?? "Модель не указана" }}
+                </div>
+                <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>{{ writer.harnessName ?? "харнес неизвестен" }}</span>
+                  <Badge v-if="writer.effort" variant="secondary" class="px-1.5 py-0 font-normal">
+                    {{ writer.effort }}
+                  </Badge>
+                </div>
+              </div>
+            </div>
+            <dl class="grid grid-cols-3 divide-x divide-border border-t border-border text-center">
+              <div class="px-2 py-2.5">
+                <dd class="text-sm font-semibold tabular-nums">{{ writer.tokens ?? "—" }}</dd>
+                <dt class="text-[11px] text-muted-foreground">токенов</dt>
+              </div>
+              <div class="px-2 py-2.5">
+                <dd class="text-sm font-semibold tabular-nums">{{ writer.duration ?? "—" }}</dd>
+                <dt class="text-[11px] text-muted-foreground">время</dt>
+              </div>
+              <div class="px-2 py-2.5">
+                <dd class="text-sm font-semibold tabular-nums">{{ cost(data.kit?.costUsd) }}</dd>
+                <dt class="text-[11px] text-muted-foreground">стоимость</dt>
+              </div>
+            </dl>
+            <p
+              v-if="writer.tokenDetail"
+              class="border-t border-border px-4 py-2 text-[11px] text-muted-foreground"
             >
-              {{ decisionReasonLabel(reason.code) }}<template v-if="reason.detail">: {{ decisionReasonDetail(reason, data.decision.createdAt) }}</template>
-            </Badge>
+              {{ writer.tokenDetail }}
+            </p>
+            <p
+              v-if="data.kit"
+              class="border-t border-border px-4 py-2 font-mono text-[11px] text-muted-foreground"
+              title="Хеш формы, под которую подготовлен комплект"
+            >
+              форма {{ data.kit.formHash }}
+            </p>
           </div>
-        </CardContent>
-      </Card>
+
+          <div v-if="data.decision" class="rounded-lg border border-border bg-card p-4">
+            <div class="flex items-center justify-between gap-2">
+              <h2 class="text-sm font-semibold">Решение</h2>
+              <StatusBadge :value="data.decision.verdict" raw />
+            </div>
+            <div class="mt-3 flex gap-6 text-sm">
+              <div>
+                <div class="font-semibold tabular-nums">{{ data.decision.fit }}</div>
+                <div class="text-[11px] text-muted-foreground">соответствие</div>
+              </div>
+              <div>
+                <div class="font-semibold tabular-nums">{{ formatPriority(data.decision.priority) }}</div>
+                <div class="text-[11px] text-muted-foreground">приоритет</div>
+              </div>
+            </div>
+            <div v-if="data.decision.reasons.length > 0" class="mt-3 flex flex-wrap gap-1">
+              <Badge
+                v-for="reason in data.decision.reasons"
+                :key="reason.code + (reason.detail ?? '')"
+                variant="secondary"
+                class="font-normal"
+                :title="reason.code"
+              >
+                {{ decisionReasonLabel(reason.code) }}<template v-if="reason.detail">: {{ decisionReasonDetail(reason, data.decision.createdAt) }}</template>
+              </Badge>
+            </div>
+            <p class="mt-3 text-[11px] text-muted-foreground">{{ formatDate(data.decision.createdAt) }}</p>
+          </div>
+        </aside>
+      </div>
     </template>
   </section>
 </template>
