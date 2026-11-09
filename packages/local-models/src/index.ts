@@ -70,3 +70,83 @@ export const removeOpenAiEndpoint = (id: string, path = openAiStorePath()): bool
   writeOpenAiStore(next, path)
   return true
 }
+
+/** Результат проверки живости сервера моделей. */
+export interface LocalModelProbe {
+  /** Сервер ответил по HTTP (`/health` или `/models`), даже если отказал в доступе. */
+  readonly alive: boolean
+  /** Сервер жив и отдаёт список моделей — на него можно слать задачи. */
+  readonly ok: boolean
+  /** Время ответа; null, если ответа не было. */
+  readonly latencyMs: number | null
+  /** Сколько моделей сервер перечислил. */
+  readonly models: number
+  readonly error: string | null
+}
+
+/** `http://host:1111/v1` -> `http://host:1111` (oMLX и vLLM держат `/health` в корне). */
+const originOf = (url: string): string =>
+  url.trim().replace(/\/+$/, "").replace(/\/v1$/, "")
+
+/**
+ * Проверка живости. Сначала `GET {корень}/health` (его не защищает ключ API),
+ * затем `GET {url}/models` с ключом. Первый отвечает «жив ли процесс», второй —
+ * «можно ли слать задачи»: сервер с неверным ключом жив, но не пригоден, и это
+ * разные состояния. Модель не вызывается. Не бросает; ключ из ошибок вырезается.
+ */
+export const probeLocalModel = async (
+  def: OpenAiEndpointDef,
+  timeoutMs = 5000
+): Promise<LocalModelProbe> => {
+  const started = Date.now()
+  const key = def.apiKey?.trim() ?? ""
+  const scrub = (text: string) => (key === "" ? text : text.split(key).join("***"))
+  const get = (url: string, withKey: boolean) =>
+    fetch(url, {
+      headers: {
+        accept: "application/json",
+        ...(withKey && key !== "" ? { authorization: `Bearer ${key}` } : {})
+      },
+      signal: AbortSignal.timeout(timeoutMs)
+    })
+
+  const health = await get(`${originOf(def.url)}/health`, false).catch(() => null)
+  try {
+    const response = await get(`${def.url.trim().replace(/\/+$/, "")}/models`, true)
+    const latencyMs = Date.now() - started
+    const alive = (health?.ok ?? false) || response.status < 500
+    if (response.status === 401 || response.status === 403) {
+      return {
+        alive,
+        ok: false,
+        latencyMs,
+        models: 0,
+        error: key === ""
+          ? "сервер жив, но требует ключ API"
+          : "сервер жив, но отклонил ключ API"
+      }
+    }
+    if (!response.ok) {
+      return { alive, ok: false, latencyMs, models: 0, error: `HTTP ${response.status}` }
+    }
+    const body = (await response.json()) as { readonly data?: unknown }
+    const models = Array.isArray(body.data) ? body.data.length : 0
+    return models > 0
+      ? { alive: true, ok: true, latencyMs, models, error: null }
+      : { alive: true, ok: false, latencyMs, models: 0, error: "сервер не перечислил ни одной модели" }
+  } catch (cause) {
+    const timedOut = cause instanceof Error && cause.name === "TimeoutError"
+    return {
+      // `/models` не ответил, но `/health` мог: процесс жив, просто завис.
+      alive: health?.ok ?? false,
+      ok: false,
+      latencyMs: health?.ok ? Date.now() - started : null,
+      models: 0,
+      error: scrub(
+        timedOut
+          ? `нет ответа за ${timeoutMs / 1000} с`
+          : `не отвечает: ${cause instanceof Error ? cause.message : String(cause)}`
+      )
+    }
+  }
+}

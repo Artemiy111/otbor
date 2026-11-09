@@ -17,6 +17,8 @@ import {
 import { Cause, Deferred, Duration, Effect, Fiber, type Layer, Option, Ref, Schema } from "effect"
 import { BrowserExecutor } from "./browser/executor.ts"
 import { HarnessGateway } from "./client.ts"
+import { statSync } from "node:fs"
+import { openAiStorePath } from "@otbor/local-models"
 import { MAX_CONCURRENCY, type HarnessConfig } from "./config.ts"
 import { probeCatalog } from "./catalog.ts"
 import { payloadHarness, runInferenceExit } from "./inference.ts"
@@ -29,6 +31,17 @@ const RETRY_DELAY = Duration.seconds(5)
 const IDLE_POLL = Duration.seconds(1)
 /** How often the catalog of agents, models and efforts is probed and reported. */
 export const CATALOG_REPORT_INTERVAL = Duration.minutes(30)
+/** Как часто проверяется, не изменился ли `~/.otbor/openai.json`. */
+export const CATALOG_WATCH_INTERVAL = Duration.seconds(10)
+
+/** Время изменения файла локальных моделей; null, если файла нет. */
+const openAiStoreMtime = (): number | null => {
+  try {
+    return statSync(openAiStorePath()).mtimeMs
+  } catch {
+    return null
+  }
+}
 
 export const BROWSER_UNAVAILABLE_MESSAGE =
   "browser executor is not part of this harness build; only inference jobs are supported"
@@ -490,11 +503,24 @@ export const runHarness = Effect.fn("Harness.runHarness")(function*(
   // Inference harnesses publish what they can run: once now, then every 30
   // minutes, in the background so a slow `claude` start never delays a lease.
   if (config.kinds.includes("inference") && !config.once) {
+    const every = Duration.toMillis(Duration.fromInputUnsafe(runOptions.catalogEvery ?? CATALOG_REPORT_INTERVAL))
+    const watchEvery = Math.min(every, Duration.toMillis(CATALOG_WATCH_INTERVAL))
     yield* Effect.forkChild(
-      reportCatalogOnce(config, runOptions).pipe(
-        Effect.andThen(Effect.sleep(runOptions.catalogEvery ?? CATALOG_REPORT_INTERVAL)),
-        Effect.forever
-      )
+      Effect.gen(function*() {
+        let reportedAt = 0
+        let seen: number | null = null
+        while (true) {
+          // Локальные модели правят из веба: файл изменился — каталог
+          // переотправляется сразу, а не через полчаса.
+          const mtime = openAiStoreMtime()
+          if (reportedAt === 0 || mtime !== seen || Date.now() - reportedAt >= every) {
+            seen = mtime
+            reportedAt = Date.now()
+            yield* reportCatalogOnce(config, runOptions)
+          }
+          yield* Effect.sleep(Duration.millis(watchEvery))
+        }
+      })
     )
   }
 

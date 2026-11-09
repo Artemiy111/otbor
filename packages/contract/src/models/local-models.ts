@@ -23,3 +23,17 @@ export const LocalModelInput = Schema.Struct({
   clearKey: Schema.optional(Schema.Boolean)
 })
 export type LocalModelInput = typeof LocalModelInput.Type
+
+/** Живость сервера: результат `GET /models`, без вызова модели. */
+export const LocalModelHealth = Schema.Struct({
+  id: Schema.String,
+  /** Процесс отвечает по HTTP (даже если ключ не принят). */
+  alive: Schema.Boolean,
+  /** Жив и отдаёт список моделей: на него можно слать задачи. */
+  ok: Schema.Boolean,
+  latencyMs: Schema.NullOr(Schema.Int),
+  models: Schema.Int,
+  error: Schema.NullOr(Schema.String),
+  checkedAt: Schema.String
+})
+export type LocalModelHealth = typeof LocalModelHealth.Type

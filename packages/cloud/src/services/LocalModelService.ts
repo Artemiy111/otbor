@@ -1,6 +1,7 @@
-import type { ApiError, LocalModelInput, LocalModelServer } from "@otbor/contract"
+import type { ApiError, LocalModelHealth, LocalModelInput, LocalModelServer } from "@otbor/contract"
 import { InvalidInput } from "@otbor/contract"
 import {
+  probeLocalModel,
   readOpenAiStore,
   removeOpenAiEndpoint,
   upsertOpenAiEndpoint,
@@ -14,6 +15,8 @@ export interface LocalModelServiceShape {
   readonly upsert: (
     input: LocalModelInput
   ) => Effect.Effect<ReadonlyArray<LocalModelServer>, ApiError>
+  /** Живость каждого сохранённого сервера (параллельно, таймаут 5 с на сервер). */
+  readonly check: () => Effect.Effect<ReadonlyArray<LocalModelHealth>, ApiError>
   readonly remove: (id: string) => Effect.Effect<ReadonlyArray<LocalModelServer>, ApiError>
 }
 
@@ -98,7 +101,29 @@ export class LocalModelService extends Context.Service<LocalModelService, LocalM
           Effect.andThen(list())
         )
 
-      return LocalModelService.of({ list, upsert, remove })
+      const check: LocalModelServiceShape["check"] = () =>
+        Effect.try({ try: () => readOpenAiStore(), catch: fromFile }).pipe(
+          Effect.flatMap((defs) =>
+            Effect.forEach(
+              defs,
+              (def) =>
+                Effect.promise(() => probeLocalModel(def)).pipe(
+                  Effect.map((probe): LocalModelHealth => ({
+                    id: def.id,
+                    alive: probe.alive,
+                    ok: probe.ok,
+                    latencyMs: probe.latencyMs,
+                    models: probe.models,
+                    error: probe.error,
+                    checkedAt: new Date().toISOString()
+                  }))
+                ),
+              { concurrency: "unbounded" }
+            )
+          )
+        )
+
+      return LocalModelService.of({ list, upsert, remove, check })
     })()
   )
 }

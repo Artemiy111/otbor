@@ -180,6 +180,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
       ProxyConfigure: (payload) => proxy.configure(payload),
       ProxyClear: () => proxy.clear(),
       LocalModelsList: () => localModels.list(),
+      LocalModelsCheck: () => localModels.check(),
       LocalModelUpsert: (payload) => localModels.upsert(payload),
       LocalModelRemove: ({ id }) => localModels.remove(id),
       HydrationStats: () => hydrationStats.stats(),

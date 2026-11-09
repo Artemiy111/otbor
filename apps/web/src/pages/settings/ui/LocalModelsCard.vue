@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue"
+import { computed, onMounted, onUnmounted, ref } from "vue"
 import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
 import type { LocalModelInput, LocalModelServer } from "@otbor/contract"
 import { applicationKeys } from "@/entities/application"
@@ -27,6 +27,22 @@ const listQuery = useQuery({
 })
 const servers = computed(() => listQuery.data.value ?? [])
 const { catalog, refetch: refetchCatalog } = useHarnessCatalog()
+
+// Живость: сервер опрашивает `/models` каждого сервера, страница просто
+// перечитывает результат, пока открыта.
+const HEALTH_INTERVAL_MS = 30_000
+const healthQuery = useQuery({
+  key: () => localModelKeys.health(),
+  query: () => localModelApi.check()
+})
+const healthOf = (serverId: string) =>
+  healthQuery.data.value?.find((item) => item.id === serverId) ?? null
+let timer: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  timer = setInterval(() => void healthQuery.refetch(), HEALTH_INTERVAL_MS)
+})
+onUnmounted(() => clearInterval(timer))
+const clock = (iso: string) => new Date(iso).toLocaleTimeString("ru-RU")
 
 const id = ref("")
 const url = ref("")
@@ -71,6 +87,7 @@ const edit = (server: LocalModelServer) => {
 
 const refresh = async () => {
   await queryCache.invalidateQueries({ key: localModelKeys.all })
+  void healthQuery.refetch()
   await queryCache.invalidateQueries({ key: applicationKeys.agentCatalog })
   void refetchCatalog()
 }
@@ -128,18 +145,32 @@ const remove = async (target: string) => {
             <div class="truncate font-mono text-xs text-muted-foreground">{{ server.url }}</div>
           </div>
           <Badge variant="outline">{{ server.hasKey ? "ключ задан" : "без ключа" }}</Badge>
-          <Badge v-if="catalogOf(server.id)?.available" variant="success">
-            моделей: {{ catalogOf(server.id)?.models.length }}
+          <Badge
+            v-if="healthOf(server.id)"
+            :variant="healthOf(server.id)?.ok ? 'success' : healthOf(server.id)?.alive ? 'warning' : 'destructive'"
+            :title="`Проверено ${clock(healthOf(server.id)!.checkedAt)}${healthOf(server.id)?.error ? ': ' + healthOf(server.id)?.error : ''}`"
+          >
+            {{
+              healthOf(server.id)?.ok
+                ? `онлайн · ${healthOf(server.id)?.latencyMs} мс · моделей: ${healthOf(server.id)?.models}`
+                : (healthOf(server.id)?.error ?? "не отвечает")
+            }}
           </Badge>
-          <Badge v-else-if="catalogOf(server.id)" variant="warning" :title="catalogOf(server.id)?.error ?? ''">
-            недоступен
+          <Badge v-else variant="secondary">проверяется…</Badge>
+          <Badge v-if="healthOf(server.id)?.ok && !catalogOf(server.id)" variant="secondary" title="Каталог харнеса обновляется при старте и раз в 30 минут">
+            ещё не в каталоге
           </Badge>
-          <Badge v-else variant="secondary">ещё не в каталоге</Badge>
           <Button size="sm" variant="outline" :disabled="busy" @click="edit(server)">Изменить</Button>
           <Button size="sm" variant="outline" :disabled="busy" @click="remove(server.id)">Удалить</Button>
         </li>
       </ul>
       <p v-else class="text-sm text-muted-foreground">Серверов пока нет.</p>
+      <div v-if="servers.length > 0" class="flex items-center gap-3 text-xs text-muted-foreground">
+        <span>Живость проверяется каждые 30 секунд, пока открыта страница.</span>
+        <Button size="sm" variant="outline" :disabled="healthQuery.isLoading.value" @click="healthQuery.refetch()">
+          Проверить сейчас
+        </Button>
+      </div>
 
       <div class="grid gap-4 md:grid-cols-2">
         <div class="space-y-1.5">

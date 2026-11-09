@@ -189,7 +189,13 @@ export const probeOpenAiEndpoint = (
       Effect.timeout(PROBE_TIMEOUT)
     )
     if (response.status < 200 || response.status >= 300) {
-      return yield* Effect.fail(new Error(`HTTP ${response.status}`))
+      return yield* Effect.fail(
+        new Error(
+          response.status === 401 || response.status === 403
+            ? `HTTP ${response.status}: сервер требует (или отклонил) ключ API — задайте его в настройках`
+            : `HTTP ${response.status}`
+        )
+      )
     }
     const body = yield* response.json
     const { data } = yield* Schema.decodeUnknownEffect(ModelsResponse)(body)

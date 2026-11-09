@@ -43,7 +43,7 @@ import {
   VacancyChatRefresh,
   ConversationsList
 } from "./contacts.ts"
-import { LocalModelRemove, LocalModelUpsert, LocalModelsList } from "./local-models.ts"
+import { LocalModelRemove, LocalModelUpsert, LocalModelsCheck, LocalModelsList } from "./local-models.ts"
 import { CrawlFinish, CrawlRunsList, CrawlSavePage, CrawlStart, CrawlStatus } from "./crawl.ts"
 import { DecisionsEvaluateBatch, DecisionsList } from "./decisions.ts"
 import { EmployersGet, EmployersList } from "./employers.ts"
@@ -176,6 +176,7 @@ export const OtborRpcs = RpcGroup.make(
   ProxyConfigure,
   ProxyClear,
   LocalModelsList,
+  LocalModelsCheck,
   LocalModelUpsert,
   LocalModelRemove,
   VacanciesEvaluate,
