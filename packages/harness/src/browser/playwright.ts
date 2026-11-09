@@ -226,8 +226,20 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
         return path
       }).pipe(Effect.orElseSucceed(() => null as string | null))
       if (saved === null) return result
-      yield* Effect.logWarning(`captcha screenshot saved: ${saved} (${page.url()})`)
-      return { ...exit, message: `${exit.message ?? ""} (screenshot: ${saved})`.trim() } as unknown as A
+      // Сама картинка капчи отдельным файлом: так её видно крупно и без страницы.
+      const pictureFile = path.replace(/\.png$/, "-picture.png")
+      const picture = yield* attempt(async () => {
+        await page.locator('[data-qa="account-captcha-picture"]').first().screenshot({
+          path: pictureFile,
+          timeout: 5_000
+        })
+        return pictureFile
+      }).pipe(Effect.orElseSucceed(() => null as string | null))
+      yield* Effect.logWarning(
+        `captcha screenshot saved: ${saved}${picture === null ? "" : `, picture: ${picture}`} (${page.url()})`
+      )
+      const note = picture === null ? `screenshot: ${saved}` : `screenshot: ${saved}, picture: ${picture}`
+      return { ...exit, message: `${exit.message ?? ""} (${note})`.trim() } as unknown as A
     })
 
   /**

@@ -184,7 +184,7 @@ beforeAll(async () => {
           )
         }
         if (mode === "captcha") {
-          return new Response("<html><body><div>Подтвердите, что вы не робот</div></body></html>", {
+          return new Response("<html><body><div>Подтвердите, что вы не робот</div><img data-qa=\"account-captcha-picture\" alt=\"captcha\" width=\"120\" height=\"40\" src=\"data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==\"></body></html>", {
             headers: { "content-type": "text/html; charset=utf-8" }
           })
         }
@@ -326,9 +326,10 @@ describe.skipIf(!hasBrowser)("PlaywrightBrowserExecutor against a local hh imita
       )
       expect(exit.tag).toBe("captcha")
       const files = readdirSync(shots)
-      expect(files).toHaveLength(1)
-      expect(files[0]).toMatch(/form-100500\.png$/)
-      expect(exit.message).toContain(join(shots, files[0]!))
+      expect(files).toHaveLength(2)
+      expect(files.some((f) => /form-100500\.png$/.test(f))).toBe(true)
+      expect(files.some((f) => /form-100500-picture\.png$/.test(f))).toBe(true)
+      expect(exit.message).toContain(shots)
       expect(posts).toBe(0)
     } finally {
       await rm(shots, { recursive: true, force: true })
