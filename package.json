@@ -20,6 +20,7 @@
     "dev": "bun packages/cli/src/main.ts up",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
+    "db:studio": "docker compose --profile studio up -d drizzle-studio",
     "db:migrate": "bun run cli db migrate",
     "db:reset": "bun run cli db reset",
     "db:seed": "bun run cli db seed",
