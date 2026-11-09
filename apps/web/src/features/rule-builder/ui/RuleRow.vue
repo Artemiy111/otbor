@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from "vue"
 import { areaLabel } from "@/shared/lib"
 import { useQuery } from "@pinia/colada"
 import type { PresetField, PresetOperator } from "@otbor/contract"
-import { ChevronDown, Sparkles, X } from "@lucide/vue"
+import { ChevronDown, GripVertical, Sparkles, X } from "@lucide/vue"
 import { keywordApi, keywordKeys } from "@/entities/keyword"
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { hhAccountApi, hhAccountKeys, hhAccountName } from "@/entities/hh-account"
@@ -45,10 +45,14 @@ const props = withDefaults(
     dropped?: number
     /** Только что добавленное правило: фокус на значение или открытый список. */
     autofocus?: boolean
+    /** Резервирует колонку счётчиков, чтобы строки не «ехали», пока счёт считается. */
+    showCount?: boolean
+    /** Показывает ручку перетаскивания. */
+    sortable?: boolean
   }>(),
-  { disabled: false, count: undefined, dropped: undefined, autofocus: false }
+  { disabled: false, count: undefined, dropped: undefined, autofocus: false, showCount: false, sortable: false }
 )
-const emit = defineEmits<{ remove: [] }>()
+const emit = defineEmits<{ remove: []; dragstart: [event: DragEvent]; dragend: [] }>()
 
 const root = ref<HTMLElement | null>(null)
 const openList = ref(props.autofocus)
@@ -141,9 +145,23 @@ const onCurrency = (value: unknown) => {
 <template>
   <div
     ref="root"
+    data-rule-row
     class="flex items-center gap-1.5 border-l-2 py-0.5 pl-2"
     :class="isComplete(rule) ? 'border-transparent' : 'border-amber-500/70'"
   >
+    <button
+      v-if="props.sortable"
+      type="button"
+      draggable="true"
+      class="-ml-1 inline-flex size-5 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground/60 hover:bg-accent hover:text-foreground active:cursor-grabbing"
+      title="Перетащите, чтобы поменять порядок"
+      tabindex="-1"
+      :disabled="props.disabled"
+      @dragstart="emit('dragstart', $event)"
+      @dragend="emit('dragend')"
+    >
+      <GripVertical class="h-3.5 w-3.5" />
+    </button>
     <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
     <FieldPicker :current="rule.field" :disabled="props.disabled" @pick="onField" />
 
@@ -273,17 +291,19 @@ const onCurrency = (value: unknown) => {
     </div>
     <div class="flex shrink-0 items-center gap-1.5">
     <span
-      v-if="props.count !== undefined"
-      class="inline-flex shrink-0 items-center gap-1 text-[11px] tabular-nums text-muted-foreground"
-      title="Сколько вакансий остаётся после этого правила"
+      v-if="props.showCount"
+      class="inline-flex w-[44px] shrink-0 items-baseline justify-end text-[11px] tabular-nums"
+      :title="
+        props.count === undefined
+          ? ''
+          : `После этого правила остаётся ${props.count.toLocaleString('ru-RU')} вакансий` +
+            (props.dropped ? `, оно само отсекло ${props.dropped.toLocaleString('ru-RU')}` : '') +
+            '. Счёт идёт сверху вниз: порядок правил меняет только эти числа, не итог.'
+      "
     >
-      <span
-        v-if="props.dropped !== undefined && props.dropped > 0"
-        :class="props.dropped > 0 && props.count === 0 ? 'text-destructive' : 'text-amber-600 dark:text-amber-400'"
-      >
-        −{{ props.dropped.toLocaleString("ru-RU") }}
+      <span v-if="props.count !== undefined" class="text-right text-foreground/80">
+        {{ props.count.toLocaleString("ru-RU") }}
       </span>
-      <span class="text-foreground/80">{{ props.count.toLocaleString("ru-RU") }}</span>
     </span>
 
     <button

@@ -40,6 +40,44 @@ const addRule = (field: PresetField) => {
   state.value.rules.push(rule)
 }
 
+/** Перетаскивание порядка: правила верхнего уровня; порядок видно по воронке и в сохранённом фильтре. */
+const dragId = ref<number | null>(null)
+const overId = ref<number | null>(null)
+const overAfter = ref(false)
+
+const onDragStart = (id: number, event: DragEvent) => {
+  dragId.value = id
+  const row = (event.target as HTMLElement).closest("[data-rule-row]")
+  if (row !== null && event.dataTransfer !== null) {
+    event.dataTransfer.effectAllowed = "move"
+    event.dataTransfer.setDragImage(row, 16, 16)
+  }
+}
+const onDragOver = (id: number, event: DragEvent) => {
+  if (dragId.value === null) return
+  event.preventDefault()
+  const box = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  overId.value = id
+  overAfter.value = event.clientY > box.top + box.height / 2
+}
+const endDrag = () => {
+  dragId.value = null
+  overId.value = null
+}
+const onDrop = () => {
+  const from = dragId.value
+  const target = overId.value
+  const after = overAfter.value
+  endDrag()
+  if (from === null || target === null || from === target) return
+  const moved = state.value.rules.find((rule) => rule.id === from)
+  if (moved === undefined) return
+  const rest = state.value.rules.filter((rule) => rule.id !== from)
+  const at = rest.findIndex((rule) => rule.id === target) + (after ? 1 : 0)
+  rest.splice(at, 0, moved)
+  state.value.rules = rest
+}
+
 /** Сколько вакансий отсекло правило или группа относительно предыдущего шага. */
 const orderedIds = computed(() => [...state.value.rules.map((rule) => rule.id), ...state.value.groups.map((group) => group.id)])
 const stepOf = (id: number): { count: number; dropped: number } | undefined => {
@@ -95,17 +133,42 @@ const onLocation = (value: unknown) => {
 
 <template>
   <div class="space-y-2">
-    <div v-if="state.rules.length > 0" class="space-y-1.5">
-      <RuleRow
+    <div
+      v-if="props.counts !== undefined && state.rules.length + state.groups.length > 1"
+      class="flex justify-end gap-2 pr-9 text-[10px] uppercase tracking-[0.06em] text-muted-foreground"
+      title="Счёт идёт сверху вниз: сколько вакансий отсекло правило и сколько осталось после него"
+    >
+      осталось
+    </div>
+    <div v-if="state.rules.length > 0" class="space-y-1">
+      <div
         v-for="rule in state.rules"
         :key="rule.id"
-        :rule="rule"
-        :disabled="props.disabled"
-        :count="stepOf(rule.id)?.count"
-        :dropped="stepOf(rule.id)?.dropped"
-        :autofocus="rule.id === freshId"
-        @remove="removeRule(rule.id)"
-      />
+        class="rounded-sm border-y-2 border-transparent"
+        :class="
+          dragId !== null && overId === rule.id && dragId !== rule.id
+            ? overAfter
+              ? 'border-b-primary'
+              : 'border-t-primary'
+            : ''
+        "
+        @dragover="onDragOver(rule.id, $event)"
+        @drop.prevent="onDrop"
+      >
+        <RuleRow
+          :rule="rule"
+          :disabled="props.disabled"
+          :count="stepOf(rule.id)?.count"
+          :dropped="stepOf(rule.id)?.dropped"
+          :show-count="props.counts !== undefined"
+          :sortable="state.rules.length > 1"
+          :autofocus="rule.id === freshId"
+          :class="dragId === rule.id ? 'opacity-40' : ''"
+          @dragstart="onDragStart(rule.id, $event)"
+          @dragend="endDrag"
+          @remove="removeRule(rule.id)"
+        />
+      </div>
     </div>
 
     <div
@@ -115,11 +178,12 @@ const onLocation = (value: unknown) => {
     >
       <p class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
         Любой из вариантов
-        <span v-if="stepOf(group.id)" class="ml-auto font-normal normal-case tracking-normal tabular-nums">
-          <span v-if="stepOf(group.id)!.dropped > 0" class="mr-1 text-amber-600 dark:text-amber-400">
-            −{{ stepOf(group.id)!.dropped.toLocaleString("ru-RU") }}
-          </span>
-          <span class="text-foreground/80">{{ stepOf(group.id)!.count.toLocaleString("ru-RU") }}</span>
+        <span
+          v-if="stepOf(group.id)"
+          class="ml-auto pr-9 font-normal normal-case tracking-normal tabular-nums text-foreground/80"
+          :title="`Отсекла ${stepOf(group.id)!.dropped.toLocaleString('ru-RU')}`"
+        >
+          {{ stepOf(group.id)!.count.toLocaleString("ru-RU") }}
         </span>
       </p>
       <template v-for="(branch, index) in group.branches" :key="branch.id">
