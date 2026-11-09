@@ -13,6 +13,9 @@ import { isTrackerUrl } from "./trackers.ts"
 import { classifyResponsePage, parseResumeRefs, readResponseStatus, responseResumeHash } from "@otbor/hh"
 import { Effect, Layer, Schema, Semaphore } from "effect"
 import { existsSync } from "node:fs"
+import { mkdir } from "node:fs/promises"
+import { homedir } from "node:os"
+import { join } from "node:path"
 import { chromium, type BrowserContext, type Page } from "playwright"
 import {
   CHAT_INPUT_SELECTOR,
@@ -87,6 +90,17 @@ export interface PlaywrightOptions {
   readonly humanizeBudgetMs?: number
   /** Источник случайности разминки; в тестах подменяется. */
   readonly humanizeRandom?: () => number
+  /**
+   * Папка для отладочных скриншотов капчи (абсолютный путь). По умолчанию
+   * `~/.otbor/captcha-shots` или `OTBOR_CAPTCHA_SHOTS_DIR`; `null` выключает.
+   */
+  readonly captchaShotsDir?: string | null
+}
+
+const defaultCaptchaShotsDir = (): string | null => {
+  const override = process.env.OTBOR_CAPTCHA_SHOTS_DIR?.trim()
+  if (override === "off") return null
+  return override !== undefined && override !== "" ? override : join(homedir(), ".otbor", "captcha-shots")
 }
 
 const defaults = {
@@ -127,6 +141,9 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
         ? DEFAULT_CHROME_PATH
         : undefined
       : (config.executablePath ?? undefined)
+
+  /** Куда класть скриншоты капчи; `null` выключает их. */
+  const shotsDir = config.captchaShotsDir === undefined ? defaultCaptchaShotsDir() : config.captchaShotsDir
 
   const profileDir = (name: string | null | undefined) =>
     config.profilesDir === undefined
@@ -189,6 +206,29 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
   }
 
   /**
+   * Отладочный скриншот капчи: если задача закончилась выходом `captcha`, пока
+   * страница ещё открыта, снимает её целиком в `captchaShotsDir` и дописывает
+   * путь в сообщение выхода. Сбой снимка ничего не ломает: это только для отладки.
+   * Позже файлы можно выносить в S3, а здесь останется ссылка.
+   */
+  const withCaptchaShot = <A>(page: Page, label: string | undefined, result: A) =>
+    Effect.gen(function*() {
+      const exit = result as unknown as HarnessExit | undefined
+      if (shotsDir === null || exit === undefined || exit === null || exit.tag !== "captcha") return result
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-")
+      const safe = (label ?? "job").replace(/[^\w.-]+/g, "_")
+      const path = join(shotsDir, `${stamp}-${safe}.png`)
+      const saved = yield* attempt(async () => {
+        await mkdir(shotsDir, { recursive: true })
+        await page.screenshot({ path, fullPage: true, timeout: 10_000 })
+        return path
+      }).pipe(Effect.orElseSucceed(() => null as string | null))
+      if (saved === null) return result
+      yield* Effect.logWarning(`captcha screenshot saved: ${saved} (${page.url()})`)
+      return { ...exit, message: `${exit.message ?? ""} (screenshot: ${saved})`.trim() } as unknown as A
+    })
+
+  /**
    * Opens a page of the profile's browser, runs `use`, always closes the page and
    * releases the browser. Jobs that act on the account (everything but a form
    * read) делят пул разрешений профиля (`accountActingConcurrency`); читающие
@@ -197,7 +237,7 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
   const withPage = <A, E>(
     profile: string | null | undefined,
     use: (page: Page) => Effect.Effect<A, E>,
-    options: { readonly parallel?: boolean } = {}
+    options: { readonly parallel?: boolean; readonly label?: string } = {}
   ) => {
     const dir = profileDir(profile)
     const run = Effect.scoped(
@@ -210,7 +250,8 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
           attempt(() => context.newPage()),
           (opened) => Effect.promise(() => opened.close().catch(() => undefined))
         )
-        return yield* use(page)
+        const result = yield* use(page)
+        return yield* withCaptchaShot(page, options.label, result)
       })
     )
     if (options.parallel === true) return run
@@ -257,7 +298,7 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
         const html = yield* settle(page, config.settleMs)
         return prepareExit(html, page.url())
       }),
-      { parallel: true }
+      { parallel: true, label: `form-${payload.externalId}` }
     ).pipe(
       Effect.catch((error) =>
         Effect.succeed<HarnessExit>({ tag: "transport", message: error.message })
@@ -384,7 +425,8 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
           message: closed ? "letter sent" : "the letter dialog did not close after the click",
           artifacts: { clicked: true, closed, url: page.url() }
         } satisfies HarnessExit
-      })
+      }),
+      { label: `letter-${payload.externalId}` }
     )
 
     return run.pipe(
@@ -623,7 +665,8 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
         }
         const finalHtml = (yield* content(page)) ?? after
         return postClickExit(finalHtml, page.url(), letterAttached === undefined ? {} : { letterAttached })
-      })
+      }),
+      { label: `submit-${payload.externalId}` }
     )
 
     return run.pipe(
@@ -707,7 +750,7 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
         }
         return reconcileExit(payload.externalId, { vacancy, negotiations })
       }),
-      { parallel: true }
+      { parallel: true, label: `reconcile-${payload.externalId}` }
     ).pipe(
       // Reading failed: nothing was sent, and the cloud retries the reconcile.
       Effect.catch((error) =>
@@ -752,7 +795,7 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
         }
         return negotiationsSyncExit(pages)
       }),
-      { parallel: true }
+      { parallel: true, label: "negotiations-sync" }
     ).pipe(
       Effect.catch((error) =>
         Effect.succeed<HarnessExit>({ tag: "transport", message: error.message })
@@ -811,7 +854,7 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
         }
         return resumeSyncExit(profile, resumes, profileContactsText)
       }),
-      { parallel: true }
+      { parallel: true, label: "resume-sync" }
     ).pipe(
       Effect.catch((error) =>
         Effect.succeed<HarnessExit>({ tag: "transport", message: error.message })

@@ -2,7 +2,7 @@ import type { FormAnswer, SubmitJobPayload } from "@otbor/contract"
 import { isSubmitSuccess, parseNegotiations, parseResponseForm, readResponseStatus } from "@otbor/hh"
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { Effect } from "effect"
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -177,6 +177,11 @@ beforeAll(async () => {
       }
       if (url.pathname === "/applicant/vacancy_response") {
         if (mode === "login") return Response.redirect(`${origin}/account/login`, 302)
+        if (mode === "captcha") {
+          return new Response("<html><body><div>Подтвердите, что вы не робот</div></body></html>", {
+            headers: { "content-type": "text/html; charset=utf-8" }
+          })
+        }
         const body =
           mode === "responded"
             ? '<div data-qa="responded-success-attach-cover-letter">Вы откликнулись</div>'
@@ -277,6 +282,39 @@ describe.skipIf(!hasBrowser)("PlaywrightBrowserExecutor against a local hh imita
     expect((await run(executor().prepare(payload))).tag).toBe("already_responded")
     expect(posts).toBe(0)
   }, 40_000)
+
+  test("a captcha leaves a debug screenshot and its path in the exit message", async () => {
+    mode = "captcha"
+    posts = 0
+    const shots = await mkdtemp(join(tmpdir(), "otbor-shots-"))
+    try {
+      const exit = await run(
+        makePlaywrightExecutor({
+          baseUrl: origin,
+          profilesDir: profiles,
+          executablePath: null,
+          headless: true,
+          navigationTimeoutMs: 10_000,
+          settleMs: 4_000,
+          captchaShotsDir: shots
+        }).prepare({
+          vacancyId: "vac",
+          externalId: "100500",
+          canonicalUrl: "https://hh.ru/vacancy/100500",
+          sessionProfile: "test-account"
+        })
+      )
+      expect(exit.tag).toBe("captcha")
+      const files = readdirSync(shots)
+      expect(files).toHaveLength(1)
+      expect(files[0]).toMatch(/form-100500\.png$/)
+      expect(exit.message).toContain(join(shots, files[0]!))
+      expect(posts).toBe(0)
+    } finally {
+      await rm(shots, { recursive: true, force: true })
+      mode = "ok"
+    }
+  }, 30_000)
 
   test("submit fills the form, clicks exactly once and reports page evidence", async () => {
     mode = "ok"
