@@ -60,7 +60,7 @@ const onPaste = (event: ClipboardEvent) => {
 
 <template>
   <div
-    class="flex min-h-7 min-w-[160px] flex-1 cursor-text flex-wrap items-center gap-1 rounded-md border border-input bg-transparent px-1.5 py-0.5 text-xs focus-within:ring-1 focus-within:ring-ring"
+    class="flex min-h-8 min-w-0 flex-1 cursor-text flex-wrap items-center gap-1 rounded-md border border-input bg-transparent px-1.5 py-0.5 text-xs focus-within:ring-1 focus-within:ring-ring"
     :class="props.disabled ? 'pointer-events-none opacity-50' : ''"
     @click="input?.focus()"
   >

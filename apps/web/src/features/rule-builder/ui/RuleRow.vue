@@ -162,11 +162,14 @@ const onCurrency = (value: unknown) => {
     >
       <GripVertical class="h-3.5 w-3.5" />
     </button>
-    <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+    <div class="rule-pill flex min-w-0 flex-1 items-stretch overflow-hidden rounded-lg border border-input bg-card/40 transition-colors focus-within:border-ring/60">
     <FieldPicker :current="rule.field" :disabled="props.disabled" @pick="onField" />
 
     <Select :model-value="rule.op" :disabled="props.disabled" @update:model-value="onOp">
-      <SelectTrigger class="h-7 text-xs" :class="meta.kind === 'number' ? 'w-[72px] font-mono' : rule.op.endsWith('_any') ? 'w-[190px]' : 'w-[124px]'">
+      <SelectTrigger
+        class="h-8 shrink-0 text-xs text-muted-foreground"
+        :class="meta.kind === 'number' ? 'w-[72px] font-mono' : rule.op.endsWith('_any') ? 'w-[176px]' : 'w-[116px]'"
+      >
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -181,7 +184,7 @@ const onCurrency = (value: unknown) => {
     <template v-else-if="meta.kind === 'number'">
       <Input
         type="number"
-        class="h-7 w-28 text-xs"
+        class="h-8 w-28 text-xs"
         placeholder="Число"
         :model-value="rule.text"
         :disabled="props.disabled"
@@ -189,7 +192,7 @@ const onCurrency = (value: unknown) => {
       />
       <template v-if="meta.salary">
         <Select :model-value="rule.currency === '' ? 'any' : rule.currency" :disabled="props.disabled" @update:model-value="onCurrency">
-          <SelectTrigger class="h-7 w-[96px] text-xs" title="Валюта вакансии">
+          <SelectTrigger class="h-8 w-[96px] text-xs" title="Валюта вакансии">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -201,8 +204,8 @@ const onCurrency = (value: unknown) => {
         </Select>
         <button
           type="button"
-          class="inline-flex h-7 items-center rounded-full border px-2.5 text-xs transition-colors disabled:opacity-50"
-          :class="rule.orMissing ? 'border-primary bg-primary/15 text-foreground' : 'border-border text-muted-foreground hover:bg-accent'"
+          class="inline-flex h-8 items-center px-2.5 text-xs transition-colors disabled:opacity-50"
+          :class="rule.orMissing ? 'bg-primary/15 text-foreground' : 'text-muted-foreground hover:bg-accent'"
           title="Вакансии без указанной зарплаты тоже проходят"
           :disabled="props.disabled"
           @click="rule.orMissing = !rule.orMissing"
@@ -216,7 +219,7 @@ const onCurrency = (value: unknown) => {
       <PopoverTrigger as-child>
         <button
           type="button"
-          class="inline-flex h-7 min-w-[140px] max-w-full flex-1 items-center justify-between gap-1 rounded-md border border-input bg-transparent px-2 text-left text-xs hover:bg-accent disabled:opacity-50"
+          class="inline-flex h-8 min-w-0 max-w-full flex-1 items-center justify-between gap-1 bg-transparent px-2 text-left text-xs hover:bg-accent disabled:opacity-50"
           :class="rule.values.length === 0 ? 'text-muted-foreground' : ''"
           :disabled="props.disabled"
         >
@@ -263,7 +266,7 @@ const onCurrency = (value: unknown) => {
       :disabled="props.disabled"
       @update:model-value="onText"
     >
-      <SelectTrigger class="h-7 min-w-[140px] flex-1 text-xs">
+      <SelectTrigger class="h-8 min-w-0 flex-1 text-xs">
         <SelectValue placeholder="Значение" />
       </SelectTrigger>
       <SelectContent>
@@ -281,7 +284,7 @@ const onCurrency = (value: unknown) => {
     <Input
       v-else
       type="text"
-      class="h-7 min-w-[140px] flex-1 text-xs"
+      class="h-8 min-w-0 flex-1 text-xs"
       placeholder="Значение"
       :model-value="rule.text"
       :disabled="props.disabled"
@@ -318,3 +321,15 @@ const onCurrency = (value: unknown) => {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* Правило как одна «таблетка»: сегменты без собственных рамок, между ними тонкие разделители. */
+.rule-pill > :deep(*) {
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.rule-pill > :deep(* + *) {
+  border-left: 1px solid color-mix(in srgb, currentColor 14%, transparent) !important;
+}
+</style>

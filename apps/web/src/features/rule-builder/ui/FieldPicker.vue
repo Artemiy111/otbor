@@ -57,7 +57,7 @@ const pick = (field: PresetField) => {
       <button
         v-else
         type="button"
-        class="inline-flex h-7 w-[170px] items-center justify-between gap-1 whitespace-nowrap rounded-md border bg-transparent px-2 text-xs shadow-sm hover:bg-accent disabled:opacity-50"
+        class="inline-flex h-8 w-[150px] shrink-0 items-center justify-between gap-1 whitespace-nowrap rounded-md border bg-transparent px-2 text-xs font-medium shadow-sm hover:bg-accent disabled:opacity-50"
         :class="currentMeta.ai ? 'border-violet-500/50 bg-violet-500/10 text-violet-500' : 'border-input'"
         :title="currentMeta.hint"
         :disabled="props.disabled"
