@@ -84,9 +84,11 @@ export interface EvaluateInput {
 }
 
 export interface EvaluateBatchInput {
-  /** Vacancies per call; default 500, at most {@link MAX_BATCH}. */
+  /** Vacancies per (account, resume) scope; default 500, at most {@link MAX_BATCH}. */
   readonly limit?: number
+  /** Только этот аккаунт; без него - каждый аккаунт с фильтром (не «аккаунт по умолчанию»). */
   readonly hhAccountId?: string | null
+  /** Только это резюме; без него - каждое резюме области. */
   readonly resumeId?: string | null
   /** Re-run the cascade for vacancies whose decision is already current. */
   readonly force?: boolean
@@ -172,6 +174,9 @@ export const evaluateInTx = (
 
     const inputHash = stableHash({
       contentHash: row.contentHash,
+      // Решение принадлежит паре (аккаунт, резюме): одинаковые входы у разных пар
+      // не должны схлопываться в одну строку.
+      scope: { hhAccountId, resumeId },
       // A new filter or settings must produce a new decision row.
       filter: stableHash({ filter: resolved.filter, ...settings, boosts: resolved.boosts }),
       boostWeight,
@@ -266,78 +271,81 @@ export const makeEvaluator = (database: Database["Service"]): Evaluator => {
     Effect.gen(function*() {
       const limit = Math.min(Math.max(Math.trunc(input.limit ?? DEFAULT_BATCH), 1), MAX_BATCH)
       const force = input.force === true
-      const staleOptions = {
-        userId,
-        policyVersion: currentVersions.policyVersion,
-        analysisPromptVersion: ANALYSIS_PROMPT_VERSION,
-        vacancyIds: input.vacancyIds
-      }
 
-      const { ids, hhAccountId } = yield* database
+      // Решение принимается для каждой пары (аккаунт, резюме) отдельно.
+      const scopes = yield* database
         .asUser(userId, (tx) =>
-          Effect.gen(function*() {
-            const account = input.hhAccountId === undefined || input.hhAccountId === null
-              ? yield* defaultHhAccount(tx, userId)
-              : input.hhAccountId
-            const found = yield* DecisionRepository.staleVacancyIds(tx, {
-              ...staleOptions,
-              force,
-              limit
-            })
-            return { ids: found, hhAccountId: account }
+          DecisionRepository.evaluationScopes(tx, userId, {
+            hhAccountId: input.hhAccountId,
+            resumeId: input.resumeId
           })
         )
         .pipe(Effect.mapError(toStorageError("decision.evaluateBatch")))
 
       let evaluated = 0
+      let remaining = 0
       const verdicts = { apply: 0, draft: 0, skip: 0 }
       const byReason: Record<string, number> = {}
 
-      for (const chunk of chunked(ids, CHUNK)) {
-        const results = yield* database
+      for (const scope of scopes) {
+        const staleOptions = {
+          userId,
+          hhAccountId: scope.hhAccountId,
+          resumeId: scope.resumeId,
+          policyVersion: currentVersions.policyVersion,
+          analysisPromptVersion: ANALYSIS_PROMPT_VERSION,
+          vacancyIds: input.vacancyIds
+        }
+        const ids = yield* database
           .asUser(userId, (tx) =>
-            Effect.gen(function*() {
-              const analyses = yield* VacancyAnalysisRepository.getMany(tx, chunk, ANALYSIS_PROMPT_VERSION)
-              return yield* Effect.forEach(chunk, (vacancyId) =>
-                evaluateInTx(
-                  tx,
-                  userId,
-                  {
-                    vacancyId,
-                    resumeId: input.resumeId,
-                    hhAccountId,
-                    includeBlacklisted: input.includeBlacklisted
-                  },
-                  hhAccountId,
-                  { analysis: analyses.get(vacancyId) ?? null }
-                )
-              )
-            })
+            DecisionRepository.staleVacancyIds(tx, { ...staleOptions, force, limit })
           )
           .pipe(Effect.mapError(toStorageError("decision.evaluateBatch")))
 
-        for (const result of results) {
-          if (result === null) continue
-          evaluated += 1
-          verdicts[result.verdict] += 1
-          const reason = result.reasons[0]?.code ?? "none"
-          byReason[reason] = (byReason[reason] ?? 0) + 1
+        let scopeEvaluated = 0
+        for (const chunk of chunked(ids, CHUNK)) {
+          const results = yield* database
+            .asUser(userId, (tx) =>
+              Effect.gen(function*() {
+                const analyses = yield* VacancyAnalysisRepository.getMany(tx, chunk, ANALYSIS_PROMPT_VERSION)
+                return yield* Effect.forEach(chunk, (vacancyId) =>
+                  evaluateInTx(
+                    tx,
+                    userId,
+                    {
+                      vacancyId,
+                      resumeId: scope.resumeId,
+                      hhAccountId: scope.hhAccountId,
+                      includeBlacklisted: input.includeBlacklisted
+                    },
+                    scope.hhAccountId,
+                    { analysis: analyses.get(vacancyId) ?? null }
+                  )
+                )
+              })
+            )
+            .pipe(Effect.mapError(toStorageError("decision.evaluateBatch")))
+
+          for (const result of results) {
+            if (result === null) continue
+            evaluated += 1
+            scopeEvaluated += 1
+            verdicts[result.verdict] += 1
+            const reason = result.reasons[0]?.code ?? "none"
+            byReason[reason] = (byReason[reason] ?? 0) + 1
+          }
         }
-      }
 
-      const pending = yield* database
-        .asUser(userId, (tx) =>
-          DecisionRepository.countStaleVacancies(tx, { ...staleOptions, force })
-        )
-        .pipe(Effect.mapError(toStorageError("decision.evaluateBatch")))
-
-      return {
-        evaluated,
-        ...verdicts,
+        const pending = yield* database
+          .asUser(userId, (tx) =>
+            DecisionRepository.countStaleVacancies(tx, { ...staleOptions, force })
+          )
+          .pipe(Effect.mapError(toStorageError("decision.evaluateBatch")))
         // With `force` everything is "stale"; what is left is what this call did not reach.
-        remaining: force ? Math.max(0, pending - evaluated) : pending,
-        byReason
+        remaining += force ? Math.max(0, pending - scopeEvaluated) : pending
       }
+
+      return { evaluated, ...verdicts, remaining, byReason }
     })
 
   return { evaluate, evaluateBatch }

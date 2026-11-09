@@ -32,6 +32,7 @@ import { DEFAULT_DAILY_APPLY_LIMIT } from "./dailyLimit.ts"
 import { trySubmit } from "./submitGate.ts"
 import { inferenceJob } from "./jobs.ts"
 import { sha256, toStorageError } from "./support.ts"
+import { makeEvaluator } from "./decisionEvaluation.ts"
 import { currentFormFor, requestFormRead } from "./vacancyForm.ts"
 import { WritingService } from "./WritingService.ts"
 
@@ -42,6 +43,11 @@ import { WritingService } from "./WritingService.ts"
 export interface AutoApplyRunOptions {
   /** Only this hh account. Left out: every account of the user. */
   readonly hhAccountId?: string
+  /**
+   * Пересчитать устаревшие решения аккаунта перед выбором (по умолчанию `true`).
+   * `false` - выбирать только из уже существующих решений.
+   */
+  readonly refreshDecisions?: boolean
 }
 
 /** Safe, JSON-shaped counts of one pass; they become `schedule_run.detail`. */
@@ -91,6 +97,8 @@ const describeError = (error: ApiError): string =>
 
 /** Applications the runner looks at per account and pass. */
 const PROGRESS_LIMIT = 200
+/** Сколько вакансий на область (аккаунт, резюме) пересчитывает раннер перед выбором. */
+const WARMUP_BATCH = 300
 
 type Mode = "drafts" | "auto"
 
@@ -238,6 +246,7 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
     AutoApplyRunner,
     Effect.gen(function*() {
       const database = yield* Database
+      const evaluator = makeEvaluator(database)
 
       /** ApplicationService and WritingService speak as `CurrentUser`; the runner speaks as the schedule owner. */
       const servicesFor = (userId: string) =>
@@ -682,6 +691,26 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
             // Nothing is read or sent for an account without a row that is on.
             if (active.length === 0) return
             counts.accounts += 1
+
+            // Прогрев: выбор читает только текущие решения аккаунта, а их устаревание
+            // (правка фильтра, новая политика, смена вакансии) никто, кроме
+            // расписания `evaluate`, не чинит. Пересчитываем ограниченную порцию
+            // для этого аккаунта (все его резюме) прямо перед выбором. Сбой оценки
+            // не валит проход: выбор работает с тем, что есть.
+            if (only === undefined && options.refreshDecisions !== false) {
+              yield* evaluator.evaluateBatch(userId, { hhAccountId, limit: WARMUP_BATCH }).pipe(
+                Effect.tap((result) =>
+                  result.evaluated > 0
+                    ? Effect.logInfo(
+                        `autoapply ${hhAccountId}: refreshed ${result.evaluated} decisions (apply ${result.apply}, left ${result.remaining})`
+                      )
+                    : Effect.void
+                ),
+                Effect.catch((error: ApiError) =>
+                  Effect.logWarning(`autoapply ${hhAccountId}: decision refresh failed: ${describeError(error)}`)
+                )
+              )
+            }
 
             const pairResumeIds = accountRows.flatMap((row) => (row.resumeId === null ? [] : [row.resumeId]))
             // A pair row decides for its resume; the account row for the rest.

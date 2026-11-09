@@ -288,7 +288,8 @@ export class ScheduleDispatcher extends Context.Service<
             case "evaluate": {
               // Sweep: whatever chaining missed (a crash, a policy bump, edits
               // made outside a crawl). The target is an hh account id, or
-              // `default`/`global` for the user's default account.
+              // `default`/`global` for every account that has an apply filter;
+              // each (account, resume) pair is decided on its own.
               const target = schedule.targetId.trim()
               const named = target !== "" && target !== "default" && target !== "global"
               const result = yield* evaluation.evaluateBatch(schedule.userId, {
@@ -397,7 +398,12 @@ export class ScheduleDispatcher extends Context.Service<
               // the user's accounts.
               const target = schedule.targetId.trim()
               const named = target !== "" && target !== "default" && target !== "global"
-              const result = yield* autoApply.run(schedule.userId, named ? { hhAccountId: target } : {})
+              // Перед выбором раннер пересчитывает устаревшие решения; опция
+              // `refreshDecisions: false` оставляет выбор только из готовых решений.
+              const result = yield* autoApply.run(schedule.userId, {
+                ...(named ? { hhAccountId: target } : {}),
+                ...(options.refreshDecisions === false ? { refreshDecisions: false } : {})
+              })
               const error = result.errors.length === 0 ? null : result.errors.join("; ")
               return {
                 ok: error === null,

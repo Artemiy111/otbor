@@ -66,11 +66,13 @@ if (!enabled || serverUrl === null) {
   /* Helpers                                                                  */
   /* ------------------------------------------------------------------------ */
 
-  const tick = (userId: string, options: { hhAccountId?: string } = {}) =>
+  // Решения этих тестов создаются явно (с заданным fit); прогрев раннера
+  // пересчитал бы вакансии других тестов, поэтому здесь он выключен.
+  const tick = (userId: string, options: { hhAccountId?: string; refreshDecisions?: boolean } = {}) =>
     support.runAs(
       userId,
       Effect.gen(function*() {
-        return yield* (yield* AutoApplyRunner).run(userId, options)
+        return yield* (yield* AutoApplyRunner).run(userId, { refreshDecisions: false, ...options })
       })
     )
 
@@ -722,7 +724,8 @@ if (!enabled || serverUrl === null) {
       const schedule = await support.scheduleUpsert(ctx.tenant.userId, {
         kind: "apply",
         targetId: "global",
-        intervalMinutes: 15
+        intervalMinutes: 15,
+        options: { refreshDecisions: false }
       })
       expect(schedule.kind).toBe("apply")
       await support.setScheduleNextRun(schedule.id, new Date(Date.now() - 60_000))

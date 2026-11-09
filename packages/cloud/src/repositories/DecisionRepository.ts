@@ -246,6 +246,10 @@ export const list = (
 
 export interface StaleVacanciesOptions {
   readonly userId: string
+  /** Область оценки: решение принадлежит паре (аккаунт, резюме), не пользователю. */
+  readonly hhAccountId: string | null
+  /** Резюме области; `null` - решения аккаунта без привязки к конкретному резюме. */
+  readonly resumeId: string | null
   readonly policyVersion: number
   /** Include vacancies whose decision is current. */
   readonly force?: boolean
@@ -256,9 +260,11 @@ export interface StaleVacanciesOptions {
 
 /**
  * The SQL twin of `isDecisionStale` in `@otbor/domain`: no decision, other
- * content, or other policy version. Compared
- * against the newest decision of the user for the vacancy. Also stale: the
- * decision predates an edit of any of the user's apply filters.
+ * content, or other policy version. Compared against the newest decision of
+ * the (hh account, resume) scope for the vacancy: another account's fresh
+ * decision does not make this one current. Also stale: the decision predates
+ * an edit of an apply filter that governs the scope (its pair row or the
+ * account row of the same account).
  */
 const staleFrom = (options: StaleVacanciesOptions) => sql`
   from vacancy
@@ -266,6 +272,8 @@ const staleFrom = (options: StaleVacanciesOptions) => sql`
     select x.vacancy_content_hash, x.policy_version, x.created_at
     from decision x
     where x.user_id = ${options.userId} and x.vacancy_id = vacancy.id
+      and x.hh_account_id is not distinct from ${options.hhAccountId}
+      ${options.resumeId === null ? sql`` : sql`and x.resume_id = ${options.resumeId}`}
     order by x.created_at desc, x.id desc
     limit 1
   ) d on true
@@ -279,10 +287,13 @@ const staleFrom = (options: StaleVacanciesOptions) => sql`
       or d.policy_version is null
       or d.vacancy_content_hash is distinct from vacancy.content_hash
       or d.policy_version <> ${options.policyVersion}
-      -- Editing an apply filter re-decides everything decided before the edit.
+      -- Editing the apply filter of this scope re-decides what was decided before the edit.
       or exists (
         select 1 from apply_filter f
-        where f.user_id = ${options.userId} and f.rules_changed_at > d.created_at
+        where f.user_id = ${options.userId}
+          and f.hh_account_id = ${options.hhAccountId}
+          and (f.resume_id is null${options.resumeId === null ? sql`` : sql` or f.resume_id = ${options.resumeId}`})
+          and f.rules_changed_at > d.created_at
       )
       ${options.analysisPromptVersion === undefined
         ? sql``
@@ -383,8 +394,12 @@ const currentApplyFrom = (userId: string, options: AutoApplyCandidateOptions): S
     and d.policy_version = ${options.policyVersion}
     and d.vacancy_content_hash is not distinct from vacancy.content_hash
     and not exists (
+      -- Только фильтры этого аккаунта: пара (аккаунт, резюме) решения и строка аккаунта.
       select 1 from apply_filter f
-      where f.user_id = ${userId} and f.rules_changed_at > d.created_at
+      where f.user_id = ${userId}
+        and f.hh_account_id = d.hh_account_id
+        and (f.resume_id is null or f.resume_id = d.resume_id)
+        and f.rules_changed_at > d.created_at
     )
     and not exists (
       select 1 from vacancy_analysis a
@@ -397,6 +412,7 @@ const currentApplyFrom = (userId: string, options: AutoApplyCandidateOptions): S
       where newer.user_id = d.user_id
         and newer.vacancy_id = d.vacancy_id
         and newer.hh_account_id = d.hh_account_id
+        and newer.resume_id is not distinct from d.resume_id
         and newer.created_at > d.created_at
     )
     ${options.resumeId === null
@@ -472,3 +488,93 @@ export const autoApplyCounts = (
         }
       })
     )
+
+
+/* -------------------------------------------------------------------------- */
+/* Evaluation scopes                                                          */
+/* -------------------------------------------------------------------------- */
+
+/** Одна область оценки: решение принимается отдельно для каждой пары (аккаунт, резюме). */
+export interface EvaluationScope {
+  readonly hhAccountId: string | null
+  readonly resumeId: string | null
+}
+
+const resumesOf = (tx: Executor, userId: string, hhAccountId: string): RepoEffect<ReadonlyArray<string>> =>
+  tx
+    .execute(sql`
+      select id::text as id from resume
+      where user_id = ${userId} and hh_account_id = ${hhAccountId}
+      order by is_active desc, created_at asc
+    `)
+    .pipe(Effect.map((result) => (result.rows as unknown as ReadonlyArray<{ id: string }>).map((row) => row.id)))
+
+/**
+ * Области, для которых пересчитываются решения. Ничего неявного про «аккаунт по
+ * умолчанию»:
+ * - задан аккаунт: его резюме (или одно заданное `resumeId`); у аккаунта без резюме - область без резюме;
+ * - не задан: каждый аккаунт, у которого есть хоть одна строка `apply_filter`.
+ *   Строка аккаунта (resume IS NULL) покрывает все его резюме, иначе - только резюме парных строк;
+ * - у пользователя нет ни одного фильтра: все его аккаунты со всеми резюме
+ *   (встроенный фильтр действует для каждого).
+ */
+export const evaluationScopes = (
+  tx: Executor,
+  userId: string,
+  options: { readonly hhAccountId?: string | null; readonly resumeId?: string | null }
+): RepoEffect<ReadonlyArray<EvaluationScope>> =>
+  Effect.gen(function*() {
+    const forAccount = (hhAccountId: string, only: ReadonlyArray<string> | null) =>
+      Effect.gen(function*() {
+        const resumes = only ?? (yield* resumesOf(tx, userId, hhAccountId))
+        return resumes.length === 0
+          ? [{ hhAccountId, resumeId: null }]
+          : resumes.map((resumeId) => ({ hhAccountId, resumeId }))
+      })
+
+    if (options.hhAccountId !== undefined && options.hhAccountId !== null) {
+      return yield* forAccount(
+        options.hhAccountId,
+        options.resumeId === undefined || options.resumeId === null ? null : [options.resumeId]
+      )
+    }
+
+    const filters = (yield* tx.execute(sql`
+      select hh_account_id::text as account, resume_id::text as resume
+      from apply_filter where user_id = ${userId}
+      order by created_at asc
+    `)).rows as unknown as ReadonlyArray<{ account: string; resume: string | null }>
+
+    const scopes: Array<EvaluationScope> = []
+    const push = (found: ReadonlyArray<EvaluationScope>) => {
+      for (const scope of found) {
+        if (options.resumeId !== undefined && options.resumeId !== null && scope.resumeId !== options.resumeId) continue
+        if (!scopes.some((s) => s.hhAccountId === scope.hhAccountId && s.resumeId === scope.resumeId)) {
+          scopes.push(scope)
+        }
+      }
+    }
+
+    if (filters.length > 0) {
+      const accounts = [...new Set(filters.map((row) => row.account))]
+      for (const account of accounts) {
+        const rows = filters.filter((row) => row.account === account)
+        const wholeAccount = rows.some((row) => row.resume === null)
+        push(
+          yield* forAccount(
+            account,
+            wholeAccount ? null : rows.flatMap((row) => (row.resume === null ? [] : [row.resume]))
+          )
+        )
+      }
+      return scopes
+    }
+
+    const accounts = (yield* tx.execute(sql`
+      select id::text as id from hh_account
+      where user_id = ${userId}
+      order by is_default desc, created_at asc
+    `)).rows as unknown as ReadonlyArray<{ id: string }>
+    for (const account of accounts) push(yield* forAccount(account.id, null))
+    return scopes
+  })
