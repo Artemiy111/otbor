@@ -19,8 +19,12 @@ import {
 } from "@/shared/ui"
 import PresetPreviewPanel from "./PresetPreviewPanel.vue"
 import {
+  FunnelSankey,
   PRESET_LOCATION_LABELS,
-  describePresetRule
+  describePresetRule,
+  funnelStages,
+  toEditable,
+  useRuleFunnel
 } from "@/features/rule-builder"
 import { presetRules } from "@/features/rule-builder"
 
@@ -43,6 +47,10 @@ const previewQuery = useQuery({
   key: () => presetKeys.preview(props.preset.filter),
   query: () => presetApi.preview(props.preset.filter)
 })
+
+const editable = computed(() => toEditable(props.preset.filter))
+const { counts: funnel, total: corpusTotal } = useRuleFunnel(editable)
+const stages = computed(() => funnelStages(editable.value, funnel.value, corpusTotal.value))
 
 const preview = computed(() => previewQuery.data.value ?? null)
 const previewError = computed(() =>
@@ -168,6 +176,16 @@ const keywordCount = computed(() => props.preset.filter.keywordIds?.length ?? 0)
           Правила объединяются через «и», внутри группы варианты через «или».
           <template v-if="props.preset.system">Системный пресет общий и доступен только для чтения: сделайте копию, чтобы изменить правила.</template>
         </p>
+      </CardContent>
+    </Card>
+
+    <Card v-if="stages.length > 1">
+      <CardHeader class="gap-1 pb-2">
+        <CardTitle class="text-base">Воронка</CardTitle>
+        <CardDescription>Как правила по порядку сужают корпус</CardDescription>
+      </CardHeader>
+      <CardContent class="border-t border-border pt-3">
+        <FunnelSankey :stages="stages" />
       </CardContent>
     </Card>
 
