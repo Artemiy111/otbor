@@ -177,6 +177,12 @@ beforeAll(async () => {
       }
       if (url.pathname === "/applicant/vacancy_response") {
         if (mode === "login") return Response.redirect(`${origin}/account/login`, 302)
+        if (mode === "relocation" && url.searchParams.get("confirmed") !== "1") {
+          return new Response(
+            `<html><body><button data-qa="relocation-warning-confirm" onclick="location.href='/applicant/vacancy_response?confirmed=1'">Да</button></body></html>`,
+            { headers: { "content-type": "text/html; charset=utf-8" } }
+          )
+        }
         if (mode === "captcha") {
           return new Response("<html><body><div>Подтвердите, что вы не робот</div></body></html>", {
             headers: { "content-type": "text/html; charset=utf-8" }
@@ -282,6 +288,20 @@ describe.skipIf(!hasBrowser)("PlaywrightBrowserExecutor against a local hh imita
     expect((await run(executor().prepare(payload))).tag).toBe("already_responded")
     expect(posts).toBe(0)
   }, 40_000)
+
+  test("prepare confirms the relocation warning and reads the form behind it", async () => {
+    mode = "relocation"
+    const exit = await run(
+      executor().prepare({
+        vacancyId: "vac",
+        externalId: "100500",
+        canonicalUrl: "https://hh.ru/vacancy/100500",
+        sessionProfile: "test-account"
+      })
+    )
+    mode = "ok"
+    expect(exit.tag).toBe("prepared")
+  }, 30_000)
 
   test("a captcha leaves a debug screenshot and its path in the exit message", async () => {
     mode = "captcha"

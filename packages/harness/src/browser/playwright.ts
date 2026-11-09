@@ -295,7 +295,22 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
     withPage(payload.sessionProfile, (page) =>
       Effect.gen(function*() {
         yield* open(page, payload.externalId)
-        const html = yield* settle(page, config.settleMs)
+        let html = yield* settle(page, config.settleMs)
+        // Предупреждение о другой стране: оператор согласен его подтверждать
+        // (hh может отправить отклик сразу, если у вакансии нет формы; тогда
+        // страница станет «откликнулись», и облако считает вакансию занятой).
+        if (classifyResponsePage(html, page.url()) === "relocation") {
+          const confirmed = yield* attempt(() =>
+            page.locator(RELOCATION_SELECTOR).first().click({ timeout: 5_000 })
+          ).pipe(Effect.as(true), Effect.orElseSucceed(() => false))
+          if (confirmed) {
+            html = yield* settle(
+              page,
+              config.settleMs,
+              (kind) => kind === "form" || kind === "responded" || kind === "captcha" || kind === "archived"
+            )
+          }
+        }
         return prepareExit(html, page.url())
       }),
       { parallel: true, label: `form-${payload.externalId}` }
