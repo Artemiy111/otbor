@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test"
 import {
-  findStrayProcesses,
   banner,
   databaseAddress,
   doctorExitCode,
@@ -124,25 +123,5 @@ describe("aggregation", () => {
     expect(versionAtLeast("1.1.9", "1.2.0")).toBe(false)
     expect(versionAtLeast("2.0.0", "1.9.9")).toBe(true)
     expect(versionAtLeast("1.2.0", "1.2.0")).toBe(true)
-  })
-})
-
-describe("findStrayProcesses", () => {
-  const ps = [
-    "36889 bun packages/cloud/src/worker.ts",
-    "36891 bun packages/cli/src/main.ts harness run",
-    "50830 bun /r/packages/cli/bin/../src/main.ts up",
-    "55802 bun /r/packages/cli/bin/../src/main.ts mcp",
-    "56014 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=/x"
-  ].join("\n")
-
-  test("находит worker и harness, оставшиеся от прошлого запуска", () => {
-    const found = findStrayProcesses(ps, ["server", "worker", "harness"])
-    expect(found.map((p) => [p.name, p.pid])).toEqual([["worker", 36889], ["harness", 36891]])
-  })
-
-  test("не трогает сервисы вне списка и собственный pid", () => {
-    expect(findStrayProcesses(ps, ["server"])).toEqual([])
-    expect(findStrayProcesses(ps, ["worker"], 36889)).toEqual([])
   })
 })

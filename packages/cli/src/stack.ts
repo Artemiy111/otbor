@@ -43,42 +43,6 @@ export const serviceSpecs = (root: string, options: StackOptions): ReadonlyArray
   return specs
 }
 
-/**
- * Процессы worker/harness, которые `otbor up` не запускал (вывод `ps -eo pid=,command=`).
- * Второй worker забирает jobs из той же очереди, а второй harness не может открыть
- * профиль Chrome аккаунта (SingletonLock), поэтому такие процессы мешают запуску.
- * Путь сопоставляется по суффиксу: старый процесс мог быть запущен с относительным путём.
- */
-export const findStrayProcesses = (
-  psOutput: string,
-  names: ReadonlyArray<ServiceName>,
-  selfPid: number = process.pid
-): ReadonlyArray<{ readonly name: ServiceName; readonly pid: number; readonly command: string }> => {
-  const found: Array<{ name: ServiceName; pid: number; command: string }> = []
-  for (const line of psOutput.split("\n")) {
-    const match = /^\s*(\d+)\s+(.*)$/.exec(line)
-    if (match === null) continue
-    const pid = Number(match[1])
-    const command = match[2]!.trim()
-    if (pid === selfPid) continue
-    const args = command.split(/\s+/)
-    if (args[0] === undefined || !/(^|\/)bun$/.test(args[0])) continue
-    const script = args[1] ?? ""
-    const rest = args.slice(2)
-    for (const name of names) {
-      const hit =
-        (name === "server" && script.endsWith("packages/cloud/src/server.ts")) ||
-        (name === "worker" && script.endsWith("packages/cloud/src/worker.ts")) ||
-        (name === "harness" &&
-          script.endsWith("packages/cli/src/main.ts") &&
-          rest[0] === "harness" &&
-          rest[1] === "run")
-      if (hit) found.push({ name, pid, command })
-    }
-  }
-  return found
-}
-
 export const ALL_SERVICES: ReadonlyArray<ServiceName> = ["server", "worker", "web", "harness"]
 
 // ---------------------------------------------------------------- pid files

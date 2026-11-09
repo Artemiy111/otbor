@@ -20,7 +20,6 @@ import {
   colorFor,
   databaseAddress,
   doctorExitCode,
-  findStrayProcesses,
   endpoints,
   formatHints,
   formatTable,
@@ -305,23 +304,6 @@ const ensurePortsFree = Effect.fn("stack.ensurePortsFree")(function*(specs: Read
   }
 })
 
-/**
- * Worker или harness, оставшийся от прошлого запуска (например, после падения `up`),
- * держит очередь и профиль Chrome. Отказываем вместо второго экземпляра.
- */
-const ensureNoStrayProcesses = Effect.fn("stack.ensureNoStrayProcesses")(function*(specs: ReadonlyArray<ServiceSpec>) {
-  const names = specs.map((spec) => spec.name).filter((name) => livePid(name) === null)
-  const ps = yield* Effect.promise(() => run("ps", ["-eo", "pid=,command="]))
-  if (ps.code !== 0) return
-  const stray = findStrayProcesses(ps.out, names)
-  if (stray.length === 0) return
-  return yield* new StackError({
-    message:
-      `Already running and not started by this otbor up: ${stray.map((p) => `${p.name} (pid ${p.pid})`).join(", ")}. ` +
-      `Two copies would fight over the queue and the hh Chrome profile. Stop them by pid (kill ${stray.map((p) => p.pid).join(" ")}) and retry.`
-  })
-})
-
 // ---------------------------------------------------------------- up
 
 const up = Command.make(
@@ -360,7 +342,6 @@ const up = Command.make(
     })
     const names = specs.map((spec) => spec.name)
     yield* ensurePortsFree(specs)
-    yield* ensureNoStrayProcesses(specs)
 
     if (!detach) {
       yield* runForeground(specs)
