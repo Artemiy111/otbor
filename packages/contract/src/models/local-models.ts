@@ -33,7 +33,35 @@ export const LocalModelHealth = Schema.Struct({
   ok: Schema.Boolean,
   latencyMs: Schema.NullOr(Schema.Int),
   models: Schema.Int,
+  /** Идентификаторы моделей сервера: из них выбирают модель для капчи. */
+  modelIds: Schema.Array(Schema.String),
   error: Schema.NullOr(Schema.String),
   checkedAt: Schema.String
 })
 export type LocalModelHealth = typeof LocalModelHealth.Type
+
+/**
+ * Какой локальной моделью читать капчу hh. Хранится в `~/.otbor/captcha.json`
+ * на машине харнеса: картинка уходит только на выбранный локальный сервер.
+ */
+export const CaptchaSolverSettings = Schema.Struct({
+  enabled: Schema.Boolean,
+  /** id сервера из списка локальных моделей. */
+  harnessId: Schema.String,
+  model: Schema.String,
+  /** Сколько раз подряд вводить ответ, прежде чем остановить аккаунт. */
+  maxAttempts: Schema.Int,
+  timeoutSeconds: Schema.Int
+})
+export type CaptchaSolverSettings = typeof CaptchaSolverSettings.Type
+
+/** Проверка на самой свежей сохранённой картинке капчи, без браузера. */
+export const CaptchaSolverTestResult = Schema.Struct({
+  ok: Schema.Boolean,
+  text: Schema.NullOr(Schema.String),
+  durationMs: Schema.Int,
+  /** Имя файла картинки, на которой проверяли; `null`, если сохранённых нет. */
+  picture: Schema.NullOr(Schema.String),
+  error: Schema.NullOr(Schema.String)
+})
+export type CaptchaSolverTestResult = typeof CaptchaSolverTestResult.Type

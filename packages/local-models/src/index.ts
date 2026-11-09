@@ -81,6 +81,8 @@ export interface LocalModelProbe {
   readonly latencyMs: number | null
   /** Сколько моделей сервер перечислил. */
   readonly models: number
+  /** Идентификаторы моделей сервера: из них оператор выбирает модель для капчи. */
+  readonly modelIds: ReadonlyArray<string>
   readonly error: string | null
 }
 
@@ -121,19 +123,27 @@ export const probeLocalModel = async (
         ok: false,
         latencyMs,
         models: 0,
+        modelIds: [],
         error: key === ""
           ? "сервер жив, но требует ключ API"
           : "сервер жив, но отклонил ключ API"
       }
     }
     if (!response.ok) {
-      return { alive, ok: false, latencyMs, models: 0, error: `HTTP ${response.status}` }
+      return { alive, ok: false, latencyMs, models: 0, modelIds: [], error: `HTTP ${response.status}` }
     }
     const body = (await response.json()) as { readonly data?: unknown }
+    const modelIds = Array.isArray(body.data)
+      ? body.data.flatMap((item) =>
+        typeof item === "object" && item !== null && typeof (item as { id?: unknown }).id === "string"
+          ? [(item as { id: string }).id]
+          : []
+      )
+      : []
     const models = Array.isArray(body.data) ? body.data.length : 0
     return models > 0
-      ? { alive: true, ok: true, latencyMs, models, error: null }
-      : { alive: true, ok: false, latencyMs, models: 0, error: "сервер не перечислил ни одной модели" }
+      ? { alive: true, ok: true, latencyMs, models, modelIds, error: null }
+      : { alive: true, ok: false, latencyMs, models: 0, modelIds: [], error: "сервер не перечислил ни одной модели" }
   } catch (cause) {
     const timedOut = cause instanceof Error && cause.name === "TimeoutError"
     return {
@@ -142,6 +152,7 @@ export const probeLocalModel = async (
       ok: false,
       latencyMs: health?.ok ? Date.now() - started : null,
       models: 0,
+      modelIds: [],
       error: scrub(
         timedOut
           ? `нет ответа за ${timeoutMs / 1000} с`
@@ -150,3 +161,5 @@ export const probeLocalModel = async (
     }
   }
 }
+
+export * from "./captcha.ts"

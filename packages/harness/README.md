@@ -92,3 +92,14 @@ leading `<think>…</think>` block is dropped. `OTBOR_OPENAI_TIMEOUT_SECONDS`
   harness does not validate the answer against it.
 - Results are not cached by job id locally; a re-leased job runs the prompt
   again. The cloud's lease and retry rules still make that safe.
+
+## Captcha recognition
+
+When hh shows a captcha, the browser executor can read it with any harness from
+the catalog (a local OpenAI-compatible server, `opencode`, `claude`). Pick the
+harness and model on the Settings page; they are stored in
+`~/.otbor/captcha.json` and read on every captcha, so no restart is needed. The
+picture is sent as an in-memory PNG (data URI for local servers, an ACP `image`
+block for agents). After the answer is typed the executor waits 10-15 s, like
+a person, and retries up to `maxAttempts`; if hh still shows the captcha the
+job exits with `captcha` as before.

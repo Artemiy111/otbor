@@ -15,6 +15,7 @@ import {
   SelectValue
 } from "@/shared/ui"
 import ApplySettingsCard from "./ApplySettingsCard.vue"
+import CaptchaSolverCard from "./CaptchaSolverCard.vue"
 import LocalModelsCard from "./LocalModelsCard.vue"
 import ProxyCard from "./ProxyCard.vue"
 import { PageHeader } from "@/widgets/page-header"
@@ -75,6 +76,8 @@ const { accounts, defaultAccountId } = useDefaultAccount()
       <ProxyCard />
 
       <LocalModelsCard />
+
+      <CaptchaSolverCard />
 
       <Card>
         <CardHeader>

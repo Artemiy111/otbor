@@ -1,12 +1,25 @@
-import type { ApiError, LocalModelHealth, LocalModelInput, LocalModelServer } from "@otbor/contract"
+import type {
+  ApiError,
+  CaptchaSolverSettings,
+  CaptchaSolverTestResult,
+  LocalModelHealth,
+  LocalModelInput,
+  LocalModelServer
+} from "@otbor/contract"
 import { InvalidInput } from "@otbor/contract"
 import {
   probeLocalModel,
+  readCaptchaSettings,
+  recognizeCaptcha,
+  writeCaptchaSettings,
   readOpenAiStore,
   removeOpenAiEndpoint,
   upsertOpenAiEndpoint,
   type OpenAiEndpointDef
 } from "@otbor/local-models"
+import { readdirSync, readFileSync } from "node:fs"
+import { homedir } from "node:os"
+import { join } from "node:path"
 import { Context, Effect, Layer } from "effect"
 
 export interface LocalModelServiceShape {
@@ -18,6 +31,21 @@ export interface LocalModelServiceShape {
   /** Живость каждого сохранённого сервера (параллельно, таймаут 5 с на сервер). */
   readonly check: () => Effect.Effect<ReadonlyArray<LocalModelHealth>, ApiError>
   readonly remove: (id: string) => Effect.Effect<ReadonlyArray<LocalModelServer>, ApiError>
+  /** Каким харнесом и моделью читать капчу hh (`~/.otbor/captcha.json`). */
+  readonly captchaGet: () => Effect.Effect<CaptchaSolverSettings, ApiError>
+  readonly captchaSet: (
+    input: CaptchaSolverSettings
+  ) => Effect.Effect<CaptchaSolverSettings, ApiError>
+  /** Прогон по самой свежей сохранённой картинке капчи, без браузера. */
+  readonly captchaTest: () => Effect.Effect<CaptchaSolverTestResult, ApiError>
+}
+
+/** Где браузер харнеса складывает картинки капчи (та же папка, что у харнеса). */
+const captchaShotsDir = (): string => {
+  const override = process.env.OTBOR_CAPTCHA_SHOTS_DIR?.trim()
+  return override !== undefined && override !== "" && override !== "off"
+    ? override
+    : join(homedir(), ".otbor", "captcha-shots")
 }
 
 /** Эти id заняты ACP-агентами каталога: задача с ними пошла бы мимо сервера. */
@@ -114,6 +142,7 @@ export class LocalModelService extends Context.Service<LocalModelService, LocalM
                     ok: probe.ok,
                     latencyMs: probe.latencyMs,
                     models: probe.models,
+                    modelIds: probe.modelIds,
                     error: probe.error,
                     checkedAt: new Date().toISOString()
                   }))
@@ -123,7 +152,74 @@ export class LocalModelService extends Context.Service<LocalModelService, LocalM
           )
         )
 
-      return LocalModelService.of({ list, upsert, remove, check })
+      const captchaGet: LocalModelServiceShape["captchaGet"] = () =>
+        Effect.try({ try: () => readCaptchaSettings(), catch: fromFile })
+
+      const captchaSet: LocalModelServiceShape["captchaSet"] = (input) =>
+        Effect.try({
+          try: () => {
+            const next = {
+              enabled: input.enabled,
+              harnessId: input.harnessId.trim(),
+              model: input.model.trim(),
+              maxAttempts: input.maxAttempts,
+              timeoutSeconds: input.timeoutSeconds
+            }
+            if (next.maxAttempts < 1 || next.maxAttempts > 10) throw invalid("попыток от 1 до 10")
+            if (next.timeoutSeconds < 5 || next.timeoutSeconds > 300) throw invalid("таймаут от 5 до 300 секунд")
+            if (next.enabled && (next.harnessId === "" || next.model === "")) {
+              throw invalid("выберите харнес и модель для капчи")
+            }
+            writeCaptchaSettings(next)
+            return next
+          },
+          catch: (cause) => (cause instanceof InvalidInput ? cause : fromFile(cause))
+        })
+
+      const captchaTest: LocalModelServiceShape["captchaTest"] = () =>
+        Effect.gen(function*() {
+          const settings = yield* captchaGet()
+          const failure = (error: string, picture: string | null = null): CaptchaSolverTestResult => ({
+            ok: false,
+            text: null,
+            durationMs: 0,
+            picture,
+            error
+          })
+          if (settings.harnessId === "" || settings.model === "") return failure("харнес и модель не выбраны")
+          const endpoint = readOpenAiStore().find((item) => item.id === settings.harnessId)
+          if (endpoint === undefined) {
+            return failure(
+              `«${settings.harnessId}» не локальный сервер: агенты (opencode, claude) запускает харнес, поэтому проверка пройдёт на настоящей капче`
+            )
+          }
+          const dir = captchaShotsDir()
+          const latest = readdirSync(dir).filter((name) => name.endsWith("-picture.png")).sort().at(-1)
+          if (latest === undefined) return failure("сохранённых картинок капчи ещё нет")
+          const result = yield* Effect.promise(() =>
+            recognizeCaptcha(
+              { endpoint, model: settings.model, timeoutSeconds: settings.timeoutSeconds },
+              readFileSync(join(dir, latest))
+            )
+          )
+          return {
+            ok: result.ok,
+            text: result.text,
+            durationMs: result.durationMs,
+            picture: latest,
+            error: result.error
+          }
+        }).pipe(
+          Effect.catchDefect((cause) => Effect.succeed<CaptchaSolverTestResult>({
+            ok: false,
+            text: null,
+            durationMs: 0,
+            picture: null,
+            error: cause instanceof Error ? cause.message : String(cause)
+          }))
+        )
+
+      return LocalModelService.of({ list, upsert, remove, check, captchaGet, captchaSet, captchaTest })
     })()
   )
 }

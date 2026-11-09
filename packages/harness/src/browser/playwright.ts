@@ -57,6 +57,7 @@ import {
   wantsMoreSyncPages
 } from "./core.ts"
 import { BrowserExecutor, type LetterAttachRequest, type ResumeBumpRequest, type SubmitRequest } from "./executor.ts"
+import { makeCaptchaSolve, type CaptchaSolve } from "./captcha.ts"
 import { makeHumanizer, noHumanizer } from "./humanize.ts"
 import { DEFAULT_CHROME_PATH, hhProfileDir } from "./profile.ts"
 
@@ -98,6 +99,11 @@ export interface PlaywrightOptions {
    * `~/.otbor/captcha-shots` или `OTBOR_CAPTCHA_SHOTS_DIR`; `null` выключает.
    */
   readonly captchaShotsDir?: string | null
+  /**
+   * Решатель капчи (локальная модель читает картинку). По умолчанию берёт
+   * настройки из `~/.otbor/captcha.json`; в тестах подменяется.
+   */
+  readonly captchaSolve?: CaptchaSolve
 }
 
 const defaultCaptchaShotsDir = (): string | null => {
@@ -144,6 +150,8 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
         ? DEFAULT_CHROME_PATH
         : undefined
       : (config.executablePath ?? undefined)
+
+  const solveCaptcha: CaptchaSolve = config.captchaSolve ?? makeCaptchaSolve()
 
   /** Куда класть скриншоты капчи; `null` выключает их. */
   const shotsDir = config.captchaShotsDir === undefined ? defaultCaptchaShotsDir() : config.captchaShotsDir
@@ -286,13 +294,18 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
   /** Polls until the page is something other than "unknown", or time runs out. */
   const settle = (page: Page, timeoutMs: number, until?: (kind: string) => boolean) =>
     Effect.gen(function*() {
-      const deadline = Date.now() + timeoutMs
+      let deadline = Date.now() + timeoutMs
       let html = ""
       while (true) {
         const read = yield* content(page)
         if (read !== null) {
           html = read
           const kind = classifyResponsePage(html, page.url())
+          // Капчу пробует решить локальная модель; ответ введён - читаем страницу заново.
+          if (kind === "captcha" && (yield* solveCaptcha(page))) {
+            deadline = Date.now() + timeoutMs
+            continue
+          }
           if (until === undefined ? kind !== "unknown" : until(kind)) return html
         }
         if (Date.now() >= deadline) return html
@@ -740,13 +753,17 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
             yield* attempt(() =>
               page.goto(url, { waitUntil: "domcontentloaded", timeout: config.navigationTimeoutMs })
             )
-            const deadline = Date.now() + config.settleMs
+            let deadline = Date.now() + config.settleMs
             let html = ""
             while (true) {
               const read = yield* content(page)
               if (read !== null) {
                 html = read
                 const kind = classifyResponsePage(html, page.url())
+                if (kind === "captcha" && (yield* solveCaptcha(page))) {
+                  deadline = Date.now() + config.settleMs
+                  continue
+                }
                 if (kind === "login" || kind === "captcha" || ready(html)) break
               }
               if (Date.now() >= deadline) break
@@ -810,13 +827,17 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
               timeout: config.navigationTimeoutMs
             })
           )
-          const deadline = Date.now() + config.settleMs
+          let deadline = Date.now() + config.settleMs
           let html = ""
           while (true) {
             const read = yield* content(page)
             if (read !== null) {
               html = read
               const kind = classifyResponsePage(html, page.url())
+              if (kind === "captcha" && (yield* solveCaptcha(page))) {
+                deadline = Date.now() + config.settleMs
+                continue
+              }
               if (kind === "login" || kind === "captcha" || html.includes("HH-Lux-InitialState")) break
             }
             if (Date.now() >= deadline) break
@@ -849,13 +870,17 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
             yield* attempt(() =>
               page.goto(url, { waitUntil: "domcontentloaded", timeout: config.navigationTimeoutMs })
             )
-            const deadline = Date.now() + config.settleMs
+            let deadline = Date.now() + config.settleMs
             let html = ""
             while (true) {
               const got = yield* content(page)
               if (got !== null) {
                 html = got
                 const kind = classifyResponsePage(html, page.url())
+                if (kind === "captcha" && (yield* solveCaptcha(page))) {
+                  deadline = Date.now() + config.settleMs
+                  continue
+                }
                 if (kind === "login" || kind === "captcha" || ready(html)) break
               }
               if (Date.now() >= deadline) break
@@ -960,12 +985,16 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
             page.goto(lastUrl, { waitUntil: "domcontentloaded", timeout: config.navigationTimeoutMs })
           )
           // Карточка рисуется на клиенте: ждём кнопку, но не дольше settleMs.
-          const deadline = Date.now() + config.settleMs
+          let deadline = Date.now() + config.settleMs
           let paywallSince: number | null = null
           while (true) {
             const html = yield* content(page)
             if (html !== null) {
               const kind = classifyResponsePage(html, page.url())
+              if (kind === "captcha" && (yield* solveCaptcha(page))) {
+                deadline = Date.now() + config.settleMs
+                continue
+              }
               if (kind === "login" || kind === "captcha") break
             }
             if ((yield* attempt(() => page.locator(BUMP_BUTTON_SELECTOR).count())) > 0) break

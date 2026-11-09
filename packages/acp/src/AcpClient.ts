@@ -71,6 +71,12 @@ export interface AcpSessionInfo {
   readonly configOptions: ReadonlyArray<AcpConfigOption>
 }
 
+/** Картинка в запросе: base64 без префикса `data:` и её MIME-тип. */
+export interface AcpImage {
+  readonly data: string
+  readonly mimeType: string
+}
+
 /** A single streamed event from one ACP prompt. */
 export type AcpEvent =
   | {
@@ -104,7 +110,8 @@ export class AcpClient extends Context.Service<
   {
     readonly prompt: (text: string) => Effect.Effect<string, AcpError | AcpUnavailable>
     readonly promptEvents: (
-      text: string
+      text: string,
+      images?: ReadonlyArray<AcpImage>
     ) => Stream.Stream<AcpEvent, AcpError | AcpUnavailable>
     readonly sessionId: Effect.Effect<string, AcpError | AcpUnavailable>
     /** Model, effort, mode and agent info captured at `session/new`. */
@@ -480,7 +487,10 @@ export const makeAcpClient = Effect.fnUntraced(function*(options: AcpOptions) {
 
   const semaphore = yield* Semaphore.make(1)
 
-  const promptEvents = (text: string): Stream.Stream<AcpEvent, AcpError> =>
+  const promptEvents = (
+    text: string,
+    images: ReadonlyArray<AcpImage> = []
+  ): Stream.Stream<AcpEvent, AcpError> =>
     Stream.unwrap(
       Effect.gen(function*() {
         yield* Semaphore.take(semaphore, 1)

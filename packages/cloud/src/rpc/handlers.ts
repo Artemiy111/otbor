@@ -213,6 +213,9 @@ export const OtborHandlers = OtborRpcs.toLayer(
       ScheduleRunNow: ({ id }) => schedules.runNow(id),
       ScheduleRunsList: (payload) => schedules.runs(payload),
 
+      CaptchaSolverGet: () => localModels.captchaGet(),
+      CaptchaSolverSet: (payload) => localModels.captchaSet(payload),
+      CaptchaSolverTest: () => localModels.captchaTest(),
       NegotiationsSyncRun: ({ hhAccountId }) => negotiations.run(hhAccountId),
       NegotiationsSyncStatus: ({ hhAccountId }) => negotiations.status(hhAccountId),
       ResumeSyncRun: ({ hhAccountId }) => resumeSync.run(hhAccountId),
