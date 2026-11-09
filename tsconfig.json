@@ -6,6 +6,7 @@
       "@otbor/domain": ["./packages/domain/src/index.ts"],
       "@otbor/hh": ["./packages/hh/src/index.ts"],
       "@otbor/crawler": ["./packages/crawler/src/index.ts"],
+      "@otbor/local-models": ["./packages/local-models/src/index.ts"],
       "@otbor/acp": ["./packages/acp/src/index.ts"],
       "@otbor/harness": ["./packages/harness/src/index.ts"],
       "@otbor/telegram": ["./packages/telegram/src/index.ts"],

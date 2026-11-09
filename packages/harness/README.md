@@ -38,7 +38,7 @@ otbor harness model list
 otbor harness model remove --id omlx
 ```
 
-This writes `~/.otbor/openai.json` (0600, next to `harness.json`; the harness
+The same list is editable on the web Settings page ("Локальные модели"). It is stored in `~/.otbor/openai.json` (0600, next to `harness.json`; the harness
 reads it on every job, so no restart is needed for jobs, and the catalog picks it
 up within 30 minutes). Environment variables override the file by id:
 

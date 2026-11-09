@@ -15,6 +15,7 @@ import {
   SelectValue
 } from "@/shared/ui"
 import ApplySettingsCard from "./ApplySettingsCard.vue"
+import LocalModelsCard from "./LocalModelsCard.vue"
 import ProxyCard from "./ProxyCard.vue"
 import { PageHeader } from "@/widgets/page-header"
 
@@ -25,7 +26,7 @@ const { accounts, defaultAccountId } = useDefaultAccount()
   <section>
     <PageHeader
       title="Настройки"
-      description="Параметры кабинета. Аккаунт по умолчанию хранится в браузере; прокси — локально на сервере."
+      description="Параметры кабинета. Аккаунт по умолчанию хранится в браузере; прокси и локальные модели — локально на сервере."
     />
 
     <div class="grid max-w-2xl gap-4">
@@ -72,6 +73,8 @@ const { accounts, defaultAccountId } = useDefaultAccount()
       <ApplySettingsCard />
 
       <ProxyCard />
+
+      <LocalModelsCard />
 
       <Card>
         <CardHeader>

@@ -88,5 +88,5 @@ export {
   removeOpenAiEndpoint,
   upsertOpenAiEndpoint,
   writeOpenAiStore
-} from "./openai-store.ts"
-export type { OpenAiEndpointDef } from "./openai-store.ts"
+} from "@otbor/local-models"
+export type { OpenAiEndpointDef } from "@otbor/local-models"

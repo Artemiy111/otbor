@@ -18,6 +18,7 @@
     "@effect/platform-node": "4.1.0",
     "@effect/sql-pg": "4.1.0",
     "@otbor/contract": "workspace:*",
+    "@otbor/local-models": "workspace:*",
     "@otbor/crawler": "workspace:*",
     "@otbor/domain": "workspace:*",
     "@otbor/hh": "workspace:*",

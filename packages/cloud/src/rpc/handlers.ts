@@ -1,5 +1,6 @@
 import { OtborRpcs, type ProxyMode, type VacancyId } from "@otbor/contract"
 import { Cause, Effect, Layer } from "effect"
+import { LocalModelService } from "../services/LocalModelService.ts"
 import { ProxyService } from "../services/ProxyService.ts"
 import { ApplyFilterService } from "../services/ApplyFilterService.ts"
 import { AutoApplyViewService } from "../services/AutoApplyViewService.ts"
@@ -61,6 +62,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const analysisRunner = yield* AnalysisRunner
     const hydrationStats = yield* HydrationService
     const proxy = yield* ProxyService
+    const localModels = yield* LocalModelService
     const employerHydrator = yield* EmployerHydrator
     const hydrationRunner = yield* HydrationRunner
     const evaluation = yield* EvaluationRunner
@@ -177,6 +179,9 @@ export const OtborHandlers = OtborRpcs.toLayer(
       ProxyStatus: () => proxy.status(),
       ProxyConfigure: (payload) => proxy.configure(payload),
       ProxyClear: () => proxy.clear(),
+      LocalModelsList: () => localModels.list(),
+      LocalModelUpsert: (payload) => localModels.upsert(payload),
+      LocalModelRemove: ({ id }) => localModels.remove(id),
       HydrationStats: () => hydrationStats.stats(),
       EmployersHydrationTargets: (payload) => hydrationStats.employerTargets(payload),
       EmployersHydrateOne: ({ id, proxyMode }) =>
@@ -342,6 +347,7 @@ const sourceStack = Layer.mergeAll(
   hydration,
   HydrationService.layer,
   ProxyService.layer,
+  LocalModelService.layer,
   employers,
   analysisRunner,
   evaluation,

@@ -6,7 +6,7 @@ import {
   openAiStorePath,
   readOpenAiStore,
   type OpenAiEndpointDef
-} from "./openai-store.ts"
+} from "@otbor/local-models"
 import {
   decodeInferencePayload,
   InferenceFailed,
@@ -37,7 +37,7 @@ export const DEFAULT_OPENAI_TIMEOUT_SECONDS = 300
 /** Таймаут запроса списка моделей: каталог не должен вешать харнес. */
 const PROBE_TIMEOUT = Duration.seconds(10)
 
-export type { OpenAiEndpointDef } from "./openai-store.ts"
+export type { OpenAiEndpointDef } from "@otbor/local-models"
 
 export interface OpenAiEnv {
   readonly OTBOR_OPENAI_URL?: string | undefined
