@@ -17,7 +17,7 @@ const fakePage = (after: string) => {
   let submitted = false
   const locator = () => ({
     first: () => ({
-      screenshot: async () => Buffer.from([1, 2, 3]),
+      screenshot: async () => Buffer.alloc(5_000, 1),
       isVisible: async () => true,
       fill: async (text: string) => void filled.push(text),
       click: async () => void (submitted = true),
@@ -69,5 +69,24 @@ describe("captcha solver journal", () => {
     expect(await result).toBe(false)
     expect(filled).toEqual([])
     expect(recorder.attempts[0]).toMatchObject({ outcome: "error", answer: null, error: "507" })
+  })
+})
+
+describe("blank picture", () => {
+  test("пустой кадр не отправляется модели", async () => {
+    const { page } = fakePage("")
+    const blank = page as unknown as { locator: () => { first: () => { screenshot: () => Promise<Buffer> } } }
+    blank.locator = () => ({ first: () => ({ screenshot: async () => Buffer.alloc(450, 1) }) })
+    let asked = false
+    const solve = makeCaptchaSolve(
+      () => config,
+      () => {
+        asked = true
+        return Effect.succeed({ ok: true, text: "x", durationMs: 1, error: null })
+      },
+      () => Effect.void
+    )
+    expect(await Effect.runPromise(solve(page))).toBe(false)
+    expect(asked).toBe(false)
   })
 })

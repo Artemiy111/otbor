@@ -38,6 +38,15 @@ const CAPTCHA_SUBMIT_SELECTORS = [
   'button:has-text("Submit")'
 ]
 
+/**
+ * Однотонный PNG такого размера весит сотни байт, настоящая капча - десятки
+ * килобайт. Порог с большим запасом: пустой кадр от картинки он отличает точно.
+ */
+export const BLANK_PICTURE_BYTES = 3_000
+export const isBlankPicture = (png: Uint8Array): boolean => png.byteLength < BLANK_PICTURE_BYTES
+const BLANK_RETRIES = 8
+const BLANK_RETRY_MS = 500
+
 /** Сколько ждать после «Отправить», пока hh примет ответ или покажет новую капчу. */
 const AFTER_SUBMIT_MS = 2_500
 
@@ -122,11 +131,18 @@ export const makeCaptchaSolve = (
       attempts.set(page, used + 1)
 
       const picture = page.locator(CAPTCHA_PICTURE_SELECTOR).first()
-      const image = yield* Effect.tryPromise(() => picture.screenshot({ type: "png", timeout: 5_000 })).pipe(
-        Effect.orElseSucceed(() => null)
-      )
+      // Картинка дорисовывается после появления окна: скриншот раньше времени
+      // даёт белый прямоугольник. Пробуем несколько раз, пустой не отправляем.
+      let image: Buffer | null = null
+      for (let tryNo = 0; tryNo < BLANK_RETRIES && image === null; tryNo++) {
+        const shot = yield* Effect.tryPromise(() => picture.screenshot({ type: "png", timeout: 5_000 })).pipe(
+          Effect.orElseSucceed(() => null)
+        )
+        if (shot !== null && !isBlankPicture(shot)) image = shot
+        else if (tryNo < BLANK_RETRIES - 1) yield* Effect.sleep(`${BLANK_RETRY_MS} millis`)
+      }
       if (image === null) {
-        yield* Effect.logWarning("captcha: picture not found on the page, nothing to recognise")
+        yield* Effect.logWarning("captcha: picture not found or still blank, nothing to recognise")
         return false
       }
 

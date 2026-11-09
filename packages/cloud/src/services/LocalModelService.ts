@@ -17,7 +17,7 @@ import {
   upsertOpenAiEndpoint,
   type OpenAiEndpointDef
 } from "@otbor/local-models"
-import { readdirSync, readFileSync } from "node:fs"
+import { readdirSync, readFileSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { Context, Effect, Layer } from "effect"
@@ -195,7 +195,11 @@ export class LocalModelService extends Context.Service<LocalModelService, LocalM
             )
           }
           const dir = captchaShotsDir()
-          const latest = readdirSync(dir).filter((name) => name.endsWith("-picture.png")).sort().at(-1)
+          // Пустые кадры (скриншот раньше, чем нарисовалась картинка) весят сотни байт.
+          const latest = readdirSync(dir)
+            .filter((name) => name.endsWith("-picture.png") && statSync(join(dir, name)).size >= 3_000)
+            .sort()
+            .at(-1)
           if (latest === undefined) return failure("сохранённых картинок капчи ещё нет")
           const result = yield* Effect.promise(() =>
             recognizeCaptcha(
