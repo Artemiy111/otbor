@@ -995,11 +995,36 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
             })
           }
 
+          // Кнопка есть уже в серверной вёрстке, а обработчики клика вешаются после
+          // гидрации: клик раньше неё уходит в пустоту. Ждём, пока страница затихнет.
+          yield* attempt(() => page.waitForLoadState("networkidle", { timeout: 10_000 })).pipe(
+            Effect.orElseSucceed(() => undefined)
+          )
+          yield* sleep(2_000)
+
           // Последний взгляд перед единственным нажатием: аренда ещё наша?
           if (!(yield* beforeClick)) {
             return bumpUnclicked(lastUrl, "transport", "lease lost before the click", { label, lastBump: before })
           }
           clicked = true
+          // Диагностика: какие запросы уходят при клике и что лежит под курсором.
+          const seenRequests: Array<string> = []
+          const onResponse = (response: { request: () => { method: () => string }; url: () => string; status: () => number }) => {
+            const method = response.request().method()
+            if (method !== "GET") seenRequests.push(`${method} ${response.url().slice(0, 120)} ${response.status()}`)
+          }
+          page.on("response", onResponse)
+          const probe = yield* attempt(() =>
+            page.evaluate(
+              `(() => {
+                const node = document.querySelector('button[data-qa="resume-update-button"]')
+                if (!node) return "no button"
+                const box = node.getBoundingClientRect()
+                const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)
+                return "top=" + (top ? top.tagName : "") + " inButton=" + node.contains(top)
+              })()`
+            ) as Promise<string>
+          ).pipe(Effect.orElseSucceed(() => "probe failed"))
           yield* attempt(() => page.locator(BUMP_BUTTON_SELECTOR).first().click({ timeout: 5_000 }))
 
           // Ждём, пока карточка изменится или кнопка станет недоступной.
@@ -1012,6 +1037,18 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
             const now = yield* view(page, BUMP_BUTTON_SELECTOR)
             unavailableAfter = decideBump(now, null)._tag === "unavailable"
             if ((after !== null && after !== before) || unavailableAfter || Date.now() >= waitUntil) break
+          }
+          page.off("response", onResponse)
+          yield* Effect.logInfo(`bump click: ${probe}; requests: ${seenRequests.join(" | ") || "none"}`)
+          // Подъём не подтвердился: снимаем страницу, чтобы увидеть, что осталось после клика.
+          if (shotsDir !== null && !unavailableAfter && (after === null || after === before)) {
+            const shot = join(shotsDir, `${new Date().toISOString().replace(/[:.]/g, "-")}-bump-${payload.hash}.png`)
+            const saved = yield* attempt(async () => {
+              await mkdir(shotsDir, { recursive: true })
+              await page.screenshot({ path: shot, fullPage: false, timeout: 10_000 })
+              return shot
+            }).pipe(Effect.orElseSucceed(() => null as string | null))
+            if (saved !== null) yield* Effect.logWarning(`bump not confirmed, screenshot: ${saved}`)
           }
           const evidence: ResumeBumpEvidence = {
             clicked: true,

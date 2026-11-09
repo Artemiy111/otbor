@@ -134,6 +134,7 @@ export const importResumes = (
           hhAccountId: input.hhAccountId,
           source: SOURCE,
           externalId: parsed.externalId,
+          hash: parsed.hash,
           title: parsed.title,
           text: parsed.text,
           about: parsed.about,
@@ -176,7 +177,9 @@ export const importResumes = (
         !sameJson(existing.education, education)
 
       if (!changed) {
-        yield* tx.execute(sql`update resume set last_seen_at = ${now} where id = ${existing.id}::uuid`)
+        yield* tx.execute(
+          sql`update resume set last_seen_at = ${now}, hash = ${parsed.hash} where id = ${existing.id}::uuid`
+        )
         unchanged += 1
         continue
       }
@@ -186,6 +189,7 @@ export const importResumes = (
         hhAccountId: input.hhAccountId,
         source: SOURCE,
         externalId: parsed.externalId,
+        hash: parsed.hash,
         title: parsed.title,
         text: parsed.text,
         about: parsed.about,

@@ -129,6 +129,8 @@ export interface UpsertResumeInput {
   readonly hhAccountId: string
   readonly source?: string
   readonly externalId: string
+  /** Хеш резюме на hh (`/resume/<hash>`); пустой не затирает уже сохранённый. */
+  readonly hash?: string | null
   readonly title: string
   readonly text: string
   readonly about?: string | null
@@ -173,6 +175,7 @@ export const upsert = (
           hh_account_id = ${input.hhAccountId}::uuid,
           source = ${source},
           external_id = ${input.externalId},
+          hash = ${input.hash !== undefined && input.hash !== null && input.hash !== "" ? input.hash : existing.hash},
           title = ${input.title},
           text = ${input.text},
           about = ${about},
@@ -205,7 +208,7 @@ export const upsert = (
         business_trip_readiness, travel_time, english_level, is_active, last_seen_at
       ) values (
         ${input.userId}, ${input.hhAccountId}::uuid, ${source}, ${input.externalId},
-        ${""}, ${null},
+        ${input.hash ?? ""}, ${null},
         ${input.title}, ${input.text}, ${about},
         ${JSON.stringify(skills)}::jsonb,
         ${JSON.stringify(input.experience ?? [])}::jsonb,

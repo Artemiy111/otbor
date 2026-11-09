@@ -22,7 +22,7 @@ export const DEFAULT_BUMP_COOLDOWN_HOURS = 4
 /** Минимальный промежуток между любыми двумя попытками одного резюме. */
 export const BUMP_ATTEMPT_GAP_MINUTES = 30
 /** Верхняя граница случайной задержки старта задачи от расписания. */
-export const DEFAULT_BUMP_JITTER_MINUTES = 10
+export const DEFAULT_BUMP_JITTER_MINUTES = 1
 
 export interface EnqueueBumpOptions {
   /** Только резюме этого аккаунта hh; без него - все аккаунты пользователя. */
@@ -35,7 +35,8 @@ export interface EnqueueBumpOptions {
 
 /**
  * Ставит `resume_bump` для опубликованных резюме, которые пора поднимать. Резюме
- * со статусом не `published` (заблокированные, черновики, закрытые) пропускаются,
+ * со статусом не `published`/`modified` (заблокированные, черновики, закрытые)
+ * пропускаются (`modified` это опубликованное резюме с правками, оно поднимается),
  * как и те, что поднимали недавно или у которых уже есть активная задача.
  */
 export const enqueueResumeBumps = (
@@ -58,7 +59,8 @@ export const enqueueResumeBumps = (
       join hh_account h on h.id = r.hh_account_id and h.user_id = ${userId}
       where r.user_id = ${userId}
         and r.source = 'hh'
-        and coalesce(r.status, 'published') = 'published'
+        and coalesce(r.status, 'published') in ('published', 'modified')
+        and r.hash <> ''
         ${options.hhAccountId === undefined ? sql`` : sql`and r.hh_account_id = ${options.hhAccountId}::uuid`}
         and (r.last_bumped_at is null or r.last_bumped_at <= ${rested})
         and (r.last_bump_attempt_at is null or r.last_bump_attempt_at <= ${gap})

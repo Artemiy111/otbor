@@ -184,5 +184,11 @@ if (!integrationEnabled || serverUrl === null) {
       await setResume(ctx.resumeId, sql`status = 'blocked'`)
       expect(await enqueue(ctx.tenant.userId)).toEqual({ queued: 0, candidates: 0 })
     })
+
+    test("резюме со статусом modified (с правками) поднимается", async () => {
+      const ctx = await setup("bump-modified")
+      await setResume(ctx.resumeId, sql`status = 'modified'`)
+      expect((await enqueue(ctx.tenant.userId)).queued).toBe(1)
+    })
   })
 }

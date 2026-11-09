@@ -485,7 +485,7 @@ export class ScheduleDispatcher extends Context.Service<
                   enqueueResumeBumps(tx, schedule.userId, {
                     ...(named ? { hhAccountId: target } : {}),
                     cooldownHours: intOption(options, "cooldownHours", 4, 1, 48),
-                    jitterMinutes: intOption(options, "jitterMinutes", 10, 0, 120),
+                    jitterMinutes: intOption(options, "jitterMinutes", 1, 0, 120),
                     limit: intOption(options, "limit", 50, 1, 200)
                   })
                 )
