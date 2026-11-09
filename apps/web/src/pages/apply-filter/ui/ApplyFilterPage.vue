@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue"
+import { computed, onMounted, reactive, ref, watch } from "vue"
+import { useDebounceFn } from "@vueuse/core"
 import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
-import type { ApplyFilterView, HhAccountRecord, PresetRecord, ResumeRecord, TestsPolicy } from "@otbor/contract"
+import type { ApplyFilterView, HhAccountRecord, PresetPreview, PresetRecord, ResumeRecord, TestsPolicy } from "@otbor/contract"
 import { CircleAlert, Copy, Save } from "@lucide/vue"
 import { applyFilterApi, applyFilterKeys, applyFilterSourceLabel, testsPolicyOptions } from "@/entities/apply-filter"
 import { hhAccountApi, hhAccountKeys, hhAccountName } from "@/entities/hh-account"
@@ -9,6 +10,7 @@ import { presetApi, presetKeys } from "@/entities/preset"
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { RefreshButton } from "@/features/refresh-button"
 import { RuleBuilder, allRules, buildFilter, isComplete, toEditable } from "@/features/rule-builder"
+import { PresetPreviewPanel } from "@/pages/presets"
 import { applyFilterHelp } from "../model/help"
 import { describeError, formatDate } from "@/shared/lib"
 import {
@@ -105,6 +107,26 @@ const load = (value: ApplyFilterView) => {
 watch(view, (value) => value !== null && load(value), { immediate: true })
 
 const incomplete = computed(() => allRules(filter.value).some((rule) => !isComplete(rule)))
+
+/** Живой подсчёт: сколько вакансий проходит правила (пересчёт после каждой правки). */
+const preview = ref<PresetPreview | null>(null)
+const previewError = ref<string | null>(null)
+const previewing = ref(false)
+const runPreview = async () => {
+  previewing.value = true
+  previewError.value = null
+  try {
+    preview.value = await presetApi.preview(buildFilter(filter.value))
+  } catch (cause) {
+    preview.value = null
+    previewError.value = describeError(cause)
+  } finally {
+    previewing.value = false
+  }
+}
+const schedulePreview = useDebounceFn(runPreview, 500)
+watch(() => buildFilter(filter.value), () => void schedulePreview(), { deep: true })
+onMounted(() => void runPreview())
 
 const invalidate = () => queryCache.invalidateQueries({ key: applyFilterKeys.all })
 
@@ -301,6 +323,13 @@ const sourceHint = computed(() => {
             <h2 class="text-sm font-semibold">Правила фильтра</h2>
             <HelpHint :text="applyFilterHelp.rules" label="правила фильтра" />
             <HelpHint :text="applyFilterHelp.listValues" label="списки значений" />
+            <span class="ml-auto text-xs text-muted-foreground">
+              <template v-if="previewing">Считаю…</template>
+              <template v-else-if="preview !== null">
+                Под правила подходит: <b class="text-base text-foreground tabular-nums">{{ preview.count }}</b> вакансий
+              </template>
+              <template v-if="incomplete"> · неполные правила не учитываются</template>
+            </span>
           </div>
           <p class="mt-1 text-xs text-muted-foreground">
             Жёсткие условия: вакансия, не прошедшая их, отклика не получит.
@@ -308,6 +337,14 @@ const sourceHint = computed(() => {
         </div>
 
         <RuleBuilder v-model="filter" :disabled="busy" />
+
+        <PresetPreviewPanel
+          v-if="preview !== null || previewError !== null"
+          :preview="preview"
+          :loading="previewing"
+          :error="previewError"
+          hint="Что выберут эти правила; обновляется при правке"
+        />
 
         <div class="grid gap-3 border-t border-border pt-4 sm:grid-cols-3">
           <div class="space-y-1">
