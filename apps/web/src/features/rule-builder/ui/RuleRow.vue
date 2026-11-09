@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from "vue"
 import { areaLabel } from "@/shared/lib"
 import { useQuery } from "@pinia/colada"
 import type { PresetField, PresetOperator } from "@otbor/contract"
-import { ChevronDown, X } from "@lucide/vue"
+import { ChevronDown, Sparkles, X } from "@lucide/vue"
 import { keywordApi, keywordKeys } from "@/entities/keyword"
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { hhAccountApi, hhAccountKeys, hhAccountName } from "@/entities/hh-account"
@@ -145,7 +145,12 @@ const onCurrency = (value: unknown) => {
   >
     <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
     <Select :model-value="rule.field" :disabled="props.disabled" @update:model-value="onField">
-      <SelectTrigger class="h-7 w-[170px] text-xs" :title="meta.hint">
+      <SelectTrigger
+        class="h-7 w-[170px] text-xs"
+        :class="meta.ai ? 'border-violet-500/50 bg-violet-500/10 text-violet-500' : ''"
+        :title="meta.hint"
+      >
+        <Sparkles v-if="meta.ai" class="h-3 w-3 shrink-0" />
         <SelectValue />
       </SelectTrigger>
       <SelectContent class="max-h-80">

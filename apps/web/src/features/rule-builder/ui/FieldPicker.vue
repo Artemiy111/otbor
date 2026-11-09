@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue"
 import type { PresetField } from "@otbor/contract"
-import { Plus, Search } from "@lucide/vue"
+import { Plus, Search, Sparkles } from "@lucide/vue"
 import { Input, Popover, PopoverContent, PopoverTrigger } from "@/shared/ui"
 import { PRESET_FIELD_GROUPS } from "../model/fields"
 
@@ -61,18 +61,26 @@ const pick = (field: PresetField) => {
       </div>
       <div class="max-h-72 overflow-auto">
         <div v-for="group in groups" :key="group.group" class="mb-1">
-          <p class="px-2 py-1 text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
+          <p
+            class="flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.06em]"
+            :class="group.fields.some((m) => m.ai) ? 'text-violet-500' : 'text-muted-foreground'"
+          >
+            <Sparkles v-if="group.fields.some((m) => m.ai)" class="h-3 w-3" />
             {{ group.group }}
           </p>
           <button
             v-for="m in group.fields"
             :key="m.field"
             type="button"
-            class="block w-full rounded-sm px-2 py-1 text-left text-xs hover:bg-accent"
+            class="flex w-full items-center gap-1.5 rounded-sm px-2 py-1 text-left text-xs hover:bg-accent"
             :title="m.hint"
             @click="pick(m.field)"
           >
             {{ m.label }}
+            <span
+              v-if="m.ai"
+              class="ml-auto rounded bg-violet-500/15 px-1 text-[10px] font-semibold text-violet-500"
+            >ИИ</span>
           </button>
         </div>
         <p v-if="groups.length === 0" class="p-2 text-xs text-muted-foreground">Ничего не найдено.</p>

@@ -15,6 +15,7 @@ export type PresetFieldKind = "text" | "select" | "number" | "boolean" | "locati
 export const PRESET_FIELD_GROUP_ORDER = [
   "Текст и словарь",
   "Классификация",
+  "Через ИИ",
   "Зарплата и метрики",
   "Прочее"
 ] as const
@@ -40,6 +41,8 @@ export interface PresetFieldMeta {
   readonly legacy?: boolean
   /** The rule also carries a currency and "or no salary" (the salary field). */
   readonly salary?: boolean
+  /** Поле заполняет модель, а не парсер hh: в интерфейсе помечается значком ИИ. */
+  readonly ai?: boolean
 }
 
 export interface PresetFieldGroupMeta {
@@ -250,21 +253,23 @@ export const PRESET_FIELDS: ReadonlyArray<PresetFieldMeta> = [
   },
   {
     field: "analysis_role",
-    label: "Роль по анализу модели",
-    group: "Классификация",
+    label: "Роль (ИИ)",
+    group: "Через ИИ",
     kind: "select",
     ops: SELECT_OPS,
     options: ANALYSIS_ROLE_OPTIONS,
-    hint: "Роль, которую определила модель по тексту вакансии. Пусто, если модель не уверена."
+    hint: "Роль, которую определила модель по тексту вакансии. Пусто, если модель не уверена.",
+    ai: true
   },
   {
     field: "analysis_level",
-    label: "Уровень по анализу модели",
-    group: "Классификация",
+    label: "Уровень (ИИ)",
+    group: "Через ИИ",
     kind: "select",
     ops: SELECT_OPS,
     options: ANALYSIS_LEVEL_OPTIONS,
-    hint: "Требуемый уровень по тексту вакансии. Пусто, если модель не уверена."
+    hint: "Требуемый уровень по тексту вакансии. Пусто, если модель не уверена.",
+    ai: true
   },
   {
     field: "salary",
