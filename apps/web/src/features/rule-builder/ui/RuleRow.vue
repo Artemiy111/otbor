@@ -140,8 +140,8 @@ const onCurrency = (value: unknown) => {
 <template>
   <div
     ref="root"
-    class="flex flex-wrap items-center gap-1.5 rounded-md border bg-card px-1.5 py-1"
-    :class="isComplete(rule) ? 'border-border' : 'border-dashed border-amber-500/60'"
+    class="flex flex-wrap items-center gap-1.5 border-l-2 py-0.5 pl-2"
+    :class="isComplete(rule) ? 'border-transparent' : 'border-amber-500/70'"
   >
     <Select :model-value="rule.field" :disabled="props.disabled" @update:model-value="onField">
       <SelectTrigger class="h-7 w-[170px] text-xs" :title="meta.hint">
