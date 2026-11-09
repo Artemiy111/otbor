@@ -73,6 +73,11 @@ export class AnalysisRunner extends Context.Service<AnalysisRunner, AnalysisRunn
       const client = yield* SystemOneClient
 
       const run = Effect.fn("AnalysisRunner.run")(function*(options: AnalysisRunOptions) {
+        if (!client.enabled) {
+          // Анализ выключен через OTBOR_SYSTEMONE_ENABLED=false: модель не трогаем.
+          yield* Effect.logDebug("analysis: отключён (OTBOR_SYSTEMONE_ENABLED=false), проход пропущен")
+          return { processed: 0, analysed: 0, skipped: 0, failed: 0, errors: [], stoppedBy: null }
+        }
         const limit = Math.min(Math.max(Math.trunc(options.limit), 1), 500)
         const delayMs = Math.max(0, options.delayMs ?? 0)
 

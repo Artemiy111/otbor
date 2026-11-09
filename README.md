@@ -125,6 +125,8 @@ RPC возвращается до загрузки страницы hh.ru.
 (по умолчанию `http://127.0.0.1:1111`), `OTBOR_SYSTEMONE_API_KEY` (секрет, не
 логируется), `OTBOR_SYSTEMONE_MODEL` (по умолчанию `clef-flash-4bit`),
 `OTBOR_SYSTEMONE_TIMEOUT_MS` (по умолчанию 60000).
+`OTBOR_SYSTEMONE_ENABLED=false` выключает анализ: расписания `analysis` и
+`otbor analysis run` завершаются без обращения к модели, health её не опрашивает.
 
 ```bash
 otbor analysis run [--limit 20] [--delay 0] [--json]   # один ограниченный проход

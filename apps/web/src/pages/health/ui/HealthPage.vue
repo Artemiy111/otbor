@@ -106,14 +106,17 @@ useIntervalFn(() => void query.refetch(), 15_000)
         </CardDescription>
       </CardHeader>
       <CardContent class="space-y-2">
-        <Alert v-if="!query.data.value.systemOne.reachable" variant="destructive">
+        <p v-if="query.data.value.systemOne.enabled === false" class="text-sm text-muted-foreground">
+          Анализ отключён (<code>OTBOR_SYSTEMONE_ENABLED=false</code>): задачи по анализу вакансий ничего не делают.
+        </p>
+        <Alert v-else-if="!query.data.value.systemOne.reachable" variant="destructive">
           <CircleAlert />
           <AlertTitle>Модель анализа недоступна</AlertTitle>
           <AlertDescription>
             {{ query.data.value.systemOne.error }}. Анализ вакансий не идёт; запустите сервер модели.
           </AlertDescription>
         </Alert>
-        <div class="flex flex-wrap items-center gap-3 rounded-md border p-3 text-sm">
+        <div v-if="query.data.value.systemOne.enabled !== false" class="flex flex-wrap items-center gap-3 rounded-md border p-3 text-sm">
           <StatusBadge :value="query.data.value.systemOne.reachable ? 'ok' : 'down'" raw />
           <span class="font-medium">{{ query.data.value.systemOne.model }}</span>
           <code class="text-xs text-muted-foreground">{{ query.data.value.systemOne.endpoint }}</code>
