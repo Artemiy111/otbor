@@ -114,7 +114,7 @@ export const loadCaptchaSolver = (
 }
 
 export const CAPTCHA_PROMPT =
-  "You read CAPTCHA images. The picture contains a word or words, possibly curved or noisy. " +
+  "You read CAPTCHA images. The picture contains a word or 2 words, possibly curved or noisy. " +
   "Return ONLY the text from the image, exactly as it is written, in its own language, " +
   "keeping spaces between words. No quotes, no explanations, no trailing punctuation."
 
