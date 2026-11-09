@@ -218,9 +218,11 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
       const stamp = new Date().toISOString().replace(/[:.]/g, "-")
       const safe = (label ?? "job").replace(/[^\w.-]+/g, "_")
       const path = join(shotsDir, `${stamp}-${safe}.png`)
+      // Капче нужно время дорисоваться: ждём 3 с и снимаем только первый экран.
+      yield* sleep(3_000)
       const saved = yield* attempt(async () => {
         await mkdir(shotsDir, { recursive: true })
-        await page.screenshot({ path, fullPage: true, timeout: 10_000 })
+        await page.screenshot({ path, fullPage: false, timeout: 10_000 })
         return path
       }).pipe(Effect.orElseSucceed(() => null as string | null))
       if (saved === null) return result
