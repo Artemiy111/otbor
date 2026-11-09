@@ -22,9 +22,8 @@ export class SystemService extends Context.Service<
       const systemOneClient = yield* SystemOneClient
 
       // Проверка связи с моделью анализа; её недоступность не делает health красным.
-      const systemOne = (systemOneClient.enabled ? systemOneClient.ping() : Effect.succeed({ reachable: false, latencyMs: null, error: null })).pipe(
+      const systemOne = systemOneClient.ping().pipe(
         Effect.map((ping) => ({
-          enabled: systemOneClient.enabled,
           reachable: ping.reachable,
           endpoint: systemOneClient.endpoint,
           model: systemOneClient.model,

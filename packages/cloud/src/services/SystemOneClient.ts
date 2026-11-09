@@ -19,8 +19,6 @@ export class SystemOneError extends Schema.TaggedError<SystemOneError>()("System
 export const isServerDown = (error: SystemOneError): boolean => error.kind !== "bad_response"
 
 export interface SystemOneConfig {
-  /** Выключатель: при `false` анализ вакансий не запускается и сервер модели не опрашивается. */
-  readonly enabled: boolean
   readonly url: string
   readonly apiKey: Redacted.Redacted<string> | undefined
   readonly model: string
@@ -43,8 +41,6 @@ export interface SystemOnePing {
 }
 
 export interface SystemOneClientShape {
-  /** Включён ли анализ (`OTBOR_SYSTEMONE_ENABLED`, по умолчанию да). */
-  readonly enabled: boolean
   readonly model: string
   /** Адрес сервера для показа оператору (без ключа). */
   readonly endpoint: string
@@ -54,7 +50,6 @@ export interface SystemOneClientShape {
 }
 
 export const systemOneConfig = Effect.gen(function*() {
-  const enabled = yield* Config.Boolean("OTBOR_SYSTEMONE_ENABLED").pipe(Config.withDefault(true))
   const url = yield* Config.String("OTBOR_SYSTEMONE_URL").pipe(
     Config.withDefault("http://127.0.0.1:1111")
   )
@@ -66,7 +61,6 @@ export const systemOneConfig = Effect.gen(function*() {
     Config.withDefault(60_000)
   )
   return {
-    enabled,
     url,
     apiKey: Option.getOrUndefined(apiKey),
     model,
@@ -201,7 +195,7 @@ const make = (config: SystemOneConfig) =>
         )
       )
 
-    return SystemOneClient.of({ enabled: config.enabled, model: config.model, endpoint: config.url.replace(/\/+$/, ""), ping, analyze })
+    return SystemOneClient.of({ model: config.model, endpoint: config.url.replace(/\/+$/, ""), ping, analyze })
   })
 
 /** Local model server on the operator's Mac (omlx). Not a chat model. */

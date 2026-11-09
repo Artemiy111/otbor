@@ -51,7 +51,6 @@ const state = buildAnalysisState({
 })
 
 const config = (patch: Partial<SystemOneConfig> = {}): SystemOneConfig => ({
-  enabled: true,
   url: `http://127.0.0.1:${server.port}`,
   apiKey: Redacted.make("sekret-key"),
   model: "clef-flash-4bit",

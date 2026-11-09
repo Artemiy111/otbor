@@ -38,14 +38,10 @@ if (!enabled || serverUrl === null) {
 
   let calls: Array<string> = []
   let mode: "ok" | "down" | "unauthorized" | "bad_for_first" = "ok"
-  let enabled = true
 
   const fake = Layer.succeed(
     SystemOneClient,
     SystemOneClient.of({
-      get enabled() {
-        return enabled
-      },
       model: "fake-model",
       endpoint: "http://fake",
       ping: () => Effect.succeed({ reachable: true, latencyMs: 1, error: null }),
@@ -105,22 +101,6 @@ if (!enabled || serverUrl === null) {
       employerExternalId: `emp-${label}-${Math.random().toString(36).slice(2, 8)}`,
       employerName: `Co ${label}`
     })
-
-  test("отключённый анализ не обращается к модели", async () => {
-    await seed("disabled")
-    await reset()
-    mode = "ok"
-    calls = []
-    enabled = false
-    try {
-      const result = await run()
-      expect(result.processed).toBe(0)
-      expect(result.analysed).toBe(0)
-      expect(calls).toEqual([])
-    } finally {
-      enabled = true
-    }
-  })
 
   test("analyses candidates, then skips and freshens them when the input hash is unchanged", async () => {
     const one = await seed("one")

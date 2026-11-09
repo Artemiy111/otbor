@@ -23,8 +23,6 @@ export type HealthHarness = typeof HealthHarness.Type
 
 /** Локальная модель анализа вакансий (SystemOne): отвечает ли сервер прямо сейчас. */
 export const HealthSystemOne = Schema.Struct({
-  /** Анализ выключен переменной OTBOR_SYSTEMONE_ENABLED=false. */
-  enabled: Schema.optional(Schema.Boolean),
   reachable: Schema.Boolean,
   endpoint: Schema.String,
   model: Schema.String,
