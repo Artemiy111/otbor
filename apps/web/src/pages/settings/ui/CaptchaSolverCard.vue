@@ -15,12 +15,8 @@ import {
   CardHeader,
   CardTitle,
   Input,
-  Label,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
+  HarnessModelPicker,
+  Label
 } from "@/shared/ui"
 
 const queryCache = useQueryCache()
@@ -28,7 +24,13 @@ const settingsQuery = useQuery({
   key: () => localModelKeys.captcha(),
   query: () => localModelApi.captchaGet()
 })
-const { harnesses, models } = useHarnessCatalog()
+const {
+  harnesses,
+  models,
+  loading: catalogLoading,
+  error: catalogError,
+  refetch: refetchCatalog
+} = useHarnessCatalog()
 
 const enabled = ref(false)
 const harnessId = ref("")
@@ -53,17 +55,31 @@ watch(
   { immediate: true }
 )
 
-const modelsOfHarness = computed(() => models.value.filter((item) => item.harness === harnessId.value))
-const pickHarness = (value: unknown) => {
-  harnessId.value = String(value)
-  model.value = ""
-}
+// Пикер отдаёт провайдера, только когда кликнули вкладку, а модель можно ввести
+// и без клика: без этого получилась бы модель без харнеса. Берём первый харнес.
+watch(
+  [harnessId, harnesses],
+  () => {
+    if (harnessId.value === "" && harnesses.value.length > 0) harnessId.value = harnesses.value[0]!.id
+  },
+  { immediate: true }
+)
+
+// Усилие для распознавания не нужно, но общий выбор модели его требует.
+const effort = ref("")
+const current = computed<CaptchaSolverSettings>(() => ({
+  enabled: enabled.value,
+  harnessId: harnessId.value,
+  model: model.value,
+  maxAttempts: Number(maxAttempts.value),
+  timeoutSeconds: Number(timeoutSeconds.value)
+}))
 
 const saveMutation = useMutation<CaptchaSolverSettings, CaptchaSolverSettings>({
   mutation: (input) => localModelApi.captchaSet(input)
 })
-const testMutation = useMutation<CaptchaSolverTestResult, void>({
-  mutation: () => localModelApi.captchaTest()
+const testMutation = useMutation<CaptchaSolverTestResult, CaptchaSolverSettings>({
+  mutation: (input) => localModelApi.captchaTest(input)
 })
 const busy = computed(() => saveMutation.isLoading.value || testMutation.isLoading.value)
 
@@ -71,13 +87,7 @@ const save = async () => {
   error.value = null
   notice.value = null
   try {
-    await saveMutation.mutateAsync({
-      enabled: enabled.value,
-      harnessId: harnessId.value,
-      model: model.value,
-      maxAttempts: Number(maxAttempts.value),
-      timeoutSeconds: Number(timeoutSeconds.value)
-    })
+    await saveMutation.mutateAsync(current.value)
     notice.value = "Сохранено в ~/.otbor/captcha.json. Харнес читает настройки при каждой капче, перезапуск не нужен."
     await queryCache.invalidateQueries({ key: localModelKeys.captcha() })
   } catch (cause) {
@@ -89,7 +99,7 @@ const test = async () => {
   error.value = null
   testResult.value = null
   try {
-    testResult.value = await testMutation.mutateAsync()
+    testResult.value = await testMutation.mutateAsync(current.value)
   } catch (cause) {
     error.value = describeError(cause)
   }
@@ -114,28 +124,28 @@ const test = async () => {
       </label>
 
       <div class="grid gap-4 md:grid-cols-2">
-        <div class="space-y-1.5">
-          <Label for="captcha-harness" class="text-xs text-muted-foreground">Харнес</Label>
-          <Select :model-value="harnessId" @update:model-value="pickHarness">
-            <SelectTrigger id="captcha-harness"><SelectValue placeholder="Выберите харнес" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem v-for="item in harnesses" :key="item.id" :value="item.id">
-                {{ item.name }}{{ item.error ? " (недоступен)" : "" }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div class="space-y-1.5">
-          <Label for="captcha-model" class="text-xs text-muted-foreground">Модель (с поддержкой изображений)</Label>
-          <Select :model-value="model" :disabled="harnessId === ''" @update:model-value="(value) => (model = String(value))">
-            <SelectTrigger id="captcha-model"><SelectValue placeholder="Выберите модель" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem v-for="item in modelsOfHarness" :key="item.id" :value="item.id">
-                {{ item.label || item.id }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-          <Input v-model="model" class="mt-1.5" placeholder="или впишите имя модели, например gemma-4-E4B-it-oQ4e-mtp" autocomplete="off" />
+        <div class="space-y-1.5 md:col-span-2">
+          <Label for="captcha-model" class="text-xs text-muted-foreground">
+            Харнес и модель (нужна поддержка изображений)
+          </Label>
+          <HarnessModelPicker
+            v-model:provider="harnessId"
+            v-model:model="model"
+            v-model:effort="effort"
+            trigger-id="captcha-model"
+            :harnesses="harnesses"
+            :models="models"
+            :loading="catalogLoading"
+            :error="catalogError"
+            :disabled="busy"
+            allow-custom
+            placeholder="Выберите модель для капчи"
+            class="border-border"
+            @refresh="refetchCatalog()"
+          />
+          <p class="text-xs text-muted-foreground">
+            Нужной модели нет в списке (например, локальная ещё не попала в каталог): впишите её id в поиске.
+          </p>
         </div>
         <div class="space-y-1.5">
           <Label for="captcha-attempts" class="text-xs text-muted-foreground">Попыток ввода (1–10)</Label>
@@ -161,7 +171,7 @@ const test = async () => {
         <Button
           variant="outline"
           :disabled="busy || harnessId === '' || model === ''"
-          title="Прогон по последней сохранённой картинке капчи; работает для локальных серверов"
+          title="Прогон выбранной в форме модели по последней сохранённой картинке капчи; работает для локальных серверов"
           @click="test"
         >
           Проверить на последней капче

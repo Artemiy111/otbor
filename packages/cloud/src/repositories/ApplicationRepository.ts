@@ -671,3 +671,24 @@ export const hasOtherResumeApplication = (tx: Executor, applicationId: string): 
       ) as other
     `)
     .pipe(Effect.map((result) => (result.rows[0] as { other?: boolean } | undefined)?.other === true))
+
+/**
+ * Заявки, которые остановила капча: ждут оператора (`needs_human`) или упали
+ * (`failed`) с причиной про капчу. Только заявки пользователя, при необходимости
+ * одного аккаунта.
+ */
+export const captchaStoppedIds = (
+  tx: Executor,
+  userId: string,
+  hhAccountId?: string | undefined
+): RepoEffect<ReadonlyArray<string>> =>
+  tx
+    .execute(sql`
+      select id from application
+      where user_id = ${userId}
+        and state in ('needs_human', 'failed')
+        and last_error ilike '%captcha%'
+        ${hhAccountId === undefined ? sql`` : sql`and hh_account_id = ${hhAccountId}::uuid`}
+      order by updated_at
+    `)
+    .pipe(Effect.map((result) => (result.rows as ReadonlyArray<{ id: string }>).map((row) => String(row.id))))

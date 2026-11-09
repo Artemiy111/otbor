@@ -215,7 +215,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
 
       CaptchaSolverGet: () => localModels.captchaGet(),
       CaptchaSolverSet: (payload) => localModels.captchaSet(payload),
-      CaptchaSolverTest: () => localModels.captchaTest(),
+      CaptchaSolverTest: (payload) => localModels.captchaTest(payload),
       NegotiationsSyncRun: ({ hhAccountId }) => negotiations.run(hhAccountId),
       NegotiationsSyncStatus: ({ hhAccountId }) => negotiations.status(hhAccountId),
       ResumeSyncRun: ({ hhAccountId }) => resumeSync.run(hhAccountId),
@@ -317,6 +317,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
       InferenceGet: ({ id }) => inference.get(id),
       HarnessReportCatalog: (payload) => agentCatalog.report(payload),
       AgentCatalogGet: () => agentCatalog.get(),
+      ApplicationsRetryCaptcha: (payload) => applications.retryCaptcha(payload),
       DraftGenerate: (payload) => writing.draft(payload),
       DraftPromptPreview: (payload) => writing.draftPrompt(payload),
 

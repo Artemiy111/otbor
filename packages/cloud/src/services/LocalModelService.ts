@@ -37,7 +37,9 @@ export interface LocalModelServiceShape {
     input: CaptchaSolverSettings
   ) => Effect.Effect<CaptchaSolverSettings, ApiError>
   /** Прогон по самой свежей сохранённой картинке капчи, без браузера. */
-  readonly captchaTest: () => Effect.Effect<CaptchaSolverTestResult, ApiError>
+  readonly captchaTest: (
+    input: CaptchaSolverSettings
+  ) => Effect.Effect<CaptchaSolverTestResult, ApiError>
 }
 
 /** Где браузер харнеса складывает картинки капчи (та же папка, что у харнеса). */
@@ -176,9 +178,8 @@ export class LocalModelService extends Context.Service<LocalModelService, LocalM
           catch: (cause) => (cause instanceof InvalidInput ? cause : fromFile(cause))
         })
 
-      const captchaTest: LocalModelServiceShape["captchaTest"] = () =>
+      const captchaTest: LocalModelServiceShape["captchaTest"] = (settings) =>
         Effect.gen(function*() {
-          const settings = yield* captchaGet()
           const failure = (error: string, picture: string | null = null): CaptchaSolverTestResult => ({
             ok: false,
             text: null,

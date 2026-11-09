@@ -46,8 +46,12 @@ export const CaptchaSolverSet = Rpc.make("CaptchaSolverSet", {
   error: ApiError
 })
 
-/** Прогоняет сохранённую модель по последней картинке капчи и возвращает прочитанный текст. */
+/**
+ * Прогоняет переданные (ещё не сохранённые) настройки по последней картинке
+ * капчи и возвращает прочитанный текст.
+ */
 export const CaptchaSolverTest = Rpc.make("CaptchaSolverTest", {
+  payload: CaptchaSolverSettings,
   success: CaptchaSolverTestResult,
   error: ApiError
 })

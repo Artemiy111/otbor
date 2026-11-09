@@ -6,6 +6,7 @@ import { FormAnswer } from "../form.ts"
 import {
   ApplicationDetail,
   ApplicationRecord,
+  AutoApplyRetryResult,
   BrowserDrafts,
   BrowserSubmitResult,
   KitAnswer,
@@ -148,6 +149,18 @@ export const ApplicationsSkip = Rpc.make("ApplicationsSkip", {
 export const ApplicationsRetry = Rpc.make("ApplicationsRetry", {
   payload: Schema.Struct({ id: ApplicationId }),
   success: ApplicationRecord,
+  error: ApiError
+})
+
+/**
+ * Повторяет заявки, которые остановила капча (`needs_human` или `failed`, причина
+ * «hh asked for a captcha»), каждую как обычный `ApplicationsRetry`: так они
+ * проходят заново, уже с распознаванием капчи моделью. Без аккаунта - все аккаунты
+ * пользователя. Блокировку аккаунта это не снимает: её снимает `HhAccountSubmitResume`.
+ */
+export const ApplicationsRetryCaptcha = Rpc.make("ApplicationsRetryCaptcha", {
+  payload: Schema.Struct({ hhAccountId: Schema.optional(HhAccountId) }),
+  success: AutoApplyRetryResult,
   error: ApiError
 })
 

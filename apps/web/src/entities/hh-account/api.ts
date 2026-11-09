@@ -1,4 +1,4 @@
-import type { CaptchaEpisode, HhAccountId, HhAccountRecord } from "@otbor/contract"
+import type { AutoApplyRetryResult, CaptchaEpisode, HhAccountId, HhAccountRecord } from "@otbor/contract"
 import { call } from "@/shared/api"
 
 export const hhAccountApi = {
@@ -33,6 +33,9 @@ export const hhAccountApi = {
     hhAccountId: string
   ): Promise<{ readonly account: HhAccountRecord; readonly released: number }> =>
     call((client) => client.HhAccountSubmitResume({ hhAccountId: hhAccountId as HhAccountId })),
+  /** Повторяет заявки аккаунта, остановленные капчей (теперь их пройдёт модель). */
+  retryCaptcha: (hhAccountId: string): Promise<AutoApplyRetryResult> =>
+    call((client) => client.ApplicationsRetryCaptcha({ hhAccountId: hhAccountId as HhAccountId })),
   captchaEpisodes: (limit = 10): Promise<ReadonlyArray<CaptchaEpisode>> =>
     call((client) => client.HhCaptchaEpisodesList({ limit }))
 }

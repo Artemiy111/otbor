@@ -183,7 +183,9 @@ function selectHarness(id: string): void {
 
 function selectModel(model: HarnessModel): void {
   if (props.disabled) return;
-  const isSameModel = model.id === props.model;
+  const isSameModel = model.id === props.model && model.harness === props.provider;
+  // Поиск показывает модели всех харнесов: выбор модели выбирает и её харнес.
+  if (model.harness !== props.provider) emit("update:provider", model.harness);
   // Для другой модели reasoning сбрасывается: по умолчанию берём low.
   const nextEffort = resolveHarnessEffort(model, isSameModel ? props.effort : "");
   if (!isSameModel) emit("update:model", model.id);
@@ -194,6 +196,7 @@ function selectModel(model: HarnessModel): void {
 
 function chooseEffort(model: HarnessModel, value: string): void {
   if (props.disabled) return;
+  if (model.harness !== props.provider) emit("update:provider", model.harness);
   if (model.id !== props.model) emit("update:model", model.id);
   if (value !== props.effort) emit("update:effort", value);
 }

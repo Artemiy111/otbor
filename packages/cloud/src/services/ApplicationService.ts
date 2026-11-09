@@ -1,8 +1,10 @@
 import type {
   ApiError,
   ApplicationDetail,
+  ApplicationId,
   ApplyUsage,
   ApplicationRecord,
+  AutoApplyRetryResult,
   KitAnswer,
   KitRecord,
   VacancyFormState
@@ -149,6 +151,10 @@ export interface ApplicationServiceShape {
     ApiError
   >
   readonly retry: (id: string) => Effect.Effect<ApplicationRecord, ApiError>
+  /** Повторяет заявки, остановленные капчей; те, что нельзя повторить, попадают в `skipped`. */
+  readonly retryCaptcha: (input: {
+    readonly hhAccountId?: string | undefined
+  }) => Effect.Effect<AutoApplyRetryResult, ApiError>
   /**
    * Сохраняет кит. `options.runner` передаёт только AutoApplyRunner: тогда кит
    * `preparing`-автозаявки сразу идёт в шлюз отправки. Оператор через RPC опций
@@ -702,6 +708,23 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
           return yield* unwrap(outcome)
         })
 
+      const retryCaptcha: ApplicationServiceShape["retryCaptcha"] = (input) =>
+        Effect.gen(function*() {
+          const ids = yield* database
+            .asUser(currentUser.userId, (tx) =>
+              ApplicationRepository.captchaStoppedIds(tx, currentUser.userId, input.hhAccountId)
+            )
+            .pipe(Effect.mapError(toStorageError("application.retryCaptcha")))
+          let retried = 0
+          const skipped: Array<{ applicationId: ApplicationId; reason: string }> = []
+          for (const id of ids) {
+            const result = yield* Effect.result(retry(id))
+            if (result._tag === "Success") retried += 1
+            else skipped.push({ applicationId: id as ApplicationId, reason: result.failure.message ?? result.failure._tag })
+          }
+          return { retried, skipped }
+        })
+
       return ApplicationService.of({
         formGet,
         formRefresh,
@@ -712,6 +735,7 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
         approve,
         skip,
         retry,
+        retryCaptcha,
         setKit,
         dailyUsage
       })

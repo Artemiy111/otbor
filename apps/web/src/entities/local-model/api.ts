@@ -17,5 +17,6 @@ export const localModelApi = {
   captchaGet: (): Promise<CaptchaSolverSettings> => call((client) => client.CaptchaSolverGet()),
   captchaSet: (input: CaptchaSolverSettings): Promise<CaptchaSolverSettings> =>
     call((client) => client.CaptchaSolverSet(input)),
-  captchaTest: (): Promise<CaptchaSolverTestResult> => call((client) => client.CaptchaSolverTest())
+  captchaTest: (input: CaptchaSolverSettings): Promise<CaptchaSolverTestResult> =>
+    call((client) => client.CaptchaSolverTest(input))
 }
