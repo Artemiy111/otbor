@@ -258,7 +258,7 @@ hh показывает её на каждом отклике; после реш
   капчи (ниже) станет известен порог hh.
 - **Блокировка после капчи.** Если задача аккаунта завершилась с `captcha`
   (`QueueService.complete`), в `hh_account` пишутся `submit_blocked_at = now()` и
-  `submit_block_reason = 'captcha'` и `submit_retry_at` (10 минут, при капчах подряд без откликов удваивается до часа). Пока блокировка стоит, `claim` не
+  `submit_block_reason = 'captcha'` и `submit_retry_at` (5 минут, при капчах подряд без откликов удваивается до часа). Пока блокировка стоит, `claim` не
   выдаёт действующие задачи аккаунта; чтения идут. Повторная капча при уже
   стоящей блокировке ничего не меняет. Её снимает worker (`captchaAutoResume`, всегда, раз в минуту) по `submit_retry_at`; оператор может раньше: RPC
   `HhAccountSubmitResume({ hhAccountId })`, команда `otbor hh resume [аккаунт]`

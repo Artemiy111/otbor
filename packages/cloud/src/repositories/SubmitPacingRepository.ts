@@ -15,7 +15,7 @@ import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
 
 /** Пауза после первой капчи, минут. */
-export const CAPTCHA_BASE_DELAY_MINUTES = 10
+export const CAPTCHA_BASE_DELAY_MINUTES = 5
 /** Потолок нарастающей паузы, минут. */
 export const CAPTCHA_MAX_DELAY_MINUTES = 60
 
