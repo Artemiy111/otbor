@@ -16,8 +16,7 @@ const props = withDefaults(
 
 const variant = computed<BadgeVariants["variant"]>(() => {
   if (props.variant !== undefined) return props.variant
-  const tone = statusTone(props.value)
-  return tone === "danger" ? "destructive" : tone
+  return statusTone(props.value)
 })
 
 const text = computed(() => props.label ?? statusLabel(props.value))
@@ -25,6 +24,6 @@ const text = computed(() => props.label ?? statusLabel(props.value))
 
 <template>
   <Badge :variant="variant" :title="props.value" :data-status="props.value">
-    {{ text }}<span v-if="props.raw" class="ml-1 font-mono text-[10px] font-normal opacity-60">{{ props.value }}</span>
+    {{ text }}<span v-if="props.raw" class="ml-1 font-mono text-xs font-normal opacity-60">{{ props.value }}</span>
   </Badge>
 </template>

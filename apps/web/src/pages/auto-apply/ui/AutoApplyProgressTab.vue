@@ -9,6 +9,7 @@ import {
   autoApplyKeys,
   autoApplyStageMeta,
   autoApplyStages,
+  autoModeTone,
   autoRunLabel,
   blockedReasonLabel
 } from "@/entities/auto-apply"
@@ -142,7 +143,7 @@ const columns: ColumnDef<AutoApplyProgressItem>[] = [
     accessorFn: (row) => row.autoRun,
     header: sortableHeader<AutoApplyProgressItem>("Режим"),
     cell: ({ row }) =>
-      h(Badge, { variant: row.original.autoRun === "auto" ? "info" : "outline" }, () =>
+      h(Badge, { variant: autoModeTone(row.original.autoRun) }, () =>
         row.original.autoRun === "auto" ? "авто" : "черновик"
       )
   },
@@ -309,8 +310,8 @@ const error = computed(() => (query.error.value === null ? null : describeError(
       :data="filtered"
       :is-loading="query.isPending.value"
       :row-numbers="false"
-      empty-title="Откликов автоотбора нет"
-      empty-description="Они появятся после запуска автоотбора в режиме «Черновики» или «Отправка»."
+      empty-title="Автооткликов нет"
+      empty-description="Они появятся после запуска автооткликов в режиме «Черновики» или «Отправка»."
       :initial-sorting="[{ id: 'updatedAt', desc: true }]"
     />
 

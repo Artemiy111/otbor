@@ -10,6 +10,7 @@ import { CompaniesPage } from "@/pages/companies"
 import { CompanyDetailPage } from "@/pages/company-detail"
 import { ContactsPage } from "@/pages/contacts"
 import { DecisionsPage } from "@/pages/decisions"
+import { OverviewPage } from "@/pages/overview"
 import { HydrationPage } from "@/pages/hydration"
 import { HealthPage } from "@/pages/health"
 import { InferencePage } from "@/pages/inference"
@@ -39,7 +40,8 @@ const applicationId = computed(() =>
 
 <template>
   <AppShell :active="activeSection">
-    <HealthPage v-if="route.name === 'health'" />
+    <OverviewPage v-if="route.name === 'overview'" />
+    <HealthPage v-else-if="route.name === 'health'" />
     <VacanciesPage v-else-if="route.name === 'vacancies'" />
     <VacancyDetailPage v-else-if="route.name === 'vacancy'" :id="vacancyId" />
     <CompaniesPage v-else-if="route.name === 'companies'" />

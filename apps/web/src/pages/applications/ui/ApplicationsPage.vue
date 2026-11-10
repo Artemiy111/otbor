@@ -5,7 +5,7 @@ import type { ApplicationRecord, HhAccountRecord } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert } from "@lucide/vue"
 import { resumeApi, resumeKeys } from "@/entities/resume"
-import { autoRunLabel } from "@/entities/auto-apply"
+import { autoModeTone, autoRunLabel } from "@/entities/auto-apply"
 import { applicationApi, applicationKeys } from "@/entities/application"
 import { AccountChip, hhAccountNameById, useAccountFilter } from "@/entities/hh-account"
 import { accountFilterOptions } from "@/features/account-filter"
@@ -32,7 +32,12 @@ import {
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
 
-const state = ref("all")
+/** Обзор ссылается сюда как `/applications?state=needs_human`: читаем фильтр из адреса один раз. */
+const initialState = (): string => {
+  const value = new URLSearchParams(window.location.search).get("state")
+  return value !== null && applicationStateOptions.some((option) => option.value === value) ? value : "all"
+}
+const state = ref(initialState())
 const { accounts, accountId, hhAccountId, scopeKey, defaultAccountId } = useAccountFilter()
 
 const query = useQuery({
@@ -121,7 +126,7 @@ const columns: ColumnDef<ApplicationRecord>[] = [
             "вакансия"
           ),
           row.original.autoRun
-            ? h(Badge, { variant: row.original.autoRun === "auto" ? "info" : "outline" }, () =>
+            ? h(Badge, { variant: autoModeTone(row.original.autoRun) }, () =>
                 autoRunLabel(row.original.autoRun!)
               )
             : null

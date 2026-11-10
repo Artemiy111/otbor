@@ -9,7 +9,7 @@ export const autoApplyKeys = {
     ["auto-apply", "progress", hhAccountId, activeOnly ? "active" : "all"] as const
 }
 
-export type AutoApplyStageTone = "neutral" | "info" | "warning" | "success" | "destructive"
+export type AutoApplyStageTone = "neutral" | "info" | "warning" | "success" | "danger"
 
 /** Stages in pipeline order, with the badge label and tone. */
 export const autoApplyStages: ReadonlyArray<{
@@ -23,11 +23,11 @@ export const autoApplyStages: ReadonlyArray<{
   { value: "blocked", label: "Ждёт повтора", tone: "warning", active: false },
   { value: "reading_form", label: "Читается форма", tone: "info", active: true },
   { value: "writing", label: "Пишется письмо", tone: "info", active: true },
-  { value: "kit_ready", label: "Кит готов", tone: "warning", active: true },
-  { value: "submitting", label: "Отправка", tone: "warning", active: true },
+  { value: "kit_ready", label: "Кит готов", tone: "info", active: true },
+  { value: "submitting", label: "Отправка", tone: "info", active: true },
   { value: "submitted", label: "Отправлен", tone: "success", active: false },
   { value: "needs_human", label: "Нужен человек", tone: "warning", active: false },
-  { value: "failed", label: "Ошибка", tone: "destructive", active: false }
+  { value: "failed", label: "Ошибка", tone: "danger", active: false }
 ]
 
 export const autoApplyStageMeta = (stage: AutoApplyStage) =>
@@ -41,3 +41,7 @@ export const blockedReasonLabel = (code: string | null | undefined): string | nu
 
 export const autoRunLabel = (autoRun: "drafts" | "auto"): string =>
   autoRun === "auto" ? "авто" : "авто-черновик"
+
+/** Режим автооткликов: off нейтральный, drafts информационный, auto успешный (не красный). */
+export const autoModeTone = (mode: "off" | "drafts" | "auto"): "neutral" | "info" | "success" =>
+  mode === "auto" ? "success" : mode === "drafts" ? "info" : "neutral"

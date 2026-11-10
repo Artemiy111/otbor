@@ -6,13 +6,18 @@ const { accounts, defaultAccountId } = useDefaultAccount()
 </script>
 
 <template>
+  <!-- Выбор действует там, где у страницы фильтр аккаунта стоит на «По умолчанию». -->
   <div v-if="accounts.length > 0" class="flex items-center gap-2">
-    <span class="hidden text-[11px] text-muted-foreground lg:inline">Аккаунт по умолчанию</span>
+    <span class="hidden text-xs text-muted-foreground xl:inline">Аккаунт в списках</span>
     <Select
       :model-value="defaultAccountId"
       @update:model-value="(value) => (defaultAccountId = String(value))"
     >
-      <SelectTrigger class="h-8 w-[170px] text-xs sm:w-[210px]" aria-label="Аккаунт по умолчанию">
+      <SelectTrigger
+        class="h-8 w-[160px] text-xs sm:w-[200px]"
+        aria-label="Аккаунт hh по умолчанию для списков и фильтров"
+        title="Аккаунт hh по умолчанию для списков и фильтров"
+      >
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

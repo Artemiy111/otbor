@@ -573,8 +573,8 @@ const runColumns: ColumnDef<ScheduleRun>[] = [
 <template>
   <section>
     <PageHeader
-      title="Обход"
-      description="Расписания синхронизации почты и Telegram. Гидратация вакансий и компаний вынесена на страницу «Гидратация», поиск — на страницу «Поиск». Запустите «Запустить» или дождитесь интервала."
+      title="Расписания"
+      description="Расписания синхронизации почты и Telegram. Гидратация вакансий и компаний вынесена на страницу «Догрузка данных», поиск — на страницу «Поиск вакансий». Запустите «Запустить» или дождитесь интервала."
     >
       <template #actions>
         <RefreshButton :loading="query.isLoading.value" @refresh="query.refetch()" />

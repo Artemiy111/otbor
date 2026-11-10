@@ -1,5 +1,9 @@
 export type StatusTone = "success" | "info" | "warning" | "danger" | "neutral"
 
+/*
+ * Один тон на одно значение везде. Нейтральные (не перечислены): draft, skip,
+ * skipped, unknown, off, idle - нормальный исход, а не сбой.
+ */
 const SUCCESS = new Set([
   "ok",
   "up",
@@ -10,14 +14,14 @@ const SUCCESS = new Set([
   "prepared",
   "clicked",
   "active",
-  "included"
+  "included",
+  "authorized"
 ])
 
 const INFO = new Set([
-  "unknown",
-  "draft",
   "preparing",
   "queued",
+  "submitting",
   "pending",
   "leased",
   "running",
@@ -31,7 +35,8 @@ const INFO = new Set([
 
 const WARNING = new Set([
   "degraded",
-  "submitting",
+  "needs_human",
+  "needs_reconcile",
   "form_changed",
   "rate_limited",
   "already_responded",
@@ -42,11 +47,9 @@ const WARNING = new Set([
 
 const DANGER = new Set([
   "reject",
-  "skip",
   "failed",
   "dead",
-  "needs_human",
-  "needs_reconcile",
+  "auth_failed",
   "down",
   "blocked",
   "session_expired",
@@ -167,6 +170,7 @@ const LABELS: Record<string, string> = {
   blocked_keywords: "Ключевые слова",
   blocked_seniority: "Уровень",
   blocked_filter: "Не прошёл фильтр откликов",
+  blocked_blacklist: "Работодатель в чёрном списке",
   seniority: "Уровень",
   manual: "Вручную"
 }
@@ -197,18 +201,21 @@ export const workFormatLabel = (value: string): string => LABELS[value] ?? value
 export const jobKindLabel = (value: string): string =>
   value === "inference" ? "Генерация" : value === "browser" ? "Браузер" : value
 
-export const jobStageLabel = (value: string): string =>
-  value === "inference"
-    ? "Генерация"
-    : value === "prepare"
-      ? "Подготовка"
-      : value === "submit"
-        ? "Отправка"
-        : value === "reconcile"
-          ? "Сверка"
-          : value === "session"
-            ? "Сессия"
-            : value
+const JOB_STAGE_LABELS: Record<string, string> = {
+  inference: "Генерация",
+  prepare: "Подготовка",
+  submit: "Отправка",
+  reconcile: "Сверка",
+  session: "Сессия",
+  negotiations_sync: "Статусы откликов",
+  resume_sync: "Резюме",
+  form_read: "Чтение формы",
+  letter_attach: "Письмо",
+  chat_read: "Чаты",
+  resume_bump: "Подъём резюме"
+}
+
+export const jobStageLabel = (value: string): string => JOB_STAGE_LABELS[value] ?? value
 
 export const applicationStateLabel = (value: string): string => statusLabel(value)
 
@@ -248,8 +255,8 @@ export const conversationChannelLabel = (value: string): string =>
 const SCHEDULE_KIND_LABELS: Record<string, string> = {
   search: "Поиск hh",
   source: "Источник hh",
-  vacancy_hydration: "Гидратация вакансий",
-  employer_hydration: "Гидратация компаний",
+  vacancy_hydration: "Догрузка вакансий",
+  employer_hydration: "Догрузка компаний",
   mail_sync: "Синхронизация почты",
   telegram_sync: "Синхронизация Telegram",
   hh_chat_sync: "Чаты hh",
@@ -257,7 +264,7 @@ const SCHEDULE_KIND_LABELS: Record<string, string> = {
   resume_bump: "Подъём резюме",
   evaluate: "Оценка вакансий",
   analysis: "Анализ вакансий",
-  apply: "Автоотбор откликов"
+  apply: "Автоотклики"
 }
 
 export const scheduleKindLabel = (value: string): string =>

@@ -1,6 +1,7 @@
 import { computed, ref } from "vue"
 
 export type Route =
+  | { readonly name: "overview" }
   | { readonly name: "health" }
   | { readonly name: "vacancies" }
   | { readonly name: "vacancy"; readonly id: string }
@@ -34,6 +35,8 @@ const parse = (): Route => {
   const [head = "", id = ""] = raw.split("/")
 
   switch (head) {
+    case "":
+      return { name: "overview" }
     case "vacancies":
       return id === "" ? { name: "vacancies" } : { name: "vacancy", id }
     case "hydration":
@@ -81,7 +84,7 @@ const parse = (): Route => {
     case "health":
       return { name: "health" }
     default:
-      return { name: "health" }
+      return { name: "overview" }
   }
 }
 
@@ -101,10 +104,6 @@ const navigate = (path: string, replace = false): void => {
 if (window.location.hash.startsWith("#/")) {
   const legacy = window.location.hash.slice(1)
   window.history.replaceState({}, "", legacy)
-}
-
-if (window.location.pathname === "/" || window.location.pathname === "") {
-  window.history.replaceState({}, "", "/vacancies")
 }
 
 export const route = ref<Route>(parse())

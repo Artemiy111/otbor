@@ -10,10 +10,11 @@ const options = [
 </script>
 
 <template>
+  <!-- Три сегмента всегда видны: тема переключается одним кликом, без наведения. -->
   <div
     role="radiogroup"
     aria-label="Тема оформления"
-    class="group/theme flex h-8 items-center rounded-md border border-border bg-background p-0.5"
+    class="flex h-8 items-center gap-0.5 rounded-md border border-border bg-muted/50 p-0.5"
   >
     <button
       v-for="option in options"
@@ -23,15 +24,11 @@ const options = [
       :aria-checked="themeChoice === option.value"
       :aria-label="option.label"
       :title="option.label"
-      class="inline-flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-[5px] text-muted-foreground transition-all duration-200 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      :class="
-        themeChoice === option.value
-          ? 'bg-accent text-foreground'
-          : 'w-0 opacity-0 group-hover/theme:w-7 group-hover/theme:opacity-100 group-focus-within/theme:w-7 group-focus-within/theme:opacity-100'
-      "
+      class="inline-flex size-6 shrink-0 items-center justify-center rounded-[5px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      :class="themeChoice === option.value ? 'bg-background text-foreground shadow-sm' : ''"
       @click="themeChoice = option.value"
     >
-      <component :is="option.icon" class="size-4" />
+      <component :is="option.icon" class="size-3.5" />
     </button>
   </div>
 </template>

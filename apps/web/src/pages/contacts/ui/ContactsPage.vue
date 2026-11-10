@@ -11,7 +11,7 @@ const tab = ref("contacts")
 <template>
   <section>
     <PageHeader
-      title="Контакты"
+      title="Переписка"
       description="Люди, которых можно найти по вакансиям, почте и Telegram. Контакт — это способ связи, а не человек."
     />
 

@@ -23,6 +23,8 @@ export {
   payloadPreview,
   payloadText
 } from "./format"
+export { toneClasses, type ToneClasses } from "./tone"
+export { countWord, plural, pluralIndex, type PluralForms } from "./plural"
 export { runSummary } from "./run-summary"
 export {
   applicationPath,

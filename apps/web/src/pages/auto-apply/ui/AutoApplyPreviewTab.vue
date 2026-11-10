@@ -5,7 +5,7 @@ import type { AutoApplyCandidate } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert, Play } from "@lucide/vue"
 import { applySortOptions, autoModeOptions, sortDirectionOptions } from "@/entities/apply-filter"
-import { autoApplyApi, autoApplyKeys } from "@/entities/auto-apply"
+import { autoApplyApi, autoApplyKeys, autoModeTone } from "@/entities/auto-apply"
 import { RUN_COUNT_LABELS, useAutoApplyRun } from "@/features/auto-apply-run"
 import { RefreshButton } from "@/features/refresh-button"
 import { describeError, formatAge, formatSalary, vacancyPath } from "@/shared/lib"
@@ -39,9 +39,7 @@ const { run, runState, runCounts, runError, running } = useAutoApplyRun({
 })
 
 const modeOption = computed(() => autoModeOptions.find((option) => option.value === settings.value?.autoMode))
-const modeVariant = computed(() =>
-  settings.value?.autoMode === "auto" ? "destructive" : settings.value?.autoMode === "drafts" ? "outline" : "secondary"
-)
+const modeVariant = computed(() => autoModeTone(settings.value?.autoMode ?? "off"))
 const sortLabel = computed(() => applySortOptions.find((option) => option.value === settings.value?.sort)?.label ?? "")
 const directionLabel = computed(
   () => sortDirectionOptions.find((option) => option.value === settings.value?.sortDirection)?.label ?? ""

@@ -597,7 +597,7 @@ onUnmounted(stopRunsPolling)
 <template>
   <section>
     <PageHeader
-      title="Гидратация"
+      title="Догрузка данных"
       description="Полные описания вакансий и профили компаний: что осталось дозагрузить, что можно обновить вручную и что делают расписания."
     >
       <template #actions>
@@ -618,7 +618,7 @@ onUnmounted(stopRunsPolling)
 
     <div class="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
       <StatCard label="Вакансий" :value="stats ? formatNumber(stats.vacancyTotal) : '—'" :hint="`${stats?.vacancyFull ?? 0} с полным описанием`" />
-      <StatCard label="Нужна гидратация" :value="stats ? formatNumber(stats.vacancyStub) : '—'" :hint="`${hydrationPercent}% корпуса готово`" />
+      <StatCard label="Нужна догрузка" :value="stats ? formatNumber(stats.vacancyStub) : '—'" :hint="`${hydrationPercent}% корпуса готово`" />
       <StatCard label="Компаний" :value="stats ? formatNumber(stats.employerTotal) : '—'" :hint="`${stats?.employersLinked ?? 0} привязано к вакансиям`" />
       <StatCard label="Без рейтинга" :value="stats ? formatNumber(stats.employersWithoutRating) : '—'" hint="нет данных hh" />
       <StatCard label="Без сайта" :value="stats ? formatNumber(stats.employersWithoutSite) : '—'" hint="нечего открыть для проверки" />
@@ -799,7 +799,7 @@ onUnmounted(stopRunsPolling)
         <div class="grid gap-4 xl:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Гидратация вакансий</CardTitle>
+              <CardTitle>Догрузка вакансий</CardTitle>
               <CardDescription>За один проход worker берёт ограниченную порцию stub-вакансий.</CardDescription>
             </CardHeader>
             <CardContent class="space-y-4">

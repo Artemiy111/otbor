@@ -64,7 +64,7 @@ const resumeId = computed<string | null>(() =>
 <template>
   <section>
     <PageHeader
-      title="Автоотбор"
+      title="Автоотклики"
       description="Что возьмёт следующий запуск автоотклика и как идут уже созданные отклики."
     />
 

@@ -3,6 +3,7 @@ export {
   autoApplyKeys,
   autoApplyStageMeta,
   autoApplyStages,
+  autoModeTone,
   autoRunLabel,
   blockedReasonLabel,
   type AutoApplyStageTone

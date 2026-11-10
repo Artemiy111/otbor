@@ -1,24 +1,25 @@
 import type { Component } from "vue"
 import {
   Ban,
-  ChartColumn,
   BookOpen,
   Briefcase,
   Building,
   CalendarClock,
-  Contact,
-  Filter,
-  Rocket,
+  ChartColumn,
   DatabaseZap,
+  FileText,
+  Filter,
   Gavel,
   HeartPulse,
+  LayoutDashboard,
   ListChecks,
   Mail,
   MessageCircle,
+  MessagesSquare,
+  Rocket,
   Search,
-  Settings,
   Send,
-  FileText,
+  Settings,
   SlidersHorizontal,
   Sparkles,
   User,
@@ -34,67 +35,72 @@ export interface NavItem {
 
 export interface NavSection {
   readonly id: string
-  readonly label: string
+  /** `null` - группа без заголовка (только «Обзор»). */
+  readonly label: string | null
+  /** Сворачиваемая группа; состояние хранится в браузере. */
+  readonly collapsible?: boolean
+  /** Свёрнута, пока оператор её не открыл. */
+  readonly collapsedByDefault?: boolean
   readonly items: ReadonlyArray<NavItem>
 }
 
-/** Grouped navigation: the sidebar item stays active on its detail pages. */
+/**
+ * Навигация по задачам оператора, а не по сущностям бэкенда. Пункт остаётся
+ * активным на своих страницах деталей (см. `activeSection` в роутере).
+ */
 export const navSections: ReadonlyArray<NavSection> = [
   {
     id: "overview",
-    label: "Обзор",
-    items: [
-      { id: "health", label: "Здоровье", href: "/health", icon: HeartPulse },
-      { id: "accounts", label: "Аккаунты hh", href: "/accounts", icon: User },
-      { id: "settings", label: "Настройки", href: "/settings", icon: Settings }
-    ]
+    label: null,
+    items: [{ id: "overview", label: "Обзор", href: "/", icon: LayoutDashboard }]
   },
   {
-    id: "corpus",
-    label: "Корпус",
+    id: "work",
+    label: "Работа",
     items: [
       { id: "vacancies", label: "Вакансии", href: "/vacancies", icon: Briefcase },
-      { id: "companies", label: "Компании", href: "/companies", icon: Building },
-      { id: "hydration", label: "Гидратация", href: "/hydration", icon: DatabaseZap },
-      { id: "analytics", label: "Аналитика", href: "/analytics", icon: ChartColumn },
-      { id: "keywords", label: "Ключевые слова", href: "/keywords", icon: BookOpen },
-      { id: "blacklist", label: "Чёрный список", href: "/blacklist", icon: Ban }
+      { id: "applications", label: "Отклики", href: "/applications", icon: Send },
+      { id: "auto-apply", label: "Автоотклики", href: "/auto-apply", icon: Rocket },
+      { id: "contacts", label: "Переписка", href: "/contacts", icon: MessagesSquare },
+      { id: "people", label: "Люди", href: "/people", icon: Users }
     ]
-  },
-  {
-    id: "resume",
-    label: "Резюме",
-    items: [{ id: "resumes", label: "Резюме", href: "/resumes", icon: FileText }]
   },
   {
     id: "selection",
-    label: "Отбор",
+    label: "Настройка отбора",
     items: [
-      { id: "decisions", label: "Решения", href: "/decisions", icon: Gavel },
-      { id: "applications", label: "Отклики", href: "/applications", icon: Send },
-      { id: "contacts", label: "Контакты", href: "/contacts", icon: Contact },
-      { id: "people", label: "Люди", href: "/people", icon: Users }
+      { id: "resumes", label: "Резюме", href: "/resumes", icon: FileText },
+      { id: "apply-filter", label: "Фильтр откликов", href: "/apply-filter", icon: Filter },
+      { id: "presets", label: "Пресеты", href: "/presets", icon: SlidersHorizontal },
+      { id: "blacklist", label: "Чёрный список", href: "/blacklist", icon: Ban },
+      { id: "keywords", label: "Ключевые слова", href: "/keywords", icon: BookOpen }
     ]
   },
   {
     id: "sources",
     label: "Источники",
     items: [
+      { id: "search", label: "Поиск вакансий", href: "/search", icon: Search },
+      { id: "schedules", label: "Расписания", href: "/schedules", icon: CalendarClock },
       { id: "mail", label: "Почта", href: "/mail", icon: Mail },
       { id: "telegram", label: "Telegram", href: "/telegram", icon: MessageCircle },
-      { id: "search", label: "Поиск", href: "/search", icon: Search },
-      { id: "schedules", label: "Обход", href: "/schedules", icon: CalendarClock }
+      { id: "accounts", label: "Аккаунты hh", href: "/accounts", icon: User }
     ]
   },
   {
-    id: "automation",
-    label: "Автоматизация",
+    id: "system",
+    label: "Система",
+    collapsible: true,
+    collapsedByDefault: true,
     items: [
+      { id: "health", label: "Состояние", href: "/health", icon: HeartPulse },
       { id: "queue", label: "Очереди", href: "/queue", icon: ListChecks },
+      { id: "hydration", label: "Догрузка данных", href: "/hydration", icon: DatabaseZap },
+      { id: "analytics", label: "Аналитика рынка", href: "/analytics", icon: ChartColumn },
+      { id: "companies", label: "Компании", href: "/companies", icon: Building },
+      { id: "decisions", label: "Решения", href: "/decisions", icon: Gavel },
       { id: "inference", label: "Генерация", href: "/inference", icon: Sparkles },
-      { id: "auto-apply", label: "Автоотбор", href: "/auto-apply", icon: Rocket },
-      { id: "apply-filter", label: "Фильтр откликов", href: "/apply-filter", icon: Filter },
-      { id: "presets", label: "Пресеты", href: "/presets", icon: SlidersHorizontal }
+      { id: "settings", label: "Настройки", href: "/settings", icon: Settings }
     ]
   }
 ]

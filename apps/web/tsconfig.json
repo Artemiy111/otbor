@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
-    "types": ["vite/client"],
+    "types": ["vite/client", "bun"],
     "paths": {
       "@/*": ["./src/*"],
       "@otbor/contract": ["../../packages/contract/src/index.ts"]

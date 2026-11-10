@@ -165,11 +165,11 @@ const refresh = () => {
   <section>
     <PageHeader
       title="Вакансии"
-      description="Корпус вакансий: сортировка по любому полю. Новые вакансии появляются через расписания на странице «Обход»."
+      description="Корпус вакансий: сортировка по любому полю. Новые вакансии появляются через поиск на странице «Поиск вакансий»."
     >
       <template #actions>
         <Button variant="outline" as-child>
-          <a href="/schedules">Обход</a>
+          <a href="/search">Поиск вакансий</a>
         </Button>
         <RefreshButton :loading="isLoading" @refresh="refresh" />
       </template>
@@ -276,7 +276,7 @@ const refresh = () => {
     <EmptyState
       v-else-if="vacancies.length === 0"
       title="Вакансий не найдено"
-      description="Измените запрос или включите архивные. Если корпус пуст, создайте расписание поиска на странице «Обход» и запустите его."
+      description="Измените запрос или включите архивные. Если корпус пуст, создайте поиск на странице «Поиск вакансий» и запустите его."
     />
     <div v-else class="divide-y divide-border border-y border-border">
       <RowFeed

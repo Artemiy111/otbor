@@ -12,6 +12,7 @@ import {
 } from "@/entities/apply-filter"
 import { scheduleKeys } from "@/entities/schedule"
 import { useHarnessCatalog } from "@/features/harness-catalog"
+import { autoModeTone } from "@/entities/auto-apply"
 import { RUN_COUNT_LABELS, useAutoApplyRun } from "@/features/auto-apply-run"
 import { FieldPicker, RuleRow, buildRule, isComplete, newRule, toEditableRule } from "@/features/rule-builder"
 import type { EditableRule } from "@/features/rule-builder"
@@ -211,7 +212,7 @@ const save = async () => {
 
 const saveError = computed(() => (saveMutation.error.value === null ? null : describeError(saveMutation.error.value)))
 const busy = computed(() => saveMutation.isLoading.value)
-const modeBadge = (value: AutoMode) => (value === "off" ? "secondary" : value === "drafts" ? "outline" : "destructive")
+const modeBadge = (value: AutoMode) => autoModeTone(value)
 </script>
 
 <template>
