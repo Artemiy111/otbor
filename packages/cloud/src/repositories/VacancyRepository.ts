@@ -2,6 +2,7 @@ import { HhVacancySignals as HhVacancySignalsSchema } from "@otbor/contract"
 import { ANALYSIS_PROMPT_VERSION } from "@otbor/domain"
 import type {
   BlacklistScope,
+  HhAccountId,
   HhVacancySignals,
   EmployerDraft,
   HydrationTarget,
@@ -15,6 +16,7 @@ import { Effect, Schema } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
 import { employer, vacancy, vacancyResponseSample, vacancySkill, vacancySnapshot } from "../db/tables.ts"
 import * as BlacklistRepository from "./BlacklistRepository.ts"
+import { livePriorityExpr } from "./DecisionRepository.ts"
 import * as HydrationAttemptRepository from "./HydrationAttemptRepository.ts"
 
 export interface VacancyRow {
@@ -54,6 +56,17 @@ export interface VacancyRow {
   readonly hasTest?: boolean | null
   readonly testRequired?: boolean | null
   readonly responded?: ReadonlyArray<{ readonly accountId: string; readonly resumeIds: ReadonlyArray<string | null> }> | null
+  /** Колонки решения и отклика области запроса: есть только в `list`, там null значит "нет". */
+  readonly decVerdict?: string | null
+  readonly decFit?: number | null
+  readonly decPriority?: number | string | null
+  readonly decResumeId?: string | null
+  readonly decReason?: { readonly code: string; readonly detail?: string | null } | null
+  readonly appId?: string | null
+  readonly appState?: string | null
+  readonly appBlockedReason?: string | null
+  readonly appHhStatus?: string | null
+  readonly appAutoRun?: string | null
 }
 
 const toSnippet = (text: string | null): string | null => {
@@ -96,7 +109,38 @@ export const toSummary = (row: VacancyRow): VacancySummary => {
     hasTest: row.hasTest ?? null,
     testRequired: row.testRequired ?? null,
     snippet: toSnippet(row.descriptionText),
-    responded: [...(row.responded ?? [])]
+    responded: [...(row.responded ?? [])],
+    // Решение и отклик есть только у строк списка; у остальных ключей нет совсем.
+    ...("decVerdict" in row
+      ? {
+          decision:
+            row.decVerdict == null
+              ? null
+              : {
+                  verdict: row.decVerdict as "apply" | "draft" | "skip",
+                  fit: Number(row.decFit ?? 0),
+                  priority: Number(row.decPriority ?? 0),
+                  topReason:
+                    row.decReason == null
+                      ? null
+                      : {
+                          code: row.decReason.code as never,
+                          ...(row.decReason.detail == null ? {} : { detail: row.decReason.detail })
+                        },
+                  resumeId: (row.decResumeId ?? null) as never
+                },
+          application:
+            row.appId == null
+              ? null
+              : {
+                  id: row.appId as never,
+                  state: row.appState as never,
+                  blockedReason: (row.appBlockedReason ?? null) as never,
+                  hhStatus: row.appHhStatus ?? null,
+                  autoRun: (row.appAutoRun ?? null) as never
+                }
+        }
+      : {})
   }
 }
 
@@ -595,6 +639,13 @@ export interface VacancyFilter {
    */
   readonly includeBlacklisted?: boolean
   readonly hhAccountId?: string
+  /** Область решений: резюме внутри аккаунта; без него берётся свежее решение аккаунта. */
+  readonly resumeId?: string
+  readonly verdict?: "apply" | "draft" | "skip" | "none"
+  /** `yes`: у аккаунта области есть действующий отклик; `no`: нет. */
+  readonly applied?: "yes" | "no"
+  /** ISO-время: `vacancy.created_at >= seenSince`. Непарсящееся значение игнорируется. */
+  readonly seenSince?: string
   /** Set by the service; RLS already scopes `hidden_target` to this user. */
   readonly userId?: string
   /**
@@ -606,6 +657,27 @@ export interface VacancyFilter {
 
 /** `%term%` with LIKE wildcards in the term escaped, for `ilike ... escape '\\'`. */
 const likePattern = (term: string): string => `%${term.replace(/[\\%_]/g, (char) => `\\${char}`)}%`
+
+/** Отклик считается действующим в этих состояниях (так же, как поле `responded`). */
+const ACTIVE_RESPONSE_STATES = sql`('submitted', 'submitting', 'queued', 'preparing')`
+
+/**
+ * Область решений и откликов списка: явный `hhAccountId`, иначе основной аккаунт
+ * пользователя (`is_default`, затем самый ранний). Нет аккаунтов - `null`.
+ */
+const resolveScopeAccount = (tx: Executor, filter: VacancyFilter): RepoEffect<string | null> =>
+  filter.hhAccountId !== undefined
+    ? Effect.succeed(filter.hhAccountId)
+    : filter.userId === undefined
+      ? Effect.succeed(null)
+      : tx
+          .execute(sql`
+            select id from hh_account
+            where user_id = ${filter.userId}
+            order by is_default desc, created_at asc
+            limit 1
+          `)
+          .pipe(Effect.map((result) => (result.rows[0] as { id?: string } | undefined)?.id ?? null))
 
 export const list = (tx: Executor, filter: VacancyFilter = {}) => {
   const limit = Math.min(Math.max(filter.limit ?? 50, 1), 200)
@@ -627,7 +699,7 @@ export const list = (tx: Executor, filter: VacancyFilter = {}) => {
           select 1 from application ap
           where ap.vacancy_id = vacancy.id
             and ap.hh_account_id = ${filter.respondedAccountId}
-            and ap.state in ('submitted', 'submitting', 'queued', 'preparing')
+            and ap.state in ${ACTIVE_RESPONSE_STATES}
         )`
 
   const searchTerm = filter.search?.trim() ?? ""
@@ -661,7 +733,10 @@ export const list = (tx: Executor, filter: VacancyFilter = {}) => {
     archived: sql`vacancy.archived`,
     blacklisted: BlacklistRepository.matchExistsSql(blacklistInput),
     responses: sql`vacancy.responses_total`,
-    analysed: analysedExists
+    analysed: analysedExists,
+    // Решение области: без решения значение null и строка уходит в конец (`nulls last`).
+    fit: sql`dec.fit`,
+    priority: sql`dec.live_priority`
   }
   const orderBy = filter.sort === undefined
     ? sql`vacancy.published_at desc nulls last, vacancy.created_at desc, vacancy.id`
@@ -673,12 +748,83 @@ export const list = (tx: Executor, filter: VacancyFilter = {}) => {
       ? sql`true`
       : sql`not ${BlacklistRepository.matchExistsSql(blacklistInput)}`
 
+  const seenSince = filter.seenSince === undefined ? null : new Date(filter.seenSince)
+  const seenSinceValid = seenSince !== null && !Number.isNaN(seenSince.getTime())
+
+  const verdictClause =
+    filter.verdict === undefined
+      ? sql`true`
+      : filter.verdict === "none"
+        ? sql`dec.verdict is null`
+        : sql`dec.verdict = ${filter.verdict}`
+  const appliedClause =
+    filter.applied === undefined
+      ? sql`true`
+      : filter.applied === "yes"
+        ? sql`app.state in ${ACTIVE_RESPONSE_STATES}`
+        : sql`(app.state is null or app.state not in ${ACTIVE_RESPONSE_STATES})`
+  const seenClause = seenSinceValid ? sql`vacancy.created_at >= ${seenSince!.toISOString()}::timestamptz` : sql`true`
+
   const selection = {
     ...rowSelection,
-    blacklistLayers: BlacklistRepository.layersSql(blacklistInput)
+    blacklistLayers: BlacklistRepository.layersSql(blacklistInput),
+    decVerdict: sql`dec.verdict`,
+    decFit: sql`dec.fit`,
+    decPriority: sql`dec.live_priority`,
+    decResumeId: sql`dec.resume_id::text`,
+    decReason: sql`dec.top_reason`,
+    appId: sql`app.id`,
+    appState: sql`app.state`,
+    appBlockedReason: sql`app.blocked_reason`,
+    appHhStatus: sql`app.hh_status`,
+    appAutoRun: sql`app.auto_run`
   }
 
   return Effect.gen(function*() {
+    const scopeAccountId = yield* resolveScopeAccount(tx, filter)
+    // Без аккаунта или пользователя решений и откликов нет: боковые запросы пусты.
+    const scoped = scopeAccountId !== null && filter.userId !== undefined
+    const resumeDec = filter.resumeId === undefined ? sql`true` : sql`d.resume_id = ${filter.resumeId}`
+    const resumeApp = filter.resumeId === undefined ? sql`true` : sql`ap.resume_id = ${filter.resumeId}`
+
+    // Одно боковое соединение на вакансию: без N+1. Берётся самое свежее решение
+    // области; из откликов - действующий, затем требующий внимания, затем остальные.
+    const joins = scoped
+      ? sql`
+      left join lateral (
+        select d.verdict, d.fit, d.resume_id, ${livePriorityExpr} as live_priority,
+          (select jsonb_build_object('code', t.r ->> 'code', 'detail', t.r ->> 'detail')
+             from jsonb_array_elements(d.reasons) with ordinality as t(r, n)
+            order by (case when t.r ->> 'code' like 'blocked\\_%' then 0 else 1 end), t.n
+            limit 1) as top_reason
+        from decision d
+        where d.user_id = ${filter.userId} and d.vacancy_id = vacancy.id
+          and d.hh_account_id = ${scopeAccountId} and ${resumeDec}
+        order by d.created_at desc, d.id desc
+        limit 1
+      ) dec on true
+      left join lateral (
+        select ap.id, ap.state, ap.blocked_reason, ap.hh_status, ap.auto_run
+        from application ap
+        where ap.user_id = ${filter.userId} and ap.vacancy_id = vacancy.id
+          and ap.hh_account_id = ${scopeAccountId} and ${resumeApp}
+        order by (case when ap.state in ${ACTIVE_RESPONSE_STATES} then 0
+                       when ap.state in ('draft', 'needs_human') then 1 else 2 end),
+                 ap.updated_at desc, ap.id desc
+        limit 1
+      ) app on true`
+      : sql`
+      left join lateral (
+        select null::text as verdict, null::int as fit, null::uuid as resume_id,
+          null::float8 as live_priority, null::jsonb as top_reason where false
+      ) dec on true
+      left join lateral (
+        select null::uuid as id, null::text as state, null::text as blocked_reason,
+          null::text as hh_status, null::text as auto_run where false
+      ) app on true`
+
+    const baseWhere = sql`${archivedClause} and ${analysedClause} and ${respondedClause} and ${searchClause} and ${blacklistClause} and ${extraClause}`
+
     const rows = yield* tx.execute(sql`
       select ${sql.join(
         Object.entries(selection).map(([key, value]) => sql`${value} as ${sql.identifier(key)}`),
@@ -686,7 +832,8 @@ export const list = (tx: Executor, filter: VacancyFilter = {}) => {
       )}
       from vacancy
       left join employer on employer.id = vacancy.employer_id
-      where ${archivedClause} and ${analysedClause} and ${respondedClause} and ${searchClause} and ${blacklistClause} and ${extraClause}
+      ${joins}
+      where ${baseWhere} and ${verdictClause} and ${appliedClause} and ${seenClause}
       order by ${orderBy}
       limit ${limit} offset ${offset}
     `)
@@ -695,12 +842,39 @@ export const list = (tx: Executor, filter: VacancyFilter = {}) => {
       select count(*)::int as count
       from vacancy
       left join employer on employer.id = vacancy.employer_id
-      where ${archivedClause} and ${analysedClause} and ${respondedClause} and ${searchClause} and ${blacklistClause} and ${extraClause}
+      ${joins}
+      where ${baseWhere} and ${verdictClause} and ${appliedClause} and ${seenClause}
     `)
+
+    // Счётчики быстрых фильтров: тот же набор без verdict / applied / seenSince.
+    const counts = yield* tx.execute(sql`
+      select count(*)::int as "all",
+        (count(*) filter (where dec.verdict = 'apply'))::int as apply,
+        (count(*) filter (where app.state in ${ACTIVE_RESPONSE_STATES}))::int as applied,
+        (count(*) filter (where app.state is null or app.state not in ${ACTIVE_RESPONSE_STATES}))::int as not_applied,
+        ${seenSinceValid
+          ? sql`(count(*) filter (where vacancy.created_at >= ${seenSince!.toISOString()}::timestamptz))::int`
+          : sql`null::int`} as fresh
+      from vacancy
+      left join employer on employer.id = vacancy.employer_id
+      ${joins}
+      where ${baseWhere}
+    `)
+    const countRow = counts.rows[0] as
+      | { all?: number; apply?: number; applied?: number; not_applied?: number; fresh?: number | null }
+      | undefined
 
     return {
       items: (rows.rows as unknown as ReadonlyArray<VacancyRow>).map(toSummary),
-      total: Number((total.rows[0] as { count?: number } | undefined)?.count ?? 0)
+      total: Number((total.rows[0] as { count?: number } | undefined)?.count ?? 0),
+      scopeHhAccountId: scopeAccountId as HhAccountId | null,
+      counts: {
+        all: Number(countRow?.all ?? 0),
+        apply: Number(countRow?.apply ?? 0),
+        applied: Number(countRow?.applied ?? 0),
+        notApplied: Number(countRow?.not_applied ?? 0),
+        ...(countRow?.fresh == null ? {} : { fresh: Number(countRow.fresh) })
+      }
     }
   })
 }

@@ -1,6 +1,16 @@
 import { Schema } from "effect"
-import { BlacklistScope, BlacklistSource, BlacklistTarget, Seniority } from "../enums.ts"
 import {
+  ApplicationState,
+  BlacklistScope,
+  BlacklistSource,
+  BlacklistTarget,
+  BlockedReason,
+  DecisionReasonCode,
+  DecisionVerdict,
+  Seniority
+} from "../enums.ts"
+import {
+  ApplicationId,
   BlacklistId,
   EmployerId,
   HhAccountId,
@@ -87,6 +97,30 @@ export const VacancyDraft = Schema.Struct({
 
 export type VacancyDraft = typeof VacancyDraft.Type
 
+/** Текущее решение политики по вакансии для области (аккаунт, резюме) запроса списка. */
+export const VacancyDecisionSummary = Schema.Struct({
+  verdict: DecisionVerdict,
+  fit: Schema.Int,
+  /** Живой приоритет: тот же расчёт, что и в списке решений. */
+  priority: Schema.Number,
+  /** Главная причина: у пропуска первая `blocked_*`, иначе первая по порядку. */
+  topReason: Schema.NullOr(
+    Schema.Struct({ code: DecisionReasonCode, detail: Schema.optional(Schema.String) })
+  ),
+  resumeId: Schema.NullOr(ResumeId)
+})
+export type VacancyDecisionSummary = typeof VacancyDecisionSummary.Type
+
+/** Отклик аккаунта на вакансию в сжатом виде, для строки списка. */
+export const VacancyApplicationSummary = Schema.Struct({
+  id: ApplicationId,
+  state: ApplicationState,
+  blockedReason: Schema.NullOr(BlockedReason),
+  hhStatus: Schema.NullOr(Schema.String),
+  autoRun: Schema.NullOr(Schema.Literals(["drafts", "auto"]))
+})
+export type VacancyApplicationSummary = typeof VacancyApplicationSummary.Type
+
 export const VacancySummary = Schema.Struct({
   id: VacancyId,
   source: Schema.String,
@@ -136,7 +170,11 @@ export const VacancySummary = Schema.Struct({
         resumeIds: Schema.Array(Schema.NullOr(Schema.String))
       })
     )
-  )
+  ),
+  /** Только в `VacanciesList`: решение для области запроса; null, если вакансию ещё не оценивали. */
+  decision: Schema.optional(Schema.NullOr(VacancyDecisionSummary)),
+  /** Только в `VacanciesList`: отклик аккаунта области на эту вакансию; null, если его нет. */
+  application: Schema.optional(Schema.NullOr(VacancyApplicationSummary))
 })
 
 export type VacancySummary = typeof VacancySummary.Type

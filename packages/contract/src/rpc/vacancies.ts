@@ -2,7 +2,7 @@ import { Schema } from "effect"
 import { Rpc } from "effect/rpc"
 import { ApiError } from "../errors.ts"
 import { ApplicationState } from "../enums.ts"
-import { ApplicationId, HhAccountId, VacancyId } from "../ids.ts"
+import { ApplicationId, HhAccountId, ResumeId, VacancyId } from "../ids.ts"
 import { DecisionRecord, PresetFilter, VacancyDetail, VacancySummary } from "../models/index.ts"
 
 export const IngestResult = Schema.Struct({
@@ -30,7 +30,11 @@ export const VacancySortKey = Schema.Literals([
   "archived",
   "blacklisted",
   "responses",
-  "analysed"
+  "analysed",
+  /** Соответствие резюме из текущего решения; вакансии без решения идут в конец. */
+  "fit",
+  /** Живой приоритет текущего решения; вакансии без решения идут в конец. */
+  "priority"
 ])
 export type VacancySortKey = typeof VacancySortKey.Type
 
@@ -58,6 +62,23 @@ export const VacanciesList = Rpc.make("VacanciesList", {
     /** Selects the account whose blacklist layers apply to this page. */
     hhAccountId: Schema.optional(HhAccountId),
     /**
+     * Область решений: резюме внутри аккаунта. Без него берётся самое свежее
+     * решение аккаунта по вакансии.
+     */
+    resumeId: Schema.optional(ResumeId),
+    /**
+     * Фильтр по решению области: `apply` / `draft` / `skip` или `none` (вакансию
+     * ещё не оценивали). Без `hhAccountId` область - основной аккаунт пользователя.
+     */
+    verdict: Schema.optional(Schema.Literals(["apply", "draft", "skip", "none"])),
+    /**
+     * `yes`: у аккаунта области есть действующий отклик (отправлен, отправляется,
+     * в очереди или готовится); `no`: такого отклика нет.
+     */
+    applied: Schema.optional(Schema.Literals(["yes", "no"])),
+    /** ISO-время: только вакансии, впервые увиденные не раньше него (`created_at`). */
+    seenSince: Schema.optional(Schema.String),
+    /**
      * Ad-hoc rules, compiled by the same builder as presets. Ad-hoc
      * rules are ANDed with the list's own `includeArchived` / `includeBlacklisted` toggles.
      */
@@ -65,7 +86,23 @@ export const VacanciesList = Rpc.make("VacanciesList", {
   }),
   success: Schema.Struct({
     items: Schema.Array(VacancySummary),
-    total: Schema.Int
+    total: Schema.Int,
+    /** Аккаунт, для которого посчитаны решения и отклики (явный или основной); null, если аккаунтов нет. */
+    scopeHhAccountId: Schema.optional(Schema.NullOr(HhAccountId)),
+    /**
+     * Счётчики быстрых фильтров по тому же набору, но без `verdict`, `applied`
+     * и `seenSince`, чтобы вкладки не менялись от собственного выбора.
+     */
+    counts: Schema.optional(
+      Schema.Struct({
+        all: Schema.Int,
+        apply: Schema.Int,
+        applied: Schema.Int,
+        notApplied: Schema.Int,
+        /** Только при заданном `seenSince`. */
+        fresh: Schema.optional(Schema.Int)
+      })
+    )
   }),
   error: ApiError
 })

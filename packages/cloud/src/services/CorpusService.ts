@@ -5,6 +5,7 @@ import type {
   HydrationTarget,
   IngestResult,
   KeywordMatchRecord,
+  HhAccountId,
   PresetFilter,
   VacancyDetail,
   VacancyDraft,
@@ -166,7 +167,18 @@ export interface CorpusServiceShape {
   readonly list: (
     filter: Omit<VacancyRepository.VacancyFilter, "extraWhere"> & { readonly filter?: PresetFilter }
   ) => Effect.Effect<
-    { readonly items: ReadonlyArray<VacancySummary>; readonly total: number },
+    {
+      readonly items: ReadonlyArray<VacancySummary>
+      readonly total: number
+      readonly scopeHhAccountId: HhAccountId | null
+      readonly counts: {
+        readonly all: number
+        readonly apply: number
+        readonly applied: number
+        readonly notApplied: number
+        readonly fresh?: number
+      }
+    },
     ApiError
   >
   readonly get: (id: string) => Effect.Effect<VacancyDetail, ApiError>
