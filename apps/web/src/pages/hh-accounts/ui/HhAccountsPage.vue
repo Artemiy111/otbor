@@ -79,6 +79,25 @@ const makeDefault = async (account: HhAccountRecord) => {
   }
 }
 
+/** Аккаунты, для которых сейчас идёт повтор заявок. */
+const retrying = ref<ReadonlySet<string>>(new Set())
+const notice = ref<string | null>(null)
+
+/** Повторяет заявки аккаунта, остановленные капчей или сбоем чтения формы. */
+const retryStopped = async (account: HhAccountRecord) => {
+  actionError.value = null
+  notice.value = null
+  retrying.value = new Set([...retrying.value, account.id])
+  try {
+    const result = await hhAccountApi.retryCaptcha(account.id)
+    notice.value = `${account.label}: повторено ${result.retried}, пропущено ${result.skipped.length}`
+  } catch (error) {
+    actionError.value = describeError(error)
+  } finally {
+    retrying.value = new Set([...retrying.value].filter((id) => id !== account.id))
+  }
+}
+
 const columns: ColumnDef<HhAccountRecord>[] = [
   {
     id: "color",
@@ -171,6 +190,23 @@ const columns: ColumnDef<HhAccountRecord>[] = [
           )
   },
   {
+    id: "retry",
+    enableSorting: false,
+    header: "Заявки",
+    cell: ({ row }) =>
+      h(
+        Button,
+        {
+          variant: "outline",
+          size: "sm",
+          class: "h-7 px-2 text-xs",
+          disabled: retrying.value.has(row.original.id),
+          onClick: () => void retryStopped(row.original)
+        },
+        () => (retrying.value.has(row.original.id) ? "Повторяю…" : "Повторить после капчи")
+      )
+  },
+  {
     accessorKey: "createdAt",
     header: sortableHeader<HhAccountRecord>("Создан"),
     cell: ({ row }) =>
@@ -193,6 +229,11 @@ const refresh = () => void query.refetch()
       <CircleAlert />
       <AlertTitle>Не удалось сохранить аккаунт</AlertTitle>
       <AlertDescription>{{ actionError }}</AlertDescription>
+    </Alert>
+
+    <Alert v-if="notice" class="mb-4">
+      <AlertTitle>Повтор заявок</AlertTitle>
+      <AlertDescription>{{ notice }}</AlertDescription>
     </Alert>
 
     <Alert v-if="query.error.value" variant="destructive" class="mb-4">

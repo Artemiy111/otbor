@@ -710,7 +710,7 @@ export const captchaStoppedIds = (
       select id from application
       where user_id = ${userId}
         and state in ('needs_human', 'failed')
-        and last_error ilike '%captcha%'
+        and (last_error ilike '%captcha%' or blocked_reason in ('captcha', 'form_read_failed'))
         ${hhAccountId === undefined ? sql`` : sql`and hh_account_id = ${hhAccountId}::uuid`}
       order by updated_at
     `)
