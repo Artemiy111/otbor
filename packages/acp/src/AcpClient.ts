@@ -530,7 +530,16 @@ export const makeAcpClient = Effect.fnUntraced(function*(options: AcpOptions) {
         // Do not await prompt before reading updates: the SDK queues
         // `session/update` messages while the prompt request is in flight.
         yield* Effect.forkScoped(
-          tryAcp("session/prompt", () => session.prompt(text)).pipe(
+          tryAcp("session/prompt", () =>
+            // Картинки уходят блоками `image` после текста; без них — прежний текстовый промпт.
+            session.prompt(
+              images.length === 0
+                ? text
+                : [
+                  { type: "text", text },
+                  ...images.map((image) => ({ type: "image" as const, data: image.data, mimeType: image.mimeType }))
+                ]
+            )).pipe(
             Effect.timeoutOrElse({
               duration: options.timeout,
               orElse: () =>
