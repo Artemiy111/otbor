@@ -18,6 +18,7 @@ import {
   Skeleton,
   StatusBadge
 } from "@/shared/ui"
+import { ExecutorStartGuide } from "@/widgets/executor-start"
 import { PageHeader } from "@/widgets/page-header"
 import { StatCard } from "@/widgets/stat-card"
 
@@ -32,7 +33,7 @@ useIntervalFn(() => void query.refetch(), 15_000)
 
 <template>
   <section>
-    <PageHeader title="Здоровье" description="Состояние RPC-сервера облака, базы данных, харнессов и локальной модели анализа.">
+    <PageHeader title="Здоровье" description="Состояние сервера, базы данных, исполнителей и локальной модели анализа.">
       <template #actions>
         <RefreshButton :loading="query.isLoading.value" @refresh="query.refetch()" />
       </template>
@@ -40,12 +41,10 @@ useIntervalFn(() => void query.refetch(), 15_000)
 
     <Alert v-if="query.error.value" variant="destructive" class="mb-4">
       <CircleAlert />
-      <AlertTitle>RPC недоступен</AlertTitle>
+      <AlertTitle>Сервер не отвечает</AlertTitle>
       <AlertDescription>
         <p>{{ describeError(query.error.value) }}</p>
-        <p class="mt-1 text-xs opacity-80">
-          Запустите сервер командой <code>bun run server</code>.
-        </p>
+        <ExecutorStartGuide target="stack" class="mt-3" />
       </AlertDescription>
     </Alert>
 
@@ -66,17 +65,18 @@ useIntervalFn(() => void query.refetch(), 15_000)
 
     <Card v-if="query.data.value" class="mt-4">
       <CardHeader>
-        <CardTitle>Харнессы</CardTitle>
+        <CardTitle>Исполнители</CardTitle>
         <CardDescription>
-          Браузерный harness выполняет задачи на hh.ru: загрузку резюме, формы, отправку. Онлайн, если опрашивал сервер за последние 2 минуты.
+          Исполнитель браузера выполняет задачи на hh.ru: загрузку резюме, чтение форм, отправку. Он считается включённым, если обращался к серверу за последние 2 минуты.
         </CardDescription>
       </CardHeader>
       <CardContent class="space-y-2">
         <Alert v-if="!(query.data.value.harnesses ?? []).some((h) => h.online && h.kinds.includes('browser'))" variant="destructive">
           <CircleAlert />
-          <AlertTitle>Браузерный harness не запущен</AlertTitle>
+          <AlertTitle>Исполнитель браузера не запущен</AlertTitle>
           <AlertDescription>
-            Загрузка резюме, формы откликов и отправка не работают. Запустите <code>otbor harness run</code>.
+            <p>Загрузка резюме, чтение форм откликов и отправка не работают.</p>
+            <ExecutorStartGuide class="mt-3" />
           </AlertDescription>
         </Alert>
         <div
@@ -92,7 +92,7 @@ useIntervalFn(() => void query.refetch(), 15_000)
           </span>
         </div>
         <p v-if="!(query.data.value.harnesses ?? []).length" class="text-sm text-muted-foreground">
-          Ни один harness не зарегистрирован.
+          Ни один исполнитель не зарегистрирован.
         </p>
       </CardContent>
     </Card>

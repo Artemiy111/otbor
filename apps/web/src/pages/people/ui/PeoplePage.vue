@@ -5,20 +5,20 @@ import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
 import type { PeopleRelinkResult, PersonSummary } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert, RefreshCw } from "@lucide/vue"
-import { personApi, personKeys } from "@/entities/person"
+import { unreadByPerson, useConversations } from "@/entities/conversation"
+import { EmployerName, personApi, personKeys } from "@/entities/person"
 import { describeError, formatDate, personPath } from "@/shared/lib"
 import {
   Alert,
   AlertDescription,
   AlertTitle,
-  Button,
+  Badge,
   DataTable,
   Input,
   Label,
   sortableHeader
 } from "@/shared/ui"
-import { PageHeader } from "@/widgets/page-header"
-import EmployerName from "./EmployerName.vue"
+import ConfirmAction from "./ConfirmAction.vue"
 import MergeSuggestions from "./MergeSuggestions.vue"
 
 const search = ref("")
@@ -34,7 +34,17 @@ const query = useQuery({
     })
 })
 
-const people = computed<ReadonlyArray<PersonSummary>>(() => query.data.value?.items ?? [])
+const conversations = useConversations()
+const unread = computed(() => unreadByPerson(conversations.data.value ?? []))
+
+/** Строка таблицы: человек и число его непрочитанных сообщений (считается по списку диалогов). */
+interface PersonRow extends PersonSummary {
+  readonly unread: number
+}
+
+const people = computed<ReadonlyArray<PersonRow>>(() =>
+  (query.data.value?.items ?? []).map((person) => ({ ...person, unread: unread.value.get(person.id) ?? 0 }))
+)
 const total = computed(() => query.data.value?.total ?? people.value.length)
 const errorText = computed(() =>
   query.error.value === null ? null : describeError(query.error.value)
@@ -61,11 +71,11 @@ const relink = async () => {
   }
 }
 
-const columns: ColumnDef<PersonSummary>[] = [
+const columns: ColumnDef<PersonRow>[] = [
   {
     id: "name",
     accessorFn: (row) => row.displayName ?? "",
-    header: sortableHeader<PersonSummary>("Имя"),
+    header: sortableHeader<PersonRow>("Имя"),
     cell: ({ row }) =>
       h(
         "a",
@@ -79,7 +89,7 @@ const columns: ColumnDef<PersonSummary>[] = [
   {
     id: "role",
     accessorFn: (row) => row.role ?? "",
-    header: sortableHeader<PersonSummary>("Роль"),
+    header: sortableHeader<PersonRow>("Роль"),
     cell: ({ row }) =>
       row.original.role === null
         ? h("span", { class: "text-muted-foreground" }, "—")
@@ -92,37 +102,47 @@ const columns: ColumnDef<PersonSummary>[] = [
     cell: ({ row }) => h(EmployerName, { id: row.original.employerId })
   },
   {
-    accessorKey: "contactCount",
-    header: sortableHeader<PersonSummary>("Контакты"),
-    cell: ({ row }) => String(row.original.contactCount)
-  },
-  {
     accessorKey: "conversationCount",
-    header: sortableHeader<PersonSummary>("Диалоги"),
-    cell: ({ row }) => String(row.original.conversationCount)
+    header: sortableHeader<PersonRow>("Диалоги"),
+    cell: ({ row }) => h("span", { class: "tabular-nums" }, String(row.original.conversationCount))
   },
   {
     id: "lastSeenAt",
     accessorFn: (row) => row.lastSeenAt ?? "",
-    header: sortableHeader<PersonSummary>("Был на связи"),
-    cell: ({ row }) => formatDate(row.original.lastSeenAt)
+    header: sortableHeader<PersonRow>("Последний контакт"),
+    cell: ({ row }) => h("span", { class: "whitespace-nowrap tabular-nums text-muted-foreground" }, formatDate(row.original.lastSeenAt))
+  },
+  {
+    accessorKey: "unread",
+    header: sortableHeader<PersonRow>("Непрочитанные"),
+    cell: ({ row }) => {
+      const count = row.original.unread
+      return count > 0
+        ? h(Badge, { variant: "warning" }, () => String(count))
+        : h("span", { class: "text-muted-foreground" }, "—")
+    }
   }
 ]
 </script>
 
 <template>
-  <section>
-    <PageHeader
-      title="Люди"
-      description="Живые собеседники: рекрутеры и нанимающие менеджеры. Человек объединяет контакты и диалоги из разных каналов."
-    >
-      <template #actions>
-        <Button variant="outline" :disabled="relinking" @click="relink">
-          <RefreshCw :class="relinking ? 'animate-spin' : ''" />
-          {{ relinking ? "Пересчитываем…" : "Пересчитать связи" }}
-        </Button>
-      </template>
-    </PageHeader>
+  <div>
+    <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+      <p class="max-w-3xl text-sm text-muted-foreground">
+        Живые собеседники: рекрутеры и нанимающие менеджеры. Один человек объединяет несколько контактов
+        (почта, Telegram, телефон) и диалоги из разных каналов.
+      </p>
+      <ConfirmAction
+        label="Пересчитать связи"
+        confirm-label="Да, пересчитать"
+        hint="Заново свяжет контакты, диалоги и вакансии с людьми и предложит дубликаты. Ничего не удаляет и не объединяет само."
+        :busy="relinking"
+        @confirm="relink"
+      >
+        <RefreshCw :class="relinking ? 'animate-spin' : ''" />
+        {{ relinking ? "Пересчитываем…" : "Пересчитать связи" }}
+      </ConfirmAction>
+    </div>
 
     <Alert v-if="errorText" variant="destructive" class="mb-4">
       <CircleAlert />
@@ -156,14 +176,15 @@ const columns: ColumnDef<PersonSummary>[] = [
       :data="people"
       :is-loading="query.isPending.value"
       :loading-row-count="6"
+      :initial-sorting="[{ id: 'unread', desc: true }]"
       empty-title="Людей нет"
-      empty-description="Люди появляются после синхронизации почты или Telegram. Нажмите «Пересчитать связи», если контакты уже есть."
+      empty-description="Люди появляются после синхронизации почты или Telegram. Если контакты уже есть, нажмите «Пересчитать связи»."
     >
       <template #toolbar>
-        <span class="pb-2 text-xs text-muted-foreground">
+        <span class="pb-2 text-xs tabular-nums text-muted-foreground">
           Показано {{ people.length }} из {{ total }}
         </span>
       </template>
     </DataTable>
-  </section>
+  </div>
 </template>

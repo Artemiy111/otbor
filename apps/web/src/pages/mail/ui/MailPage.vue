@@ -3,7 +3,7 @@ import { computed, h, ref } from "vue"
 import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
 import type { MailAccountRecord, SyncResult } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
-import { CircleAlert, Mail } from "@lucide/vue"
+import { CircleAlert } from "@lucide/vue"
 import {
   mailAccountApi,
   mailAccountKeys,
@@ -11,12 +11,11 @@ import {
   type MailAccountUpsertInput
 } from "@/entities/mail-account"
 import { RefreshButton } from "@/features/refresh-button"
-import { describeError, formatDate } from "@/shared/lib"
+import { describeError, formatDate, toneClasses } from "@/shared/lib"
 import {
   Alert,
   AlertDescription,
   AlertTitle,
-  Badge,
   Button,
   Card,
   CardContent,
@@ -24,11 +23,11 @@ import {
   CardHeader,
   CardTitle,
   DataTable,
-  EmptyState,
   Input,
   Label,
   StatusBadge,
-  sortableHeader
+  sortableHeader,
+  useToast
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
 
@@ -74,9 +73,7 @@ const backfillDays = ref("30")
 const enabled = ref(true)
 
 const formError = ref<string | null>(null)
-const actionError = ref<string | null>(null)
-const notice = ref<string | null>(null)
-const noticeTone = ref<"info" | "warning">("info")
+const toast = useToast()
 const testResult = ref<MailAccountTestResult | null>(null)
 const syncResult = ref<SyncResult | null>(null)
 const testingId = ref<string | null>(null)
@@ -119,8 +116,6 @@ const fillForm = (account: MailAccountRecord) => {
 }
 
 const submit = async () => {
-  actionError.value = null
-  notice.value = null
   testResult.value = null
   syncResult.value = null
 
@@ -172,58 +167,53 @@ const submit = async () => {
       enabled: enabled.value
     })
     resetForm()
-    noticeTone.value = "info"
-    notice.value = wasEditing ? "Почтовый аккаунт обновлён." : "Почтовый аккаунт добавлен."
+    toast.success(wasEditing ? "Почтовый аккаунт обновлён" : "Почтовый аккаунт добавлен")
     await queryCache.invalidateQueries({ key: mailAccountKeys.all })
   } catch (error) {
-    actionError.value = describeError(error)
+    toast.error("Не удалось сохранить почтовый аккаунт", { description: describeError(error) })
   }
 }
 
 const testConnection = async (account: MailAccountRecord) => {
-  actionError.value = null
-  notice.value = null
   syncResult.value = null
   testResult.value = null
   testingId.value = account.id
   try {
     testResult.value = await testMutation.mutateAsync(account.id)
   } catch (error) {
-    actionError.value = describeError(error)
+    toast.error("Не удалось проверить подключение", { description: describeError(error) })
   } finally {
     testingId.value = null
   }
 }
 
 const syncNow = async (account: MailAccountRecord) => {
-  actionError.value = null
-  notice.value = null
   testResult.value = null
   syncResult.value = null
   syncingId.value = account.id
   try {
     syncResult.value = await syncMutation.mutateAsync(account.id)
+    if (syncResult.value.errors.length === 0) toast.success("Синхронизация завершена")
+    else toast.warning("Синхронизация завершена с ошибками", { description: "Подробности под заголовком страницы." })
     await queryCache.invalidateQueries({ key: mailAccountKeys.all })
   } catch (error) {
-    actionError.value = describeError(error)
+    toast.error("Не удалось синхронизировать почту", { description: describeError(error) })
   } finally {
     syncingId.value = null
   }
 }
 
 const remove = async (account: MailAccountRecord) => {
-  actionError.value = null
-  notice.value = null
   removingId.value = account.id
   try {
     const result = await removeMutation.mutateAsync(account.id)
     if (editingId.value === account.id) resetForm()
     confirmDeleteId.value = null
-    noticeTone.value = result.deleted ? "info" : "warning"
-    notice.value = result.deleted ? "Почтовый аккаунт удалён." : "Аккаунт не удалён: запись не найдена."
+    if (result.deleted) toast.success("Почтовый аккаунт удалён")
+    else toast.warning("Аккаунт не удалён", { description: "Запись не найдена." })
     await queryCache.invalidateQueries({ key: mailAccountKeys.all })
   } catch (error) {
-    actionError.value = describeError(error)
+    toast.error("Не удалось удалить почтовый аккаунт", { description: describeError(error) })
   } finally {
     removingId.value = null
   }
@@ -235,7 +225,7 @@ const columns: ColumnDef<MailAccountRecord>[] = [
     accessorFn: (row) => `${row.label} ${row.address}`,
     header: sortableHeader<MailAccountRecord>("Аккаунт"),
     cell: ({ row }) =>
-      h("div", { class: "max-w-[300px]" }, [
+      h("div", { class: "max-w-72" }, [
         h("div", { class: "font-medium" }, row.original.label),
         h("div", { class: "break-all text-xs text-muted-foreground" }, row.original.address)
       ])
@@ -249,7 +239,7 @@ const columns: ColumnDef<MailAccountRecord>[] = [
         h("code", { class: "text-xs" }, `${row.original.host}:${row.original.port}`),
         h(
           "div",
-          { class: "text-[11px] text-muted-foreground" },
+          { class: "text-xs text-muted-foreground" },
           row.original.secure ? "TLS" : "без TLS"
         )
       ])
@@ -258,7 +248,7 @@ const columns: ColumnDef<MailAccountRecord>[] = [
     accessorKey: "status",
     header: sortableHeader<MailAccountRecord>("Статус"),
     cell: ({ row }) =>
-      h(StatusBadge, { value: row.original.status, raw: true })
+      h(StatusBadge, { value: row.original.status })
   },
   {
     accessorKey: "lastSyncAt",
@@ -281,7 +271,7 @@ const columns: ColumnDef<MailAccountRecord>[] = [
       }
       return h(
         "span",
-        { class: "block max-w-[240px] truncate text-xs text-red-700 dark:text-red-300", title: error },
+        { class: `block max-w-60 truncate text-xs ${toneClasses("danger").text}`, title: error },
         error
       )
     }
@@ -365,18 +355,6 @@ const columns: ColumnDef<MailAccountRecord>[] = [
       <CircleAlert />
       <AlertTitle>Не удалось загрузить почтовые аккаунты</AlertTitle>
       <AlertDescription>{{ errorText }}</AlertDescription>
-    </Alert>
-
-    <Alert v-if="actionError" variant="destructive" class="mb-4">
-      <CircleAlert />
-      <AlertTitle>Не удалось выполнить действие</AlertTitle>
-      <AlertDescription>{{ actionError }}</AlertDescription>
-    </Alert>
-
-    <Alert v-if="notice" :variant="noticeTone" class="mb-4">
-      <CircleAlert />
-      <AlertTitle>{{ noticeTone === "warning" ? "Обратите внимание" : "Готово" }}</AlertTitle>
-      <AlertDescription>{{ notice }}</AlertDescription>
     </Alert>
 
     <Alert v-if="testResult" :variant="testResult.ok ? 'info' : 'warning'" class="mb-4">
@@ -561,21 +539,10 @@ const columns: ColumnDef<MailAccountRecord>[] = [
       :is-loading="isListPending"
       :loading-row-count="5"
       empty-title="Почтовых аккаунтов нет"
-      empty-description="Добавьте IMAP-аккаунт, чтобы синхронизировать переписку и пополнять контакты. Пароль приложения хранится в локальных секретах, а не в Postgres."
+      empty-description="Заполните форму выше, чтобы синхронизировать переписку и пополнять контакты. Создайте отдельный пароль приложения в настройках почты: основной пароль не нужен."
     >
       <template #toolbar>
         <span class="pb-2 text-xs text-muted-foreground">Аккаунтов: {{ accounts.length }}</span>
-      </template>
-      <template #empty>
-        <EmptyState
-          title="Почтовых аккаунтов нет"
-          description="Добавьте IMAP-аккаунт, чтобы синхронизировать переписку и пополнять контакты. Пароль приложения хранится в локальных секретах, а не в Postgres."
-        >
-          <div class="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-            <Mail class="h-4 w-4" />
-            Создайте отдельный пароль приложения в настройках почты — основной пароль не нужен.
-          </div>
-        </EmptyState>
       </template>
     </DataTable>
   </section>

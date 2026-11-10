@@ -1,95 +1,60 @@
 <script setup lang="ts">
-import { AccountChip, hhAccountName, useDefaultAccount } from "@/entities/hh-account"
 import { apiEndpoint } from "@/shared/api"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  Label,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/shared/ui"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/ui"
 import AnalysisToggleCard from "./AnalysisToggleCard.vue"
 import ApplySettingsCard from "./ApplySettingsCard.vue"
 import CaptchaSolverCard from "./CaptchaSolverCard.vue"
 import LocalModelsCard from "./LocalModelsCard.vue"
 import ProxyCard from "./ProxyCard.vue"
 import { PageHeader } from "@/widgets/page-header"
-
-const { accounts, defaultAccountId } = useDefaultAccount()
 </script>
 
 <template>
   <section>
     <PageHeader
       title="Настройки"
-      description="Параметры кабинета. Аккаунт по умолчанию хранится в браузере; прокси и локальные модели — локально на сервере."
+      description="Параметры кабинета. Прокси и локальные модели хранятся локально на сервере."
     />
 
-    <div class="grid max-w-2xl gap-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Аккаунт по умолчанию</CardTitle>
-          <CardDescription>
-            Его используют страницы, где в фильтре выбрано «По умолчанию»: решения, отклики,
-            вакансии, компании и резюме. На каждой странице можно выбрать другой аккаунт или все сразу.
-          </CardDescription>
-        </CardHeader>
-        <CardContent class="space-y-3">
-          <div class="space-y-1.5">
-            <Label for="settings-default-account" class="text-xs text-muted-foreground">Аккаунт</Label>
-            <Select
-              :model-value="defaultAccountId"
-              @update:model-value="(value) => (defaultAccountId = String(value))"
-            >
-              <SelectTrigger id="settings-default-account" class="w-[280px]">
-                <SelectValue placeholder="Нет аккаунтов" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem v-for="account in accounts" :key="account.id" :value="account.id">
-                  {{ hhAccountName(account) }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div v-if="accounts.length > 0" class="space-y-1.5">
-            <div class="text-xs text-muted-foreground">Все аккаунты</div>
-            <div class="flex flex-wrap gap-x-4 gap-y-1.5">
-              <AccountChip
-                show-name
-                v-for="account in accounts"
-                :key="account.id"
-                :account-id="account.id"
-                :accounts="accounts"
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+    <p class="-mt-3 mb-6 text-sm text-muted-foreground">
+      Основной аккаунт и вход в hh.ru — на странице
+      <a href="/accounts" class="text-primary underline-offset-4 hover:underline">«Аккаунты hh»</a>.
+    </p>
 
-      <AnalysisToggleCard />
-      <ApplySettingsCard />
+    <div class="grid items-start gap-x-6 gap-y-8 xl:grid-cols-2">
+      <div class="min-w-0 space-y-8">
+        <section class="space-y-3" aria-labelledby="settings-send">
+          <h2 id="settings-send" class="text-base font-semibold">Отправка и темп</h2>
+          <ApplySettingsCard />
+        </section>
 
-      <ProxyCard />
+        <section class="space-y-3" aria-labelledby="settings-network">
+          <h2 id="settings-network" class="text-base font-semibold">Сеть и прокси</h2>
+          <ProxyCard />
+        </section>
+      </div>
 
-      <LocalModelsCard />
+      <div class="min-w-0 space-y-8">
+        <section class="space-y-3" aria-labelledby="settings-models">
+          <h2 id="settings-models" class="text-base font-semibold">Модели и капча</h2>
+          <AnalysisToggleCard />
+          <LocalModelsCard />
+          <CaptchaSolverCard />
+        </section>
 
-      <CaptchaSolverCard />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Подключение</CardTitle>
-          <CardDescription>Адрес API, к которому обращается кабинет.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <code class="font-mono text-sm">{{ apiEndpoint }}</code>
-        </CardContent>
-      </Card>
+        <section class="space-y-3" aria-labelledby="settings-server">
+          <h2 id="settings-server" class="text-base font-semibold">Сервер</h2>
+          <Card>
+            <CardHeader>
+              <CardTitle>Подключение</CardTitle>
+              <CardDescription>Адрес API, к которому обращается кабинет.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <code class="font-mono text-sm">{{ apiEndpoint }}</code>
+            </CardContent>
+          </Card>
+        </section>
+      </div>
     </div>
   </section>
 </template>

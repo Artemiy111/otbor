@@ -10,6 +10,9 @@ export interface VacancyListKey {
   readonly hhAccountId: string
   /** JSON of the ad-hoc rule filter, empty when none. */
   readonly filter: string
+  readonly verdict: string
+  readonly applied: string
+  readonly seenSince: string
 }
 
 export const vacancyKeys = {

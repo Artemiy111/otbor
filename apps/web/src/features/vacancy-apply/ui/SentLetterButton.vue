@@ -23,7 +23,7 @@ const open = ref(false)
       title="Показать отправленное письмо"
       @click.prevent.stop="open = true"
     >
-      <Mail class="size-3.5 text-emerald-600" />
+      <Mail class="size-3.5 text-success" />
       <template v-if="label">Письмо</template>
     </Button>
     <Sheet v-model:open="open">

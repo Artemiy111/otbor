@@ -20,6 +20,6 @@ const label = computed(() => {
 <template>
   <a
     :href="personPath(id)"
-    class="text-sm font-medium text-sky-700 underline-offset-4 hover:underline dark:text-sky-300"
+    class="text-sm font-medium text-info underline-offset-4 hover:underline"
   >{{ label }}</a>
 </template>

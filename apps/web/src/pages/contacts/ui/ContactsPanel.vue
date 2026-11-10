@@ -151,7 +151,7 @@ const columns: ColumnDef<ContactRecord>[] = [
           "a",
           {
             href: personPath(personId),
-            class: "text-sm text-sky-700 dark:text-sky-300 underline-offset-4 hover:underline"
+            class: "text-sm text-info underline-offset-4 hover:underline"
           },
           row.original.personName ?? "Открыть"
         ),
@@ -176,13 +176,13 @@ const columns: ColumnDef<ContactRecord>[] = [
                 target: external ? "_blank" : undefined,
                 rel: external ? "noreferrer" : undefined,
                 class:
-                  "break-all text-sm text-sky-700 dark:text-sky-300 underline-offset-4 hover:underline"
+                  "break-all text-sm text-info underline-offset-4 hover:underline"
               },
               contact.value
             ),
         h(
           "div",
-          { class: "text-[11px] text-muted-foreground" },
+          { class: "text-xs text-muted-foreground" },
           contact.isBot
             ? `${contactKindLabel(contact.kind)} · бот`
             : contactKindLabel(contact.kind)
@@ -227,7 +227,7 @@ const columns: ColumnDef<ContactRecord>[] = [
         "a",
         {
           href: vacancyPath(vacancyId),
-          class: "text-sm text-sky-700 dark:text-sky-300 underline-offset-4 hover:underline"
+          class: "text-sm text-info underline-offset-4 hover:underline"
         },
         "Открыть"
       )
@@ -286,6 +286,11 @@ const columns: ColumnDef<ContactRecord>[] = [
 
 <template>
   <div>
+    <p class="mb-4 max-w-3xl text-sm text-muted-foreground">
+      Здесь все способы связи (почта, Telegram, телефон), которые нашлись в вакансиях и переписке, — для проверки.
+      Один человек может стоять за несколькими контактами: их объединяет вкладка «<a href="/people" class="text-info underline-offset-4 hover:underline">Люди</a>».
+    </p>
+
     <Alert v-if="errorText" variant="destructive" class="mb-4">
       <CircleAlert />
       <AlertTitle>Не удалось загрузить контакты</AlertTitle>
@@ -349,13 +354,13 @@ const columns: ColumnDef<ContactRecord>[] = [
       </div>
     </div>
 
-    <div class="mb-4 flex flex-wrap items-center gap-2">
-      <Button :disabled="extracting" @click="extract">
+    <div class="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+      <Button variant="outline" :disabled="extracting" @click="extract">
         <Download />
-        {{ extracting ? "Извлекаем…" : "Извлечь из вакансий" }}
+        {{ extracting ? "Ищем контакты…" : "Найти контакты в вакансиях заново" }}
       </Button>
       <span class="text-xs text-muted-foreground">
-        Повторно разбирает сохранённые вакансии после изменений парсера.
+        Перечитывает тексты уже сохранённых вакансий и добавляет найденные контакты. Ничего не удаляет; нужно после обновления разбора вакансий.
       </span>
     </div>
 

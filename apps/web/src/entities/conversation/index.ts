@@ -1,2 +1,3 @@
 export { conversationApi, type ConversationListInput } from "./api"
-export { conversationKeys } from "./model"
+export { conversationKeys, unreadByPerson } from "./model"
+export { CONVERSATION_LIMIT, useConversations } from "./useConversations"

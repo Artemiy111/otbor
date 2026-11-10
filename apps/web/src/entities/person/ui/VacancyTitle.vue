@@ -16,6 +16,6 @@ const title = computed(() => query.data.value?.vacancy.title ?? null)
 <template>
   <a
     :href="vacancyPath(id)"
-    class="text-sm text-sky-700 underline-offset-4 hover:underline dark:text-sky-300"
+    class="text-sm text-info underline-offset-4 hover:underline"
   >{{ title ?? "Вакансия" }}</a>
 </template>

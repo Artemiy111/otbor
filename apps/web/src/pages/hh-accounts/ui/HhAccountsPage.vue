@@ -1,42 +1,62 @@
 <script setup lang="ts">
-import { computed, h, ref } from "vue"
+import { computed, ref } from "vue"
+import { useIntervalFn } from "@vueuse/core"
 import { useQuery, useQueryCache } from "@pinia/colada"
-import type { HhAccountRecord } from "@otbor/contract"
-import type { ColumnDef } from "@tanstack/vue-table"
+import type { HhAccountRecord, OverviewAccount } from "@otbor/contract"
 import { CircleAlert } from "@lucide/vue"
-import {
-  CaptchaBlockAlert,
-  CaptchaEpisodesCard,
-  hhAccountApi,
-  hhAccountColor,
-  hhAccountKeys,
-  useDefaultAccount
-} from "@/entities/hh-account"
+import { hhAccountApi, hhAccountKeys, CaptchaEpisodesCard, CommandChip, hhAccountName } from "@/entities/hh-account"
+import { overviewApi, overviewKeys, useOverviewWindow } from "@/entities/overview"
+import { resumeApi, resumeKeys } from "@/entities/resume"
 import { RefreshButton } from "@/features/refresh-button"
-import { describeError, formatDate } from "@/shared/lib"
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-  Badge,
-  Button,
-  DataTable,
-  sortableHeader
-} from "@/shared/ui"
+import { describeError } from "@/shared/lib"
+import { Alert, AlertDescription, AlertTitle, EmptyState, Skeleton } from "@/shared/ui"
+import { ConfirmSheet } from "@/shared/ui/confirm-sheet"
 import { PageHeader } from "@/widgets/page-header"
+import AccountCard from "./AccountCard.vue"
 
 const query = useQuery({
   key: () => hhAccountKeys.list(),
   query: () => hhAccountApi.list()
 })
-
 const accounts = computed<ReadonlyArray<HhAccountRecord>>(() => query.data.value ?? [])
-/** Аккаунты, чьи отправки на паузе из-за капчи. */
-const blocked = computed(() => accounts.value.filter((account) => account.submitBlockedAt != null))
+
+/** Тот же ключ, что у главной страницы: срез обзора лежит в кэше один на двоих. */
+const days = useOverviewWindow()
+const overview = useQuery({
+  key: () => overviewKeys.get(days.value),
+  query: () => overviewApi.get(days.value),
+  staleTime: 10_000,
+  placeholderData: (previous) => previous
+})
+const snapshots = computed(
+  () => new Map<string, OverviewAccount>((overview.data.value?.accounts ?? []).map((item) => [item.id, item]))
+)
+
+const resumesQuery = useQuery({ key: () => resumeKeys.list(), query: () => resumeApi.list() })
+const resumeCounts = computed(() => {
+  const counts = new Map<string, { total: number; active: number }>()
+  for (const resume of resumesQuery.data.value ?? []) {
+    const entry = counts.get(resume.hhAccountId) ?? { total: 0, active: 0 }
+    entry.total += 1
+    if (resume.isActive) entry.active += 1
+    counts.set(resume.hhAccountId, entry)
+  }
+  return counts
+})
+
+/** Время для «повтор через N мин» обновляется раз в полминуты. */
+const now = ref(Date.now())
+useIntervalFn(() => (now.value = Date.now()), 30_000)
 
 const queryCache = useQueryCache()
 const actionError = ref<string | null>(null)
-const { defaultAccountId } = useDefaultAccount()
+const notice = ref<string | null>(null)
+
+const reload = () =>
+  Promise.all([
+    queryCache.invalidateQueries({ key: hhAccountKeys.all }),
+    queryCache.invalidateQueries({ key: overviewKeys.all })
+  ])
 
 /**
  * The upsert payload that keeps every stored field. Optional fields left out
@@ -53,181 +73,93 @@ const keep = (account: HhAccountRecord) => ({
   areaName: account.areaName ?? undefined
 })
 
-/** `null` goes back to the automatic colour. Other fields are passed through unchanged. */
-const saveColor = async (account: HhAccountRecord, color: string | null) => {
+const save = async (account: HhAccountRecord, patch: { label?: string; color?: string | null }) => {
   actionError.value = null
   try {
-    await hhAccountApi.upsert({ ...keep(account), color })
-    await queryCache.invalidateQueries({ key: hhAccountKeys.all })
+    await hhAccountApi.upsert({ ...keep(account), ...patch })
+    await reload()
   } catch (error) {
     actionError.value = describeError(error)
   }
 }
 
-/**
- * Makes the account the default one for the CLI, the harness and the header
- * switcher (the switcher keeps its own pick in the browser, so it is updated too).
- */
-const makeDefault = async (account: HhAccountRecord) => {
+/* Основной аккаунт: единственное место, где он меняется. */
+const defaultTarget = ref<HhAccountRecord | null>(null)
+const defaultBusy = ref(false)
+const confirmDefault = async () => {
+  const account = defaultTarget.value
+  if (account === null) return
+  defaultBusy.value = true
   actionError.value = null
   try {
     await hhAccountApi.upsert({ ...keep(account), isDefault: true })
-    defaultAccountId.value = account.id
-    await queryCache.invalidateQueries({ key: hhAccountKeys.all })
+    defaultTarget.value = null
+    await reload()
   } catch (error) {
     actionError.value = describeError(error)
+  } finally {
+    defaultBusy.value = false
   }
 }
 
-/** Аккаунты, для которых сейчас идёт повтор заявок. */
+/** Аккаунты, для которых сейчас идёт повтор заявок или снятие паузы. */
 const retrying = ref<ReadonlySet<string>>(new Set())
-const notice = ref<string | null>(null)
+const resuming = ref<ReadonlySet<string>>(new Set())
+const toggle = (set: ReadonlySet<string>, id: string, on: boolean): ReadonlySet<string> =>
+  on ? new Set([...set, id]) : new Set([...set].filter((item) => item !== id))
 
 /** Повторяет заявки аккаунта, остановленные капчей или сбоем чтения формы. */
 const retryStopped = async (account: HhAccountRecord) => {
   actionError.value = null
   notice.value = null
-  retrying.value = new Set([...retrying.value, account.id])
+  retrying.value = toggle(retrying.value, account.id, true)
   try {
     const result = await hhAccountApi.retryCaptcha(account.id)
-    notice.value = `${account.label}: повторено ${result.retried}, пропущено ${result.skipped.length}`
+    notice.value = `${hhAccountName(account)}: повторено ${result.retried}, пропущено ${result.skipped.length}`
+    await reload()
   } catch (error) {
     actionError.value = describeError(error)
   } finally {
-    retrying.value = new Set([...retrying.value].filter((id) => id !== account.id))
+    retrying.value = toggle(retrying.value, account.id, false)
   }
 }
 
-const columns: ColumnDef<HhAccountRecord>[] = [
-  {
-    id: "color",
-    enableSorting: false,
-    header: "Цвет",
-    cell: ({ row }) =>
-      h("div", { class: "flex items-center gap-2" }, [
-        h("input", {
-          type: "color",
-          value: hhAccountColor(row.original),
-          class: "h-7 w-9 cursor-pointer rounded border border-input bg-transparent p-0.5",
-          "aria-label": `Цвет аккаунта ${row.original.label}`,
-          // `change` fires once the picker closes, so one pick is one request.
-          onChange: (event: Event) =>
-            void saveColor(row.original, (event.target as HTMLInputElement).value)
-        }),
-        row.original.color
-          ? h(
-              Button,
-              {
-                variant: "ghost",
-                size: "sm",
-                class: "h-7 px-2 text-xs",
-                onClick: () => void saveColor(row.original, null)
-              },
-              () => "Сбросить"
-            )
-          : null
-      ])
-  },
-  {
-    accessorKey: "label",
-    header: sortableHeader<HhAccountRecord>("Аккаунт"),
-    cell: ({ row }) => h("span", { class: "font-medium" }, row.original.label)
-  },
-  {
-    id: "name",
-    accessorFn: (row) => [row.firstName, row.lastName].filter(Boolean).join(" "),
-    header: sortableHeader<HhAccountRecord>("Имя"),
-    cell: ({ row }) =>
-      h("span", null, [row.original.firstName, row.original.lastName].filter(Boolean).join(" ") || "—")
-  },
-  {
-    id: "contacts",
-    header: "Контакты",
-    enableSorting: false,
-    cell: ({ row }) => {
-      const contacts = row.original.contacts
-      const lines: Array<[string, string | null | undefined]> = [
-        ["Телефон", contacts?.phone],
-        ["Почта", contacts?.email],
-        ["Telegram", contacts?.telegram]
-      ]
-      return h(
-        "div",
-        { class: "space-y-0.5 text-xs" },
-        lines.map(([label, value]) =>
-          h("div", null, [h("span", { class: "text-muted-foreground" }, `${label}: `), value ?? "—"])
-        )
-      )
-    }
-  },
-  {
-    accessorKey: "areaName",
-    header: sortableHeader<HhAccountRecord>("Регион"),
-    cell: ({ row }) => h("span", null, row.original.areaName ?? "—")
-  },
-  {
-    accessorKey: "sessionProfile",
-    header: sortableHeader<HhAccountRecord>("Профиль сессии"),
-    cell: ({ row }) =>
-      h("span", { class: "font-mono text-xs" }, row.original.sessionProfile ?? "—")
-  },
-  {
-    id: "default",
-    accessorFn: (row) => (row.isDefault ? "да" : "нет"),
-    header: sortableHeader<HhAccountRecord>("По умолчанию"),
-    cell: ({ row }) =>
-      row.original.isDefault
-        ? h(Badge, { variant: "success" }, () => "Да")
-        : h(
-            Button,
-            {
-              variant: "outline",
-              size: "sm",
-              class: "h-7 px-2 text-xs",
-              onClick: () => void makeDefault(row.original)
-            },
-            () => "Сделать основным"
-          )
-  },
-  {
-    id: "retry",
-    enableSorting: false,
-    header: "Заявки",
-    cell: ({ row }) =>
-      h(
-        Button,
-        {
-          variant: "outline",
-          size: "sm",
-          class: "h-7 px-2 text-xs",
-          disabled: retrying.value.has(row.original.id),
-          onClick: () => void retryStopped(row.original)
-        },
-        () => (retrying.value.has(row.original.id) ? "Повторяю…" : "Повторить после капчи")
-      )
-  },
-  {
-    accessorKey: "createdAt",
-    header: sortableHeader<HhAccountRecord>("Создан"),
-    cell: ({ row }) =>
-      h("span", { class: "whitespace-nowrap text-muted-foreground" }, formatDate(row.original.createdAt))
+/** Снимает паузу отправок раньше срока. */
+const resumeNow = async (account: HhAccountRecord) => {
+  actionError.value = null
+  notice.value = null
+  resuming.value = toggle(resuming.value, account.id, true)
+  try {
+    await hhAccountApi.resumeSubmits(account.id)
+    await reload()
+  } catch (error) {
+    actionError.value = describeError(error)
+  } finally {
+    resuming.value = toggle(resuming.value, account.id, false)
   }
-]
+}
 
-const refresh = () => void query.refetch()
+const refresh = () => {
+  void query.refetch()
+  void overview.refetch()
+  void resumesQuery.refetch()
+}
 </script>
 
 <template>
   <section>
-    <PageHeader title="Аккаунты hh.ru" description="Соискательские аккаунты и привязанные сессии.">
+    <PageHeader
+      title="Аккаунты hh.ru"
+      description="Состояние входа, лимит отправок и автоотклики по каждому аккаунту. Основной аккаунт меняется только здесь."
+    >
       <template #actions>
-        <RefreshButton :loading="query.isLoading.value" @refresh="refresh" />
+        <RefreshButton :loading="query.isLoading.value || overview.isLoading.value" @refresh="refresh" />
       </template>
     </PageHeader>
 
     <Alert v-if="actionError" variant="destructive" class="mb-4">
       <CircleAlert />
-      <AlertTitle>Не удалось сохранить аккаунт</AlertTitle>
+      <AlertTitle>Не удалось выполнить действие</AlertTitle>
       <AlertDescription>{{ actionError }}</AlertDescription>
     </Alert>
 
@@ -242,23 +174,48 @@ const refresh = () => void query.refetch()
       <AlertDescription>{{ describeError(query.error.value) }}</AlertDescription>
     </Alert>
 
-    <CaptchaBlockAlert
-      v-for="account in blocked"
-      :key="account.id"
-      class="mb-4"
-      :account-id="account.id"
-      :account-name="account.label"
-    />
+    <div v-if="query.isPending.value" class="grid gap-4 xl:grid-cols-2">
+      <Skeleton v-for="index in 2" :key="index" class="h-[34rem] rounded-xl" />
+    </div>
 
-    <DataTable
-      :columns="columns"
-      :data="accounts"
-      :is-loading="query.isPending.value"
-      :loading-row-count="4"
-      empty-title="Аккаунтов нет"
-      empty-description="Выполните otbor hh login, чтобы создать аккаунт."
-    />
+    <EmptyState
+      v-else-if="accounts.length === 0 && !query.error.value"
+      title="Аккаунтов нет"
+      description="Чтобы добавить аккаунт, выполните в терминале команду и войдите в hh.ru в открывшемся окне."
+    >
+      <CommandChip command="otbor hh login" />
+    </EmptyState>
+
+    <div v-else class="grid items-start gap-4 xl:grid-cols-2">
+      <AccountCard
+        v-for="account in accounts"
+        :key="account.id"
+        :account="account"
+        :snapshot="snapshots.get(account.id)"
+        :snapshot-loading="overview.isPending.value"
+        :resumes-total="resumeCounts.get(account.id)?.total ?? 0"
+        :resumes-active="resumeCounts.get(account.id)?.active ?? 0"
+        :retrying="retrying.has(account.id)"
+        :resuming="resuming.has(account.id)"
+        :now="now"
+        @save-label="(label) => save(account, { label })"
+        @save-color="(color) => save(account, { color })"
+        @make-default="defaultTarget = account"
+        @retry-stopped="retryStopped(account)"
+        @resume-now="resumeNow(account)"
+      />
+    </div>
 
     <CaptchaEpisodesCard class="mt-6" />
+
+    <ConfirmSheet
+      :open="defaultTarget !== null"
+      :title="`Сделать «${defaultTarget ? hhAccountName(defaultTarget) : ''}» основным?`"
+      description="Основной аккаунт используют команды otbor и ИИ-агент, когда аккаунт не указан. Фильтр «Показывать» в шапке от этого не меняется."
+      confirm-label="Сделать основным"
+      :busy="defaultBusy"
+      @update:open="(value) => { if (!value) defaultTarget = null }"
+      @confirm="confirmDefault"
+    />
   </section>
 </template>

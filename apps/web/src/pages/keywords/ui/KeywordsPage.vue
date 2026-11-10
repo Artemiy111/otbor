@@ -30,7 +30,8 @@ import {
   SheetHeader,
   SheetTitle,
   Textarea,
-  sortableHeader
+  sortableHeader,
+  useToast
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
 
@@ -86,6 +87,7 @@ const refresh = () => {
 }
 
 const queryCache = useQueryCache()
+const toast = useToast()
 
 // Matches are stored at ingest, so after a dictionary edit old vacancies must
 // be re-matched. The cloud runs it detached; we poll its progress.
@@ -106,6 +108,7 @@ const pollRematch = () => {
       if (!progress.running) {
         stopPolling()
         await invalidate()
+        toast.success("Пересчёт закончен")
       }
     } catch {
       stopPolling()
@@ -117,8 +120,12 @@ const rematchMutation = useMutation({
   mutation: () => keywordApi.rematch(),
   onSuccess: (result) => {
     rematchProgress.value = result.progress
-    if (result.progress.running) pollRematch()
-  }
+    if (result.progress.running) {
+      pollRematch()
+      toast.info("Пересчёт запущен", { description: "Прогресс виден на кнопке «Пересчёт»." })
+    }
+  },
+  onError: (error) => toast.error("Не удалось запустить пересчёт", { description: describeError(error) })
 })
 
 onBeforeUnmount(stopPolling)
@@ -166,9 +173,14 @@ const saveMutation = useMutation({
       aliases: editingId.value === undefined ? parseAliases(newAliasesDraft.value) : undefined
     }),
   onSuccess: async () => {
+    const created = editingId.value === undefined
     editorOpen.value = false
     await invalidate()
-  }
+    toast.success(created ? "Слово добавлено" : "Слово переименовано", {
+      description: created ? "Чтобы оно нашлось в уже собранных вакансиях, нажмите «Пересчитать»." : undefined
+    })
+  },
+  onError: (error) => toast.error("Не удалось сохранить слово", { description: describeError(error) })
 })
 
 const aliasMutation = useMutation({
@@ -186,7 +198,8 @@ const aliasMutation = useMutation({
     aliasDraft.value = ""
     aliasTypoDraft.value = false
     await invalidate()
-  }
+  },
+  onError: (error) => toast.error("Не удалось изменить алиас", { description: describeError(error) })
 })
 
 const addAlias = () => {
@@ -196,7 +209,11 @@ const addAlias = () => {
 
 const removeMutation = useMutation({
   mutation: (id: string) => keywordApi.remove(id),
-  onSuccess: invalidate
+  onSuccess: async () => {
+    await invalidate()
+    toast.success("Слово удалено")
+  },
+  onError: (error) => toast.error("Не удалось удалить слово", { description: describeError(error) })
 })
 
 const confirmRemove = (keyword: LexiconKeyword) => {
@@ -256,7 +273,7 @@ const columns: ColumnDef<LexiconKeyword>[] = [
     cell: ({ row }) =>
       h("div", null, [
         h("div", { class: "font-medium" }, row.original.term),
-        h("code", { class: "text-[11px] text-muted-foreground" }, row.original.normalizedTerm)
+        h("code", { class: "text-xs text-muted-foreground" }, row.original.normalizedTerm)
       ])
   },
   {
@@ -309,7 +326,7 @@ const columns: ColumnDef<LexiconKeyword>[] = [
             },
             () => [
               stat.alias,
-              stat.typo ? h("span", { class: "ml-1 text-[10px] opacity-60" }, "опечатка") : null,
+              stat.typo ? h("span", { class: "ml-1 text-xs opacity-60" }, "опечатка") : null,
               h(
                 "span",
                 { class: "ml-1 text-muted-foreground" },
@@ -330,7 +347,7 @@ const columns: ColumnDef<LexiconKeyword>[] = [
             },
             () => [
               alias.alias,
-              alias.typo ? h("span", { class: "ml-1 text-[10px] opacity-60" }, "опечатка") : null
+              alias.typo ? h("span", { class: "ml-1 text-xs opacity-60" }, "опечатка") : null
             ]
           )
         )
@@ -476,7 +493,11 @@ const columns: ColumnDef<LexiconKeyword>[] = [
       :is-loading="query.isPending.value"
       :loading-row-count="8"
       :empty-title="appliedQuery === '' ? 'Словарь пуст' : 'Ничего не найдено'"
-      empty-description="Добавьте термины через CLI или измените поисковый запрос."
+      :empty-description="
+        appliedQuery === ''
+          ? 'Нажмите «Добавить» вверху страницы и введите первое слово, например название технологии, и его другие написания.'
+          : 'Измените запрос или нажмите «Сбросить»: пресет и место поиска тоже сужают список.'
+      "
     />
 
     <Sheet v-model:open="editorOpen">
@@ -513,7 +534,7 @@ const columns: ColumnDef<LexiconKeyword>[] = [
                 {{ alias.alias }}
                 <button
                   type="button"
-                  class="text-[10px] underline-offset-2 hover:underline"
+                  class="text-xs underline-offset-2 hover:underline"
                   :class="alias.typo ? '' : 'opacity-50'"
                   :title="alias.typo ? 'Это опечатка. Нажмите, чтобы снять' : 'Отметить как опечатку'"
                   :disabled="aliasMutation.isLoading.value"
@@ -556,7 +577,7 @@ const columns: ColumnDef<LexiconKeyword>[] = [
               </Button>
             </div>
           </div>
-          <p v-if="saveErrorText" class="text-sm text-destructive">{{ saveErrorText }}</p>
+          <p v-if="saveErrorText" class="text-sm text-danger" role="alert">{{ saveErrorText }}</p>
           <Button type="submit" :disabled="termDraft.trim() === '' || saveMutation.isLoading.value">
             {{ editingId ? "Переименовать" : "Создать" }}
           </Button>

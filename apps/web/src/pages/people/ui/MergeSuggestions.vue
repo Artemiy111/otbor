@@ -2,7 +2,7 @@
 import { CircleAlert } from "@lucide/vue"
 import type { PersonMergeSuggestion } from "@otbor/contract"
 import { Alert, AlertDescription, AlertTitle } from "@/shared/ui"
-import PersonName from "./PersonName.vue"
+import { PersonName } from "@/entities/person"
 
 defineProps<{ suggestions: ReadonlyArray<PersonMergeSuggestion> }>()
 </script>

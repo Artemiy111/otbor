@@ -30,7 +30,8 @@ import {
   DataTable,
   StatusBadge,
   filterableHeader,
-  sortableHeader
+  sortableHeader,
+  useToast
 } from "@/shared/ui"
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { decisionColumnHelp } from "../model/help"
@@ -43,7 +44,7 @@ const query = useQuery({
   key: () => decisionKeys.list(verdict.value, scopeKey.value),
   query: () =>
     decisionApi.list({
-      limit: 200,
+      limit: LIMIT,
       verdict: verdict.value === "all" ? undefined : verdict.value,
       hhAccountId: hhAccountId.value
     })
@@ -55,6 +56,9 @@ const resumes = computed(() => resumesQuery.data.value ?? [])
 const decisions = computed<ReadonlyArray<DecisionRecord>>(() => query.data.value ?? [])
 
 const queryCache = useQueryCache()
+const toast = useToast()
+/** Сколько решений просим у сервера: больше страница не показывает. */
+const LIMIT = 200
 const creatingDecisionId = ref<string | null>(null)
 
 const createMutation = useMutation({
@@ -74,13 +78,19 @@ const createMutation = useMutation({
       query.refetch()
     ])
     creatingDecisionId.value = null
-    // Navigate to the new application? Keep simple: store last created id.
-    void application
+    toast.success("Черновик отклика создан", {
+      description: "Проверьте письмо и ответы и отправьте отклик на его странице.",
+      action: { label: "Открыть отклик", href: applicationPath(application.id) }
+    })
   },
-  onError() {
+  onError(error) {
     creatingDecisionId.value = null
+    toast.error("Не удалось создать черновик", { description: describeError(error) })
   }
 })
+
+/** Длинные подробности (список правил фильтра) обрезаются; целиком они в подсказке. */
+const shorten = (text: string | null, max = 110): string => (text === null ? "" : text.length > max ? `${text.slice(0, max).trimEnd()}…` : text)
 
 const columns: ColumnDef<DecisionRecord>[] = [
   {
@@ -107,13 +117,13 @@ const columns: ColumnDef<DecisionRecord>[] = [
                   {
                     key: reason.code + (reason.detail ?? ""),
                     variant: "secondary",
-                    class: "font-normal",
+                    class: "h-auto max-w-full rounded-md text-left font-normal whitespace-normal break-words",
+                    // Сырой код нужен для разбора, но не для чтения: он остаётся в подсказке.
                     title: reason.detail ? `${reason.code}: ${reason.detail}` : reason.code
                   },
                   () => [
                     decisionReasonLabel(reason.code),
-                    reason.detail ? `: ${decisionReasonDetail(reason, row.original.createdAt)}` : null,
-                    h("span", { class: "ml-1 font-mono text-[10px] opacity-60" }, reason.code)
+                    reason.detail ? `: ${shorten(decisionReasonDetail(reason, row.original.createdAt))}` : null
                   ]
                 )
               )
@@ -166,7 +176,7 @@ const columns: ColumnDef<DecisionRecord>[] = [
       const decision = row.original
       const hasAccount = decision.hhAccountId !== null && decision.hhAccountId !== undefined
       if (!hasAccount) {
-        return h("span", { class: "text-xs text-muted-foreground" }, "нет аккаунта")
+        return h("span", { class: "text-xs text-muted-foreground", title: "У решения не выбран hh-аккаунт" }, "нет аккаунта")
       }
       const isCreating = creatingDecisionId.value === decision.id || createMutation.isLoading.value
       return h(
@@ -182,7 +192,7 @@ const columns: ColumnDef<DecisionRecord>[] = [
         },
         () => [
           h(FilePlus2, { class: "mr-1 h-3.5 w-3.5" }),
-          isCreating ? "Создание..." : "Черновик"
+          isCreating ? "Создаём…" : "Черновик"
         ]
       )
     }
@@ -226,10 +236,13 @@ const columns: ColumnDef<DecisionRecord>[] = [
       filter-label="Поиск"
       filter-placeholder="Вакансия, вердикт или роль"
       empty-title="Решений не найдено"
-      empty-description="Оцените вакансию, чтобы сохранить артефакт решения."
+      empty-description="Решения появляются, когда вакансии проходят отбор. Измените вердикт или аккаунт в заголовках таблицы, если ждали других."
     >
       <template #toolbar>
-        <span class="pb-2 text-xs text-muted-foreground">Показано: {{ decisions.length }}</span>
+        <span class="pb-2 text-xs text-muted-foreground tabular-nums">
+          <template v-if="decisions.length >= LIMIT">Показаны последние {{ LIMIT }}; более старые не выводятся.</template>
+          <template v-else>Показано: {{ decisions.length }}</template>
+        </span>
       </template>
     </DataTable>
   </section>

@@ -2,28 +2,24 @@
 import { computed, ref, watch } from "vue"
 import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
 import { RESUME_FAQ_TOPICS, SALARY_CURRENCIES } from "@otbor/contract"
-import type { HhAccountRecord, ResumeEnrichment, ResumeRecord, SalaryCurrency } from "@otbor/contract"
-import { CircleAlert } from "@lucide/vue"
-import { hhAccountApi, hhAccountKeys, useDefaultAccount } from "@/entities/hh-account"
+import type { ResumeRecord } from "@otbor/contract"
+import { CircleAlert, ExternalLink } from "@lucide/vue"
 import { keywordApi, keywordKeys } from "@/entities/keyword"
 import { presetApi, presetKeys } from "@/entities/preset"
 import { resumeApi, resumeKeys } from "@/entities/resume"
-import { AccountResumePicker } from "@/features/vacancy-apply"
+import { FilterTargetPicker, UnsavedChangesSheet, useFilterTarget, useUnsavedGuard } from "@/features/filter-target"
+import type { FilterTarget } from "@/features/filter-target"
 import { RefreshButton } from "@/features/refresh-button"
-import { currencySymbol, describeError, formatDate } from "@/shared/lib"
+import { cn, currencySymbol, describeError, formatDate, toneClasses } from "@/shared/lib"
 import type { HighlightTerm } from "@/shared/ui"
 import {
   Alert,
   AlertDescription,
   AlertTitle,
+  AmountInput,
   Badge,
   Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  AmountInput,
+  EmptyState,
   HighlightedText,
   Input,
   Label,
@@ -32,61 +28,53 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
+  Skeleton,
   Textarea
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
+import {
+  buildSavePayload,
+  draftFromEnrichment,
+  emptyDraft,
+  isSectionDirty,
+  newCustomFaqId,
+  revertSection,
+  SECTIONS,
+  type EnrichmentDraft,
+  type ExperienceItem,
+  type Section
+} from "../model/enrichment-draft"
+import ResumeSection from "./ResumeSection.vue"
 
-const accountsQuery = useQuery({
-  key: () => hhAccountKeys.list(),
-  query: () => hhAccountApi.list()
-})
-const accounts = computed<ReadonlyArray<HhAccountRecord>>(() => accountsQuery.data.value ?? [])
-const { defaultAccountId } = useDefaultAccount()
-const selectedAccountId = ref<string>("")
-watch(defaultAccountId, (id) => {
-  if (id !== undefined) selectedAccountId.value = id
-}, { immediate: true })
-watch(accounts, (list) => {
-  if (selectedAccountId.value === "" && list.length > 0) {
-    const def = list.find((a) => a.isDefault) ?? list[0]
-    if (def) selectedAccountId.value = def.id
-  }
-}, { immediate: true })
+/* Выбор «аккаунт + резюме»: общий с автооткликами и фильтром, лежит в ?account=&resume= */
+const filterTarget = useFilterTarget()
+const { accounts, resumes, resume: selectedResume, accountId: selectedAccountId, resumeId: selectedResumeId } = filterTarget
+const resumesQuery = useQuery({ key: () => resumeKeys.list(), query: () => resumeApi.list() })
 
-const resumesQuery = useQuery({
-  key: () => resumeKeys.list(),
-  query: () => resumeApi.list()
-})
-const allResumes = computed<ReadonlyArray<ResumeRecord>>(() => resumesQuery.data.value ?? [])
-const resumes = computed(() => allResumes.value.filter((r) => r.hhAccountId === selectedAccountId.value))
-const selectedResumeId = ref<string>("")
-watch(resumes, (list) => {
-  if (selectedResumeId.value === "" && list.length > 0) selectedResumeId.value = list[0]!.id
-  if (list.length > 0 && !list.some((r) => r.id === selectedResumeId.value)) selectedResumeId.value = list[0]!.id
-}, { immediate: true })
-
-const selectedResume = computed(() => resumes.value.find((r) => r.id === selectedResumeId.value) ?? null)
+// Страница показывает одно резюме: «все резюме аккаунта» заменяется первым.
+watch(
+  [selectedAccountId, selectedResumeId, resumes],
+  () => {
+    if (selectedAccountId.value === "" || selectedResumeId.value !== null) return
+    const first = resumes.value[0]
+    if (first) filterTarget.select({ accountId: selectedAccountId.value, resumeId: first.id })
+  },
+  { immediate: true }
+)
 
 const enrichmentQuery = useQuery({
-  key: () => resumeKeys.enrichment(selectedResumeId.value),
-  query: () => (selectedResumeId.value ? resumeApi.enrichmentGet(selectedResumeId.value) : Promise.resolve(null as unknown as ResumeEnrichment)),
-  enabled: () => selectedResumeId.value !== ""
+  key: () => resumeKeys.enrichment(selectedResume.value?.id ?? ""),
+  query: () => resumeApi.enrichmentGet(selectedResume.value!.id),
+  enabled: () => selectedResume.value !== null
 })
 
-const showFullText = ref(false)
+/* Подсветка слов словаря в тексте резюме ------------------------------------ */
 
-// The lexicon, counted over the vacancies of the chosen preset ("all" is the whole corpus).
+const showFullText = ref(false)
 const highlightPresetId = ref("all")
 const skillThreshold = ref<string | number>(10)
 const keywordThreshold = ref<string | number>(20)
-const presetsQuery = useQuery({
-  key: () => presetKeys.list("all"),
-  query: () => presetApi.list({})
-})
+const presetsQuery = useQuery({ key: () => presetKeys.list("all"), query: () => presetApi.list({}) })
 const keywordsQuery = useQuery({
   key: () => keywordKeys.list("", highlightPresetId.value, "any"),
   query: () =>
@@ -113,48 +101,103 @@ const highlightTerms = computed<ReadonlyArray<HighlightTerm>>(() =>
           ? "keyword"
           : null
     if (kind === null) return []
-    return [keyword.term, ...keyword.aliases.map((a) => a.alias)].map((text) => ({ text, kind, vacancies: keyword.vacancyCount, skillVacancies: keyword.skillVacancyCount }) as const)
+    return [keyword.term, ...keyword.aliases.map((a) => a.alias)].map(
+      (text) => ({ text, kind, vacancies: keyword.vacancyCount, skillVacancies: keyword.skillVacancyCount }) as const
+    )
   })
 )
 
-const comment = ref("")
-/** "auto": work it out from the resume (the last job has no end date). */
-const employment = ref<"auto" | "employed" | "unemployed">("auto")
+/* Места работы из резюме ---------------------------------------------------- */
 
-interface SalaryDraft { min: string | number; expectation: string | number }
-const emptySalaries = (): Record<SalaryCurrency, SalaryDraft> =>
-  Object.fromEntries(SALARY_CURRENCIES.map((c) => [c, { min: "", expectation: "" }])) as Record<SalaryCurrency, SalaryDraft>
-const salaries = ref<Record<SalaryCurrency, SalaryDraft>>(emptySalaries())
+const str = (value: unknown): string => (typeof value === "string" ? value : "")
+const experienceItems = computed(() =>
+  (selectedResume.value?.experience ?? []).map((raw) => {
+    const e = (raw ?? {}) as Record<string, unknown>
+    const company = str(e.companyName) || str(e.company)
+    const position = str(e.position)
+    const start = str(e.startDate)
+    const end = str(e.endDate)
+    const key = [company, position].filter(Boolean).join(" ").toLowerCase()
+    return {
+      key,
+      // Notes saved before the key was exact matched by substring; keep reading them.
+      matches: (stored: string) => stored !== "" && stored !== key && key.includes(stored.toLowerCase()),
+      title: [position, company].filter(Boolean).join(" — ") || "Место работы",
+      period: start || end ? `${start || "?"} — ${end || "по настоящее время"}` : "",
+      description: str(e.description)
+    }
+  })
+)
+const experienceKeys = computed<ReadonlyArray<ExperienceItem>>(() => experienceItems.value)
 
-const faqAnswers = ref<Record<string, string>>({})
-interface CustomFaq { id: number; question: string; answer: string }
-const customFaq = ref<CustomFaq[]>([])
-let customFaqId = 0
-const addCustomFaq = () => customFaq.value.push({ id: ++customFaqId, question: "", answer: "" })
-const removeCustomFaq = (id: number) => { customFaq.value = customFaq.value.filter((e) => e.id !== id) }
+/* Черновик и разделы --------------------------------------------------------- */
 
-const jobNotes = ref<Record<string, string>>({})
+/** Сохранённое на сервере, в виде черновика; пока карточка не пришла, `null`. */
+const saved = computed<EnrichmentDraft | null>(() => {
+  const data = enrichmentQuery.data.value
+  const resume = selectedResume.value
+  if (!data || !resume || data.resumeId !== resume.id) return null
+  return draftFromEnrichment(data, experienceKeys.value)
+})
+const draft = ref<EnrichmentDraft>(emptyDraft())
 
-const topicKeys: ReadonlyArray<string> = RESUME_FAQ_TOPICS.map((t) => t.key)
-const amountText = (value: number | null | undefined): string => (value === null || value === undefined ? "" : String(value))
+const dirty = computed<Record<Section, boolean>>(() => {
+  const base = saved.value
+  const state = { notes: false, salary: false, faq: false }
+  if (!base) return state
+  for (const section of SECTIONS) state[section] = isSectionDirty(section, draft.value, base, experienceKeys.value)
+  return state
+})
+const anyDirty = computed(() => SECTIONS.some((section) => dirty.value[section]))
 
-watch(enrichmentQuery.data, (data) => {
-  if (!data) return
-  comment.value = data.comment ?? ""
-  employment.value = data.currentlyEmployed === true ? "employed" : data.currentlyEmployed === false ? "unemployed" : "auto"
-  const next = emptySalaries()
-  for (const slot of data.salaries ?? []) {
-    next[slot.currency] = { min: amountText(slot.min), expectation: amountText(slot.expectation) }
+// Форма следует за сервером, пока нет несохранённых правок; смена резюме грузит заново.
+let loadedFor = ""
+watch(
+  [saved, () => selectedResume.value?.id ?? ""],
+  ([value, id]) => {
+    if (!value) return
+    if (loadedFor !== id || !anyDirty.value) {
+      draft.value = structuredClone(value)
+      loadedFor = id
+    }
+  },
+  { immediate: true }
+)
+
+const { open: guardOpen, confirmThen, leave: guardLeave, stay: guardStay } = useUnsavedGuard(anyDirty)
+const onSelect = (next: FilterTarget) => confirmThen(() => filterTarget.select(next))
+
+const queryCache = useQueryCache()
+const savingSection = ref<Section | null>(null)
+const saveErrors = ref<Partial<Record<Section, string>>>({})
+
+const saveSection = async (section: Section) => {
+  const resume = selectedResume.value
+  if (!resume) return
+  savingSection.value = section
+  saveErrors.value = { ...saveErrors.value, [section]: undefined }
+  try {
+    await resumeApi.enrichmentSave(
+      resume.id,
+      buildSavePayload(section, draft.value, enrichmentQuery.data.value, experienceKeys.value)
+    )
+    await queryCache.invalidateQueries({ key: resumeKeys.enrichment(resume.id) })
+  } catch (error) {
+    saveErrors.value = { ...saveErrors.value, [section]: describeError(error) }
+  } finally {
+    savingSection.value = null
   }
-  salaries.value = next
-  faqAnswers.value = Object.fromEntries((data.faq ?? []).filter((e) => topicKeys.includes(e.key)).map((e) => [e.key, e.answer]))
-  customFaq.value = (data.faq ?? [])
-    .filter((e) => !topicKeys.includes(e.key))
-    .map((e) => ({ id: ++customFaqId, question: e.question ?? "", answer: e.answer }))
-  jobNotes.value = Object.fromEntries(
-    (data.experience ?? []).filter((e) => e.key !== "").map((e) => [e.key, e.comment ?? ""])
-  )
-}, { immediate: true })
+}
+const revert = (section: Section) => {
+  if (saved.value) draft.value = revertSection(section, draft.value, saved.value)
+}
+
+/* Поля разделов --------------------------------------------------------------- */
+
+const addCustomFaq = () => draft.value.customFaq.push({ id: newCustomFaqId(), question: "", answer: "" })
+const removeCustomFaq = (id: number) => {
+  draft.value.customFaq = draft.value.customFaq.filter((entry) => entry.id !== id)
+}
 
 /**
  * What the resume already says about a FAQ topic, shown under an empty field.
@@ -188,59 +231,23 @@ const resumeHint = (key: string): string | null => {
 const emptyHint = (key: string, value: string | undefined): string | null =>
   (value ?? "").trim() === "" ? resumeHint(key) : null
 
-/** `type="number"` inputs make v-model hand over a number, not a string. */
-const toAmount = (value: string | number | null | undefined): number | null => {
-  const text = String(value ?? "").replace(/\s+/g, "")
-  const n = Number(text)
-  return text !== "" && Number.isInteger(n) && n > 0 ? n : null
-}
-
-const queryCache = useQueryCache()
-const saveMutation = useMutation({
-  mutation: () => {
-    const saved = enrichmentQuery.data.value?.experience ?? []
-    const shownKeys = new Set(experienceItems.value.map((i) => i.key))
-    const experience = [
-      // Notes for jobs that are no longer in the imported resume stay as they were.
-      ...saved.filter((e) => !shownKeys.has(e.key) && !experienceItems.value.some((i) => i.matches(e.key))),
-      ...experienceItems.value.flatMap((item) => {
-        const old = saved.find((e) => e.key === item.key || item.matches(e.key))
-        const note = (jobNotes.value[item.key] ?? "").trim()
-        if (note === "" && !old?.employmentType && !old?.leaveReason) return []
-        return [{
-          key: item.key,
-          employmentType: old?.employmentType ?? null,
-          comment: note === "" ? null : note,
-          leaveReason: old?.leaveReason ?? null
-        }]
-      })
-    ]
-    return resumeApi.enrichmentSave(selectedResumeId.value, {
-      comment: comment.value,
-      currentlyEmployed: employment.value === "auto" ? null : employment.value === "employed",
-      salaries: SALARY_CURRENCIES.flatMap((currency) => {
-        const draft = salaries.value[currency]
-        const min = toAmount(draft.min)
-        const expectation = toAmount(draft.expectation)
-        return min === null && expectation === null ? [] : [{ currency, min, expectation }]
-      }),
-      faq: [
-        ...RESUME_FAQ_TOPICS.map((t) => ({ key: t.key, answer: faqAnswers.value[t.key] ?? "" })),
-        ...customFaq.value.map((e) => ({ key: `custom:${e.id}`, question: e.question.trim(), answer: e.answer }))
-      ].filter((e) => e.answer.trim() !== ""),
-      experience
-    })
-  },
-  onSuccess() {
-    void queryCache.invalidateQueries({ key: resumeKeys.enrichment(selectedResumeId.value) })
-  }
+/** Что резюме говорит о себе само: город, переезд, командировки, английский. */
+const resumeFacts = computed(() => {
+  const r = selectedResume.value
+  if (!r) return []
+  const rows: Array<readonly [string, string | null]> = [
+    ["Город", r.areaName ?? null],
+    ["Формат работы", r.workFormats.length ? r.workFormats.map((f) => FORMAT_LABELS[f.toLowerCase()] ?? f).join(", ") : null],
+    ["Переезд", r.relocation ? (RELOCATION_LABELS[r.relocation] ?? r.relocation) : null],
+    ["Командировки", r.businessTripReadiness ? (TRIP_LABELS[r.businessTripReadiness] ?? r.businessTripReadiness) : null],
+    ["Английский", r.englishLevel ?? null]
+  ]
+  return rows.flatMap(([term, value]) => (value === null ? [] : [[term, value] as const]))
 })
-
-const save = () => saveMutation.mutate()
 
 const aiSalaries = computed(() => {
   const parts = SALARY_CURRENCIES.flatMap((currency) => {
-    const d = salaries.value[currency]
+    const d = draft.value.salaries[currency]
     const bits = [d.expectation && `ожидает ${d.expectation}`, d.min && `минимум ${d.min}`].filter(Boolean)
     return bits.length ? [`${currencySymbol(currency)}: ${bits.join(", ")}`] : []
   })
@@ -249,34 +256,7 @@ const aiSalaries = computed(() => {
   return r?.salaryAmount ? `в резюме ${r.salaryAmount} ${currencySymbol(r.salaryCurrency ?? "")}` : "не указана"
 })
 
-const str = (value: unknown): string => (typeof value === "string" ? value : "")
-const experienceItems = computed(() =>
-  (selectedResume.value?.experience ?? []).map((raw) => {
-    const e = (raw ?? {}) as Record<string, unknown>
-    const company = str(e.companyName) || str(e.company)
-    const position = str(e.position)
-    const start = str(e.startDate)
-    const end = str(e.endDate)
-    const key = [company, position].filter(Boolean).join(" ").toLowerCase()
-    return {
-      key,
-      // Notes saved before the key was exact matched by substring; keep reading them.
-      matches: (stored: string) => stored !== "" && stored !== key && key.includes(stored.toLowerCase()),
-      title: [position, company].filter(Boolean).join(" — ") || "Место работы",
-      period: start || end ? `${start || "?"} — ${end || "по настоящее время"}` : "",
-      description: str(e.description)
-    }
-  })
-)
-
-// Show a note saved under an older, shorter key in the field of the job it belongs to.
-watch([experienceItems, enrichmentQuery.data], () => {
-  for (const item of experienceItems.value) {
-    if (item.key in jobNotes.value) continue
-    const old = enrichmentQuery.data.value?.experience.find((x) => item.matches(x.key))
-    if (old?.comment) jobNotes.value = { ...jobNotes.value, [item.key]: old.comment }
-  }
-})
+/* Загрузка резюме с hh ---------------------------------------------------------- */
 
 const syncMessage = ref("")
 const syncMutation = useMutation({
@@ -308,17 +288,36 @@ const refresh = () => {
   void resumesQuery.refetch()
   void enrichmentQuery.refetch()
 }
+
+const NAV: ReadonlyArray<{ id: string; label: string; section?: Section }> = [
+  { id: "resume-hh", label: "С hh" },
+  { id: "resume-ai", label: "Что видит ИИ" },
+  { id: "resume-notes", label: "Заметки о работе", section: "notes" },
+  { id: "resume-salary", label: "Зарплатные ожидания", section: "salary" },
+  { id: "resume-faq", label: "Ответы на частые вопросы", section: "faq" }
+]
+const goTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" })
+
+/** Резюме для разметки внутри `v-else-if="selectedResume"`: там оно точно есть. */
+const current = computed(() => selectedResume.value as ResumeRecord)
+
+const loading = computed(() => filterTarget.loading.value || resumesQuery.isPending.value)
 </script>
 
 <template>
   <section>
-    <PageHeader title="Резюме" description="Резюме hh.ru и локальные дополнения для сопроводительных писем.">
+    <PageHeader title="Резюме" description="Резюме с hh.ru и то, что вы добавляете для сопроводительных писем и анкет.">
       <template #actions>
-        <Button v-if="selectedAccountId" variant="outline" as="a" :href="`/apply-filter?account=${selectedAccountId}${selectedResumeId ? `&resume=${selectedResumeId}` : ''}`">
+        <Button v-if="selectedAccountId" variant="outline" as="a" :href="filterTarget.pathWithTarget('/apply-filter')">
           Фильтр откликов
         </Button>
-        <Button variant="outline" :disabled="syncMutation.isLoading.value || !selectedAccountId" @click="syncMutation.mutate()">
-          {{ syncMutation.isLoading.value ? "Загружаю…" : "Загрузить резюме с hh" }}
+        <Button
+          variant="outline"
+          :disabled="syncMutation.isLoading.value || !selectedAccountId"
+          title="Заново читает резюме выбранного аккаунта с hh.ru"
+          @click="syncMutation.mutate()"
+        >
+          {{ syncMutation.isLoading.value ? "Загружаю…" : "Обновить с hh" }}
         </Button>
         <RefreshButton :loading="resumesQuery.isLoading.value" @refresh="refresh" />
       </template>
@@ -332,190 +331,252 @@ const refresh = () => {
       <AlertDescription>{{ describeError(syncMutation.error.value) }}</AlertDescription>
     </Alert>
 
-    <Alert v-if="resumesQuery.error.value" variant="destructive" class="mb-4">
+    <Alert v-if="resumesQuery.error.value || filterTarget.error.value" variant="destructive" class="mb-4">
       <CircleAlert />
       <AlertTitle>Не удалось загрузить резюме</AlertTitle>
-      <AlertDescription>{{ describeError(resumesQuery.error.value) }}</AlertDescription>
+      <AlertDescription>{{ describeError(resumesQuery.error.value ?? filterTarget.error.value) }}</AlertDescription>
     </Alert>
 
-    <AccountResumePicker
-      v-model:account-id="selectedAccountId"
-      v-model:resume-id="selectedResumeId"
-      class="mb-4 max-w-xl"
-      :accounts="accounts"
-      :resumes="allResumes"
-    />
+    <FilterTargetPicker class="mb-6" :state="filterTarget" :disabled="savingSection !== null" @select="onSelect" />
 
-    <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_26rem]">
-      <Card v-if="selectedResume">
-        <CardHeader>
-          <CardTitle>{{ selectedResume.title }}</CardTitle>
-          <CardDescription>
-            {{ [selectedResume.status, selectedResume.isActive ? "активно" : "неактивно", `обновлено ${formatDate(selectedResume.updatedAt)}`].filter(Boolean).join(" · ") }}
-          </CardDescription>
-        </CardHeader>
-        <CardContent class="space-y-4">
-          <div class="space-y-4 rounded-md border p-4">
-            <div class="flex flex-wrap items-end gap-3 rounded-md bg-muted/40 p-3">
-              <div class="space-y-1.5">
-                <Label for="highlight-preset" class="text-xs text-muted-foreground">Выборка вакансий для подсветки</Label>
-                <Select v-model="highlightPresetId">
-                  <SelectTrigger id="highlight-preset" class="w-[240px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Все вакансии</SelectItem>
-                    <SelectItem v-for="preset in presetsQuery.data.value ?? []" :key="preset.id" :value="preset.id">
-                      {{ preset.title }}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div class="space-y-1.5">
-                <Label for="highlight-threshold" class="text-xs text-muted-foreground">Навык красным от, вакансий</Label>
-                <Input id="highlight-threshold" v-model="skillThreshold" type="number" min="1" class="w-[120px]" />
-              </div>
-              <div class="space-y-1.5">
-                <Label for="highlight-keyword-threshold" class="text-xs text-muted-foreground">Слово жёлтым от, вакансий</Label>
-                <Input id="highlight-keyword-threshold" v-model="keywordThreshold" type="number" min="0" class="w-[120px]" />
-              </div>
-            </div>
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <h3 class="text-sm font-semibold">Что видит ИИ</h3>
-              <p class="text-xs text-muted-foreground">
-                В тексте подсвечено:
-                <mark class="rounded-sm bg-yellow-200/80 px-1 text-foreground dark:bg-yellow-400/25">ключевое слово из ≥ {{ keywordLimit }} вакансий</mark>
-                <mark class="ml-1 rounded-sm bg-red-200/70 px-1 text-foreground dark:bg-red-500/30">навык hh из ≥ {{ skillLimit }} вакансий</mark>
+    <div v-if="loading" class="space-y-4">
+      <Skeleton class="h-40 rounded-xl" />
+      <Skeleton class="h-64 rounded-xl" />
+    </div>
+
+    <div v-else-if="selectedResume" class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_13rem]">
+      <div class="min-w-0 space-y-4">
+        <!-- С hh -->
+        <ResumeSection id="resume-hh" title="С hh" description="Так резюме выглядит на hh.ru. Эти данные не редактируются здесь, они загружаются с hh.">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0 space-y-1">
+              <h3 class="text-lg font-semibold leading-tight">{{ current.title }}</h3>
+              <p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                <Badge :variant="current.isActive ? 'success' : 'neutral'">
+                  {{ current.isActive ? "Активно" : "Неактивно" }}
+                </Badge>
+                <span class="tabular-nums">обновлено {{ formatDate(current.updatedAt) }}</span>
               </p>
             </div>
-            <dl class="grid gap-3 text-sm sm:grid-cols-[160px_1fr]">
-              <dt class="text-muted-foreground">Зарплата</dt>
-              <dd>{{ aiSalaries }}</dd>
-              <dt class="text-muted-foreground">Формат работы</dt>
-              <dd>{{ selectedResume.workFormats.length ? selectedResume.workFormats.join(", ") : "не указан" }}</dd>
-              <dt class="text-muted-foreground">Навыки</dt>
-              <dd class="flex flex-wrap gap-1">
-                <Badge v-for="skill in selectedResume.skills" :key="skill" variant="secondary">{{ skill }}</Badge>
-                <span v-if="!selectedResume.skills.length">не указаны</span>
-              </dd>
-              <dt class="text-muted-foreground">О себе</dt>
-              <dd class="whitespace-pre-wrap"><HighlightedText v-if="selectedResume.about" :text="selectedResume.about" :terms="highlightTerms" /><template v-else>нет</template></dd>
-              <dt class="text-muted-foreground">Заметки оператора</dt>
-              <dd class="whitespace-pre-wrap">{{ comment || "нет" }}</dd>
-            </dl>
+            <Button variant="outline" size="sm" as="a" :href="`https://hh.ru/resume/${current.externalId}`" target="_blank" rel="noopener">
+              Открыть на hh.ru <ExternalLink />
+            </Button>
           </div>
+          <dl v-if="resumeFacts.length" class="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+            <div v-for="[term, value] in resumeFacts" :key="term" class="flex gap-2">
+              <dt class="w-28 shrink-0 text-muted-foreground">{{ term }}</dt>
+              <dd class="min-w-0">{{ value }}</dd>
+            </div>
+          </dl>
           <div class="space-y-2">
-            <div class="flex items-center justify-between">
+            <div class="flex items-center justify-between gap-2">
               <h3 class="text-sm font-semibold">Полный текст резюме</h3>
-              <Button variant="outline" size="sm" @click="showFullText = !showFullText">
+              <Button variant="outline" size="sm" :aria-expanded="showFullText" @click="showFullText = !showFullText">
                 {{ showFullText ? "Скрыть" : "Показать" }}
               </Button>
             </div>
-            <pre v-if="showFullText" class="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-4 text-sm"><HighlightedText :text="selectedResume.text" :terms="highlightTerms" /></pre>
+            <pre v-if="showFullText" class="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-4 text-sm"><HighlightedText :text="current.text" :terms="highlightTerms" /></pre>
           </div>
-          <div v-if="experienceItems.length" class="space-y-2">
-            <h3 class="text-sm font-semibold">Опыт работы</h3>
-            <ul class="space-y-3">
-              <li v-for="item in experienceItems" :key="item.key" class="rounded-md border p-3 text-sm">
-                <div class="font-medium">{{ item.title }}</div>
-                <div v-if="item.period" class="text-muted-foreground">{{ item.period }}</div>
-                <p v-if="item.description" class="mt-1 whitespace-pre-wrap"><HighlightedText :text="item.description" :terms="highlightTerms" /></p>
-                <div class="mt-2 space-y-1.5">
-                  <Label>Заметка для агента</Label>
-                  <Textarea v-model="jobNotes[item.key]" rows="2" placeholder="Формат работы, причина ухода, что подчеркнуть" />
-                </div>
-              </li>
-            </ul>
+        </ResumeSection>
+
+        <!-- Что видит ИИ -->
+        <ResumeSection
+          id="resume-ai"
+          title="Что видит ИИ"
+          description="Из чего составляются письма и ответы: данные резюме плюс ваши заметки. Слова из словаря подсвечены, чтобы видеть, что востребовано в вакансиях."
+        >
+          <div class="flex flex-wrap items-end gap-3 rounded-md bg-muted/40 p-3">
+            <div class="space-y-1.5">
+              <Label for="highlight-preset" class="text-xs text-muted-foreground">Вакансии для подсветки</Label>
+              <Select v-model="highlightPresetId">
+                <SelectTrigger id="highlight-preset" class="w-[240px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Все вакансии</SelectItem>
+                  <SelectItem v-for="preset in presetsQuery.data.value ?? []" :key="preset.id" :value="preset.id">
+                    {{ preset.title }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div class="space-y-1.5">
+              <Label for="highlight-threshold" class="text-xs text-muted-foreground">Навык красным от, вакансий</Label>
+              <Input id="highlight-threshold" v-model="skillThreshold" type="number" min="1" class="w-[120px]" />
+            </div>
+            <div class="space-y-1.5">
+              <Label for="highlight-keyword-threshold" class="text-xs text-muted-foreground">Слово жёлтым от, вакансий</Label>
+              <Input id="highlight-keyword-threshold" v-model="keywordThreshold" type="number" min="0" class="w-[120px]" />
+            </div>
           </div>
-        </CardContent>
-      </Card>
-      <aside v-if="selectedResume" class="lg:sticky lg:top-4 lg:self-start">
-        <Card class="flex max-h-[calc(100vh-2rem)] flex-col">
-          <CardHeader class="pb-2">
-            <CardTitle class="text-base">Ответы агента</CardTitle>
-            <CardDescription>Что агент знает о вас сверх резюме.</CardDescription>
-          </CardHeader>
-          <CardContent class="min-h-0 flex-1 overflow-y-auto">
-            <Tabs default-value="main">
-              <TabsList class="w-full">
-                <TabsTrigger value="main">Основное</TabsTrigger>
-                <TabsTrigger value="faq">Вопросы</TabsTrigger>
-                <TabsTrigger value="notes">Заметки</TabsTrigger>
-              </TabsList>
-              <TabsContent value="main" class="space-y-4 pt-2">
-          <div class="space-y-1.5">
-            <h3 class="text-sm font-semibold">Зарплата</h3>
-            <p class="text-xs text-muted-foreground">Пустая валюта — не рассматриваю. Сумма берётся в валюте вакансии, без пересчёта.</p>
-            <div class="grid max-w-md grid-cols-[2rem_1fr_1fr] items-center gap-x-2 gap-y-1 text-sm">
+          <p class="text-xs text-muted-foreground">
+            В тексте подсвечено:
+            <mark class="rounded-sm bg-yellow-200/80 px-1 text-foreground dark:bg-yellow-400/25">слово из ≥ {{ keywordLimit }} вакансий</mark>
+            <mark class="ml-1 rounded-sm bg-red-200/70 px-1 text-foreground dark:bg-red-500/30">навык hh из ≥ {{ skillLimit }} вакансий</mark>
+          </p>
+          <dl class="grid gap-3 text-sm sm:grid-cols-[10rem_1fr]">
+            <dt class="text-muted-foreground">Зарплата</dt>
+            <dd class="tabular-nums">{{ aiSalaries }}</dd>
+            <dt class="text-muted-foreground">Формат работы</dt>
+            <dd>{{ current.workFormats.length ? current.workFormats.join(", ") : "не указан" }}</dd>
+            <dt class="text-muted-foreground">Навыки</dt>
+            <dd class="flex flex-wrap gap-1">
+              <Badge v-for="skill in current.skills" :key="skill" variant="secondary">{{ skill }}</Badge>
+              <span v-if="!current.skills.length">не указаны</span>
+            </dd>
+            <dt class="text-muted-foreground">О себе</dt>
+            <dd class="whitespace-pre-wrap"><HighlightedText v-if="current.about" :text="current.about" :terms="highlightTerms" /><template v-else>нет</template></dd>
+            <dt class="text-muted-foreground">Ваши заметки</dt>
+            <dd class="whitespace-pre-wrap">{{ draft.comment || "нет" }}</dd>
+          </dl>
+          <p v-if="anyDirty" class="text-xs text-muted-foreground">Здесь учтены и ещё не сохранённые правки ниже.</p>
+        </ResumeSection>
+
+        <div v-if="enrichmentQuery.isPending.value" class="space-y-4">
+          <Skeleton class="h-56 rounded-xl" />
+          <Skeleton class="h-40 rounded-xl" />
+        </div>
+        <Alert v-else-if="enrichmentQuery.error.value" variant="destructive">
+          <CircleAlert />
+          <AlertTitle>Не удалось загрузить ваши дополнения к резюме</AlertTitle>
+          <AlertDescription>{{ describeError(enrichmentQuery.error.value) }}</AlertDescription>
+        </Alert>
+        <template v-else>
+          <!-- Заметки о работе -->
+          <ResumeSection
+            id="resume-notes"
+            title="Заметки о работе"
+            description="Подсказки для ИИ: что вы хотите сказать о местах работы. Это не готовый текст письма."
+            editable
+            :dirty="dirty.notes"
+            :saving="savingSection === 'notes'"
+            :error="saveErrors.notes"
+            @save="saveSection('notes')"
+            @revert="revert('notes')"
+          >
+            <div class="space-y-1.5">
+              <Label for="employment">Работаю ли я сейчас</Label>
+              <Select v-model="draft.employment">
+                <SelectTrigger id="employment" class="w-full max-w-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">Определить по резюме</SelectItem>
+                  <SelectItem value="employed">Работаю: «на текущем месте»</SelectItem>
+                  <SelectItem value="unemployed">Не работаю: «на прошлом месте»</SelectItem>
+                </SelectContent>
+              </Select>
+              <p class="text-xs text-muted-foreground">
+                По умолчанию: если у последнего места нет даты окончания, работаю. Это попадает в письмо.
+              </p>
+            </div>
+            <div class="space-y-1.5">
+              <Label for="resume-comment">Общие заметки о резюме</Label>
+              <Textarea id="resume-comment" v-model="draft.comment" rows="3" />
+            </div>
+            <div v-if="experienceItems.length" class="space-y-2">
+              <h3 class="text-sm font-semibold">По местам работы</h3>
+              <ul class="space-y-3">
+                <li v-for="item in experienceItems" :key="item.key" class="rounded-md border p-3 text-sm">
+                  <div class="font-medium">{{ item.title }}</div>
+                  <div v-if="item.period" class="text-xs tabular-nums text-muted-foreground">{{ item.period }}</div>
+                  <p v-if="item.description" class="mt-1 whitespace-pre-wrap text-muted-foreground"><HighlightedText :text="item.description" :terms="highlightTerms" /></p>
+                  <div class="mt-2 space-y-1.5">
+                    <Label :for="`note-${item.key}`">Заметка для ИИ</Label>
+                    <Textarea
+                      :id="`note-${item.key}`"
+                      v-model="draft.jobNotes[item.key]"
+                      rows="2"
+                      placeholder="Формат работы, причина ухода, что подчеркнуть"
+                    />
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </ResumeSection>
+
+          <!-- Зарплатные ожидания -->
+          <ResumeSection
+            id="resume-salary"
+            title="Зарплатные ожидания"
+            description="Пустая валюта — не рассматриваю. Сумма берётся в валюте вакансии, без пересчёта."
+            editable
+            :dirty="dirty.salary"
+            :saving="savingSection === 'salary'"
+            :error="saveErrors.salary"
+            @save="saveSection('salary')"
+            @revert="revert('salary')"
+          >
+            <div class="grid max-w-md grid-cols-[2rem_1fr_1fr] items-center gap-x-3 gap-y-2 text-sm">
               <span />
               <span class="text-xs text-muted-foreground">Минимум</span>
               <span class="text-xs text-muted-foreground">Ожидаемая</span>
               <template v-for="currency in SALARY_CURRENCIES" :key="currency">
                 <Label :for="`min-${currency}`" class="font-medium">{{ currencySymbol(currency) }}</Label>
-                <AmountInput :id="`min-${currency}`" v-model="salaries[currency].min" class="h-8" placeholder="0" />
-                <AmountInput v-model="salaries[currency].expectation" class="h-8" placeholder="0" />
+                <AmountInput :id="`min-${currency}`" v-model="draft.salaries[currency].min" class="h-8" placeholder="0" />
+                <AmountInput v-model="draft.salaries[currency].expectation" class="h-8" placeholder="0" :aria-label="`Ожидаемая зарплата, ${currencySymbol(currency)}`" />
               </template>
             </div>
-          </div>
-          <div class="space-y-1.5">
-            <Label for="employment">Работаю ли я сейчас</Label>
-            <select
-              id="employment"
-              v-model="employment"
-              class="h-9 w-full max-w-sm rounded-md border border-input bg-transparent px-3 text-sm"
-            >
-              <option value="auto">Определить по резюме</option>
-              <option value="employed">Работаю: «на текущем месте»</option>
-              <option value="unemployed">Не работаю: «на прошлом месте»</option>
-            </select>
-            <p class="text-xs text-muted-foreground">
-              По умолчанию: если у последнего места нет даты окончания, работаю. Это попадает в письмо.
-            </p>
-          </div>
-              </TabsContent>
-              <TabsContent value="faq" class="pt-2">
-          <div class="space-y-3">
-            <h3 class="text-sm font-semibold">Частые вопросы в тестах</h3>
-            <p class="text-xs text-muted-foreground">Как отвечать на вопросы, которые встречаются в анкетах. Это подсказка агенту, а не готовый текст.</p>
-            <div v-for="topic in RESUME_FAQ_TOPICS" :key="topic.key" class="space-y-1.5">
-              <Label>{{ topic.question }}</Label>
-              <Input v-if="'short' in topic" v-model="faqAnswers[topic.key]" />
-              <Textarea v-else v-model="faqAnswers[topic.key]" rows="2" />
-              <p v-if="emptyHint(topic.key, faqAnswers[topic.key])" class="text-xs text-muted-foreground">
-                Не заполнено, агент возьмёт из резюме: {{ emptyHint(topic.key, faqAnswers[topic.key]) }}
-              </p>
+          </ResumeSection>
+
+          <!-- Ответы на частые вопросы -->
+          <ResumeSection
+            id="resume-faq"
+            title="Ответы на частые вопросы"
+            description="Как отвечать на вопросы, которые встречаются в анкетах работодателей. Это подсказка ИИ, а не готовый текст."
+            editable
+            :dirty="dirty.faq"
+            :saving="savingSection === 'faq'"
+            :error="saveErrors.faq"
+            @save="saveSection('faq')"
+            @revert="revert('faq')"
+          >
+            <div class="grid gap-4 md:grid-cols-2">
+              <div v-for="topic in RESUME_FAQ_TOPICS" :key="topic.key" class="space-y-1.5">
+                <Label :for="`faq-${topic.key}`">{{ topic.question }}</Label>
+                <Input v-if="'short' in topic" :id="`faq-${topic.key}`" v-model="draft.faqAnswers[topic.key]" />
+                <Textarea v-else :id="`faq-${topic.key}`" v-model="draft.faqAnswers[topic.key]" rows="2" />
+                <p v-if="emptyHint(topic.key, draft.faqAnswers[topic.key])" class="text-xs text-muted-foreground">
+                  Не заполнено, ИИ возьмёт из резюме: {{ emptyHint(topic.key, draft.faqAnswers[topic.key]) }}
+                </p>
+              </div>
             </div>
-            <div v-for="entry in customFaq" :key="entry.id" class="space-y-1.5 rounded-md border p-3">
-              <Input v-model="entry.question" placeholder="Вопрос" />
-              <Textarea v-model="entry.answer" rows="2" placeholder="Как отвечать" />
-              <Button variant="ghost" size="sm" @click="removeCustomFaq(entry.id)">Удалить</Button>
+            <div v-if="draft.customFaq.length" class="space-y-3">
+              <h3 class="text-sm font-semibold">Свои вопросы</h3>
+              <div v-for="entry in draft.customFaq" :key="entry.id" class="space-y-1.5 rounded-md border p-3">
+                <Input v-model="entry.question" placeholder="Вопрос" aria-label="Вопрос" />
+                <Textarea v-model="entry.answer" rows="2" placeholder="Как отвечать" aria-label="Как отвечать" />
+                <Button variant="ghost" size="sm" @click="removeCustomFaq(entry.id)">Удалить</Button>
+              </div>
             </div>
             <Button variant="outline" size="sm" @click="addCustomFaq">Добавить свой вопрос</Button>
-          </div>
-              </TabsContent>
-              <TabsContent value="notes" class="pt-2">
-          <div class="space-y-1.5">
-            <Label>Общие заметки о резюме</Label>
-            <Textarea v-model="comment" rows="4" />
-          </div>
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-          <div class="space-y-2 border-t p-4">
-          <div class="flex gap-2">
-            <Button :disabled="saveMutation.isLoading.value" @click="save">
-              {{ saveMutation.isLoading.value ? "Сохраняю…" : "Сохранить" }}
-            </Button>
-          </div>
-          <Alert v-if="saveMutation.error.value" variant="destructive">
-            <CircleAlert />
-            <AlertTitle>Не удалось сохранить</AlertTitle>
-            <AlertDescription>{{ describeError(saveMutation.error.value) }}</AlertDescription>
-          </Alert>
-          </div>
-        </Card>
-      </aside>
-      <EmptyState v-if="!selectedResume" class="lg:col-span-2" title="Резюме не найдено" description="Создайте резюме в hh.ru и импортируйте." />
+          </ResumeSection>
+        </template>
+      </div>
+
+      <!-- Оглавление: видно, где есть несохранённые правки -->
+      <nav class="sticky top-20 hidden lg:block" aria-label="Разделы страницы">
+        <ul class="space-y-0.5 border-l text-sm">
+          <li v-for="item in NAV" :key="item.id">
+            <button
+              type="button"
+              class="-ml-px flex w-full items-center gap-2 border-l border-transparent py-1 pl-3 text-left text-muted-foreground transition-colors hover:border-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              @click="goTo(item.id)"
+            >
+              <span>{{ item.label }}</span>
+              <span
+                v-if="item.section && dirty[item.section]"
+                :class="cn('size-2 shrink-0 rounded-full', toneClasses('warning').dot)"
+                title="Есть несохранённые правки"
+              />
+            </button>
+          </li>
+        </ul>
+      </nav>
     </div>
+
+    <EmptyState
+      v-else
+      title="У этого аккаунта нет резюме"
+      description="Нажмите «Обновить с hh», чтобы загрузить резюме аккаунта с hh.ru."
+    />
+
+    <UnsavedChangesSheet :open="guardOpen" @leave="guardLeave" @stay="guardStay" />
   </section>
 </template>

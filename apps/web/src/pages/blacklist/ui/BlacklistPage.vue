@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, h, ref, watch } from "vue"
-import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
+import { refDebounced } from "@vueuse/core"
+import { useQuery, useQueryCache } from "@pinia/colada"
 import type { BlacklistRecord, BlacklistScope, BlacklistTarget } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
-import { CircleAlert, Plus, Search, Trash2, Upload } from "@lucide/vue"
+import { CircleAlert, ExternalLink, Plus, Search, Undo2, Upload } from "@lucide/vue"
 import { blacklistApi, blacklistKeys } from "@/entities/blacklist"
-import { AccountChip, hhAccountApi, hhAccountKeys } from "@/entities/hh-account"
+import { AccountChip, AccountOption, CommandChip, hhAccountApi, hhAccountKeys } from "@/entities/hh-account"
+import { resumeApi, resumeKeys } from "@/entities/resume"
 import { RefreshButton } from "@/features/refresh-button"
 import { describeError, formatDate } from "@/shared/lib"
 import {
@@ -15,11 +17,6 @@ import {
   Badge,
   Button,
   DataTable,
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
   Input,
   Label,
   Select,
@@ -27,310 +24,256 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-  Textarea,
-  sortableHeader
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  Textarea
 } from "@/shared/ui"
+import { ConfirmSheet } from "@/shared/ui/confirm-sheet"
 import { PageHeader } from "@/widgets/page-header"
+import {
+  groupExclusions,
+  hhUrl,
+  originLabel,
+  parseHhTarget,
+  removalKind,
+  scopeLabel,
+  targetLabel,
+  type ExclusionRow
+} from "../model/exclusions"
 
 const PAGE_SIZE = 50
+const ALL = "all"
 
-const scopeTab = ref<BlacklistScope>("app")
-const targetTypeFilter = ref<string>("all")
+/* Фильтры: тип, где действует, аккаунт, поиск ------------------------------------ */
+const typeFilter = ref<string>(ALL)
+const scopeFilter = ref<string>(ALL)
+const accountFilter = ref<string>(ALL)
 const draftQuery = ref("")
-const appliedQuery = ref("")
+const appliedQuery = refDebounced(draftQuery, 300)
 const offset = ref(0)
-const accountDraft = ref("")
-const appliedAccount = ref("")
-
-const scopeLabels: Record<BlacklistScope, string> = {
-  app: "Приложение",
-  hh_account: "Аккаунт hh",
-  hh_native: "Скрыто в hh",
-  resume: "Резюме"
+const pageSize = ref(PAGE_SIZE)
+const filtersActive = computed(
+  () => typeFilter.value !== ALL || scopeFilter.value !== ALL || accountFilter.value !== ALL || draftQuery.value.trim() !== ""
+)
+const resetFilters = () => {
+  typeFilter.value = ALL
+  scopeFilter.value = ALL
+  accountFilter.value = ALL
+  draftQuery.value = ""
 }
-
-const targetTypeLabel = (t: BlacklistTarget): string =>
-  t === "vacancy" ? "Вакансия" : "Компания"
-
-const sourceLabel = (s: string): string =>
-  s === "user" ? "Пользователь" : "hh"
-
-watch(scopeTab, () => {
+watch([typeFilter, scopeFilter, accountFilter, appliedQuery], () => {
   offset.value = 0
 })
+
+const SCOPE_FILTER_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: ALL, label: "Везде" },
+  { value: "app", label: "Для всех аккаунтов" },
+  { value: "hh_account", label: "Для одного аккаунта" },
+  { value: "resume", label: "Для одного резюме" },
+  { value: "hh_native", label: "Скрыто на hh.ru" }
+]
 
 const query = useQuery({
   key: () =>
     blacklistKeys.list({
-      scope: scopeTab.value,
-      hhAccountId: appliedAccount.value,
-      targetType: targetTypeFilter.value,
-      query: appliedQuery.value,
+      scope: scopeFilter.value,
+      hhAccountId: accountFilter.value === ALL ? "" : accountFilter.value,
+      targetType: typeFilter.value,
+      query: appliedQuery.value.trim(),
       offset: offset.value
     }),
   query: () =>
     blacklistApi.list({
-      scope: scopeTab.value,
-      hhAccountId: appliedAccount.value === "" ? undefined : appliedAccount.value,
-      targetType: targetTypeFilter.value === "all" ? undefined : (targetTypeFilter.value as BlacklistTarget),
-      query: appliedQuery.value === "" ? undefined : appliedQuery.value,
-      limit: PAGE_SIZE,
+      scope: scopeFilter.value === ALL ? undefined : (scopeFilter.value as BlacklistScope),
+      hhAccountId: accountFilter.value === ALL ? undefined : accountFilter.value,
+      targetType: typeFilter.value === ALL ? undefined : (typeFilter.value as BlacklistTarget),
+      query: appliedQuery.value.trim() === "" ? undefined : appliedQuery.value.trim(),
+      limit: pageSize.value,
       offset: offset.value
-    })
+    }),
+  placeholderData: (previous) => previous
 })
 
-const accountsQuery = useQuery({
-  key: () => hhAccountKeys.list(),
-  query: () => hhAccountApi.list()
-})
+const accountsQuery = useQuery({ key: () => hhAccountKeys.list(), query: () => hhAccountApi.list() })
 const accounts = computed(() => accountsQuery.data.value ?? [])
-
-interface BlacklistRow extends BlacklistRecord {
-  readonly ids: ReadonlyArray<string>
-  readonly accountIds: ReadonlyArray<string>
+const resumesQuery = useQuery({ key: () => resumeKeys.list(), query: () => resumeApi.list() })
+const resumeTitle = (id: string | null | undefined): string => {
+  if (id == null) return "резюме"
+  return resumesQuery.data.value?.find((resume) => resume.id === id)?.title ?? `резюме ${id.slice(0, 8)}`
 }
 
-/** The same target hidden by several accounts is one row with several circles. */
-const records = computed<ReadonlyArray<BlacklistRow>>(() => {
-  const groups = new Map<string, BlacklistRow>()
-  for (const item of query.data.value?.items ?? []) {
-    const key = `${item.scope}:${item.targetType}:${item.externalId}`
-    const prev = groups.get(key)
-    if (prev === undefined) {
-      groups.set(key, {
-        ...item,
-        ids: [item.id],
-        accountIds: item.hhAccountId == null ? [] : [item.hhAccountId]
-      })
-    } else {
-      groups.set(key, {
-        ...prev,
-        ids: [...prev.ids, item.id],
-        accountIds:
-          item.hhAccountId == null || prev.accountIds.includes(item.hhAccountId)
-            ? prev.accountIds
-            : [...prev.accountIds, item.hhAccountId],
-        updatedAt: item.updatedAt > prev.updatedAt ? item.updatedAt : prev.updatedAt
-      })
-    }
-  }
-  return [...groups.values()]
-})
+const rows = computed(() => groupExclusions(query.data.value?.items ?? []))
 const total = computed(() => query.data.value?.total ?? 0)
-
-const search = () => {
-  appliedQuery.value = draftQuery.value.trim()
-  offset.value = 0
-}
-const reset = () => {
-  draftQuery.value = ""
-  appliedQuery.value = ""
-  offset.value = 0
-}
-const applyAccount = () => {
-  appliedAccount.value = accountDraft.value.trim()
-  offset.value = 0
-}
+const errorText = computed(() => (query.error.value === null ? null : describeError(query.error.value)))
 
 const queryCache = useQueryCache()
+const reload = () => queryCache.invalidateQueries({ key: blacklistKeys.all })
 
-/* Add dialog */
-const addOpen = ref(false)
-const addScope = ref<BlacklistScope>("app")
-const addTargetType = ref<BlacklistTarget>("employer")
-const addExternalId = ref("")
-const addName = ref("")
-const addReason = ref("")
-const addAccount = ref("")
-const addError = ref<string | null>(null)
-
-const upsertMutation = useMutation<BlacklistRecord, Parameters<typeof blacklistApi.upsert>[0]>({
-  mutation: (input) => blacklistApi.upsert(input)
+/* Вернуть --------------------------------------------------------------------- */
+const removing = ref<ExclusionRow | null>(null)
+const removeBusy = ref(false)
+const removeError = ref<string | null>(null)
+const confirmRemove = async () => {
+  const row = removing.value
+  if (row === null) return
+  removeBusy.value = true
+  removeError.value = null
+  try {
+    for (const id of row.ids) {
+      if (removalKind(row) === "unreject") await blacklistApi.unreject(id)
+      else await blacklistApi.remove(id)
+    }
+    removing.value = null
+    await reload()
+  } catch (cause) {
+    removeError.value = describeError(cause)
+    removing.value = null
+  } finally {
+    removeBusy.value = false
+  }
+}
+const removeDescription = computed(() => {
+  const row = removing.value
+  if (row === null) return ""
+  return removalKind(row) === "unreject"
+    ? "Вакансия снова станет доступна для откликов; решение по ней пересчитается, а отклики, которые остановила отбраковка, вернутся в черновики."
+    : row.scope === "hh_native"
+      ? "Запись исчезнет только здесь. На hh.ru работодатель останется скрытым, а следующий импорт с hh добавит его снова."
+      : "Система снова сможет откликаться на вакансии этого работодателя."
 })
 
+/* Добавить -------------------------------------------------------------------- */
+const addOpen = ref(false)
+const addScope = ref<"app" | "hh_account" | "hh_native">("app")
+const addType = ref<BlacklistTarget>("employer")
+const addAccount = ref("")
+const addTarget = ref("")
+const addName = ref("")
+const addReason = ref("")
+const addError = ref<string | null>(null)
+const addBusy = ref(false)
+
 const openAdd = () => {
-  addScope.value = scopeTab.value
-  addTargetType.value = "employer"
-  addExternalId.value = ""
+  addScope.value = "app"
+  addType.value = "employer"
+  addAccount.value = accountFilter.value === ALL ? (accounts.value[0]?.id ?? "") : accountFilter.value
+  addTarget.value = ""
   addName.value = ""
   addReason.value = ""
-  addAccount.value = appliedAccount.value
   addError.value = null
   addOpen.value = true
 }
+// Ссылка hh.ru сама определяет тип и номер.
+watch(addTarget, (value) => {
+  const parsed = parseHhTarget(value)
+  if (parsed.type !== null) {
+    addType.value = parsed.type
+    addTarget.value = parsed.externalId
+  }
+})
+const addNeedsAccount = computed(() => addScope.value !== "app")
 
 const submitAdd = async () => {
-  if (addExternalId.value.trim() === "") {
-    addError.value = "Укажите внешний ID."
+  const externalId = addTarget.value.trim()
+  if (externalId === "") {
+    addError.value = "Вставьте ссылку на hh.ru или номер."
     return
   }
-  if ((addScope.value === "hh_account" || addScope.value === "hh_native") && addAccount.value.trim() === "") {
-    addError.value = "Укажите ID аккаунта hh."
+  if (addNeedsAccount.value && addAccount.value === "") {
+    addError.value = "Выберите аккаунт."
     return
   }
+  addBusy.value = true
   addError.value = null
   try {
-    await upsertMutation.mutate({
+    await blacklistApi.upsert({
       scope: addScope.value,
-      targetType: addTargetType.value,
-      externalId: addExternalId.value.trim(),
+      targetType: addType.value,
+      externalId,
       name: addName.value.trim() === "" ? undefined : addName.value.trim(),
       reason: addReason.value.trim() === "" ? undefined : addReason.value.trim(),
-      hhAccountId:
-        addScope.value === "app" ? undefined : addAccount.value.trim()
+      hhAccountId: addNeedsAccount.value ? addAccount.value : undefined
     })
     addOpen.value = false
-    await query.refetch()
+    await reload()
   } catch (cause) {
     addError.value = describeError(cause)
-  }
-}
-
-/* Remove */
-const removingId = ref<string | null>(null)
-const removeMutation = useMutation<{ readonly deleted: boolean }, string>({
-  mutation: (id) => blacklistApi.remove(id)
-})
-const removeRecord = async (row: BlacklistRow) => {
-  removingId.value = row.id
-  try {
-    for (const id of row.ids) await removeMutation.mutateAsync(id)
-    await query.refetch()
-  } catch (cause) {
-    // eslint-disable-next-line no-console
   } finally {
-    removingId.value = null
+    addBusy.value = false
   }
 }
 
-/* Import HH */
+/* Импорт с hh ----------------------------------------------------------------- */
 const importOpen = ref(false)
 const importAccount = ref("")
-const importText = ref("")
-const importError = ref<string | null>(null)
-const importResult = ref<string | null>(null)
-
-const importMutation = useMutation<
-  { readonly imported: number; readonly updated: number; readonly skipped: number },
-  Parameters<typeof blacklistApi.importHh>[0]
->({
-  mutation: (input) => blacklistApi.importHh(input)
-})
-
 const openImport = () => {
-  importAccount.value = appliedAccount.value || accountDraft.value
-  importText.value = ""
-  importError.value = null
-  importResult.value = null
+  importAccount.value = accountFilter.value === ALL ? (accounts.value[0]?.id ?? "") : accountFilter.value
   importOpen.value = true
 }
+const importCommand = computed(
+  () => `otbor blacklist scrape-hh --account ${importAccount.value === "" ? "<id аккаунта>" : importAccount.value}`
+)
 
-const parseImportEntries = (raw: string): Array<{ targetType: BlacklistTarget; externalId: string; name?: string }> => {
-  const parsed = JSON.parse(raw)
-  const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.entries) ? parsed.entries : null
-  if (!Array.isArray(list)) throw new Error("Ожидается массив записей или объект { entries: [...] }.")
-  return list.map((entry: any) => ({
-    targetType: (entry.targetType === "vacancy" ? "vacancy" : "employer") as BlacklistTarget,
-    externalId: String(entry.externalId ?? entry.external_id ?? ""),
-    name: entry.name ? String(entry.name) : undefined
-  })).filter((e) => e.externalId !== "")
+/* Таблица --------------------------------------------------------------------- */
+const whereCell = (row: ExclusionRow) => {
+  const chips = row.accountIds.map((id) =>
+    h(AccountChip, { accountId: id, accounts: accounts.value, showName: row.accountIds.length === 1 })
+  )
+  if (row.scope === "resume") {
+    return h("div", { class: "space-y-1" }, [
+      h("div", null, `Для резюме «${resumeTitle(row.resumeId)}»`),
+      h("div", { class: "flex flex-wrap items-center gap-1" }, chips)
+    ])
+  }
+  return h("div", { class: "space-y-1" }, [
+    h("div", null, scopeLabel(row.scope)),
+    chips.length > 0 ? h("div", { class: "flex flex-wrap items-center gap-1" }, chips) : null
+  ])
 }
 
-const submitImport = async () => {
-  if (importAccount.value.trim() === "") {
-    importError.value = "Укажите ID аккаунта hh."
-    return
-  }
-  let entries
-  try {
-    entries = parseImportEntries(importText.value)
-  } catch (cause) {
-    importError.value = describeError(cause)
-    return
-  }
-  if (entries.length === 0) {
-    importError.value = "Нет записей для импорта."
-    return
-  }
-  importError.value = null
-  importResult.value = null
-  try {
-    const res = await importMutation.mutateAsync({
-      hhAccountId: importAccount.value.trim(),
-      entries
-    })
-    importResult.value = `Импортировано: ${res.imported}, обновлено: ${res.updated}, пропущено: ${res.skipped}.`
-    await query.refetch()
-  } catch (cause) {
-    importError.value = describeError(cause)
-  }
-}
-
-const onFile = async (event: Event) => {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-  importText.value = await file.text()
-}
-
-const columns: ColumnDef<BlacklistRow>[] = [
+const columns: ColumnDef<ExclusionRow>[] = [
   {
-    accessorKey: "name",
-    header: sortableHeader<BlacklistRow>("Название"),
+    id: "name",
+    header: "Название",
     cell: ({ row }) =>
-      h("div", { class: "max-w-[260px]" }, [
-        h("div", { class: "font-medium" }, row.original.name ?? "—"),
-        h("div", { class: "text-xs text-muted-foreground font-mono" }, row.original.externalId)
+      h("div", { class: "max-w-[22rem] space-y-0.5" }, [
+        h("div", { class: "font-medium" }, row.original.name ?? `№ ${row.original.externalId}`),
+        h(
+          "a",
+          {
+            href: hhUrl(row.original.targetType, row.original.externalId),
+            target: "_blank",
+            rel: "noopener",
+            class: "inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground hover:text-foreground hover:underline"
+          },
+          [`hh.ru № ${row.original.externalId}`, h(ExternalLink, { class: "size-3" })]
+        )
       ])
   },
   {
-    id: "targetType",
-    accessorFn: (row) => row.targetType,
-    header: sortableHeader<BlacklistRow>("Тип"),
-    cell: ({ row }) => h(Badge, { variant: "secondary" }, () => targetTypeLabel(row.original.targetType))
-  },
-  {
-    id: "scope",
-    accessorFn: (row) => row.scope,
-    header: sortableHeader<BlacklistRow>("Область"),
-    cell: ({ row }) => h("span", null, scopeLabels[row.original.scope])
-  },
-  {
-    id: "account",
-    accessorFn: (row) => row.accountIds.join(","),
-    header: "Аккаунт hh",
+    id: "type",
+    header: "Что исключено",
     cell: ({ row }) =>
-      row.original.accountIds.length === 0
-        ? h("span", { class: "text-muted-foreground" }, "—")
-        : h(
-            "div",
-            { class: "flex items-center gap-1" },
-            row.original.accountIds.map((id) =>
-              h(AccountChip, { accountId: id, accounts: accounts.value })
-            )
-          )
+      h(Badge, { variant: row.original.targetType === "vacancy" ? "info" : "secondary" }, () => targetLabel(row.original.targetType))
   },
+  { id: "where", header: "Где действует", cell: ({ row }) => whereCell(row.original) },
   {
-    id: "source",
-    accessorFn: (row) => row.source,
-    header: sortableHeader<BlacklistRow>("Источник"),
-    cell: ({ row }) => h("span", { class: "text-xs text-muted-foreground" }, sourceLabel(row.original.source))
+    id: "origin",
+    header: "Кто добавил",
+    cell: ({ row }) => h("span", { class: "text-sm" }, originLabel(row.original))
   },
   {
     id: "reason",
-    accessorFn: (row) => row.reason ?? "",
-    header: sortableHeader<BlacklistRow>("Причина"),
-    cell: ({ row }) => h("span", { class: "text-xs text-muted-foreground" }, row.original.reason ?? "—")
+    header: "Причина",
+    cell: ({ row }) => h("span", { class: "text-sm text-muted-foreground" }, row.original.reason ?? "—")
   },
   {
-    accessorKey: "updatedAt",
-    header: sortableHeader<BlacklistRow>("Обновлён"),
-    cell: ({ row }) =>
-      h("span", { class: "whitespace-nowrap text-muted-foreground text-xs" }, formatDate(row.original.updatedAt))
+    id: "when",
+    header: "Когда",
+    cell: ({ row }) => h("span", { class: "whitespace-nowrap text-sm tabular-nums text-muted-foreground" }, formatDate(row.original.createdAt))
   },
   {
     id: "actions",
@@ -339,163 +282,226 @@ const columns: ColumnDef<BlacklistRow>[] = [
       h(
         Button,
         {
-          variant: "ghost",
+          variant: "outline",
           size: "sm",
-          disabled: removingId.value === row.original.id,
-          onClick: () => void removeRecord(row.original)
+          "aria-label": `Вернуть: ${row.original.name ?? row.original.externalId}`,
+          onClick: () => {
+            removing.value = row.original
+          }
         },
-        () => h(Trash2, { class: "h-4 w-4" })
+        () => [h(Undo2), "Вернуть"]
       )
   }
 ]
 
-const errorText = computed(() =>
-  query.error.value === null ? null : describeError(query.error.value)
-)
+const onPagination = (state: { pageIndex: number; pageSize: number }) => {
+  pageSize.value = state.pageSize
+  offset.value = state.pageIndex * state.pageSize
+}
 </script>
 
 <template>
   <section>
-    <PageHeader title="Чёрный список" description="Мягкий фильтр: записи скрывают вакансии и компании, но не удаляют их из корпуса.">
+    <PageHeader
+      title="Исключения"
+      description="Работодатели и вакансии, на которые система не откликается. Запись не удаляет вакансию из базы, а только скрывает её из откликов. «Вернуть» снимает исключение."
+    >
       <template #actions>
         <RefreshButton :loading="query.isLoading.value" @refresh="query.refetch()" />
         <Button variant="outline" size="sm" @click="openImport">
-          <Upload class="h-4 w-4" />
-          Как импортировать из hh
+          <Upload />
+          Импорт скрытых с hh
         </Button>
         <Button size="sm" @click="openAdd">
-          <Plus class="h-4 w-4" />
+          <Plus />
           Добавить
         </Button>
       </template>
     </PageHeader>
 
-    <Tabs v-model="scopeTab" class="mb-4">
-      <TabsList>
-        <TabsTrigger value="app">Приложение</TabsTrigger>
-        <TabsTrigger value="hh_account">Аккаунт hh</TabsTrigger>
-        <TabsTrigger value="hh_native">Скрыто в hh</TabsTrigger>
-      </TabsList>
-    </Tabs>
-
-    <form class="mb-4 flex flex-wrap items-end gap-3" @submit.prevent="search">
-      <div class="min-w-64 flex-1 space-y-1.5">
-        <Label class="text-xs text-muted-foreground">Поиск по названию / ID</Label>
+    <form class="mb-4 flex flex-wrap items-end gap-3" role="search" @submit.prevent>
+      <div class="min-w-56 flex-1 space-y-1.5">
+        <Label for="exclusion-search" class="text-xs text-muted-foreground">Поиск по названию или номеру</Label>
         <div class="relative">
-          <Search class="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-muted-foreground" />
-          <Input v-model="draftQuery" type="text" class="pl-9" placeholder="Например, Яндекс" />
+          <Search class="pointer-events-none absolute top-2.5 left-3 size-4 text-muted-foreground" />
+          <Input id="exclusion-search" v-model="draftQuery" type="search" class="pl-9" placeholder="Например, Яндекс" />
         </div>
       </div>
-      <div class="space-y-1.5">
-        <Label class="text-xs text-muted-foreground">Тип</Label>
-        <Select v-model="targetTypeFilter">
-          <SelectTrigger class="w-40"><SelectValue /></SelectTrigger>
+      <div class="w-full space-y-1.5 sm:w-auto">
+        <Label for="exclusion-type" class="text-xs text-muted-foreground">Что исключено</Label>
+        <Select v-model="typeFilter">
+          <SelectTrigger id="exclusion-type" class="w-full sm:w-44"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Все</SelectItem>
+            <SelectItem :value="ALL">Всё</SelectItem>
+            <SelectItem value="employer">Работодатели</SelectItem>
             <SelectItem value="vacancy">Вакансии</SelectItem>
-            <SelectItem value="employer">Компании</SelectItem>
           </SelectContent>
         </Select>
       </div>
-      <Button type="submit">Найти</Button>
-      <Button type="button" variant="outline" @click="reset">Сбросить</Button>
-    </form>
-
-    <div v-if="scopeTab !== 'app'" class="mb-4 flex flex-wrap items-end gap-3">
-      <div class="min-w-64 flex-1 space-y-1.5">
-        <Label class="text-xs text-muted-foreground">ID аккаунта hh</Label>
-        <Input v-model="accountDraft" type="text" placeholder="UUID аккаунта" />
+      <div class="w-full space-y-1.5 sm:w-auto">
+        <Label for="exclusion-scope" class="text-xs text-muted-foreground">Где действует</Label>
+        <Select v-model="scopeFilter">
+          <SelectTrigger id="exclusion-scope" class="w-full sm:w-52"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem v-for="option in SCOPE_FILTER_OPTIONS" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </div>
-      <Button type="button" variant="outline" @click="applyAccount">Применить</Button>
-    </div>
+      <div class="w-full space-y-1.5 sm:w-auto">
+        <Label for="exclusion-account" class="text-xs text-muted-foreground">Аккаунт hh</Label>
+        <Select v-model="accountFilter">
+          <SelectTrigger id="exclusion-account" class="w-full sm:w-56"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem :value="ALL">Все аккаунты</SelectItem>
+            <SelectItem v-for="account in accounts" :key="account.id" :value="account.id">
+              <AccountOption :account="account" />
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <Button v-if="filtersActive" type="button" variant="ghost" @click="resetFilters">Сбросить</Button>
+    </form>
 
     <Alert v-if="errorText" variant="destructive" class="mb-4">
       <CircleAlert />
-      <AlertTitle>Не удалось загрузить чёрный список</AlertTitle>
+      <AlertTitle>Не удалось загрузить исключения</AlertTitle>
       <AlertDescription>{{ errorText }}</AlertDescription>
+    </Alert>
+    <Alert v-if="removeError" variant="destructive" class="mb-4">
+      <CircleAlert />
+      <AlertTitle>Не удалось вернуть</AlertTitle>
+      <AlertDescription>{{ removeError }}</AlertDescription>
     </Alert>
 
     <DataTable
       :columns="columns"
-      :data="records"
+      :data="rows"
       :is-loading="query.isPending.value"
       :loading-row-count="6"
-      empty-title="Записей нет"
-      empty-description="Добавьте запись или импортируйте список из hh."
+      :row-numbers="false"
+      server-side
+      :page-size="pageSize"
+      :page-size-options="[25, 50, 100]"
+      :row-count="total"
+      :empty-title="filtersActive ? 'Ничего не найдено' : 'Исключений нет'"
+      :empty-description="
+        filtersActive
+          ? 'Измените или сбросьте фильтры.'
+          : 'Добавьте работодателя или вакансию, отбракуйте вакансию кнопкой на её странице или импортируйте скрытых с hh.'
+      "
+      @update:pagination="onPagination"
+    >
+      <template #summary>
+        <p class="mb-2 text-xs tabular-nums text-muted-foreground">Всего: {{ total }}</p>
+      </template>
+    </DataTable>
+
+    <ConfirmSheet
+      :open="removing !== null"
+      :title="`Вернуть «${removing?.name ?? removing?.externalId ?? ''}»?`"
+      :description="removeDescription"
+      confirm-label="Вернуть"
+      :busy="removeBusy"
+      @update:open="(value) => { if (!value) removing = null }"
+      @confirm="confirmRemove"
     />
 
-    <p class="mt-3 text-xs text-muted-foreground">Всего: {{ total }}</p>
-
-    <!-- Add dialog -->
+    <!-- Добавить -->
     <Sheet v-model:open="addOpen">
       <SheetContent>
         <SheetHeader>
-          <SheetTitle>Добавить в чёрный список</SheetTitle>
-          <SheetDescription>Запись скроет совпадающие вакансии/компании из списков по умолчанию.</SheetDescription>
+          <SheetTitle>Добавить исключение</SheetTitle>
+          <SheetDescription>Система перестанет откликаться на это.</SheetDescription>
         </SheetHeader>
-        <div class="space-y-3">
+        <form class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-4" @submit.prevent="submitAdd">
           <Alert v-if="addError" variant="destructive">
             <CircleAlert />
             <AlertDescription>{{ addError }}</AlertDescription>
           </Alert>
           <div class="space-y-1.5">
-            <Label>Область</Label>
+            <Label for="add-target">Ссылка на hh.ru или номер</Label>
+            <Input id="add-target" v-model="addTarget" type="text" placeholder="https://hh.ru/employer/1740" />
+            <p class="text-xs text-muted-foreground">Тип определится по ссылке на работодателя или вакансию.</p>
+          </div>
+          <div class="space-y-1.5">
+            <Label for="add-type">Что исключаем</Label>
+            <Select v-model="addType">
+              <SelectTrigger id="add-type"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="employer">Работодателя</SelectItem>
+                <SelectItem value="vacancy">Вакансию</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-1.5">
+            <Label for="add-scope">Где действует</Label>
             <Select v-model="addScope">
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger id="add-scope"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="app">Приложение</SelectItem>
-                <SelectItem value="hh_account">Аккаунт hh</SelectItem>
-                <SelectItem value="hh_native">Скрыто в hh</SelectItem>
+                <SelectItem value="app">Для всех аккаунтов</SelectItem>
+                <SelectItem value="hh_account">Для одного аккаунта</SelectItem>
+                <SelectItem value="hh_native">Как скрытое на hh.ru (для аккаунта)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div v-if="addNeedsAccount" class="space-y-1.5">
+            <Label for="add-account">Аккаунт hh</Label>
+            <Select v-model="addAccount">
+              <SelectTrigger id="add-account"><SelectValue placeholder="Выберите аккаунт" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="account in accounts" :key="account.id" :value="account.id">
+                  <AccountOption :account="account" />
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div class="space-y-1.5">
-            <Label>Тип</Label>
-            <Select v-model="addTargetType">
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="employer">Компания</SelectItem>
-                <SelectItem value="vacancy">Вакансия</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div v-if="addScope !== 'app'" class="space-y-1.5">
-            <Label>ID аккаунта hh</Label>
-            <Input v-model="addAccount" type="text" />
+            <Label for="add-name">Название (необязательно)</Label>
+            <Input id="add-name" v-model="addName" type="text" />
           </div>
           <div class="space-y-1.5">
-            <Label>Внешний ID</Label>
-            <Input v-model="addExternalId" type="text" />
+            <Label for="add-reason">Причина (необязательно)</Label>
+            <Textarea id="add-reason" v-model="addReason" rows="2" />
           </div>
-          <div class="space-y-1.5">
-            <Label>Название</Label>
-            <Input v-model="addName" type="text" />
+          <div class="mt-auto flex justify-end gap-2 pt-2">
+            <Button type="button" variant="ghost" @click="addOpen = false">Отмена</Button>
+            <Button type="submit" :disabled="addBusy">{{ addBusy ? "Сохраняю…" : "Добавить" }}</Button>
           </div>
-          <div class="space-y-1.5">
-            <Label>Причина</Label>
-            <Textarea v-model="addReason" />
-          </div>
-        </div>
-          <Button variant="outline" @click="addOpen = false">Отмена</Button>
-          <Button :disabled="upsertMutation.isLoading.value" @click="submitAdd">
-            {{ upsertMutation.isLoading.value ? "Сохраняю…" : "Сохранить" }}
-          </Button>
+        </form>
       </SheetContent>
     </Sheet>
 
-    <!-- Import dialog -->
+    <!-- Импорт с hh -->
     <Sheet v-model:open="importOpen">
       <SheetContent class="w-full sm:max-w-xl">
         <SheetHeader>
-          <SheetTitle>Импорт из hh</SheetTitle>
+          <SheetTitle>Импорт скрытых с hh</SheetTitle>
           <SheetDescription>
-            Автоматический импорт запускается из терминала:
-            <code class="block mt-2 rounded bg-muted p-2 text-xs">otbor blacklist scrape-hh --account &lt;id аккаунта hh&gt;</code>
-            Откроется браузер Chromium, войдите в hh.ru вручную, затем список заблокированных компаний будет импортирован автоматически.
+            Забирает список работодателей, которых вы скрыли на hh.ru, и добавляет их сюда как «Скрыто на hh.ru».
+            На hh.ru ничего не меняется. Тех, кого вы позже убрали из скрытых на hh.ru, здесь никто не удаляет.
           </SheetDescription>
         </SheetHeader>
-        <div class="mt-4">
-          <Button variant="outline" @click="importOpen = false">Закрыть</Button>
+        <div class="space-y-4 px-4 pb-4">
+          <div class="space-y-1.5">
+            <Label for="import-account">Из какого аккаунта</Label>
+            <Select v-model="importAccount">
+              <SelectTrigger id="import-account"><SelectValue placeholder="Выберите аккаунт" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="account in accounts" :key="account.id" :value="account.id">
+                  <AccountOption :account="account" />
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-2 text-sm">
+            <p>Запустите в терминале. Откроется браузер: войдите в hh.ru вручную, после этого список импортируется сам.</p>
+            <CommandChip :command="importCommand" />
+          </div>
+          <div class="flex justify-end">
+            <Button variant="outline" @click="importOpen = false">Закрыть</Button>
+          </div>
         </div>
       </SheetContent>
     </Sheet>

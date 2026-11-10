@@ -4,7 +4,7 @@ import { refDebounced } from "@vueuse/core"
 import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
 import type { ContactRecord, PersonRecord } from "@otbor/contract"
 import { CircleAlert } from "@lucide/vue"
-import { personApi, personKeys } from "@/entities/person"
+import { EmployerName, VacancyTitle, contactLinkText, personApi, personKeys } from "@/entities/person"
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { conversationKeys } from "@/entities/conversation"
 import { contactKeys } from "@/entities/contact"
@@ -34,8 +34,7 @@ import {
   Textarea
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
-import EmployerName from "./EmployerName.vue"
-import VacancyTitle from "./VacancyTitle.vue"
+import ConfirmAction from "./ConfirmAction.vue"
 
 const props = defineProps<{ id: string }>()
 const queryCache = useQueryCache()
@@ -136,10 +135,8 @@ const split = (contact: ContactRecord) =>
     noticeLink.value = personPath(created.id)
   })
 
+const inboxHref = (conversationId: string): string => `/contacts?c=${encodeURIComponent(conversationId)}`
 const isHttp = (href: string | null): boolean => href !== null && /^https?:\/\//i.test(href)
-const confidenceLabel = (value: number | null): string =>
-  value === null ? "—" : `${Math.round((value <= 1 ? value * 100 : value))}%`
-const linkLabel: Record<string, string> = { auto: "авто", suggested: "предложено", manual: "вручную" }
 
 /* -------------------------------- слияние -------------------------------- */
 
@@ -153,14 +150,12 @@ const candidatesQuery = useQuery({
 const candidates = computed(() =>
   (candidatesQuery.data.value?.items ?? []).filter((item) => item.id !== props.id)
 )
-const mergeTargetId = ref<string | null>(null)
 const mergeMutation = useMutation<PersonRecord, string>({
   mutation: (into) => personApi.merge(into, props.id)
 })
 const merge = (into: string) =>
   run(async () => {
     await mergeMutation.mutateAsync(into)
-    mergeTargetId.value = null
     mergeSearch.value = ""
     notice.value = "Человек объединён. Контакты и диалоги перенесены."
     noticeLink.value = personPath(into)
@@ -232,10 +227,10 @@ const merge = (into: string) =>
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>Объединить с другим</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Это тот же человек?</CardTitle></CardHeader>
           <CardContent class="space-y-3">
             <p class="text-sm text-muted-foreground">
-              Контакты и диалоги этого человека перейдут к выбранному.
+              Найдите дубликат: контакты и диалоги этого человека перейдут к выбранному.
             </p>
             <Input v-model="mergeSearch" type="search" placeholder="Найти человека по имени или контакту…" />
             <ul v-if="candidates.length > 0" class="divide-y divide-border rounded-md border border-border">
@@ -248,15 +243,14 @@ const merge = (into: string) =>
                   {{ item.displayName ?? "Без имени" }}
                   <span v-if="item.role" class="text-muted-foreground">· {{ item.role }}</span>
                 </span>
-                <span v-if="mergeTargetId === item.id" class="flex shrink-0 items-center gap-1">
-                  <Button size="sm" variant="destructive" :disabled="busy" @click="merge(item.id)">
-                    Да, объединить
-                  </Button>
-                  <Button size="sm" variant="ghost" @click="mergeTargetId = null">Отмена</Button>
-                </span>
-                <Button v-else size="sm" variant="outline" @click="mergeTargetId = item.id">
-                  Объединить в него
-                </Button>
+                <ConfirmAction
+                  label="Объединить в него"
+                  confirm-label="Да, объединить"
+                  :hint="`Объединить — оба человека станут одним (останется «${item.displayName ?? 'Без имени'}»); отменить можно разделением: «Вынести в нового» у нужного контакта.`"
+                  destructive
+                  :busy="busy"
+                  @confirm="merge(item.id)"
+                />
               </li>
             </ul>
             <p
@@ -287,31 +281,37 @@ const merge = (into: string) =>
                     :href="contactHref(contact) ?? undefined"
                     :target="isHttp(contactHref(contact)) ? '_blank' : undefined"
                     rel="noreferrer"
-                    class="break-all text-sky-700 underline-offset-4 hover:underline dark:text-sky-300"
+                    class="break-all text-info underline-offset-4 hover:underline"
                   >{{ contact.value }}</a>
                   <span v-else class="break-all">{{ contact.value }}</span>
                   <Badge v-if="contact.isBot" variant="neutral">бот</Badge>
                 </div>
-                <div class="mt-0.5 text-[11px] text-muted-foreground">
-                  {{ contactSourceLabel(contact.source) }} · уверенность {{ confidenceLabel(contact.confidence) }}
-                  · связь:
-                  <Badge :variant="contact.personLink === 'suggested' ? 'warning' : 'outline'">
-                    {{ contact.personLink ? (linkLabel[contact.personLink] ?? contact.personLink) : "—" }}
-                  </Badge>
+                <div class="mt-0.5 text-xs text-muted-foreground">
+                  {{ contactSourceLabel(contact.source) }} ·
+                  <span :class="contact.personLink === 'suggested' ? 'text-warning' : ''">{{ contactLinkText(contact.personLink, contact.confidence) }}</span>
                 </div>
               </div>
-              <div class="flex shrink-0 items-center gap-1">
+              <div class="flex flex-wrap items-center gap-1.5">
                 <template v-if="contact.personLink === 'suggested'">
-                  <Button size="sm" :disabled="busy" @click="confirm(contact)">Подтвердить</Button>
-                  <Button size="sm" variant="outline" :disabled="busy" @click="reject(contact)">Отклонить</Button>
+                  <Button size="sm" :disabled="busy" @click="confirm(contact)">Это он</Button>
+                  <ConfirmAction
+                    label="Это не он"
+                    confirm-label="Да, не он"
+                    hint="Контакт останется в списке контактов, но перестанет принадлежать этому человеку. Вернуть связь можно только объединением людей."
+                    destructive
+                    :busy="busy"
+                    @confirm="reject(contact)"
+                  />
                 </template>
-                <Button
+                <ConfirmAction
                   v-if="person.contacts.length > 1"
-                  size="sm"
+                  label="Вынести в нового"
+                  confirm-label="Да, вынести"
+                  hint="Контакт и его диалоги уйдут к новому человеку; вернуть их можно объединением."
                   variant="ghost"
-                  :disabled="busy"
-                  @click="split(contact)"
-                >Вынести в нового</Button>
+                  :busy="busy"
+                  @confirm="split(contact)"
+                />
               </div>
             </li>
           </ul>
@@ -329,14 +329,17 @@ const merge = (into: string) =>
                   {{ conversationChannelLabel(conversation.channel) }}
                 </Badge>
                 <a
+                  :href="inboxHref(conversation.id)"
+                  class="font-medium underline-offset-4 hover:underline"
+                >{{ conversation.title ?? conversation.externalId }}</a>
+                <a
                   v-if="conversation.url"
                   :href="conversation.url"
                   target="_blank"
                   rel="noreferrer"
-                  class="font-medium underline-offset-4 hover:underline"
-                >{{ conversation.title ?? conversation.externalId }}</a>
-                <span v-else class="font-medium">{{ conversation.title ?? conversation.externalId }}</span>
-                <span class="text-xs text-muted-foreground">{{ formatDate(conversation.lastMessageAt) }}</span>
+                  class="text-xs text-info underline-offset-4 hover:underline"
+                >в источнике</a>
+                <span class="text-xs tabular-nums text-muted-foreground">{{ formatDate(conversation.lastMessageAt) }}</span>
                 <Badge v-if="conversation.unreadCount > 0" variant="warning">{{ conversation.unreadCount }}</Badge>
               </div>
               <p v-if="conversation.lastMessage" class="truncate text-sm text-muted-foreground">

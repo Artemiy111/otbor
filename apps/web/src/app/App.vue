@@ -60,8 +60,10 @@ const applicationId = computed(() =>
     <SearchPage v-else-if="route.name === 'search'" />
     <SchedulesPage v-else-if="route.name === 'schedules'" />
     <ContactsPage v-else-if="route.name === 'contacts'" />
-    <PeoplePage v-else-if="route.name === 'people'" />
-    <PersonDetailPage v-else-if="route.name === 'person'" :id="personId" />
+    <ContactsPage v-else-if="route.name === 'people'" area="people"><PeoplePage /></ContactsPage>
+    <ContactsPage v-else-if="route.name === 'person'" area="people">
+      <PersonDetailPage :id="personId" />
+    </ContactsPage>
     <MailPage v-else-if="route.name === 'mail'" />
     <TelegramPage v-else-if="route.name === 'telegram'" />
     <ResumesPage v-else-if="route.name === 'resumes'" />

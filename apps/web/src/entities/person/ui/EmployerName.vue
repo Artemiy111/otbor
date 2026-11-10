@@ -19,6 +19,6 @@ const name = computed(() => query.data.value?.employer.name ?? null)
   <a
     v-else
     :href="companyPath(id)"
-    class="text-sm text-sky-700 underline-offset-4 hover:underline dark:text-sky-300"
+    class="text-sm text-info underline-offset-4 hover:underline"
   >{{ name ?? "Компания" }}</a>
 </template>

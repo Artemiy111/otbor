@@ -13,11 +13,28 @@ export interface VacancyListInput {
   readonly includeBlacklisted?: boolean
   readonly hhAccountId?: string
   readonly filter?: PresetFilter
+  /** Область решений: резюме внутри аккаунта. */
+  readonly resumeId?: string
+  readonly verdict?: "apply" | "draft" | "skip" | "none"
+  readonly applied?: "yes" | "no"
+  /** ISO-время: только вакансии, впервые увиденные не раньше него. */
+  readonly seenSince?: string
+}
+
+/** Счётчики быстрых фильтров; у сервера без этого поля их просто нет. */
+export interface VacancyListCounts {
+  readonly all: number
+  readonly apply: number
+  readonly applied: number
+  readonly notApplied: number
+  readonly fresh?: number
 }
 
 export interface VacancyListResult {
   readonly items: ReadonlyArray<VacancySummary>
   readonly total: number
+  readonly scopeHhAccountId?: string | null
+  readonly counts?: VacancyListCounts
 }
 
 export const vacancyApi = {
@@ -33,7 +50,11 @@ export const vacancyApi = {
         includeArchived: input.includeArchived,
         includeBlacklisted: input.includeBlacklisted,
         hhAccountId: input.hhAccountId as any,
-        filter: input.filter
+        filter: input.filter,
+        resumeId: input.resumeId as any,
+        verdict: input.verdict,
+        applied: input.applied,
+        seenSince: input.seenSince
       })
     ),
   get: (id: string): Promise<VacancyDetail> =>

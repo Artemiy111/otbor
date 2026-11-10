@@ -23,6 +23,7 @@ export {
   payloadPreview,
   payloadText
 } from "./format"
+export { kitProblems, problemText, problemsByQuestion, type KitProblem } from "./kit-problems"
 export { locationSearch, replaceSearch, syncLocation } from "./location"
 export { toneClasses, type ToneClasses } from "./tone"
 export { countWord, plural, pluralIndex, type PluralForms } from "./plural"

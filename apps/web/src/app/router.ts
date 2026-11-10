@@ -148,8 +148,10 @@ export const activeSection = computed<string>(() => {
       return "companies"
     case "application":
       return "applications"
+    // «Люди» - вкладка области «Переписка»: подсвечиваем её пункт.
+    case "people":
     case "person":
-      return "people"
+      return "contacts"
     default:
       return route.value.name
   }

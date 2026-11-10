@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue"
-import { CircleAlert, CircleCheck, LoaderCircle, RotateCcw, Send, SkipForward } from "@lucide/vue"
+import { LoaderCircle, RotateCcw, Send, SkipForward } from "@lucide/vue"
 import type { ApplicationRecord } from "@otbor/contract"
-import { Alert, AlertDescription, AlertTitle, Button } from "@/shared/ui"
-import { describeError, vacancyPath } from "@/shared/lib"
+import { Button, useToast } from "@/shared/ui"
+import { describeError, kitProblems, problemText, toneClasses, vacancyPath } from "@/shared/lib"
 import { useApplicationActions } from "../model"
 
 /**
@@ -17,25 +17,36 @@ const props = defineProps<{
   kitFormHash: string | null
   /** Письмо автоотклика можно написать заново (умерла задача записи). */
   letterRetryable: boolean
+  /** На экране есть несохранённые правки письма и ответов. */
+  unsaved?: boolean
+  /** Почему отправлять пока нельзя (не заполнено письмо или вопрос); `null` - можно. */
+  sendBlocker?: string | null
+  /**
+   * Сохраняет правки письма и ответов перед отправкой и возвращает хеш формы,
+   * под который сохранено. Отказ (исключение) отменяет отправку.
+   */
+  saveFirst?: (() => Promise<string | null>) | null
 }>()
 
-const emit = defineEmits<{ done: [kind: "sent" | "skipped" | "retried" | "letter-retried"] }>()
+const emit = defineEmits<{
+  done: [kind: "sent" | "skipped" | "retried" | "letter-retried"]
+  /** Сервер отказал в отправке из-за ответов: подробности по вопросам. */
+  problems: [error: unknown]
+}>()
+
+const toast = useToast()
 
 const actions = useApplicationActions()
 
 type Confirm = "send" | "skip" | null
 const confirming = ref<Confirm>(null)
 const busy = ref<"send" | "skip" | "retry" | "letter" | null>(null)
-const error = ref<string | null>(null)
-const notice = ref<string | null>(null)
 
 /** Другой отклик (кнопка «Следующий» меняет id): сообщения прошлого отклика не переносим. */
 watch(
   () => props.application.id,
   () => {
     confirming.value = null
-    error.value = null
-    notice.value = null
   }
 )
 
@@ -50,29 +61,29 @@ const hasActions = computed(() => canSend.value || canRetry.value || canRetryLet
 const run = async (kind: NonNullable<typeof busy.value>, task: () => Promise<unknown>, done: string, event: "sent" | "skipped" | "retried" | "letter-retried") => {
   if (busy.value !== null) return
   busy.value = kind
-  error.value = null
-  notice.value = null
   try {
     await task()
-    notice.value = done
+    toast.success(done)
     emit("done", event)
   } catch (cause) {
-    error.value = explain(cause)
+    emit("problems", cause)
+    toast.error(failureTitle[kind], { description: explain(cause) })
   } finally {
     busy.value = null
     confirming.value = null
   }
 }
 
+const failureTitle: Record<NonNullable<typeof busy.value>, string> = {
+  send: "Отклик не отправлен",
+  skip: "Не удалось пропустить отклик",
+  retry: "Не удалось повторить",
+  letter: "Не удалось запустить письмо заново"
+}
+
 const explain = (cause: unknown): string => {
-  const problems = (cause as { problems?: ReadonlyArray<unknown> } | null)?.problems
-  if (Array.isArray(problems) && problems.length > 0) {
-    return problems
-      .map((problem) =>
-        typeof problem === "string" ? problem : String((problem as { message?: unknown })?.message ?? JSON.stringify(problem))
-      )
-      .join("; ")
-  }
+  const failed = kitProblems(cause)
+  if (failed.length > 0) return [...new Set(failed.map(problemText))].join(" ")
   const tag = (cause as { _tag?: unknown } | null)?._tag
   if (tag === "limit") return "Дневной лимит откликов исчерпан: отправка станет возможна, когда он освободится."
   return describeError(cause)
@@ -81,19 +92,32 @@ const explain = (cause: unknown): string => {
 const send = () =>
   run(
     "send",
-    () =>
-      actions.send({
+    async () => {
+      // Несохранённые правки не отправляются молча: сначала они сохраняются,
+      // и только потом форма читается заново и отклик уходит.
+      const savedHash = props.unsaved && props.saveFirst ? await props.saveFirst() : null
+      await actions.send({
         id: props.application.id,
         vacancyId: props.application.vacancyId,
         hhAccountId: props.application.hhAccountId,
-        kitFormHash: props.kitFormHash
-      }),
+        kitFormHash: savedHash ?? props.kitFormHash
+      })
+    },
     "Отклик поставлен в очередь на отправку.",
     "sent"
   )
 const skip = () => run("skip", () => actions.skip(props.application.id), "Отклик пропущен.", "skipped")
 const retry = () =>
-  run("retry", () => actions.retry(props.application.id), "Повтор запущен: форма и письмо будут проверены заново.", "retried")
+  run(
+    "retry",
+    async () => {
+      // Правки, сделанные перед повтором, тоже сохраняются: повтор работает с сохранённым китом.
+      if (props.unsaved && props.saveFirst) await props.saveFirst()
+      await actions.retry(props.application.id)
+    },
+    "Повтор запущен: форма и письмо будут проверены заново.",
+    "retried"
+  )
 const retryLetter = () =>
   run("letter", () => actions.retryLetter(props.application.id), "Письмо будет написано заново на ближайшем запуске.", "letter-retried")
 </script>
@@ -103,13 +127,13 @@ const retryLetter = () =>
     <div class="flex flex-wrap items-center gap-2">
       <!-- Отправка: форма читается заново, поэтому нужно подтверждение -->
       <template v-if="canSend && confirming !== 'skip'">
-        <Button v-if="confirming !== 'send'" :disabled="busy !== null" @click="confirming = 'send'">
+        <Button v-if="confirming !== 'send'" :disabled="busy !== null || !!sendBlocker" @click="confirming = 'send'">
           <Send class="size-4" />
           Отправить отклик
         </Button>
         <template v-else>
           <span class="text-xs text-muted-foreground">
-            Форма прочитается заново, отклик уйдёт на hh.ru, отменить нельзя.
+            <template v-if="unsaved">Правки письма и ответов сохранятся. </template>Форма прочитается заново, отклик уйдёт на hh.ru, отменить нельзя.
           </span>
           <Button variant="destructive" :disabled="busy !== null" @click="send">
             <LoaderCircle v-if="busy === 'send'" class="size-4 animate-spin" />
@@ -160,14 +184,8 @@ const retryLetter = () =>
       </span>
     </div>
 
-    <p v-if="notice" class="flex items-center gap-1.5 text-sm text-success" role="status">
-      <CircleCheck class="size-4" />
-      {{ notice }}
+    <p v-if="canSend && sendBlocker" :class="['text-sm', toneClasses('warning').text]">
+      Отправить пока нельзя: не заполнено {{ sendBlocker }}.
     </p>
-    <Alert v-if="error" variant="destructive">
-      <CircleAlert />
-      <AlertTitle>Не получилось</AlertTitle>
-      <AlertDescription>{{ error }}</AlertDescription>
-    </Alert>
   </div>
 </template>

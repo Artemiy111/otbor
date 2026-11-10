@@ -15,7 +15,7 @@ import {
   type TelegramAccountUpsertInput
 } from "@/entities/telegram-account"
 import { RefreshButton } from "@/features/refresh-button"
-import { describeError, formatDate } from "@/shared/lib"
+import { cn, describeError, formatDate, toneClasses } from "@/shared/lib"
 import {
   Alert,
   AlertDescription,
@@ -27,11 +27,11 @@ import {
   CardHeader,
   CardTitle,
   DataTable,
-  EmptyState,
   Input,
   Label,
   StatusBadge,
-  sortableHeader
+  sortableHeader,
+  useToast
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
 
@@ -70,9 +70,7 @@ const apiHash = ref("")
 const phone = ref("")
 
 const formError = ref<string | null>(null)
-const actionError = ref<string | null>(null)
-const notice = ref<string | null>(null)
-const noticeTone = ref<"info" | "warning">("info")
+const toast = useToast()
 const syncResult = ref<SyncResult | null>(null)
 const syncingId = ref<string | null>(null)
 const removingId = ref<string | null>(null)
@@ -110,8 +108,6 @@ const resetForm = () => {
 }
 
 const submit = async () => {
-  actionError.value = null
-  notice.value = null
   syncResult.value = null
 
   const trimmedLabel = label.value.trim()
@@ -142,11 +138,10 @@ const submit = async () => {
       ...(trimmedPhone === "" ? {} : { phone: trimmedPhone })
     })
     resetForm()
-    noticeTone.value = "info"
-    notice.value = "Аккаунт добавлен. Теперь подключите его по QR-коду."
+    toast.success("Аккаунт добавлен", { description: "Теперь подключите его по QR-коду." })
     await queryCache.invalidateQueries({ key: telegramAccountKeys.all })
   } catch (error) {
-    actionError.value = describeError(error)
+    toast.error("Не удалось добавить аккаунт", { description: describeError(error) })
   }
 }
 
@@ -166,8 +161,7 @@ const pollLogin = async (id: string) => {
     if (result.status === "authorized") {
       stopPolling()
       qrUrl.value = null
-      noticeTone.value = "info"
-      notice.value = "Telegram подключён. Аккаунт готов к синхронизации."
+      toast.success("Telegram подключён", { description: "Аккаунт готов к синхронизации." })
       await queryCache.invalidateQueries({ key: telegramAccountKeys.all })
       await query.refetch()
     } else if (result.status === "error") {
@@ -189,8 +183,6 @@ const startPolling = (id: string) => {
 }
 
 const connectQr = async (account: TelegramAccountRecord) => {
-  actionError.value = null
-  notice.value = null
   syncResult.value = null
   stopPolling()
   qrAccount.value = account
@@ -224,33 +216,31 @@ const closeQr = () => {
 }
 
 const syncNow = async (account: TelegramAccountRecord) => {
-  actionError.value = null
-  notice.value = null
   syncResult.value = null
   syncingId.value = account.id
   try {
     syncResult.value = await syncMutation.mutateAsync(account.id)
+    if (syncResult.value.errors.length === 0) toast.success("Синхронизация завершена")
+    else toast.warning("Синхронизация завершена с ошибками", { description: "Подробности под заголовком страницы." })
     await queryCache.invalidateQueries({ key: telegramAccountKeys.all })
   } catch (error) {
-    actionError.value = describeError(error)
+    toast.error("Не удалось синхронизировать Telegram", { description: describeError(error) })
   } finally {
     syncingId.value = null
   }
 }
 
 const remove = async (account: TelegramAccountRecord) => {
-  actionError.value = null
-  notice.value = null
   removingId.value = account.id
   try {
     const result = await removeMutation.mutateAsync(account.id)
     if (qrAccount.value?.id === account.id) closeQr()
     confirmDeleteId.value = null
-    noticeTone.value = result.deleted ? "info" : "warning"
-    notice.value = result.deleted ? "Telegram-аккаунт удалён." : "Аккаунт не удалён: запись не найдена."
+    if (result.deleted) toast.success("Telegram-аккаунт удалён")
+    else toast.warning("Аккаунт не удалён", { description: "Запись не найдена." })
     await queryCache.invalidateQueries({ key: telegramAccountKeys.all })
   } catch (error) {
-    actionError.value = describeError(error)
+    toast.error("Не удалось удалить Telegram-аккаунт", { description: describeError(error) })
   } finally {
     removingId.value = null
   }
@@ -262,7 +252,7 @@ const columns: ColumnDef<TelegramAccountRecord>[] = [
     accessorFn: (row) => `${row.label} ${row.username ?? ""}`,
     header: sortableHeader<TelegramAccountRecord>("Аккаунт"),
     cell: ({ row }) =>
-      h("div", { class: "max-w-[260px]" }, [
+      h("div", { class: "max-w-64" }, [
         h("div", { class: "font-medium" }, row.original.label),
         h(
           "div",
@@ -285,7 +275,7 @@ const columns: ColumnDef<TelegramAccountRecord>[] = [
   {
     accessorKey: "status",
     header: sortableHeader<TelegramAccountRecord>("Статус"),
-    cell: ({ row }) => h(StatusBadge, { value: row.original.status, raw: true })
+    cell: ({ row }) => h(StatusBadge, { value: row.original.status })
   },
   {
     accessorKey: "lastSyncAt",
@@ -308,7 +298,7 @@ const columns: ColumnDef<TelegramAccountRecord>[] = [
       }
       return h(
         "span",
-        { class: "block max-w-[240px] truncate text-xs text-red-700 dark:text-red-300", title: error },
+        { class: cn("block max-w-60 truncate text-xs", toneClasses("danger").text), title: error },
         error
       )
     }
@@ -389,18 +379,6 @@ const columns: ColumnDef<TelegramAccountRecord>[] = [
       <AlertDescription>{{ errorText }}</AlertDescription>
     </Alert>
 
-    <Alert v-if="actionError" variant="destructive" class="mb-4">
-      <CircleAlert />
-      <AlertTitle>Не удалось выполнить действие</AlertTitle>
-      <AlertDescription>{{ actionError }}</AlertDescription>
-    </Alert>
-
-    <Alert v-if="notice" :variant="noticeTone" class="mb-4">
-      <CircleAlert />
-      <AlertTitle>{{ noticeTone === "warning" ? "Обратите внимание" : "Готово" }}</AlertTitle>
-      <AlertDescription>{{ notice }}</AlertDescription>
-    </Alert>
-
     <Alert v-if="syncResult" :variant="syncResult.errors.length > 0 ? 'warning' : 'info'" class="mb-4">
       <CircleAlert />
       <AlertTitle>Синхронизация завершена</AlertTitle>
@@ -434,24 +412,24 @@ const columns: ColumnDef<TelegramAccountRecord>[] = [
         />
         <div
           v-else-if="loginStatus === 'authorized'"
-          class="flex h-[220px] w-[220px] items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-center text-sm text-emerald-800 dark:text-emerald-200"
+          :class="cn('flex size-[220px] items-center justify-center rounded-lg border text-center text-sm', toneClasses('success').border, toneClasses('success').bg, toneClasses('success').text)"
         >
           Аккаунт подключён
         </div>
         <div
           v-else-if="loginStatus === 'error'"
-          class="flex h-[220px] w-[220px] items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 px-4 text-center text-sm text-red-800 dark:text-red-200"
+          :class="cn('flex size-[220px] items-center justify-center rounded-lg border px-4 text-center text-sm', toneClasses('danger').border, toneClasses('danger').bg, toneClasses('danger').text)"
         >
           Не удалось получить QR
         </div>
-        <div v-else class="flex h-[220px] w-[220px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
+        <div v-else class="flex size-[220px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
           Готовим QR-код…
         </div>
 
         <div class="max-w-md space-y-1 text-center text-xs text-muted-foreground">
           <p v-if="qrUrl">
             Ссылка для Telegram Desktop:
-            <a :href="qrUrl" class="break-all text-sky-700 dark:text-sky-300 underline-offset-4 hover:underline">
+            <a :href="qrUrl" class="break-all text-info underline-offset-4 hover:underline">
               {{ qrUrl }}
             </a>
           </p>
@@ -461,7 +439,7 @@ const columns: ColumnDef<TelegramAccountRecord>[] = [
 
         <StatusBadge :value="loginStatus" />
 
-        <p v-if="loginError" class="text-sm text-red-700 dark:text-red-300">{{ loginError }}</p>
+        <p v-if="loginError" class="text-sm text-danger" role="alert">{{ loginError }}</p>
 
         <Button variant="outline" size="sm" @click="closeQr">
           <QrCode />
@@ -552,12 +530,6 @@ const columns: ColumnDef<TelegramAccountRecord>[] = [
     >
       <template #toolbar>
         <span class="pb-2 text-xs text-muted-foreground">Аккаунтов: {{ accounts.length }}</span>
-      </template>
-      <template #empty>
-        <EmptyState
-          title="Telegram-аккаунтов нет"
-          description="Добавьте api_id и api_hash, затем подключите аккаунт по QR-коду. api_hash и сессия хранятся в локальных секретах, а не в Postgres."
-        />
       </template>
     </DataTable>
   </section>

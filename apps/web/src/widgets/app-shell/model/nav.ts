@@ -22,8 +22,7 @@ import {
   Settings,
   SlidersHorizontal,
   Sparkles,
-  User,
-  Users
+  User
 } from "@lucide/vue"
 
 export interface NavItem {
@@ -61,8 +60,7 @@ export const navSections: ReadonlyArray<NavSection> = [
       { id: "vacancies", label: "Вакансии", href: "/vacancies", icon: Briefcase },
       { id: "applications", label: "Отклики", href: "/applications", icon: Send },
       { id: "auto-apply", label: "Автоотклики", href: "/auto-apply", icon: Rocket },
-      { id: "contacts", label: "Переписка", href: "/contacts", icon: MessagesSquare },
-      { id: "people", label: "Люди", href: "/people", icon: Users }
+      { id: "contacts", label: "Переписка", href: "/contacts", icon: MessagesSquare }
     ]
   },
   {
@@ -72,7 +70,7 @@ export const navSections: ReadonlyArray<NavSection> = [
       { id: "resumes", label: "Резюме", href: "/resumes", icon: FileText },
       { id: "apply-filter", label: "Фильтр откликов", href: "/apply-filter", icon: Filter },
       { id: "presets", label: "Пресеты", href: "/presets", icon: SlidersHorizontal },
-      { id: "blacklist", label: "Чёрный список", href: "/blacklist", icon: Ban },
+      { id: "blacklist", label: "Исключения", href: "/blacklist", icon: Ban },
       { id: "keywords", label: "Ключевые слова", href: "/keywords", icon: BookOpen }
     ]
   },

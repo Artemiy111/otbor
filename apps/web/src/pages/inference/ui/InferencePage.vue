@@ -6,7 +6,7 @@ import { Option, Schema } from "effect"
 import { CircleAlert } from "@lucide/vue"
 import { inferenceApi, inferenceKeys } from "@/entities/inference"
 import { InferenceEnqueueForm } from "@/features/inference-enqueue"
-import { describeError, formatDate } from "@/shared/lib"
+import { describeError, formatDate, statusLabel } from "@/shared/lib"
 import {
   Alert,
   AlertDescription,
@@ -19,6 +19,7 @@ import {
   CardTitle,
   StatusBadge
 } from "@/shared/ui"
+import { ExecutorStartGuide } from "@/widgets/executor-start"
 import { PageHeader } from "@/widgets/page-header"
 import { StatCard } from "@/widgets/stat-card"
 
@@ -44,6 +45,8 @@ const lastJob = ref<HarnessJob | null>(null)
 const polling = ref(false)
 const elapsedSeconds = ref(0)
 const notice = ref<string | null>(null)
+/** Задание так и не взято: исполнитель, скорее всего, не запущен. */
+const executorMissing = ref(false)
 
 let timer: ReturnType<typeof setTimeout> | null = null
 let startedAt = 0
@@ -77,7 +80,7 @@ const statusHint = computed(() => {
   switch (job.value?.status) {
     case "failed":
     case "dead":
-      return "Harness сообщил окончательную ошибку. Задание и его результат остались на странице «Очередь»."
+      return "Исполнитель сообщил окончательную ошибку. Задание и его результат остались на странице «Очередь»."
     case "needs_human":
       return "Заданию нужен оператор. Проверьте страницу «Очередь», прежде чем повторять."
     case "needs_reconcile":
@@ -113,11 +116,12 @@ const tick = () => {
 
   if (waited >= POLL_TIMEOUT_MS) {
     stopPolling()
+    executorMissing.value = job.value?.status === "pending" || job.value?.status === "leased"
     notice.value =
       `Ответа нет ${Math.round(POLL_TIMEOUT_MS / 1_000)} с. ` +
-      (job.value?.status === "pending" || job.value?.status === "leased"
-        ? "Задание всё ещё ждёт harness генерации. Запустите его командой `bun run harness`."
-        : "Задание ещё не достигло конечного статуса. Проверьте страницу «Очередь».")
+      (executorMissing.value
+        ? "Задание всё ещё ждёт исполнителя: похоже, он не запущен."
+        : "Задание ещё не завершилось. Проверьте страницу «Очередь».")
     return
   }
 
@@ -138,6 +142,7 @@ const tick = () => {
 const startPolling = () => {
   stopPolling()
   notice.value = null
+  executorMissing.value = false
   startedAt = Date.now()
   elapsedSeconds.value = 0
   polling.value = true
@@ -171,8 +176,8 @@ onUnmounted(stopPolling)
 <template>
   <section>
     <PageHeader
-      title="Генерация"
-      description="Один ACP-запрос в очереди harness. Облако никогда не вызывает модель напрямую."
+      title="Генерация (для разработчика)"
+      description="Служебная страница: отправляет один произвольный запрос модели через очередь и показывает сырой ответ. Обычным откликам она не нужна: письма и оценки вакансий ставятся в очередь сами. Сервер никогда не вызывает модель напрямую, запрос выполняет исполнитель."
     >
       <template #actions>
         <span v-if="polling" class="text-xs text-muted-foreground">
@@ -184,7 +189,10 @@ onUnmounted(stopPolling)
     <Alert v-if="notice" variant="warning" class="mb-4">
       <CircleAlert />
       <AlertTitle>Ожидание остановлено</AlertTitle>
-      <AlertDescription>{{ notice }}</AlertDescription>
+      <AlertDescription>
+        <p>{{ notice }}</p>
+        <ExecutorStartGuide v-if="executorMissing" target="inference" class="mt-3" />
+      </AlertDescription>
     </Alert>
 
     <Alert v-if="errorText" variant="destructive" class="mb-4">
@@ -192,10 +200,7 @@ onUnmounted(stopPolling)
       <AlertTitle>Генерация недоступна</AlertTitle>
       <AlertDescription>
         <p>{{ errorText }}</p>
-        <p class="mt-1 text-xs opacity-80">
-          Страница использует ту же группу <code>/rpc</code>, что и CLI. Запустите сервер
-          командой <code>bun run server</code>, а harness — командой <code>bun run harness</code>.
-        </p>
+        <ExecutorStartGuide target="stack" class="mt-3" />
       </AlertDescription>
     </Alert>
 
@@ -205,7 +210,7 @@ onUnmounted(stopPolling)
       <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Задание" :value="job.id" mono />
         <StatCard label="Статус">
-          <StatusBadge :value="job.status" raw />
+          <StatusBadge :value="job.status" />
         </StatCard>
         <StatCard label="Попытки" :value="`${job.attempts} / ${job.maxAttempts}`" />
         <StatCard label="Создано" :value="formatDate(job.createdAt)" />
@@ -213,14 +218,14 @@ onUnmounted(stopPolling)
 
       <Alert v-if="statusHint" variant="warning" class="mt-4">
         <CircleAlert />
-        <AlertTitle>Статус: {{ job.status }}</AlertTitle>
+        <AlertTitle>{{ statusLabel(job.status) }}</AlertTitle>
         <AlertDescription>{{ statusHint }}</AlertDescription>
       </Alert>
 
       <Card v-if="result" class="mt-4">
         <CardHeader>
           <CardTitle>Ответ</CardTitle>
-          <CardDescription>Текст, записанный harness в результат задания.</CardDescription>
+          <CardDescription>Текст, который исполнитель записал в результат задания.</CardDescription>
         </CardHeader>
         <CardContent>
           <div class="mb-3 flex flex-wrap gap-1.5">
@@ -240,14 +245,14 @@ onUnmounted(stopPolling)
               Использование
             </h3>
             <pre
-              class="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-3 text-[11px]"
+              class="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/40 p-3 text-xs"
             >{{ usageText }}</pre>
           </template>
         </CardContent>
       </Card>
 
       <p v-else-if="polling" class="mt-4 text-sm text-muted-foreground">
-        Ждём, когда harness запишет результат…
+        Ждём, когда исполнитель запишет результат…
       </p>
     </template>
   </section>

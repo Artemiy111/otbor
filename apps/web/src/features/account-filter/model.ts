@@ -7,7 +7,10 @@ import {
   hhAccountName
 } from "@/entities/hh-account"
 
-/** Options of the account column filter: default, all, then every account with its colour. */
+/**
+ * Options of the account column filter: «как в шапке» (фильтр «Показывать» из
+ * шапки; `defaultAccountId` пуст, когда там выбраны все аккаунты), all, then every account.
+ */
 export const accountFilterOptions = (
   accounts: ReadonlyArray<HhAccountRecord>,
   defaultAccountId: string | undefined,
@@ -19,7 +22,7 @@ export const accountFilterOptions = (
       ? [
           {
             value: DEFAULT_ACCOUNT,
-            label: `По умолчанию${defaultAccount ? ` (${hhAccountName(defaultAccount)})` : ""}`,
+            label: `Как в шапке (${defaultAccount ? hhAccountName(defaultAccount) : "все аккаунты"})`,
             color: defaultAccount ? hhAccountColor(defaultAccount) : undefined
           }
         ]

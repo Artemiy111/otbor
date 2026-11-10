@@ -5,9 +5,9 @@ import type { StageCount } from "@otbor/contract"
 import { CaptchaBlockAlert, CaptchaStatus } from "@/entities/hh-account"
 import { queueJobApi, queueJobKeys } from "@/entities/queue-job"
 import { describeError, formatAge, jobStageLabel } from "@/shared/lib"
-import { Badge, Card, CardContent, HelpHint } from "@/shared/ui"
+import { Badge, Card, CardContent, HelpHint, Skeleton } from "@/shared/ui"
 
-/** Параллельность: сколько потоков у харнессов и что идёт на каждом аккаунте. */
+/** Параллельность: сколько задач исполнители ведут одновременно и что идёт на каждом аккаунте. */
 const query = useQuery({
   key: () => queueJobKeys.concurrency(),
   query: () => queueJobApi.concurrency()
@@ -44,34 +44,34 @@ defineExpose({ refetch, loading: computed(() => query.isLoading.value) })
       <div class="flex items-center gap-2">
         <p class="text-sm font-semibold">Параллельность</p>
         <HelpHint
-          text="Читающие задания (сверка, чаты, синхронизации) идут параллельно до потолка браузерных задач на аккаунт; чтение формы отклика идёт со своим потолком и паузой. Отправки и письма ограничены меньшим потолком и идут с паузой между собой. Капча ставит отправки аккаунта на паузу, она снимается сама (при капчах подряд пауза растёт). Генерация от аккаунтов не зависит, её ограничивают только потоки харнесса. Все числа меняются в настройках."
+          text="Читающие задания (проверка откликов, чаты, обновление статусов) идут параллельно, но не больше лимита браузерных задач на аккаунт. Чтение формы отклика ограничено отдельно и идёт с паузой. Отправки и письма ограничены меньшим лимитом и идут с паузой между собой. Капча ставит отправки аккаунта на паузу, она снимается сама (при капчах подряд пауза растёт). Генерация от аккаунтов не зависит: её ограничивает только число потоков исполнителя. Все числа меняются в настройках."
         />
         <a href="/settings" class="ml-auto text-xs text-muted-foreground underline underline-offset-2">Изменить в настройках</a>
       </div>
 
-      <p v-if="errorText" class="text-sm text-destructive">Не удалось прочитать параллельность: {{ errorText }}</p>
-      <p v-else-if="!data" class="text-sm text-muted-foreground">…</p>
+      <p v-if="errorText" class="text-sm text-danger" role="alert">Не удалось прочитать данные о параллельности: {{ errorText }}</p>
+      <div v-else-if="!data" class="space-y-2" aria-busy="true"><Skeleton class="h-4 w-3/4" /><Skeleton class="h-4 w-2/3" /><Skeleton class="h-16 w-full" /></div>
 
       <template v-else>
         <p class="text-xs tabular-nums text-muted-foreground">
-          Браузерных задач на аккаунт {{ data.browserCap }}, из них отправок {{ data.actingCap }} · пауза между отправками
+          Браузерных задач на аккаунт: до {{ data.browserCap }}, из них отправок до {{ data.actingCap }} · пауза между отправками
           {{ data.submitIntervalSeconds }} с + до {{ data.submitJitterPercent }}% · не больше
-          {{ data.submitHourlyLimit ?? "∞" }} в час · потоки харнесса {{ data.harnessSlots }}
+          {{ data.submitHourlyLimit ?? "без ограничения" }} в час · потоков исполнителя: {{ data.harnessSlots }}
         </p>
         <p class="text-xs tabular-nums text-muted-foreground">
-          Чтений формы на аккаунт {{ data.formReadConcurrency }} · пауза между чтениями
+          Одновременных чтений формы на аккаунт: {{ data.formReadConcurrency }} · пауза между чтениями
           {{ data.formReadIntervalSeconds }} с + до {{ data.formReadJitterPercent }}% · при капче реже в
           {{ data.formReadBlockedFactor }} раз
         </p>
 
         <div class="space-y-1 text-sm">
           <p v-for="h in data.harnesses" :key="h.id" class="tabular-nums">
-            Харнес {{ h.name }} · потоки {{ h.busy }}/{{ h.slots ?? "?" }}
-            <span v-if="h.slots === null" class="text-muted-foreground">(число потоков он ещё не сообщил)</span>
+            Исполнитель {{ h.name }} · потоки {{ h.busy }} из {{ h.slots ?? "?" }}
+            <span v-if="h.slots === null" class="text-muted-foreground">(число потоков ещё не сообщено)</span>
           </p>
-          <p v-if="data.harnesses.length === 0" class="text-muted-foreground">Харнесс не зарегистрирован.</p>
+          <p v-if="data.harnesses.length === 0" class="text-muted-foreground">Исполнитель не зарегистрирован.</p>
           <p class="tabular-nums text-muted-foreground">
-            Генерация: {{ data.inference.running }} идёт, {{ data.inference.pending }} ждут
+            Генерация: идёт {{ data.inference.running }}, ждут {{ data.inference.pending }}
           </p>
         </div>
 
@@ -79,8 +79,8 @@ defineExpose({ refetch, loading: computed(() => query.isLoading.value) })
           <li v-for="a in data.accounts" :key="a.id" class="rounded-md border p-3 text-sm">
             <p class="tabular-nums">
               <span class="font-medium">{{ a.name }}</span>
-              · браузер {{ a.browserRunning }}/{{ data.browserCap }}
-              · отправки {{ a.actingRunning }}/{{ data.actingCap }}
+              · браузер {{ a.browserRunning }} из {{ data.browserCap }}
+              · отправки {{ a.actingRunning }} из {{ data.actingCap }}
               · ждут: {{ waitingText(a.pending) }}
               <span v-if="a.pendingTotal > 0" class="text-muted-foreground">
                 (старейшее {{ formatAge(a.oldestPendingAgeSeconds) }})
@@ -97,7 +97,7 @@ defineExpose({ refetch, loading: computed(() => query.isLoading.value) })
               </Badge>
               <span v-if="a.running.length === 0" class="text-xs text-muted-foreground">ничего не идёт</span>
               <span class="ml-auto text-xs text-muted-foreground">
-                {{ a.holderHarnessName ? `держит ${a.holderHarnessName}` : "никто не держит" }}
+                {{ a.holderHarnessName ? `ведёт ${a.holderHarnessName}` : "никто не ведёт" }}
               </span>
             </div>
           </li>

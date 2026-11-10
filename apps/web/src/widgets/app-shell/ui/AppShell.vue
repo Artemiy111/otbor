@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/shared/ui/sidebar"
+import { ToastViewport } from "@/shared/ui/toast"
 import AccountSwitcher from "./AccountSwitcher.vue"
 import AppSidebar from "./AppSidebar.vue"
 import SystemStatus from "./SystemStatus.vue"
@@ -28,5 +29,6 @@ const props = defineProps<{ active: string }>()
         <slot />
       </div>
     </SidebarInset>
+    <ToastViewport />
   </SidebarProvider>
 </template>

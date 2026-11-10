@@ -7,13 +7,13 @@ defineProps<RowProps>()
 </script>
 
 <template>
-  <Badge v-if="vacancy.letterRequired" variant="warning" class="text-[10px]">hh требует письмо</Badge>
-  <Badge v-if="vacancy.hasTest" variant="warning" class="text-[10px]">
+  <Badge v-if="vacancy.letterRequired" variant="warning">hh требует письмо</Badge>
+  <Badge v-if="vacancy.hasTest" variant="warning">
     {{ vacancy.testRequired === false ? "тест необязательный" : "есть тест" }}
   </Badge>
-  <Badge v-if="vacancy.archived" variant="neutral" class="text-[10px]">архив</Badge>
-  <Badge v-if="vacancy.blacklisted" variant="destructive" class="text-[10px]">чёрный список</Badge>
-  <Badge v-if="vacancy.analysed" variant="info" class="text-[10px]">ИИ-анализ</Badge>
+  <Badge v-if="vacancy.archived" variant="neutral">архив</Badge>
+  <Badge v-if="vacancy.blacklisted" variant="danger">чёрный список</Badge>
+  <Badge v-if="vacancy.analysed" variant="info">ИИ-анализ</Badge>
   <AccountChip
     v-for="item in responded"
     :key="item.accountId"

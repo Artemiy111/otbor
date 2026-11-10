@@ -207,7 +207,7 @@ const test = async () => {
         </template>
       </div>
 
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
         <Button :disabled="busy" @click="save">Сохранить</Button>
         <Button
           variant="outline"

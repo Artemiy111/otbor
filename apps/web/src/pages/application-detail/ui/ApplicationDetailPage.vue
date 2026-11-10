@@ -3,7 +3,7 @@ import { computed, ref, watch } from "vue"
 import { useQuery } from "@pinia/colada"
 import { useIntervalFn } from "@vueuse/core"
 import { BLOCKED_REASON_LABELS, decisionReasonDetail, describeKitAnswer } from "@otbor/contract"
-import { ArrowRight, CircleAlert, Pencil } from "@lucide/vue"
+import { ArrowRight, CircleAlert, LoaderCircle, Undo2 } from "@lucide/vue"
 import { applicationApi, applicationKeys, applicationLinkFrom, contextFromSearch, filterToSearch } from "@/entities/application"
 import {
   autoApplyApi,
@@ -19,7 +19,9 @@ import {
 import { AccountChip, hhAccountApi, hhAccountKeys } from "@/entities/hh-account"
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { ApplicationActionBar, useApplicationActions } from "@/features/application-actions"
+import { UnsavedChangesSheet, useUnsavedGuard } from "@/features/filter-target"
 import { RefreshButton } from "@/features/refresh-button"
+import { AnswersEditor, kitProblems, missingParts, problemsByQuestion, useKitDraft, type KitProblem, type LetterRule } from "@/features/vacancy-apply"
 import {
   decisionReasonLabel,
   cn,
@@ -48,7 +50,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-  Textarea
+  Textarea,
+  useToast
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
 
@@ -114,8 +117,8 @@ watch(
   () => props.id,
   () => {
     lastIndex.value = 0
-    editing.value = false
     done.value = false
+    problems.value = []
   }
 )
 const nextId = computed<string | null>(() => {
@@ -145,42 +148,82 @@ const onDone = async () => {
 
 /* ---- письмо и ответы ------------------------------------------------------------------ */
 
+const toast = useToast()
 const kit = computed(() => data.value?.kit ?? null)
 const kitAnswers = computed(() => (kit.value?.answers ?? []).map((raw) => describeKitAnswer(raw, data.value?.form?.form)))
 /** Редактировать можно, пока отклик ждёт человека: у ждущего раннера кит принадлежит раннеру. */
 const editable = computed(() => application.value?.state === "draft" || application.value?.state === "needs_human")
 
-const editing = ref(false)
-const letterDraft = ref("")
-const letterBusy = ref(false)
-const letterError = ref<string | null>(null)
-const letterNotice = ref<string | null>(null)
-const startEdit = () => {
-  letterDraft.value = kit.value?.letter ?? ""
-  letterError.value = null
-  letterNotice.value = null
-  editing.value = true
+const form = computed(() => data.value?.form?.form ?? null)
+const questions = computed(() => form.value?.questions ?? [])
+const hints = computed(() => data.value?.form?.hints ?? [])
+const letterRule = computed<LetterRule>(() => form.value?.coverLetter ?? "unknown")
+
+const draft = useKitDraft({
+  applicationId: () => props.id,
+  questions: () => questions.value,
+  hints: () => hints.value,
+  kit: () => kit.value
+})
+const guard = useUnsavedGuard(draft.dirty)
+
+/** Отказ сервера по вопросам: показывается у вопроса, пока его не поправят. */
+const problems = ref<ReadonlyArray<KitProblem>>([])
+const problemMap = computed(() => problemsByQuestion(problems.value))
+const generalProblems = computed(() => problemMap.value.get("") ?? [])
+const onProblems = (error: unknown) => {
+  problems.value = kitProblems(error)
 }
-const saveLetter = async () => {
-  if (kit.value === null || letterBusy.value) return
-  letterBusy.value = true
-  letterError.value = null
-  try {
-    const text = letterDraft.value.trim()
-    await actions.saveLetter({
-      id: props.id,
-      formHash: kit.value.formHash,
-      letter: text === "" ? null : text,
-      answers: kit.value.answers
-    })
-    await query.refetch()
-    editing.value = false
-    letterNotice.value = "Письмо сохранено."
-  } catch (cause) {
-    letterError.value = describeError(cause)
-  } finally {
-    letterBusy.value = false
+const changeAnswer = (questionId: string, value: Parameters<typeof draft.change>[1]) => {
+  draft.change(questionId, value)
+  if (problems.value.some((problem) => problem.questionId === questionId)) {
+    problems.value = problems.value.filter((problem) => problem.questionId !== questionId)
   }
+}
+
+const missing = computed(() =>
+  editable.value
+    ? missingParts({
+        letter: draft.letter.value,
+        letterRule: letterRule.value,
+        questions: questions.value,
+        answers: draft.answers
+      })
+    : []
+)
+
+const saving = ref(false)
+/** Сохраняет письмо и ответы; возвращает хеш формы, под который кит сохранён. */
+const saveKit = async (): Promise<string | null> => {
+  const current = kit.value
+  if (current === null) return null
+  const formHash = form.value?.formHash ?? current.formHash
+  const text = draft.letter.value.trim()
+  await actions.saveLetter({
+    id: props.id,
+    formHash,
+    letter: text === "" ? null : text,
+    answers: draft.answersToSave()
+  })
+  await query.refetch()
+  problems.value = []
+  return formHash
+}
+const save = async () => {
+  if (saving.value) return
+  saving.value = true
+  try {
+    await saveKit()
+    toast.success("Письмо и ответы сохранены")
+  } catch (cause) {
+    toast.error("Не удалось сохранить", { description: describeError(cause) })
+  } finally {
+    saving.value = false
+  }
+}
+const revert = () => {
+  draft.hydrate()
+  problems.value = []
 }
 
 /* ---- пояснение: что с откликом и что делать ---------------------------------------------- */
@@ -296,6 +339,10 @@ const subtitle = computed(() => application.value?.employerName ?? "Компан
           :application="application"
           :kit-form-hash="kit?.formHash ?? null"
           :letter-retryable="progress?.retryable === true"
+          :unsaved="draft.dirty.value"
+          :send-blocker="missing.length > 0 ? missing.join(', ') : null"
+          :save-first="saveKit"
+          @problems="onProblems"
           @done="onDone"
         >
           <template v-if="context !== null" #next>
@@ -398,30 +445,28 @@ const subtitle = computed(() => application.value?.employerName ?? "Компан
             <section>
               <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <h2 class="text-sm font-semibold">Письмо</h2>
-                <Button v-if="editable && !editing" size="sm" variant="outline" @click="startEdit">
-                  <Pencil class="size-4" />
-                  Править письмо
-                </Button>
+                <span v-if="editable" class="text-xs text-muted-foreground">
+                  <template v-if="letterRule === 'required'">обязательно</template>
+                  <template v-else-if="letterRule === 'optional'">по желанию</template>
+                  <template v-else-if="letterRule === 'absent'">hh не принимает письмо</template>
+                </span>
               </div>
-              <template v-if="editing">
+              <template v-if="editable">
                 <Textarea
-                  v-model="letterDraft"
+                  v-model="draft.letter.value"
                   class="min-h-48 text-sm leading-relaxed"
                   :maxlength="MAX_LETTER"
+                  :disabled="saving || letterRule === 'absent'"
                   aria-label="Текст письма"
                 />
-                <div class="mt-2 flex flex-wrap items-center gap-2">
-                  <Button size="sm" :disabled="letterBusy" @click="saveLetter">Сохранить письмо</Button>
-                  <Button size="sm" variant="ghost" :disabled="letterBusy" @click="editing = false">Отмена</Button>
-                  <span class="ml-auto text-xs text-muted-foreground tabular-nums">{{ letterDraft.length }} / {{ MAX_LETTER }}</span>
+                <div class="mt-1 text-right text-xs text-muted-foreground tabular-nums">
+                  {{ draft.letter.value.length }} / {{ MAX_LETTER }}
                 </div>
-                <p v-if="letterError" class="mt-2 text-sm text-danger" role="alert">{{ letterError }}</p>
               </template>
               <div
                 v-else
                 class="max-h-[32rem] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-card px-5 py-4 text-sm leading-relaxed"
               >{{ kit.letter ?? "Письмо не подготовлено." }}</div>
-              <p v-if="letterNotice && !editing" class="mt-2 text-sm text-success" role="status">{{ letterNotice }}</p>
               <p v-if="writer?.model" class="mt-2 text-xs text-muted-foreground">Письмо написала модель {{ writer.model }}.</p>
             </section>
 
@@ -429,16 +474,30 @@ const subtitle = computed(() => application.value?.employerName ?? "Компан
               <div class="mb-2 flex flex-wrap items-baseline justify-between gap-2">
                 <h2 class="flex items-baseline gap-2 text-sm font-semibold">
                   Ответы на форму
-                  <span class="text-xs font-normal text-muted-foreground tabular-nums">{{ kit.answers.length }}</span>
+                  <span class="text-xs font-normal text-muted-foreground tabular-nums">{{ editable ? questions.length : kit.answers.length }}</span>
                 </h2>
-                <Button v-if="editable" as-child size="sm" variant="outline">
-                  <a :href="vacancyPath(application.vacancyId)">
-                    <Pencil class="size-4" />
-                    Редактировать на странице вакансии
-                  </a>
-                </Button>
               </div>
-              <ol v-if="kit.answers.length > 0" class="space-y-3">
+              <p v-if="editable && form && kit.formHash !== form.formHash" :class="cn('mb-2 text-xs', toneClasses('warning').text)">
+                Вопросы на hh изменились после сохранения черновика. Проверьте ответы и сохраните их заново.
+              </p>
+              <ul
+                v-if="generalProblems.length > 0"
+                :class="cn('mb-2 space-y-0.5 rounded-md border p-3 text-sm', toneClasses('danger').border, toneClasses('danger').bg, toneClasses('danger').text)"
+                role="alert"
+              >
+                <li v-for="text in generalProblems" :key="text">{{ text }}</li>
+              </ul>
+              <AnswersEditor
+                v-if="editable && questions.length > 0"
+                id-prefix="app"
+                :questions="questions"
+                :answers="draft.answers"
+                :hints="hints"
+                :problems="problemMap"
+                :disabled="saving"
+                @change="changeAnswer"
+              />
+              <ol v-else-if="kit.answers.length > 0" class="space-y-3">
                 <li
                   v-for="(answer, index) in kitAnswers"
                   :key="index"
@@ -457,6 +516,34 @@ const subtitle = computed(() => application.value?.employerName ?? "Компан
               </ol>
               <p v-else class="text-sm text-muted-foreground">У этой вакансии нет вопросов в форме отклика.</p>
             </section>
+
+            <!-- Одна кнопка на письмо и ответы; на широком экране панель держится у нижнего края -->
+            <div
+              v-if="editable"
+              :class="
+                cn(
+                  'flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border bg-card p-3 lg:sticky lg:bottom-4',
+                  draft.dirty.value ? toneClasses('warning').border : 'border-border'
+                )
+              "
+            >
+              <Button :disabled="saving || !draft.dirty.value" @click="save">
+                <LoaderCircle v-if="saving" class="size-4 animate-spin" />
+                Сохранить письмо и ответы
+              </Button>
+              <Button v-if="draft.dirty.value" variant="ghost" :disabled="saving" @click="revert">
+                <Undo2 class="size-4" />
+                Вернуть сохранённое
+              </Button>
+              <span
+                :class="cn('text-sm', draft.dirty.value ? toneClasses('warning').text : 'text-muted-foreground')"
+                role="status"
+              >
+                {{ draft.dirty.value ? "Есть несохранённые изменения." : "Всё сохранено." }}
+              </span>
+              <span v-if="missing.length > 0" class="text-xs text-muted-foreground">Не заполнено: {{ missing.join(", ") }}.</span>
+              <span v-if="kit" class="ml-auto text-xs text-muted-foreground tabular-nums">Сохранено {{ formatDate(kit.createdAt) }}</span>
+            </div>
           </template>
 
           <EmptyState
@@ -464,7 +551,7 @@ const subtitle = computed(() => application.value?.employerName ?? "Компан
             :title="application.state === 'preparing' ? 'Письмо ещё готовится' : 'Письмо и ответы не подготовлены'"
             :description="
               editable
-                ? 'Напишите письмо на странице вакансии: там же можно сгенерировать его моделью.'
+                ? 'Напишите письмо на странице вакансии: там же можно составить его с помощью модели.'
                 : 'Письмо и ответы появятся, когда подготовка закончится.'
             "
           >
@@ -590,5 +677,12 @@ const subtitle = computed(() => application.value?.employerName ?? "Компан
         </aside>
       </div>
     </template>
+
+    <UnsavedChangesSheet
+      :open="guard.open.value"
+      description="Письмо и ответы не сохранены. Если уйти сейчас, правки пропадут."
+      @leave="guard.leave"
+      @stay="guard.stay"
+    />
   </section>
 </template>

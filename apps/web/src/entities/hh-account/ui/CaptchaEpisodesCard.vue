@@ -1,20 +1,17 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import { useQuery } from "@pinia/colada"
-import { queueJobApi, queueJobKeys } from "@/entities/queue-job"
 import { describeError, formatDate } from "@/shared/lib"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/ui"
 import { hhAccountApi } from "../api"
-import CaptchaStatus from "./CaptchaStatus.vue"
 import { captchaEpisodeText, hhAccountKeys, hhAccountNameById } from "../model"
 
-/** Последние эпизоды капчи: после скольких откликов hh её показывает. */
+/** История капчи: после скольких откликов hh.ru её показывает. */
 const episodes = useQuery({
   key: () => hhAccountKeys.captchaEpisodes(),
   query: () => hhAccountApi.captchaEpisodes(10)
 })
 const accounts = useQuery({ key: () => hhAccountKeys.list(), query: () => hhAccountApi.list() })
-const concurrency = useQuery({ key: () => queueJobKeys.concurrency(), query: () => queueJobApi.concurrency() })
 const rows = computed(() => episodes.data.value ?? [])
 
 defineExpose({ refetch: () => episodes.refetch() })
@@ -23,26 +20,24 @@ defineExpose({ refetch: () => episodes.refetch() })
 <template>
   <Card>
     <CardHeader>
-      <CardTitle>Капча hh.ru</CardTitle>
+      <CardTitle>История капчи</CardTitle>
       <CardDescription>
-        Сколько откликов hh пропускает, прежде чем показать капчу. По этим цифрам можно задать «не больше N
-        отправок за час» в настройках.
+        Иногда hh.ru просит пройти проверку «я не робот» и отправки ставятся на паузу. Здесь видно, после скольких
+        откликов это случалось: по этим цифрам можно задать «не больше N отправок за час» в настройках.
       </CardDescription>
     </CardHeader>
     <CardContent>
-      <ul v-if="concurrency.data.value" class="mb-3 space-y-1 text-sm">
-        <li v-for="a in concurrency.data.value.accounts" :key="a.id">
-          <span class="font-medium">{{ a.name }}</span> · <CaptchaStatus :account="a" />
-        </li>
-      </ul>
       <p v-if="episodes.error.value" class="text-sm text-destructive">{{ describeError(episodes.error.value) }}</p>
+      <p v-else-if="episodes.isPending.value" class="text-sm text-muted-foreground">Загружаю…</p>
       <p v-else-if="rows.length === 0" class="text-sm text-muted-foreground">Капчи ещё не было.</p>
-      <ul v-else class="space-y-1.5 text-sm">
-        <li v-for="episode in rows" :key="episode.id" class="tabular-nums">
-          <span class="font-medium">{{ hhAccountNameById(accounts.data.value ?? [], episode.hhAccountId) }}</span>
-          · {{ captchaEpisodeText(episode) }}
-          <span class="text-muted-foreground">
-            ({{ formatDate(episode.captchaAt) }}<template v-if="!episode.resumedAt">, пауза, повтор сам</template>)
+      <ul v-else class="divide-y text-sm">
+        <li v-for="episode in rows" :key="episode.id" class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 py-2 first:pt-0 last:pb-0">
+          <span>
+            <span class="font-medium">{{ hhAccountNameById(accounts.data.value ?? [], episode.hhAccountId) }}</span>
+            <span class="text-muted-foreground"> · {{ captchaEpisodeText(episode) }}</span>
+          </span>
+          <span class="text-xs tabular-nums text-muted-foreground">
+            {{ formatDate(episode.captchaAt) }}<template v-if="!episode.resumedAt"> · пауза, повторим сами</template>
           </span>
         </li>
       </ul>

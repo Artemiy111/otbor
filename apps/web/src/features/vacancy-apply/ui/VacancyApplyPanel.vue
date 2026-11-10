@@ -15,7 +15,20 @@ import type {
 } from "@otbor/contract"
 import { applicationApi, applicationKeys } from "@/entities/application"
 import { describeError, formatDate, statusLabel } from "@/shared/lib"
+import {
+  buildKitAnswers,
+  isChoice,
+  kitProblems,
+  kitSignature,
+  missingParts,
+  problemText,
+  problemsByQuestion,
+  savedAnswerMap,
+  type AnswerState,
+  type KitProblem
+} from "../lib/answers"
 import AccountResumePicker from "./AccountResumePicker.vue"
+import AnswersEditor from "./AnswersEditor.vue"
 import DraftGenerator from "./DraftGenerator.vue"
 import LetterAttachBlock from "./LetterAttachBlock.vue"
 import { Alert, AlertDescription, AlertTitle, Badge, Button, StatusBadge, Textarea } from "@/shared/ui"
@@ -148,15 +161,8 @@ const skipPreparing = async () => {
 
 /* ---- letter and answers -------------------------------------------------- */
 
-interface AnswerState {
-  optionIds: Array<string>
-  text: string
-}
-
 const letter = ref("")
 const answers = reactive<Record<string, AnswerState>>({})
-
-const hintFor = (questionId: string) => hints.value.find((hint) => hint.questionId === questionId)
 
 /** A saved kit written for a form that has since changed. */
 const kitIsOld = computed(() => {
@@ -164,60 +170,20 @@ const kitIsOld = computed(() => {
   return kit !== null && form.value !== null && kit.formHash !== form.value.formHash
 })
 
-const answerOf = (id: string): AnswerState => (answers[id] ??= { optionIds: [], text: "" })
-
-const toggleOption = (question: FormQuestion, optionId: string) => {
-  const answer = answerOf(question.id)
-  if (question.kind === "single") {
-    answer.optionIds = [optionId]
-    return
-  }
-  answer.optionIds = answer.optionIds.includes(optionId)
-    ? answer.optionIds.filter((item) => item !== optionId)
-    : [...answer.optionIds, optionId]
-}
-
-const isAnswered = (question: FormQuestion): boolean => {
-  const answer = answerOf(question.id)
-  return question.kind === "single" || question.kind === "multiple"
-    ? answer.optionIds.length > 0
-    : answer.text.trim() !== ""
-}
-
-const sameSet = (a: ReadonlyArray<string>, b: ReadonlyArray<string>) =>
-  a.length === b.length && [...a].sort().join("|") === [...b].sort().join("|")
-
-/** Answers exactly as the model wrote them; any edit by the operator makes them "human". */
+/** Ответы ровно так, как их написала модель; любая правка оператора делает их «human». */
 const modelAnswers = new Map<string, AnswerState>()
-const fromModel = (question: FormQuestion, answer: AnswerState): boolean => {
-  const given = modelAnswers.get(question.id)
-  if (given === undefined) return false
-  return question.kind === "single" || question.kind === "multiple"
-    ? sameSet(answer.optionIds, given.optionIds)
-    : answer.text.trim() === given.text.trim()
-}
 
-const buildAnswers = (): Array<KitAnswer> => {
-  const out: Array<KitAnswer> = []
-  for (const question of questions.value) {
-    if (!isAnswered(question)) continue
-    const answer = answerOf(question.id)
-    const choice = question.kind === "single" || question.kind === "multiple"
-    const hint = hintFor(question.id)
-    const asHinted =
-      hint !== undefined &&
-      (choice
-        ? sameSet(answer.optionIds, hint.optionIds ?? [])
-        : answer.text.trim() === (hint.text ?? "").trim())
-    out.push({
-      questionId: question.id,
-      ...(choice ? { optionIds: [...answer.optionIds] } : { text: answer.text.trim() }),
-      source: asHinted ? "hint" : fromModel(question, answer) ? "model" : "human",
-      hard: asHinted ? hint.hard : false,
-      needsHuman: false
-    })
+const buildAnswers = (): Array<KitAnswer> =>
+  buildKitAnswers({ questions: questions.value, answers, hints: hints.value, model: modelAnswers })
+
+/** Отказ сервера по вопросам: показывается у вопроса, пока его не поправят. */
+const problems = ref<ReadonlyArray<KitProblem>>([])
+const problemMap = computed(() => problemsByQuestion(problems.value))
+const changeAnswer = (questionId: string, value: AnswerState) => {
+  answers[questionId] = value
+  if (problems.value.some((problem) => problem.questionId === questionId)) {
+    problems.value = problems.value.filter((problem) => problem.questionId !== questionId)
   }
-  return out
 }
 
 /* ---- generated draft ------------------------------------------------------ */
@@ -263,7 +229,7 @@ const applyGenerated = (
   for (const item of draft.answers) {
     const question = questions.value.find((candidate) => candidate.id === item.questionId)
     if (question === undefined) continue
-    const choice = question.kind === "single" || question.kind === "multiple"
+    const choice = isChoice(question)
     const next: AnswerState = choice
       ? { optionIds: [...(item.optionIds ?? [])], text: "" }
       : { optionIds: [], text: item.text ?? "" }
@@ -306,17 +272,8 @@ const letterRule = computed<"required" | "optional" | "absent" | "unknown">(() =
   return props.data.facts?.hh?.letterRequired === true ? "required" : "unknown"
 })
 
-const missing = computed(() => {
-  const out: Array<string> = []
-  if (letterRule.value === "required" && letter.value.trim() === "") out.push("сопроводительное письмо")
-  questions.value.forEach((question, index) => {
-    if (question.required && !isAnswered(question)) out.push(`вопрос ${index + 1}`)
-  })
-  return out
-})
-
-const needsOwnAnswer = computed(() =>
-  questions.value.filter((question) => question.kind === "code").length
+const missing = computed(() =>
+  missingParts({ letter: letter.value, letterRule: letterRule.value, questions: questions.value, answers })
 )
 
 /* ---- actions ------------------------------------------------------------- */
@@ -356,6 +313,7 @@ const clearFields = () => {
   notice.value = null
   errorText.value = null
   confirming.value = false
+  problems.value = []
 }
 
 const restore = (kept: Workspace) => {
@@ -383,12 +341,7 @@ watch(
 
 const savedKit = computed(() => detail.value?.kit ?? null)
 
-const savedAnswers = (): Map<string, Extract<KitAnswer, { questionId: string }>> =>
-  new Map(
-    (savedKit.value?.answers ?? [])
-      .filter((item): item is Extract<KitAnswer, { questionId: string }> => "questionId" in item)
-      .map((item) => [item.questionId, item])
-  )
+const savedAnswers = () => savedAnswerMap(savedKit.value?.answers)
 
 /** Letter and answers of the saved draft for this resume, then hints for what is still empty. */
 watch(
@@ -426,7 +379,7 @@ const storeGeneratedElsewhere = (target: string, draft: GeneratedDraft) => {
   for (const item of draft.answers) {
     const question = questions.value.find((candidate) => candidate.id === item.questionId)
     if (question === undefined) continue
-    const choice = question.kind === "single" || question.kind === "multiple"
+    const choice = isChoice(question)
     const value: AnswerState = choice
       ? { optionIds: [...(item.optionIds ?? [])], text: "" }
       : { optionIds: [], text: item.text ?? "" }
@@ -447,7 +400,7 @@ const persistElsewhere = async (targetAccountId: string, targetResumeId: string,
   for (const item of draft.answers) {
     const question = questions.value.find((candidate) => candidate.id === item.questionId)
     if (question === undefined) continue
-    const choice = question.kind === "single" || question.kind === "multiple"
+    const choice = isChoice(question)
     answersToSave.push({
       questionId: question.id,
       ...(choice ? { optionIds: [...(item.optionIds ?? [])] } : { text: (item.text ?? "").trim() }),
@@ -465,22 +418,11 @@ const persistElsewhere = async (targetAccountId: string, targetResumeId: string,
   emit("changed")
 }
 
-const normalize = (text: string, list: ReadonlyArray<KitAnswer>): string =>
-  JSON.stringify([
-    text.trim(),
-    list
-      .values()
-      .filter((item): item is Extract<KitAnswer, { questionId: string }> => "questionId" in item)
-      .map((item) => [item.questionId, [...(item.optionIds ?? [])].sort(), (item.text ?? "").trim()])
-      .toArray()
-      .sort()
-  ])
-
 /** The screen differs from the draft saved for this resume. */
 const dirty = computed(
   () =>
-    normalize(letter.value, buildAnswers()) !==
-    normalize(savedKit.value?.letter ?? "", savedKit.value?.answers ?? [])
+    kitSignature(letter.value, buildAnswers()) !==
+    kitSignature(savedKit.value?.letter, savedKit.value?.answers ?? [])
 )
 
 const revertToSaved = () => {
@@ -505,16 +447,9 @@ const revertToSaved = () => {
 }
 
 const explain = (error: unknown): string => {
-  const problems = (error as { problems?: ReadonlyArray<unknown> } | null)?.problems
-  if (Array.isArray(problems) && problems.length > 0) {
-    return problems
-      .map((problem) =>
-        typeof problem === "string"
-          ? problem
-          : String((problem as { message?: unknown })?.message ?? JSON.stringify(problem))
-      )
-      .join("; ")
-  }
+  const failed = kitProblems(error)
+  problems.value = failed
+  if (failed.length > 0) return [...new Set(failed.map(problemText))].join(" ")
   return describeError(error)
 }
 
@@ -578,6 +513,7 @@ const saveDraft = async () => {
   busy.value = "save"
   errorText.value = null
   notice.value = null
+  problems.value = []
   try {
     const id = await ensureApplication()
     await saveKit(id)
@@ -596,6 +532,7 @@ const send = async () => {
   busy.value = "send"
   errorText.value = null
   notice.value = null
+  problems.value = []
   try {
     // Right before an irreversible send the form is read again: the employer
     // may have changed the questions since the page was opened.
@@ -700,7 +637,7 @@ const NO_FORM = "no-form"
         <AlertTitle>Форму не удалось обновить</AlertTitle>
         <AlertDescription>{{ formState.lastError }}</AlertDescription>
       </Alert>
-      <p v-if="kitIsOld" class="text-xs text-amber-700 dark:text-amber-300">
+      <p v-if="kitIsOld" class="text-xs text-warning">
         Вопросы на hh изменились после сохранения черновика. Проверьте ответы перед отправкой.
       </p>
       <Alert v-if="state === 'needs_human' || state === 'failed'" variant="destructive">
@@ -729,7 +666,7 @@ const NO_FORM = "no-form"
               v-if="generatedInfo.durationMs !== null"
             >, {{ (generatedInfo.durationMs / 1000).toFixed(1) }} с</template>. Ничего не сохранено и не отправлено.
           </p>
-          <ul v-if="generatedInfo.problems.length > 0" class="list-disc space-y-0.5 pl-5 text-amber-700 dark:text-amber-300">
+          <ul v-if="generatedInfo.problems.length > 0" class="list-disc space-y-0.5 pl-5 text-warning">
             <li v-for="problem in generatedInfo.problems" :key="problem">{{ problem }}</li>
           </ul>
         </div>
@@ -765,7 +702,7 @@ const NO_FORM = "no-form"
             Черновик для этого резюме сохранён {{ formatDate(savedKit.createdAt) }}.
           </span>
           <span v-else>Для этого резюме черновика нет.</span>
-          <span v-if="dirty" class="text-amber-700 dark:text-amber-300">Есть несохранённые изменения.</span>
+          <span v-if="dirty" class="text-warning">Есть несохранённые изменения.</span>
           <Button v-if="dirty && savedKit" variant="ghost" size="sm" :disabled="busy !== null" @click="revertToSaved">
             Вернуть сохранённое
           </Button>
@@ -773,53 +710,15 @@ const NO_FORM = "no-form"
       </div>
 
       <!-- test -->
-      <div v-if="form !== null && questions.length > 0" class="space-y-4">
-        <div class="flex items-center justify-between">
-          <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Тест работодателя ({{ questions.length }})
-          </span>
-          <span v-if="needsOwnAnswer > 0" class="text-xs text-amber-700 dark:text-amber-300">
-            есть задание с кодом: ответьте сами
-          </span>
-        </div>
-        <fieldset
-          v-for="(question, index) in questions"
-          :key="question.id"
-          class="space-y-2 rounded-md border border-border p-3"
-        >
-          <legend class="px-1 text-sm font-medium">
-            {{ index + 1 }}. {{ question.text }}
-            <span v-if="question.required" class="text-red-700 dark:text-red-300">*</span>
-          </legend>
-          <p v-if="hintFor(question.id)?.note" class="text-xs text-muted-foreground">
-            Подсказка: {{ hintFor(question.id)?.note }}
-          </p>
-
-          <template v-if="question.kind === 'single' || question.kind === 'multiple'">
-            <label
-              v-for="option in question.options"
-              :key="option.id"
-              class="flex cursor-pointer items-start gap-2 rounded px-1 py-0.5 hover:bg-muted/40"
-            >
-              <input
-                :type="question.kind === 'single' ? 'radio' : 'checkbox'"
-                :name="`q-${question.id}`"
-                class="mt-0.5 size-4 accent-primary"
-                :checked="answerOf(question.id).optionIds.includes(option.id)"
-                @change="toggleOption(question, option.id)"
-              />
-              <span>{{ option.label }}</span>
-            </label>
-          </template>
-          <Textarea
-            v-else
-            v-model="answerOf(question.id).text"
-            :class="question.kind === 'code' ? 'min-h-32 font-mono text-xs' : 'min-h-20'"
-            :maxlength="question.maxLength ?? undefined"
-            :placeholder="question.kind === 'code' ? `Код${question.codeLanguage ? ` (${question.codeLanguage})` : ''}` : 'Ваш ответ'"
-          />
-        </fieldset>
-      </div>
+      <AnswersEditor
+        v-if="form !== null"
+        :questions="questions"
+        :answers="answers"
+        :hints="hints"
+        :problems="problemMap"
+        :disabled="busy !== null"
+        @change="changeAnswer"
+      />
 
       <!-- result -->
       <Alert v-if="errorText" variant="destructive">
@@ -827,8 +726,8 @@ const NO_FORM = "no-form"
         <AlertTitle>Не получилось</AlertTitle>
         <AlertDescription>{{ errorText }}</AlertDescription>
       </Alert>
-      <p v-if="notice" class="text-xs text-emerald-700 dark:text-emerald-300">{{ notice }}</p>
-      <p v-if="missing.length > 0" class="text-xs text-amber-700 dark:text-amber-300">
+      <p v-if="notice" class="text-xs text-success">{{ notice }}</p>
+      <p v-if="missing.length > 0" class="text-xs text-warning">
         Не заполнено: {{ missing.join(", ") }}.
       </p>
 

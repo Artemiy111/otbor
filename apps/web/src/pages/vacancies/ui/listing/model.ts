@@ -1,22 +1,4 @@
-import type { HhAccountRecord, ResumeRecord, VacancySortKey, VacancySummary } from "@otbor/contract"
-
-export const SORT_OPTIONS: ReadonlyArray<{ value: VacancySortKey; label: string; defaultDirection: "asc" | "desc" }> = [
-  { value: "date", label: "Дата публикации", defaultDirection: "desc" },
-  { value: "salary", label: "Зарплата", defaultDirection: "desc" },
-  { value: "title", label: "Название", defaultDirection: "asc" },
-  { value: "employer", label: "Компания", defaultDirection: "asc" },
-  { value: "rating", label: "Рейтинг компании", defaultDirection: "desc" },
-  { value: "area", label: "Город", defaultDirection: "asc" },
-  { value: "seniority", label: "Уровень", defaultDirection: "desc" },
-  { value: "experience", label: "Опыт", defaultDirection: "asc" },
-  { value: "employment", label: "Занятость", defaultDirection: "asc" },
-  { value: "firstSeen", label: "Впервые найдена", defaultDirection: "desc" },
-  { value: "lastSeen", label: "Последний раз видели", defaultDirection: "desc" },
-  { value: "archived", label: "Архивные", defaultDirection: "desc" },
-  { value: "blacklisted", label: "Чёрный список", defaultDirection: "desc" },
-  { value: "responses", label: "Количество откликов", defaultDirection: "desc" },
-  { value: "analysed", label: "ИИ-анализ", defaultDirection: "desc" }
-]
+import type { HhAccountRecord, ResumeRecord, VacancySummary } from "@otbor/contract"
 
 export interface RowAccount {
   readonly accountId: string
@@ -29,28 +11,27 @@ export interface RowProps {
   readonly responded: ReadonlyArray<RowAccount>
   readonly accounts: ReadonlyArray<HhAccountRecord>
   readonly resumes: ReadonlyArray<ResumeRecord>
+  /** Граница «нового»: вакансии, найденные не раньше неё, получают метку «Новая». */
+  readonly since: string
+  /** Аккаунт области решений: для него считаны вердикт и отклик, от его имени отбраковка. */
+  readonly scopeAccountId: string | null
 }
 
-/** Row background: a blacklisted vacancy is tinted red, an archived one is dimmed. */
+/** Фон строки: вакансия из чёрного списка подкрашена, архивная приглушена. */
 export const rowClass = (vacancy: VacancySummary): string =>
   vacancy.blacklisted
-    ? "bg-red-500/[0.06] shadow-[inset_3px_0_0_0] shadow-red-500/60"
+    ? "bg-danger-muted/40 shadow-[inset_3px_0_0_0] shadow-danger/60"
     : vacancy.archived
       ? "opacity-70"
       : ""
 
-const AVATAR_TONES = [
-  "bg-sky-500/15 text-sky-700 dark:text-sky-300",
-  "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
-  "bg-violet-500/15 text-violet-700 dark:text-violet-300",
-  "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-  "bg-rose-500/15 text-rose-700 dark:text-rose-300"
-]
-
-/** Stable letter tile for an employer: the same name always gets the same colour. */
-export const employerAvatar = (name: string | null | undefined): { letter: string; tone: string } => {
+/** Устойчивый оттенок работодателя: одно имя всегда получает один цвет. */
+export const employerAvatar = (name: string | null | undefined): { letter: string; hue: number } => {
   const text = (name ?? "").trim()
   let hash = 0
   for (const char of text) hash = (hash * 31 + char.codePointAt(0)!) >>> 0
-  return { letter: text === "" ? "?" : [...text][0]!.toUpperCase(), tone: AVATAR_TONES[hash % AVATAR_TONES.length]! }
+  return { letter: text === "" ? "?" : [...text][0]!.toUpperCase(), hue: (hash % 12) * 30 + 15 }
 }
+
+/** Причина пропуска со строчной буквы, чтобы читаться после двоеточия: «Пропущена: не прошёл фильтр». */
+export const lowerFirst = (text: string): string => (text === "" ? text : text[0]!.toLowerCase() + text.slice(1))
