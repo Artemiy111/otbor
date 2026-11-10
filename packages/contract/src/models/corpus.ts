@@ -247,6 +247,10 @@ export const BlacklistRecord = Schema.Struct({
   resumeId: Schema.optional(Schema.NullOr(ResumeId)),
   targetType: BlacklistTarget,
   externalId: Schema.String,
+  /** Внутренний id вакансии в корпусе otbor, если она там есть (только у `targetType = vacancy`). */
+  vacancyId: Schema.optional(Schema.NullOr(VacancyId)),
+  /** Внутренний id работодателя в корпусе otbor, если он там есть (только у `targetType = employer`). */
+  employerId: Schema.optional(Schema.NullOr(EmployerId)),
   name: Schema.optional(Schema.NullOr(Schema.String)),
   source: BlacklistSource,
   reason: Schema.optional(Schema.NullOr(Schema.String)),

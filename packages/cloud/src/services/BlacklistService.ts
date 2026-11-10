@@ -28,6 +28,7 @@ export interface BlacklistServiceShape {
     readonly id?: string
     readonly scope: BlacklistScope
     readonly hhAccountId?: string
+    readonly resumeId?: string
     readonly targetType: BlacklistTarget
     readonly externalId: string
     readonly name?: string
@@ -156,6 +157,8 @@ export class BlacklistService extends Context.Service<BlacklistService, Blacklis
           const invalid = BlacklistRepository.validateInput({
             scope: input.scope,
             hhAccountId: input.hhAccountId,
+            resumeId: input.resumeId,
+            targetType: input.targetType,
             externalId: input.externalId
           })
           if (invalid !== null) {
@@ -165,35 +168,38 @@ export class BlacklistService extends Context.Service<BlacklistService, Blacklis
           const record = yield* database
             .asUser(currentUser.userId, (tx) =>
               Effect.gen(function*() {
-                if (input.scope !== "app" && input.hhAccountId !== undefined) {
+                if (input.scope === "resume") {
+                  // Резюме должно принадлежать пользователю, иначе чужой id не отличить от своего.
+                  const resume = yield* ResumeRepository.find(tx, currentUser.userId, input.resumeId!)
+                  if (resume === null) return { _tag: "missing" as const, entity: "Resume", id: input.resumeId! }
+                } else if (input.scope !== "app" && input.hhAccountId !== undefined) {
                   const exists = yield* accountExists(
                     tx,
                     currentUser.userId,
                     input.hhAccountId
                   )
-                  if (!exists) return null
+                  if (!exists) return { _tag: "missing" as const, entity: "HhAccount", id: input.hhAccountId }
                 }
-                return yield* BlacklistRepository.upsert(tx, {
+                const saved = yield* BlacklistRepository.upsert(tx, {
                   userId: currentUser.userId,
                   id: input.id,
                   scope: input.scope,
-                  hhAccountId: input.scope === "app" ? null : input.hhAccountId ?? null,
+                  hhAccountId: input.scope === "app" || input.scope === "resume" ? null : input.hhAccountId ?? null,
+                  resumeId: input.scope === "resume" ? input.resumeId ?? null : null,
                   targetType: input.targetType,
                   externalId: input.externalId,
                   name: input.name ?? null,
                   reason: input.reason ?? null
                 })
+                return { _tag: "ok" as const, record: saved }
               })
             )
             .pipe(Effect.mapError(toStorageError("blacklist.upsert")))
 
-          if (record === null) {
-            return yield* new NotFound({
-              entity: "HhAccount",
-              id: input.hhAccountId ?? ""
-            })
+          if (record._tag === "missing") {
+            return yield* new NotFound({ entity: record.entity, id: record.id })
           }
-          return record
+          return record.record
         })
 
       const remove: BlacklistServiceShape["remove"] = (id) =>

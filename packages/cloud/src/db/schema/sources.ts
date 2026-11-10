@@ -96,6 +96,9 @@ export const conversation = pgTable(
     unreadCount: integer("unread_count").notNull().default(0),
     archived: boolean("archived").notNull().default(false),
     personId: uuid("person_id").references(() => person.id, { onDelete: "set null" }),
+    /** Локальная отметка оператора: дочитано до этого входящего (см. миграцию 0061). */
+    readAt: timestamp("read_at", { withTimezone: true }),
+    markedUnread: boolean("marked_unread").notNull().default(false),
     raw: jsonb("raw").$type<Record<string, unknown>>().notNull().default({}),
     createdAt: createdAt(),
     updatedAt: updatedAt()

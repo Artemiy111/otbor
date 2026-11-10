@@ -347,7 +347,11 @@ export const BlacklistTarget = Schema.Literals(["vacancy", "employer"])
 
 export type BlacklistTarget = typeof BlacklistTarget.Type
 
-export const BlacklistSource = Schema.Literals(["user", "hh_hidden"])
+/**
+ * Откуда запись: `user` - добавил вручную (или нельзя отличить: старые строки
+ * отбраковки до миграции 0062), `reject` - кнопка «Отбраковать», `hh_hidden` - импорт скрытых на hh.
+ */
+export const BlacklistSource = Schema.Literals(["user", "reject", "hh_hidden"])
 
 export type BlacklistSource = typeof BlacklistSource.Type
 

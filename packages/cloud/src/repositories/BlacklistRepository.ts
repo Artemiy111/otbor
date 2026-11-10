@@ -167,6 +167,9 @@ interface BlacklistRow {
   readonly resume_id?: string | null
   readonly type: string
   readonly external_id: string
+  /** Внутренние id из корпуса: заполняет только `list` (join), у остальных запросов их нет. */
+  readonly vacancy_id?: string | null
+  readonly employer_id?: string | null
   readonly name: string | null
   readonly source: string
   readonly reason: string | null
@@ -182,6 +185,8 @@ export const toRecord = (row: BlacklistRow): BlacklistRecord => ({
   resumeId: (row.resume_id ?? null) as BlacklistRecord["resumeId"],
   targetType: row.type as BlacklistTarget,
   externalId: row.external_id,
+  vacancyId: (row.vacancy_id ?? null) as BlacklistRecord["vacancyId"],
+  employerId: (row.employer_id ?? null) as BlacklistRecord["employerId"],
   name: row.name,
   source: row.source as BlacklistRecord["source"],
   reason: row.reason,
@@ -207,29 +212,37 @@ export const list = (tx: Executor, filter: BlacklistFilter = {}) => {
 
   const where = sql.join(
     [
-      filter.scope === undefined ? sql`true` : sql`scope = ${filter.scope}`,
+      filter.scope === undefined ? sql`true` : sql`ht.scope = ${filter.scope}`,
       filter.hhAccountId === undefined
         ? sql`true`
-        : sql`hh_account_id = ${filter.hhAccountId}::uuid`,
-      filter.targetType === undefined ? sql`true` : sql`type = ${filter.targetType}`,
+        : sql`ht.hh_account_id = ${filter.hhAccountId}::uuid`,
+      filter.targetType === undefined ? sql`true` : sql`ht.type = ${filter.targetType}`,
       pattern === null
         ? sql`true`
-        : sql`(coalesce(name, '') ilike ${pattern} or external_id ilike ${pattern})`
+        : sql`(coalesce(ht.name, '') ilike ${pattern} or ht.external_id ilike ${pattern})`
     ],
     sql` and `
   )
 
   return Effect.gen(function*() {
     const rows = yield* tx.execute(sql`
-      select * from hidden_target
+      select ht.*, v.id as vacancy_id, e.id as employer_id
+      from hidden_target ht
+      -- Внутренний id цели в корпусе: корпус общий, hh-номер однозначен внутри источника.
+      left join lateral (
+        select id from vacancy where source = 'hh' and external_id = ht.external_id limit 1
+      ) v on ht.type = 'vacancy'
+      left join lateral (
+        select id from employer where source = 'hh' and external_id = ht.external_id limit 1
+      ) e on ht.type = 'employer'
       where ${where}
       order by
-        case scope when 'app' then 0 when 'hh_account' then 1 when 'resume' then 2 else 3 end,
-        coalesce(name, external_id)
+        case ht.scope when 'app' then 0 when 'hh_account' then 1 when 'resume' then 2 else 3 end,
+        coalesce(ht.name, ht.external_id), ht.id
       limit ${limit} offset ${offset}
     `)
     const total = yield* tx.execute(sql`
-      select count(*)::int as count from hidden_target where ${where}
+      select count(*)::int as count from hidden_target ht where ${where}
     `)
 
     return {
@@ -253,10 +266,25 @@ export const findById = (tx: Executor, id: string): RepoEffect<BlacklistRecord |
 export const validateInput = (input: {
   readonly scope: BlacklistScope
   readonly hhAccountId?: string | null
+  readonly resumeId?: string | null
+  readonly targetType?: BlacklistTarget
   readonly externalId: string
 }): string | null => {
   if (input.externalId.trim() === "") return "externalId must not be empty"
-  if (input.scope === "resume") return "resume scope is written by VacancyReject only"
+  if (input.scope === "resume") {
+    // Слой резюме читает только решение вакансии: работодателя им не исключить.
+    if (input.targetType !== undefined && input.targetType !== "vacancy") {
+      return "resume scope applies to vacancies only"
+    }
+    if (input.resumeId === null || input.resumeId === undefined) return "resume scope requires a resumeId"
+    if (input.hhAccountId !== null && input.hhAccountId !== undefined) {
+      return "resume scope must not have an hhAccountId"
+    }
+    return null
+  }
+  if (input.resumeId !== null && input.resumeId !== undefined) {
+    return `${input.scope} scope must not have a resumeId`
+  }
   if (input.scope === "app" && input.hhAccountId !== null && input.hhAccountId !== undefined) {
     return "app scope must not have an hhAccountId"
   }
@@ -271,6 +299,7 @@ export interface UpsertBlacklistInput {
   readonly id?: string
   readonly scope: BlacklistScope
   readonly hhAccountId?: string | null
+  readonly resumeId?: string | null
   readonly targetType: BlacklistTarget
   readonly externalId: string
   readonly name?: string | null
@@ -284,6 +313,7 @@ export const upsert = (tx: Executor, input: UpsertBlacklistInput): RepoEffect<Bl
         update hidden_target set
           scope = ${input.scope},
           hh_account_id = ${input.hhAccountId ?? null}::uuid,
+          resume_id = ${input.scope === "resume" ? input.resumeId ?? null : null}::uuid,
           type = ${input.targetType},
           external_id = ${input.externalId.trim()},
           name = coalesce(${input.name ?? null}, name),
@@ -297,15 +327,18 @@ export const upsert = (tx: Executor, input: UpsertBlacklistInput): RepoEffect<Bl
     }
 
     const accountId = input.hhAccountId ?? null
+    const resumeId = input.scope === "resume" ? input.resumeId ?? null : null
     const conflict = input.scope === "app"
       ? sql`(user_id, type, external_id) where scope = 'app'`
+      : input.scope === "resume"
+      ? sql`(resume_id, type, external_id) where scope = 'resume'`
       : sql`(hh_account_id, type, external_id) where scope in ('hh_account', 'hh_native')`
 
     const rows = yield* tx.execute(sql`
       insert into hidden_target
-        (user_id, hh_account_id, scope, type, external_id, name, source, reason)
+        (user_id, hh_account_id, resume_id, scope, type, external_id, name, source, reason)
       values (
-        ${input.userId}, ${accountId}::uuid, ${input.scope}, ${input.targetType},
+        ${input.userId}, ${accountId}::uuid, ${resumeId}::uuid, ${input.scope}, ${input.targetType},
         ${input.externalId.trim()}, ${input.name ?? null}, 'user', ${input.reason ?? null}
       )
       on conflict ${conflict}
@@ -585,10 +618,12 @@ export const reject = (tx: Executor, input: RejectInput): RepoEffect<BlacklistRe
         ${input.userId},
         ${input.scope === "hh_account" ? input.hhAccountId : null}::uuid,
         ${input.scope === "resume" ? input.resumeId : null}::uuid,
-        ${input.scope}, 'vacancy', ${input.vacancyExternalId}, ${input.name}, 'user', ${input.reason}
+        ${input.scope}, 'vacancy', ${input.vacancyExternalId}, ${input.name}, 'reject', ${input.reason}
       )
       on conflict ${conflict}
       do update set
+        -- Строка, которую уже добавили вручную, после кнопки считается кнопочной.
+        source = 'reject',
         name = coalesce(excluded.name, hidden_target.name),
         reason = coalesce(excluded.reason, hidden_target.reason),
         updated_at = now()
@@ -601,7 +636,7 @@ export const reject = (tx: Executor, input: RejectInput): RepoEffect<BlacklistRe
         delete from hidden_target
         where user_id = ${input.userId} and type = 'vacancy'
           and external_id = ${input.vacancyExternalId}
-          and scope in ('hh_account', 'resume') and source = 'user'
+          and scope in ('hh_account', 'resume') and source in ('user', 'reject')
       `)
     } else if (input.scope === "hh_account") {
       yield* tx.execute(sql`

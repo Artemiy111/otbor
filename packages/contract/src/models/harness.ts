@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import { JobKind, JobStage, JobStatus } from "../enums.ts"
-import { HarnessId, HarnessJobId, HhAccountId, LeaseId } from "../ids.ts"
+import { ApplicationId, HarnessId, HarnessJobId, HhAccountId, LeaseId, VacancyId } from "../ids.ts"
 
 export const HarnessJob = Schema.Struct({
   id: HarnessJobId,
@@ -21,6 +21,27 @@ export const HarnessJob = Schema.Struct({
 })
 
 export type HarnessJob = typeof HarnessJob.Type
+
+/**
+ * Задача очереди для страницы «Очереди»: `HarnessJob` плюс то, что сервер уже
+ * разрешил сам (аккаунт, вакансия, отклик, текст ошибки), чтобы страница не
+ * разбирала сырой `payload`.
+ */
+export const QueueJob = Schema.Struct({
+  ...HarnessJob.fields,
+  /** `harness_jobs.hh_account_id`, а у задач без него - аккаунт отклика. */
+  hhAccountId: Schema.NullOr(HhAccountId),
+  /** Имя аккаунта как в списке аккаунтов: имя и фамилия, иначе метка. */
+  accountName: Schema.NullOr(Schema.String),
+  /** Вакансия отклика, а у задач без отклика (чтение формы) - `payload.vacancyId`. */
+  vacancyId: Schema.NullOr(VacancyId),
+  vacancyTitle: Schema.NullOr(Schema.String),
+  applicationId: Schema.NullOr(ApplicationId),
+  /** `harness_jobs.last_error`: почему задача не удалась; null, если ошибки не было. */
+  lastError: Schema.NullOr(Schema.String)
+})
+
+export type QueueJob = typeof QueueJob.Type
 
 /**
  * An ACP prompt carried inside the job envelope. The cloud never sends free
@@ -103,15 +124,27 @@ export const HarnessRegistration = Schema.Struct({
 
 export type HarnessRegistration = typeof HarnessRegistration.Type
 
+/**
+ * Счётчики очереди. Окна разные:
+ * - `pending`, `leased`, `running`, `needsHuman`, `needsReconcile` - за всё время:
+ *   застрявшая задача остаётся в счётчике, пока её не разобрали;
+ * - `done`, `failed`, `dead` - только задачи, созданные за последние 24 часа.
+ */
 export const QueueStats = Schema.Struct({
   pending: Schema.Int,
   leased: Schema.Int,
   running: Schema.Int,
+  /** За последние 24 часа. */
   done: Schema.Int,
+  /** За последние 24 часа. */
   failed: Schema.Int,
+  /** За последние 24 часа. */
   dead: Schema.Int,
+  /** За всё время, без окна. */
   needsHuman: Schema.Int,
+  /** За всё время, без окна. */
   needsReconcile: Schema.Int,
+  /** Возраст самой старой ожидающей (`pending`) задачи. */
   oldestPendingAgeSeconds: Schema.Int
 })
 

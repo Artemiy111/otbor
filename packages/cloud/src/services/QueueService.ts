@@ -8,6 +8,7 @@ import type {
   HeartbeatResult,
   JobKind,
   QueueConcurrency,
+  QueueJob,
   QueueStats,
   UserSettings
 } from "@otbor/contract"
@@ -142,6 +143,9 @@ export interface QueueServiceShape {
     readonly kind?: string
     readonly limit?: number
   }) => Effect.Effect<ReadonlyArray<HarnessJob>, ApiError>
+  readonly search: (
+    options: QueueRepository.QueueSearchOptions
+  ) => Effect.Effect<{ readonly items: ReadonlyArray<QueueJob>; readonly total: number }, ApiError>
   readonly register: (input: RegisterInput) => Effect.Effect<HarnessRegistration, ApiError>
   readonly leaseNext: (
     input: LeaseInput
@@ -280,6 +284,11 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
         database
           .asUser(currentUser.userId, (tx) => QueueRepository.list(tx, options))
           .pipe(Effect.mapError(toStorageError("queue.list")))
+
+      const search: QueueServiceShape["search"] = (options) =>
+        database
+          .asUser(currentUser.userId, (tx) => QueueRepository.search(tx, options))
+          .pipe(Effect.mapError(toStorageError("queue.search")))
 
       const register: QueueServiceShape["register"] = (input) =>
         Effect.gen(function*() {
@@ -687,6 +696,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
         stats,
         concurrency,
         jobs,
+        search,
         register,
         leaseNext,
         heartbeat,

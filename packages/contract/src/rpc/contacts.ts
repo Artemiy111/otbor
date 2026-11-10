@@ -2,8 +2,15 @@ import { Schema } from "effect"
 import { Rpc } from "effect/rpc"
 import { ContactKind, ContactSource, ConversationChannel } from "../enums.ts"
 import { ApiError } from "../errors.ts"
-import { ContactId, ConversationId, HhAccountId, ResumeId, VacancyId } from "../ids.ts"
-import { ContactRecord, ConversationDetail, ConversationSummary, VacancyChat } from "../models/index.ts"
+import { ContactId, ConversationId, HhAccountId, PersonId, ResumeId, VacancyId } from "../ids.ts"
+import {
+  ContactRecord,
+  ConversationDetail,
+  ConversationListItem,
+  ConversationSearchResult,
+  ConversationSummary,
+  VacancyChat
+} from "../models/index.ts"
 
 export const ContactsList = Rpc.make("ContactsList", {
   payload: Schema.Struct({
@@ -43,6 +50,41 @@ export const ConversationsList = Rpc.make("ConversationsList", {
     limit: Schema.optional(Schema.Int)
   }),
   success: Schema.Array(ConversationSummary),
+  error: ApiError
+})
+
+/**
+ * Постраничный список диалогов с серверным поиском и фильтрами.
+ * `search` ищет по имени собеседника, заголовку и тексту сообщений.
+ */
+export const ConversationsSearch = Rpc.make("ConversationsSearch", {
+  payload: Schema.Struct({
+    search: Schema.optional(Schema.String),
+    channel: Schema.optional(ConversationChannel),
+    /** `true`: только непрочитанные. */
+    unread: Schema.optional(Schema.Boolean),
+    /** `false`: без архивных диалогов; без поля архивные тоже показываются. */
+    archived: Schema.optional(Schema.Boolean),
+    accountId: Schema.optional(Schema.String),
+    personId: Schema.optional(PersonId),
+    limit: Schema.optional(Schema.Int),
+    offset: Schema.optional(Schema.Int)
+  }),
+  success: ConversationSearchResult,
+  error: ApiError
+})
+
+/** Отмечает диалог прочитанным только в otbor; почту, Telegram и hh не трогает. */
+export const ConversationMarkRead = Rpc.make("ConversationMarkRead", {
+  payload: Schema.Struct({ id: ConversationId }),
+  success: ConversationListItem,
+  error: ApiError
+})
+
+/** Возвращает диалог в непрочитанные (только состояние otbor). */
+export const ConversationMarkUnread = Rpc.make("ConversationMarkUnread", {
+  payload: Schema.Struct({ id: ConversationId }),
+  success: ConversationListItem,
   error: ApiError
 })
 

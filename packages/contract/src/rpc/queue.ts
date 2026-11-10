@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 import { Rpc } from "effect/rpc"
-import { JobKind } from "../enums.ts"
+import { JobKind, JobStage, JobStatus } from "../enums.ts"
 import { ApiError } from "../errors.ts"
 import { HarnessId, HarnessJobId, HhAccountId, LeaseId } from "../ids.ts"
 import {
@@ -10,6 +10,7 @@ import {
   HarnessRegistration,
   HeartbeatResult,
   QueueConcurrency,
+  QueueJob,
   QueueStats
 } from "../models/index.ts"
 
@@ -33,6 +34,32 @@ export const QueueJobsList = Rpc.make("QueueJobsList", {
     limit: Schema.optional(Schema.Int)
   }),
   success: Schema.Array(HarnessJob),
+  error: ApiError
+})
+
+/**
+ * Список задач для страницы «Очереди»: постранично, с несколькими статусами и
+ * стадиями сразу, с аккаунтом, вакансией, откликом и ошибкой на каждой задаче.
+ * `QueueJobsList` остаётся для CLI и MCP.
+ */
+export const QueueJobsSearch = Rpc.make("QueueJobsSearch", {
+  payload: Schema.Struct({
+    /** Любой из статусов; пусто - все. */
+    status: Schema.optional(Schema.Array(JobStatus)),
+    /** Любая из стадий; пусто - все. */
+    stage: Schema.optional(Schema.Array(JobStage)),
+    kind: Schema.optional(JobKind),
+    /** Подстрока в названии вакансии, имени аккаунта или тексте ошибки. */
+    query: Schema.optional(Schema.String),
+    /** 1-200, по умолчанию 50. */
+    limit: Schema.optional(Schema.Int),
+    offset: Schema.optional(Schema.Int)
+  }),
+  success: Schema.Struct({
+    items: Schema.Array(QueueJob),
+    /** Сколько задач подходит под фильтр без учёта страницы. */
+    total: Schema.Int
+  }),
   error: ApiError
 })
 

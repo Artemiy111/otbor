@@ -4,6 +4,7 @@ import type {
   JobStage,
   JobStatus,
   QueueConcurrency,
+  QueueJob,
   QueueStats,
   UserSettings
 } from "@otbor/contract"
@@ -617,15 +618,15 @@ export const stats = (tx: Executor, kind?: string): RepoEffect<QueueStats> =>
         count(*) filter (where status = 'pending')::int as pending,
         count(*) filter (where status = 'leased')::int as leased,
         count(*) filter (where status = 'running')::int as running,
-        count(*) filter (where status = 'done')::int as done,
-        count(*) filter (where status = 'failed')::int as failed,
-        count(*) filter (where status = 'dead')::int as dead,
+        count(*) filter (where status = 'done' and created_at > now() - interval '1 day')::int as done,
+        count(*) filter (where status = 'failed' and created_at > now() - interval '1 day')::int as failed,
+        count(*) filter (where status = 'dead' and created_at > now() - interval '1 day')::int as dead,
+        -- Без окна по времени: застрявшая задача не должна исчезать из счётчика через сутки.
         count(*) filter (where status = 'needs_human')::int as needs_human,
         count(*) filter (where status = 'needs_reconcile')::int as needs_reconcile,
-        coalesce(max(extract(epoch from (now() - created_at))), 0)::int as oldest
+        coalesce(max(extract(epoch from (now() - created_at))) filter (where status = 'pending'), 0)::int as oldest
       from harness_jobs
-      where (status = 'pending'
-        or status in ('leased', 'running')
+      where (status in ('pending', 'leased', 'running', 'needs_human', 'needs_reconcile')
         or created_at > now() - interval '1 day')
         ${kind === undefined ? sql`` : sql`and kind = ${kind}`}
     `)
@@ -820,6 +821,94 @@ export const list = (
     .orderBy(sql`${harnessJob.createdAt} desc`)
     .limit(Math.min(Math.max(options.limit ?? 50, 1), 200))
     .pipe(Effect.map((rows) => rows.map((row) => toJob(fromSelect(row)))))
+
+export interface QueueSearchOptions {
+  readonly status?: ReadonlyArray<string>
+  readonly stage?: ReadonlyArray<string>
+  readonly kind?: string
+  readonly query?: string
+  readonly limit?: number
+  readonly offset?: number
+}
+
+const UUID_TEXT = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+
+/**
+ * Страница задач с готовыми ссылками. Аккаунт берётся из `harness_jobs.hh_account_id`,
+ * а если его нет - из отклика задачи. Вакансия - из отклика, а у задач без отклика
+ * (чтение формы) из `payload.vacancyId`. Всё одним запросом, без N+1.
+ */
+export const search = (
+  tx: Executor,
+  options: QueueSearchOptions = {}
+): RepoEffect<{ readonly items: ReadonlyArray<QueueJob>; readonly total: number }> =>
+  Effect.gen(function*() {
+    const limit = Math.min(Math.max(options.limit ?? 50, 1), 200)
+    const offset = Math.max(options.offset ?? 0, 0)
+    const query = options.query?.trim() ?? ""
+    const pattern = query === "" ? null : `%${query.replace(/[\\%_]/g, "\\$&")}%`
+    const list = (values: ReadonlyArray<string>) => sql.join(values.map((value) => sql`${value}`), sql`, `)
+
+    const accountName = sql`coalesce(
+      nullif(trim(concat_ws(' ', acc.first_name, acc.last_name)), ''),
+      nullif(acc.label, ''),
+      acc.id::text
+    )`
+    const from = sql`
+      from harness_jobs j
+      left join application ap on ap.id = j.application_id
+      left join hh_account acc on acc.id = coalesce(j.hh_account_id, ap.hh_account_id)
+      left join vacancy v on v.id = coalesce(
+        ap.vacancy_id,
+        case when j.payload ->> 'vacancyId' ~* ${UUID_TEXT} then (j.payload ->> 'vacancyId')::uuid end
+      )
+    `
+    const where = sql.join(
+      [
+        options.status === undefined || options.status.length === 0
+          ? sql`true`
+          : sql`j.status in (${list(options.status)})`,
+        options.stage === undefined || options.stage.length === 0
+          ? sql`true`
+          : sql`j.stage in (${list(options.stage)})`,
+        options.kind === undefined ? sql`true` : sql`j.kind = ${options.kind}`,
+        pattern === null
+          ? sql`true`
+          : sql`(coalesce(v.title, '') ilike ${pattern} or ${accountName} ilike ${pattern}
+              or coalesce(j.last_error, '') ilike ${pattern})`
+      ],
+      sql` and `
+    )
+
+    const rows = yield* tx.execute(sql`
+      select j.*, acc.id as acc_id, ${accountName} as account_name,
+             v.id as v_id, v.title as v_title, ap.id as ap_id
+      ${from}
+      where ${where}
+      order by j.created_at desc, j.id desc
+      limit ${limit} offset ${offset}
+    `)
+    const total = yield* tx.execute(sql`select count(*)::int as n ${from} where ${where}`)
+
+    const items = (rows.rows as unknown as ReadonlyArray<Record<string, unknown>>).map((row): QueueJob => {
+      const base = toJob({
+        ...(row as unknown as JobRow),
+        run_at: new Date(row.run_at as string),
+        created_at: new Date(row.created_at as string),
+        lease_until: row.lease_until == null ? null : new Date(row.lease_until as string)
+      })
+      return {
+        ...base,
+        hhAccountId: (row.acc_id ?? null) as QueueJob["hhAccountId"],
+        accountName: row.acc_id == null ? null : String(row.account_name),
+        vacancyId: (row.v_id ?? null) as QueueJob["vacancyId"],
+        vacancyTitle: row.v_title == null ? null : String(row.v_title),
+        applicationId: (row.ap_id ?? null) as QueueJob["applicationId"],
+        lastError: row.last_error == null || row.last_error === "" ? null : String(row.last_error)
+      }
+    })
+    return { items, total: Number((total.rows[0] as { n?: number } | undefined)?.n ?? 0) }
+  })
 
 export const cancelForApplication = (
   tx: Executor,

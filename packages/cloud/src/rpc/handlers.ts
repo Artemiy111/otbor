@@ -279,6 +279,9 @@ export const OtborHandlers = OtborRpcs.toLayer(
       PeopleRelink: ({ conversationId }) =>
         CurrentUser.pipe(Effect.flatMap((user) => people.relink(user.userId, conversationId))),
       ConversationsList: (payload) => conversations.list(payload),
+      ConversationsSearch: (payload) => conversations.search(payload),
+      ConversationMarkRead: ({ id }) => conversations.markRead(id),
+      ConversationMarkUnread: ({ id }) => conversations.markUnread(id),
       ConversationGet: ({ id }) => conversations.get(id),
 
       MailAccountsList: () => mail.list(),
@@ -354,6 +357,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
       QueueConcurrencyGet: () => queue.concurrency(),
       OverviewGet: ({ days }) => overview.get({ days }),
       QueueJobsList: (payload) => queue.jobs(payload),
+      QueueJobsSearch: (payload) => queue.search(payload),
 
       HarnessRegister: (payload) => queue.register(payload),
       HarnessLeaseNext: (payload) => queue.leaseNext(payload),

@@ -9,6 +9,7 @@ import {
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
+import * as ConversationRepository from "./ConversationRepository.ts"
 
 type Row = Record<string, unknown>
 
@@ -216,8 +217,8 @@ export const snapshot = (
 
     // 7. Входящие.
     const inbox = ((yield* tx.execute(sql`
-      select (select count(*)::int from conversation
-               where user_id = ${userId} and not archived and unread_count > 0) as unread,
+      select (select count(*)::int from conversation c
+               where c.user_id = ${userId} and not c.archived and ${ConversationRepository.unreadExpr} > 0) as unread,
              (select max(sent_at) from conversation_message
                where user_id = ${userId} and direction = 'in') as last_inbound
     `)).rows[0] ?? {}) as Row

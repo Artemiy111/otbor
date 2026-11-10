@@ -1,6 +1,7 @@
 import type {
   ConversationChannel,
   ConversationDetail,
+  ConversationListItem,
   ConversationMessageRecord,
   ConversationSummary,
   MessageDirection,
@@ -33,12 +34,16 @@ export interface StoredConversation {
   readonly last_message: string | null
   readonly vacancy_id: string | null
   readonly person_id: string | null
+  readonly vacancy_title?: string | null
+  readonly employer_name?: string | null
+  readonly hh_account_id?: string | null
+  readonly read_at?: Date | string | null
 }
 
 const iso = (value: Date | string | null): string | null =>
   value === null ? null : value instanceof Date ? value.toISOString() : new Date(value).toISOString()
 
-export const toSummary = (row: StoredConversation): ConversationSummary => ({
+export const toSummary = (row: StoredConversation): ConversationListItem => ({
   id: row.id as ConversationSummary["id"],
   channel: row.channel as ConversationChannel,
   accountId: row.account_id,
@@ -52,26 +57,61 @@ export const toSummary = (row: StoredConversation): ConversationSummary => ({
   archived: row.archived,
   lastMessage: row.last_message,
   vacancyId: row.vacancy_id as VacancyId | null,
-  personId: row.person_id as PersonId | null
+  personId: row.person_id as PersonId | null,
+  vacancyTitle: row.vacancy_title ?? null,
+  employerName: row.employer_name ?? null,
+  hhAccountId: row.hh_account_id ?? null,
+  readAt: iso(row.read_at ?? null)
 })
+
+/**
+ * Сколько входящих сообщений диалога непрочитано, по правилу otbor.
+ *
+ * - `read_at` задан (оператор открывал диалог): входящие новее `read_at`.
+ *   Значение, которое записал синк (`unread_count`), игнорируется, поэтому
+ *   прочитанный диалог остаётся прочитанным, пока не придёт новое входящее.
+ * - `read_at` нет, Telegram: счётчик источника `unread_count`.
+ * - `read_at` нет, почта и чат hh: входящие без `read_at` у самого сообщения.
+ * Ручная отметка `marked_unread` даёт минимум 1. Алиас таблицы - `c`.
+ * Это подзапросы по индексу `(conversation_id, sent_at)`, а не сканирование.
+ */
+export const unreadExpr = sql`(greatest(
+  case
+    when c.read_at is not null then (
+      select count(*) from conversation_message m
+      where m.conversation_id = c.id and m.direction = 'in' and m.sent_at > c.read_at
+    )
+    when c.channel = 'telegram' then c.unread_count
+    else (
+      select count(*) from conversation_message m
+      where m.conversation_id = c.id and m.direction = 'in' and m.read_at is null
+    )
+  end,
+  case when c.marked_unread then 1 else 0 end
+))::int`
 
 const selection = sql`
   select c.id, c.user_id, c.channel, c.account_id, c.external_id, c.title, c.url,
-         c.person_name, c.person_role, c.last_message_at, c.unread_count, c.archived,
-         c.person_id,
+         c.person_name, c.person_role, c.last_message_at, ${unreadExpr} as unread_count,
+         c.archived, c.person_id, c.read_at,
+         v.title as vacancy_title, e.name as employer_name,
+         case when c.channel = 'hh_chat' then c.account_id end as hh_account_id,
          (
            select m.text from conversation_message m
            where m.conversation_id = c.id
            order by m.sent_at desc, m.id desc
            limit 1
          ) as last_message,
-         (
-           select cv.vacancy_id from conversation_vacancy cv
-           where cv.conversation_id = c.id
-           order by (cv.kind = 'primary') desc, cv.created_at
-           limit 1
-         ) as vacancy_id
+         cvx.vacancy_id as vacancy_id
   from conversation c
+  left join lateral (
+    select cv.vacancy_id from conversation_vacancy cv
+    where cv.conversation_id = c.id
+    order by (cv.kind = 'primary') desc, cv.created_at
+    limit 1
+  ) cvx on true
+  left join vacancy v on v.id = cvx.vacancy_id
+  left join employer e on e.id = v.employer_id
 `
 
 export interface ConversationFilter {
@@ -116,9 +156,140 @@ export const list = (
     return (rows.rows as unknown as ReadonlyArray<StoredConversation>).map(toSummary)
   })
 
+export interface ConversationSearchFilter {
+  readonly search?: string
+  readonly channel?: ConversationChannel
+  readonly unread?: boolean
+  readonly archived?: boolean
+  readonly accountId?: string
+  readonly personId?: string
+  readonly limit?: number
+  readonly offset?: number
+}
+
+/**
+ * Страница диалогов с итогами. Поиск `ilike` идёт по имени собеседника,
+ * заголовку, внешнему id и тексту сообщений. Trigram-индекса нет, поэтому
+ * поиск по тексту - это сканирование сообщений пользователя (по индексу
+ * `conversation_id` на каждый диалог); без `search` оно не выполняется.
+ * Фильтр `unread` считает непрочитанные выражением `unreadExpr` по каждому
+ * диалогу пользователя, это тоже проход по его диалогам.
+ */
+export const search = (
+  tx: Executor,
+  userId: string,
+  filter: ConversationSearchFilter = {}
+): RepoEffect<{
+  readonly items: ReadonlyArray<ConversationListItem>
+  readonly total: number
+  readonly unreadTotal: number
+}> =>
+  Effect.gen(function*() {
+    const limit = Math.min(Math.max(filter.limit ?? 50, 1), 200)
+    const offset = Math.max(filter.offset ?? 0, 0)
+    const term = filter.search?.trim() ?? ""
+    const pattern = term === "" ? null : `%${term.replace(/[%_\\]/g, "\\$&")}%`
+
+    const base = [sql`c.user_id = ${userId}`]
+    if (filter.channel !== undefined) base.push(sql`c.channel = ${filter.channel}`)
+    if (filter.archived !== undefined) base.push(sql`c.archived = ${filter.archived}`)
+    if (filter.accountId !== undefined) base.push(sql`c.account_id = ${filter.accountId}`)
+    if (filter.personId !== undefined) base.push(sql`c.person_id = ${filter.personId}`)
+    if (pattern !== null) {
+      base.push(sql`(
+        c.title ilike ${pattern} or c.person_name ilike ${pattern}
+        or c.external_id ilike ${pattern}
+        or exists (
+          select 1 from conversation_message sm
+          where sm.conversation_id = c.id and sm.text ilike ${pattern}
+        )
+      )`)
+    }
+    const baseWhere = sql.join(base, sql` and `)
+    const unreadOnly = filter.unread === true
+    const pageWhere = unreadOnly ? sql`${baseWhere} and ${unreadExpr} > 0` : baseWhere
+
+    const rows = yield* tx.execute(sql`
+      ${selection}
+      where ${pageWhere}
+      order by c.last_message_at desc nulls last, c.id
+      limit ${limit} offset ${offset}
+    `)
+
+    const totals = yield* tx.execute(sql`
+      select count(*)::int as total,
+             count(*) filter (where ${unreadExpr} > 0 and not c.archived)::int as unread_total
+      from conversation c
+      where ${baseWhere}
+    `)
+    const row = (totals.rows[0] ?? {}) as { total?: number; unread_total?: number }
+    const unreadTotal = Number(row.unread_total ?? 0)
+    const allTotal = Number(row.total ?? 0)
+
+    // При фильтре `unread` total - это число непрочитанных, а не всех.
+    let total = allTotal
+    if (unreadOnly) {
+      const counted = yield* tx.execute(sql`
+        select count(*)::int as n from conversation c where ${pageWhere}
+      `)
+      total = Number((counted.rows[0] as { n?: number } | undefined)?.n ?? 0)
+    }
+
+    return {
+      items: (rows.rows as unknown as ReadonlyArray<StoredConversation>).map(toSummary),
+      total,
+      unreadTotal
+    }
+  })
+
+/**
+ * Отмечает диалог прочитанным в otbor: `read_at` встаёт на последнее входящее
+ * (или на now(), если входящих нет) и никогда не уходит назад. Источник не
+ * трогаем. Возвращает `false`, если диалога нет у пользователя.
+ */
+export const markRead = (
+  tx: Executor,
+  userId: string,
+  id: string
+): RepoEffect<boolean> =>
+  tx
+    .execute(sql`
+      update conversation c set
+        read_at = greatest(
+          c.read_at,
+          coalesce(
+            (select max(m.sent_at) from conversation_message m
+             where m.conversation_id = c.id and m.direction = 'in'),
+            now()
+          )
+        ),
+        marked_unread = false
+      where c.user_id = ${userId} and c.id = ${id}
+      returning c.id
+    `)
+    .pipe(Effect.map((result) => result.rows.length > 0))
+
+/** Возвращает диалог в непрочитанные: ручная отметка, `read_at` не меняется. */
+export const markUnread = (
+  tx: Executor,
+  userId: string,
+  id: string
+): RepoEffect<boolean> =>
+  tx
+    .execute(sql`
+      update conversation set marked_unread = true
+      where user_id = ${userId} and id = ${id}
+      returning id
+    `)
+    .pipe(Effect.map((result) => result.rows.length > 0))
+
 const messageSelection = sql`
-  select id, external_id, direction, sent_at, kind, text, read_at
-  from conversation_message
+  select m.id, m.external_id, m.direction, m.sent_at, m.kind, m.text, m.read_at,
+         mm.from_json -> 0 ->> 'name' as sender_name,
+         mm.from_json -> 0 ->> 'address' as sender_address
+  from conversation_message m
+  left join mail_message mm
+    on mm.conversation_id = m.conversation_id and mm.rfc_message_id = m.external_id
 `
 
 interface StoredMessage {
@@ -129,6 +300,8 @@ interface StoredMessage {
   readonly kind: string
   readonly text: string | null
   readonly read_at: Date | string | null
+  readonly sender_name?: string | null
+  readonly sender_address?: string | null
 }
 
 const toMessage = (row: StoredMessage): ConversationMessageRecord => ({
@@ -138,7 +311,9 @@ const toMessage = (row: StoredMessage): ConversationMessageRecord => ({
   sentAt: iso(row.sent_at)!,
   kind: row.kind as MessageKind,
   text: row.text,
-  readAt: iso(row.read_at)
+  readAt: iso(row.read_at),
+  senderName: row.sender_name ?? null,
+  senderAddress: row.sender_address ?? null
 })
 
 export const messages = (
@@ -149,8 +324,8 @@ export const messages = (
   tx
     .execute(sql`
       ${messageSelection}
-      where conversation_id = ${conversationId}
-      order by sent_at asc, id asc
+      where m.conversation_id = ${conversationId}
+      order by m.sent_at asc, m.id asc
       limit ${Math.min(Math.max(limit, 1), 500)}
     `)
     .pipe(
@@ -163,7 +338,7 @@ export const find = (
   tx: Executor,
   userId: string,
   id: string
-): RepoEffect<ConversationSummary | null> =>
+): RepoEffect<ConversationListItem | null> =>
   tx
     .execute(sql`
       ${selection}

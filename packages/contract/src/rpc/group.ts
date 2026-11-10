@@ -51,7 +51,10 @@ import {
   ConversationGet,
   VacancyChatGet,
   VacancyChatRefresh,
-  ConversationsList
+  ConversationsList,
+  ConversationsSearch,
+  ConversationMarkRead,
+  ConversationMarkUnread
 } from "./contacts.ts"
 import {
   CaptchaSolverGet,
@@ -138,6 +141,7 @@ import {
   HarnessSessionPut,
   QueueConcurrencyGet,
   QueueJobsList,
+  QueueJobsSearch,
   QueueStatsGet
 } from "./queue.ts"
 import {
@@ -228,6 +232,9 @@ export const OtborRpcs = RpcGroup.make(
   ContactRemove,
   ContactsExtract,
   ConversationsList,
+  ConversationsSearch,
+  ConversationMarkRead,
+  ConversationMarkUnread,
   ConversationGet,
   VacancyChatGet,
   VacancyChatRefresh,
@@ -310,6 +317,7 @@ export const OtborRpcs = RpcGroup.make(
   QueueConcurrencyGet,
   OverviewGet,
   QueueJobsList,
+  QueueJobsSearch,
   HarnessRegister,
   HarnessLeaseNext,
   HarnessHeartbeat,

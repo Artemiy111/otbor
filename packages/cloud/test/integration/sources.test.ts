@@ -287,6 +287,13 @@ if (!integrationEnabled || serverUrl === null) {
         "reply@acme.dev"
       ])
 
+      // Отправитель письма берётся из mail_message.from_json.
+      expect(detail.messages.map((message) => message.senderName)).toEqual(["Anna HR", "Me"])
+      expect(detail.messages.map((message) => message.senderAddress)).toEqual([
+        "anna@acme.dev",
+        "me@acme.dev"
+      ])
+
       expect(await conversationVacanciesFor(threaded.id)).toEqual([
         expect.objectContaining({ vacancyId, kind: "primary", source: "mail" })
       ])

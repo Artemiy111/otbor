@@ -31,6 +31,8 @@ export const BlacklistUpsert = Rpc.make("BlacklistUpsert", {
     id: Schema.optional(BlacklistId),
     scope: BlacklistScope,
     hhAccountId: Schema.optional(HhAccountId),
+    /** Только для `scope = resume`: исключение действует на одно резюме пользователя. Только вакансии. */
+    resumeId: Schema.optional(ResumeId),
     targetType: BlacklistTarget,
     externalId: Schema.String,
     name: Schema.optional(Schema.String),

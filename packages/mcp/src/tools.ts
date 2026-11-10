@@ -70,7 +70,9 @@ export const SystemHealth = readTool("system_health", {
 export const QueueStats = readTool("queue_stats", {
   description:
     "Harness job queue counters (pending, running, failed, needs human, needs reconcile). " +
-    "Use it to see whether anything is stuck.",
+    "pending/leased/running/needsHuman/needsReconcile are all-time (a stuck job stays counted until " +
+    "someone resolves it); done/failed/dead cover only jobs created in the last 24 hours. " +
+    "oldestPendingAgeSeconds is the age of the oldest pending job. Use it to see whether anything is stuck.",
   success: Schema.Struct({
     pending: Schema.Int,
     leased: Schema.Int,

@@ -31,6 +31,7 @@ export const blacklistUpsert = (
     readonly id?: string
     readonly scope: BlacklistScope
     readonly hhAccountId?: string
+    readonly resumeId?: string
     readonly targetType: BlacklistTarget
     readonly externalId: string
     readonly name?: string
@@ -50,6 +51,7 @@ export const blacklistUpsertFailure = (
   input: {
     readonly scope: BlacklistScope
     readonly hhAccountId?: string
+    readonly resumeId?: string
     readonly targetType: BlacklistTarget
     readonly externalId: string
   }

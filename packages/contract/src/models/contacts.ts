@@ -67,6 +67,37 @@ export const ConversationSummary = Schema.Struct({
 
 export type ConversationSummary = typeof ConversationSummary.Type
 
+/**
+ * Строка списка диалогов: сводка плюс контекст вакансии, чтобы список не
+ * запрашивал вакансию отдельно для каждой строки. `unreadCount` здесь и в
+ * `ConversationSummary` считается по правилу otbor (см. `read_at` у диалога),
+ * а не по значению, которое записал синк источника.
+ */
+export const ConversationListItem = Schema.Struct({
+  ...ConversationSummary.fields,
+  /** Название вакансии, к которой привязан диалог. */
+  vacancyTitle: Schema.NullOr(Schema.String),
+  /** Работодатель этой вакансии. */
+  employerName: Schema.NullOr(Schema.String),
+  /** Аккаунт hh: только у диалогов канала `hh_chat`, иначе `null`. */
+  hhAccountId: Schema.NullOr(Schema.String),
+  /** Когда оператор последний раз отметил диалог прочитанным в otbor. */
+  readAt: Schema.NullOr(Schema.String)
+})
+
+export type ConversationListItem = typeof ConversationListItem.Type
+
+/** Страница списка диалогов с итогами по всей выборке, а не по странице. */
+export const ConversationSearchResult = Schema.Struct({
+  items: Schema.Array(ConversationListItem),
+  /** Сколько диалогов подходит под фильтры (включая `unread`). */
+  total: Schema.Int,
+  /** Сколько непрочитанных (не в архиве) подходит под остальные фильтры, без учёта `unread`. */
+  unreadTotal: Schema.Int
+})
+
+export type ConversationSearchResult = typeof ConversationSearchResult.Type
+
 export const ConversationMessageRecord = Schema.Struct({
   id: Schema.String,
   externalId: Schema.String,
@@ -74,7 +105,13 @@ export const ConversationMessageRecord = Schema.Struct({
   sentAt: Schema.String,
   kind: MessageKind,
   text: Schema.NullOr(Schema.String),
-  readAt: Schema.NullOr(Schema.String)
+  readAt: Schema.NullOr(Schema.String),
+  /**
+   * Отправитель письма. Хранится только у почты (`from_json`); у Telegram и
+   * чата hh есть лишь `direction`, поэтому там поля отсутствуют или `null`.
+   */
+  senderName: Schema.optional(Schema.NullOr(Schema.String)),
+  senderAddress: Schema.optional(Schema.NullOr(Schema.String))
 })
 
 export type ConversationMessageRecord = typeof ConversationMessageRecord.Type
