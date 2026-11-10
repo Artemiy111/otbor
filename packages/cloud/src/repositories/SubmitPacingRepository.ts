@@ -17,7 +17,7 @@ import type { Executor, RepoEffect } from "../db/Database.ts"
 /** Пауза после первой капчи, минут. */
 export const CAPTCHA_BASE_DELAY_MINUTES = 10
 /** Потолок нарастающей паузы, минут. */
-export const CAPTCHA_MAX_DELAY_MINUTES = 240
+export const CAPTCHA_MAX_DELAY_MINUTES = 60
 
 /** Пауза после капчи: удваивается за каждую капчу подряд без единого отклика между ними. */
 export const captchaDelayMinutes = (failedStreak: number): number =>
