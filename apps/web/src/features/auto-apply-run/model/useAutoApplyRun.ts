@@ -1,6 +1,6 @@
 import { computed, onBeforeUnmount, ref } from "vue"
 import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
-import type { ScheduleRun } from "@otbor/contract"
+import type { CrawlSchedule, ScheduleRun } from "@otbor/contract"
 import { applyFilterKeys } from "@/entities/apply-filter"
 import { autoApplyKeys } from "@/entities/auto-apply"
 import { scheduleApi, scheduleKeys } from "@/entities/schedule"
@@ -57,9 +57,9 @@ export const useAutoApplyRun = (options: {
   )
 
   /** One user-wide `apply` schedule (target `global` covers every hh account). */
-  const ensureSchedule = async (enabled: boolean) => {
+  const ensureSchedule = async (enabled: boolean): Promise<{ schedule: CrawlSchedule; created: boolean }> => {
     const existing = applySchedule.value
-    if (existing !== null) return existing
+    if (existing !== null) return { schedule: existing, created: false }
     const created = await scheduleApi.upsert({
       kind: "apply",
       targetId: "global",
@@ -67,7 +67,7 @@ export const useAutoApplyRun = (options: {
       enabled
     })
     await queryCache.invalidateQueries({ key: scheduleKeys.all })
-    return created
+    return { schedule: created, created: true }
   }
 
   const runState = ref<"idle" | "waiting" | "done" | "error">("idle")
@@ -82,8 +82,8 @@ export const useAutoApplyRun = (options: {
   onBeforeUnmount(stopPolling)
 
   const runMutation = useMutation({
-    mutation: async (_: void) => {
-      const schedule = await ensureSchedule(options.scheduleEnabled())
+    mutation: async () => {
+      const { schedule } = await ensureSchedule(options.scheduleEnabled())
       const startedAt = Date.now() - 2000
       const accepted = await scheduleApi.runNow(schedule.id)
       return { scheduleId: schedule.id, startedAt, accepted: accepted.accepted }

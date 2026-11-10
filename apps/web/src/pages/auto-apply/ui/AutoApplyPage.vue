@@ -1,111 +1,332 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue"
-import { useQuery } from "@pinia/colada"
-import type { HhAccountRecord, ResumeRecord } from "@otbor/contract"
-import { hhAccountApi, hhAccountKeys, hhAccountName } from "@/entities/hh-account"
-import { resumeApi, resumeKeys } from "@/entities/resume"
+import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
+import { CircleAlert, Save } from "@lucide/vue"
+import { applyFilterApi, applyFilterKeys, applyFilterSourceHint } from "@/entities/apply-filter"
+import { autoApplyKeys } from "@/entities/auto-apply"
+import { hhAccountName } from "@/entities/hh-account"
+import { scheduleKeys } from "@/entities/schedule"
+import { useAutoApplyRun } from "@/features/auto-apply-run"
 import {
-  Label,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger
+  FilterTargetPicker,
+  UnsavedChangesSheet,
+  useFilterTarget,
+  useUnsavedGuard,
+  type FilterTarget
+} from "@/features/filter-target"
+import { RefreshButton } from "@/features/refresh-button"
+import { describeError } from "@/shared/lib"
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Button,
+  EmptyState,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  Skeleton
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
-import AutoApplyPreviewTab from "./AutoApplyPreviewTab.vue"
-import AutoApplyProgressTab from "./AutoApplyProgressTab.vue"
+import { useAutoDraft, viewMatches } from "../model/useAutoDraft"
+import AutoApplyModeCard from "./AutoApplyModeCard.vue"
+import AutoApplyNextRunCard from "./AutoApplyNextRunCard.vue"
+import AutoApplyProgressCard from "./AutoApplyProgressCard.vue"
+import AutoApplySettingsCard from "./AutoApplySettingsCard.vue"
 
-/** Select values cannot be empty: this stands for "every resume of the account". */
-const ACCOUNT_DEFAULT = "__account__"
+const queryCache = useQueryCache()
+const filterTarget = useFilterTarget()
+const { accountId, resumeId } = filterTarget
 
-const initial = new URLSearchParams(window.location.search)
+const viewQuery = useQuery({
+  key: () => applyFilterKeys.get(accountId.value, resumeId.value),
+  query: () => applyFilterApi.get({ hhAccountId: accountId.value, resumeId: resumeId.value }),
+  enabled: () => accountId.value !== ""
+})
+const view = computed(() => (viewMatches(viewQuery.data.value ?? null, accountId.value, resumeId.value) ? viewQuery.data.value! : null))
 
-const accountsQuery = useQuery({ key: () => hhAccountKeys.list(), query: () => hhAccountApi.list() })
-const accounts = computed<ReadonlyArray<HhAccountRecord>>(() => accountsQuery.data.value ?? [])
-const resumesQuery = useQuery({ key: () => resumeKeys.list(), query: () => resumeApi.list() })
-const allResumes = computed<ReadonlyArray<ResumeRecord>>(() => resumesQuery.data.value ?? [])
+const usageQuery = useQuery({
+  key: () => applyFilterKeys.usage(accountId.value),
+  query: () => applyFilterApi.usage(accountId.value),
+  enabled: () => accountId.value !== ""
+})
+const usage = computed(() => usageQuery.data.value ?? null)
 
-const accountId = ref<string>(initial.get("account") ?? "")
-const resumeSelection = ref<string>(initial.get("resume") ?? ACCOUNT_DEFAULT)
-const tab = ref<string>(initial.get("tab") === "progress" ? "progress" : "preview")
+/* Черновик формы ---------------------------------------------------------- */
 
+const draft = useAutoDraft()
+const targetKey = computed(() => `${accountId.value}|${resumeId.value ?? ""}`)
+let loadedFor = ""
+
+// Форма следует за сервером, пока нет несохранённых правок; смена пары грузит заново.
 watch(
-  accounts,
-  (list) => {
-    if (accountId.value === "" || !list.some((account) => account.id === accountId.value)) {
-      const pick = list.find((account) => account.isDefault) ?? list[0]
-      if (pick !== undefined) accountId.value = pick.id
+  [view, targetKey],
+  () => {
+    const value = view.value
+    if (value === null) return
+    if (loadedFor !== targetKey.value || !draft.dirty.value) {
+      draft.load(value)
+      loadedFor = targetKey.value
     }
   },
   { immediate: true }
 )
 
-const accountResumes = computed(() => allResumes.value.filter((resume) => resume.hhAccountId === accountId.value))
+const storedMode = computed(() => view.value?.autoMode ?? "off")
+const dirty = draft.dirty
+const guard = useUnsavedGuard(dirty)
+const onSelect = (next: FilterTarget) => guard.confirmThen(() => filterTarget.select(next))
 
-watch(accountId, () => {
-  if (
-    resumeSelection.value !== ACCOUNT_DEFAULT &&
-    !accountResumes.value.some((resume) => resume.id === resumeSelection.value)
-  ) {
-    resumeSelection.value = ACCOUNT_DEFAULT
+/* Сохранение -------------------------------------------------------------- */
+
+const { ensureSchedule, applySchedule } = useAutoApplyRun({
+  accountId: () => accountId.value,
+  scheduleEnabled: () => true
+})
+
+interface SaveNotice {
+  readonly text: string
+  /** Расписание: показать ссылку на страницу расписаний. */
+  readonly schedule: boolean
+  readonly tone: "info" | "warning"
+}
+const notice = ref<SaveNotice | null>(null)
+const formError = ref<string | null>(null)
+watch(dirty, (value) => {
+  if (value) notice.value = null
+})
+
+const modeText = (mode: "off" | "drafts" | "auto") =>
+  mode === "off"
+    ? "Сохранено. Автоотклики выключены."
+    : mode === "drafts"
+      ? "Сохранено. Режим «Черновики»: система готовит отклики, отправляете вы."
+      : "Сохранено. Режим «Авто» включён."
+
+const saveMutation = useMutation({
+  mutation: async (_: void) => {
+    const saved = await applyFilterApi.saveAuto(
+      { hhAccountId: accountId.value, resumeId: resumeId.value },
+      draft.values.value
+    )
+    // Расписание создаётся как побочный эффект включения режима: говорим об этом в интерфейсе.
+    const schedule = saved.autoMode === "off" ? null : await ensureSchedule(true)
+    return { saved, schedule }
   }
 })
 
-const resumeId = computed<string | null>(() =>
-  resumeSelection.value === ACCOUNT_DEFAULT ? null : resumeSelection.value
+const confirmOpen = ref(false)
+
+const doSave = async () => {
+  confirmOpen.value = false
+  try {
+    const { saved, schedule } = await saveMutation.mutateAsync()
+    draft.load(saved)
+    let next: SaveNotice = { text: modeText(saved.autoMode), schedule: false, tone: "info" }
+    if (schedule?.created)
+      next = {
+        text: `${modeText(saved.autoMode)} Расписание создано: запуск каждые ${schedule.schedule.intervalMinutes} мин.`,
+        schedule: true,
+        tone: "info"
+      }
+    else if (schedule !== null && !schedule.schedule.enabled)
+      next = {
+        text: `${modeText(saved.autoMode)} Но расписание автооткликов на паузе, пока его не включить, запусков не будет.`,
+        schedule: true,
+        tone: "warning"
+      }
+    notice.value = next
+    await Promise.all([
+      queryCache.invalidateQueries({ key: applyFilterKeys.all }),
+      queryCache.invalidateQueries({ key: autoApplyKeys.all }),
+      queryCache.invalidateQueries({ key: scheduleKeys.all })
+    ])
+  } catch {
+    // Текст ошибки показывается из состояния мутации.
+  }
+}
+
+const save = () => {
+  notice.value = null
+  const problem = draft.error.value
+  formError.value = problem
+  if (problem !== null) return
+  // Включение отправки — необратимое действие: сначала явное подтверждение.
+  if (draft.mode.value === "auto" && storedMode.value !== "auto") {
+    confirmOpen.value = true
+    return
+  }
+  void doSave()
+}
+
+const saveError = computed(() => (saveMutation.error.value === null ? null : describeError(saveMutation.error.value)))
+const saving = computed(() => saveMutation.isLoading.value)
+watch(dirty, () => (formError.value = null))
+
+/* Подписи ----------------------------------------------------------------- */
+
+const accountName = computed(() => (filterTarget.account.value === null ? "" : hhAccountName(filterTarget.account.value)))
+const resumeTitle = computed(() => filterTarget.resume.value?.title ?? "Все резюме аккаунта")
+const effectiveLimit = computed(() =>
+  resumeId.value === null ? draft.dailyLimit.value : (usage.value?.limit ?? draft.dailyLimit.value)
 )
+const sourceNote = computed(() => (view.value === null ? "" : applyFilterSourceHint(view.value.source, resumeId.value !== null)))
+const viewError = computed(() => (viewQuery.error.value === null ? null : describeError(viewQuery.error.value)))
+const pageError = computed(() => (filterTarget.error.value === null ? null : describeError(filterTarget.error.value)))
+const filterHref = computed(() => filterTarget.pathWithTarget("/apply-filter"))
+const targetReady = computed(() => accountId.value !== "")
+
+const editAccount = () => onSelect({ accountId: accountId.value, resumeId: null })
+const refresh = () => {
+  void viewQuery.refetch()
+  void usageQuery.refetch()
+}
 </script>
 
 <template>
-  <section>
+  <section class="space-y-6 pb-4">
     <PageHeader
       title="Автоотклики"
-      description="Что возьмёт следующий запуск автоотклика и как идут уже созданные отклики."
-    />
+      description="Что система отправляет сама: режим, лимиты, ближайший запуск и ход. Какие вакансии подходят, задаётся в «Фильтре откликов»."
+    >
+      <template #actions>
+        <RefreshButton :loading="viewQuery.isLoading.value" @refresh="refresh" />
+      </template>
+    </PageHeader>
 
-    <div class="mb-4 flex flex-wrap items-end gap-3">
-      <div class="space-y-1">
-        <Label class="text-xs">Аккаунт hh</Label>
-        <Select v-model="accountId">
-          <SelectTrigger class="h-8 w-[220px] text-sm"><SelectValue placeholder="Аккаунт" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem v-for="account in accounts" :key="account.id" :value="account.id">
-              {{ hhAccountName(account) }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
+    <Alert v-if="pageError" variant="destructive">
+      <CircleAlert />
+      <AlertTitle>Не удалось загрузить аккаунты</AlertTitle>
+      <AlertDescription>{{ pageError }}</AlertDescription>
+    </Alert>
+
+    <EmptyState
+      v-if="!filterTarget.loading.value && filterTarget.accounts.value.length === 0 && !pageError"
+      title="Нет аккаунтов hh"
+      description="Автоотклики работают от имени аккаунта hh. Добавьте аккаунт на странице «Аккаунты»."
+    >
+      <a href="/accounts" class="text-sm underline">Открыть аккаунты</a>
+    </EmptyState>
+
+    <template v-if="targetReady">
+      <FilterTargetPicker :state="filterTarget" :disabled="saving" @select="onSelect" />
+
+      <Alert v-if="viewError" variant="destructive">
+        <CircleAlert />
+        <AlertTitle>Не удалось загрузить настройки</AlertTitle>
+        <AlertDescription>{{ viewError }}</AlertDescription>
+      </Alert>
+
+      <p v-if="sourceNote" class="text-sm text-muted-foreground">{{ sourceNote }}</p>
+
+      <div v-if="view === null && !viewError" class="space-y-4">
+        <Skeleton class="h-36 w-full" />
+        <Skeleton class="h-56 w-full" />
       </div>
-      <div class="space-y-1">
-        <Label class="text-xs">Резюме</Label>
-        <Select v-model="resumeSelection">
-          <SelectTrigger class="h-8 w-[280px] text-sm"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem :value="ACCOUNT_DEFAULT">Все резюме аккаунта</SelectItem>
-            <SelectItem v-for="resume in accountResumes" :key="resume.id" :value="resume.id">
-              {{ resume.title }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-    </div>
 
-    <Tabs v-model="tab" class="gap-4">
-      <TabsList>
-        <TabsTrigger value="preview">Что возьмёт следующий запуск</TabsTrigger>
-        <TabsTrigger value="progress">Ход</TabsTrigger>
-      </TabsList>
+      <template v-if="view !== null">
+        <AutoApplyModeCard
+          v-model="draft.mode.value"
+          :stored-mode="storedMode"
+          :usage="usage"
+          :usage-loading="usageQuery.isLoading.value"
+          :disabled="saving"
+        />
 
-      <TabsContent value="preview">
-        <AutoApplyPreviewTab :account-id="accountId" :resume-id="resumeId" />
-      </TabsContent>
-      <TabsContent value="progress">
-        <AutoApplyProgressTab :account-id="accountId" :visible="tab === 'progress'" />
-      </TabsContent>
-    </Tabs>
+        <section aria-labelledby="settings-title" class="space-y-3">
+          <h2 id="settings-title" class="text-base font-semibold">Настройки</h2>
+          <AutoApplySettingsCard
+            :draft="draft"
+            :disabled="saving"
+            :resume-level="resumeId !== null"
+            :account-limit="usage?.limit ?? null"
+            @edit-account="editAccount"
+          />
+        </section>
+
+        <section aria-labelledby="next-title" class="space-y-3">
+          <h2 id="next-title" class="text-base font-semibold">Следующий запуск</h2>
+          <AutoApplyNextRunCard
+            :account-id="accountId"
+            :resume-id="resumeId"
+            :stored-mode="storedMode"
+            :dirty="dirty"
+          />
+        </section>
+
+        <section aria-labelledby="progress-title" class="space-y-3">
+          <h2 id="progress-title" class="text-base font-semibold">Ход</h2>
+          <AutoApplyProgressCard :account-id="accountId" />
+        </section>
+
+        <p class="text-xs text-muted-foreground">
+          Правила отбора вакансий, порог соответствия и тесты:
+          <a :href="filterHref" class="underline">Фильтр откликов</a>.
+        </p>
+
+        <!-- Сохранение одно на всю страницу; панель прилипает к низу, пока есть правки. -->
+        <div
+          v-if="dirty || saving || notice || formError || saveError"
+          class="sticky bottom-0 z-10 -mx-1 space-y-2 rounded-xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur"
+        >
+          <Alert v-if="formError" variant="destructive">
+            <CircleAlert />
+            <AlertTitle>Проверьте форму</AlertTitle>
+            <AlertDescription>{{ formError }}</AlertDescription>
+          </Alert>
+          <Alert v-if="saveError" variant="destructive">
+            <CircleAlert />
+            <AlertTitle>Не удалось сохранить</AlertTitle>
+            <AlertDescription>{{ saveError }}</AlertDescription>
+          </Alert>
+          <Alert v-if="notice && !dirty" :variant="notice.tone" role="status">
+            <CircleAlert />
+            <AlertTitle>Готово</AlertTitle>
+            <AlertDescription>
+              {{ notice.text }}
+              <a v-if="notice.schedule" href="/schedules" class="underline">Расписания</a>
+            </AlertDescription>
+          </Alert>
+          <div v-if="dirty || saving" class="flex flex-wrap items-center gap-2">
+            <Button :disabled="saving" @click="save">
+              <Save class="size-4" />
+              {{ saving ? "Сохраняю…" : "Сохранить" }}
+            </Button>
+            <Button variant="ghost" :disabled="saving" @click="draft.reset()">Отменить правки</Button>
+            <span class="flex items-center gap-1.5 text-sm text-muted-foreground" role="status">
+              <span class="size-2 rounded-full bg-warning" aria-hidden="true" />
+              Есть несохранённые изменения
+            </span>
+          </div>
+        </div>
+      </template>
+    </template>
+
+    <Sheet :open="confirmOpen" @update:open="(value) => (confirmOpen = value)">
+      <SheetContent side="bottom" class="mx-auto w-full gap-3 rounded-t-xl p-4 sm:max-w-lg">
+        <SheetHeader class="p-0">
+          <SheetTitle>Включить автоматическую отправку?</SheetTitle>
+          <SheetDescription>
+            Готовые отклики будут уходить на hh.ru без вашего участия. Отправленный отклик нельзя отозвать.
+          </SheetDescription>
+        </SheetHeader>
+        <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+          <dt class="text-muted-foreground">Аккаунт</dt>
+          <dd class="font-medium">{{ accountName }}</dd>
+          <dt class="text-muted-foreground">Резюме</dt>
+          <dd class="font-medium">{{ resumeTitle }}</dd>
+          <dt class="text-muted-foreground">Дневной лимит</dt>
+          <dd class="font-medium tabular-nums">до {{ effectiveLimit }} откликов в сутки на аккаунт</dd>
+        </dl>
+        <div class="flex flex-wrap justify-end gap-2">
+          <Button variant="ghost" @click="confirmOpen = false">Отмена</Button>
+          <Button :disabled="saving" @click="doSave">Включить авто</Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+
+    <UnsavedChangesSheet :open="guard.open.value" @leave="guard.leave" @stay="guard.stay" />
   </section>
 </template>

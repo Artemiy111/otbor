@@ -1,2 +1,5 @@
 export * from "./api"
 export * from "./model"
+export { default as ScheduleRow } from "./ui/ScheduleRow.vue"
+export { default as ScheduleSwitch } from "./ui/ScheduleSwitch.vue"
+export { default as ScheduleKindIcon } from "./ui/ScheduleKindIcon.vue"

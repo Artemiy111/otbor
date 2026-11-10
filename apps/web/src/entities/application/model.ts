@@ -1,6 +1,9 @@
 export const applicationKeys = {
   all: ["applications"] as const,
   list: (state: string, account = "all") => ["applications", "list", state, account] as const,
+  /** Страница списка: фильтр, аккаунт и смещение входят в ключ. */
+  search: (filterKey: string, account: string, offset: number, limit: number) =>
+    ["applications", "search", filterKey, account, offset, limit] as const,
   vacancy: (vacancyId: string) => ["applications", "vacancy", vacancyId] as const,
   detail: (id: string) => ["applications", "detail", id] as const,
   agentCatalog: ["agent-catalog"] as const,

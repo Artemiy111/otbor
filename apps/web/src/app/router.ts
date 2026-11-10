@@ -1,4 +1,5 @@
 import { computed, ref } from "vue"
+import { syncLocation } from "@/shared/lib"
 
 export type Route =
   | { readonly name: "overview" }
@@ -98,6 +99,7 @@ const navigate = (path: string, replace = false): void => {
   if (replace) window.history.replaceState({}, "", next)
   else window.history.pushState({}, "", next)
   route.value = parse()
+  syncLocation()
 }
 
 /** Old bookmarks used `#/vacancies`; move them to clean paths once. */
@@ -110,6 +112,7 @@ export const route = ref<Route>(parse())
 
 window.addEventListener("popstate", () => {
   route.value = parse()
+  syncLocation()
 })
 
 /**

@@ -263,6 +263,7 @@ const SCHEDULE_KIND_LABELS: Record<string, string> = {
   resume_sync: "Резюме hh",
   resume_bump: "Подъём резюме",
   evaluate: "Оценка вакансий",
+  fit: "Оценка соответствия",
   analysis: "Анализ вакансий",
   apply: "Автоотклики"
 }

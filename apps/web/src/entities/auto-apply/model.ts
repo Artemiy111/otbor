@@ -1,5 +1,6 @@
 import type { AutoApplyStage } from "@otbor/contract"
 import { BLOCKED_REASON_LABELS } from "@otbor/contract"
+import { AUTO_STAGE_STATUS } from "./status"
 
 export const autoApplyKeys = {
   all: ["auto-apply"] as const,
@@ -11,24 +12,26 @@ export const autoApplyKeys = {
 
 export type AutoApplyStageTone = "neutral" | "info" | "warning" | "success" | "danger"
 
-/** Stages in pipeline order, with the badge label and tone. */
+/** Stages in pipeline order. Слова и тон берутся из единого словаря `status.ts`. */
 export const autoApplyStages: ReadonlyArray<{
   value: AutoApplyStage
   label: string
   tone: AutoApplyStageTone
   /** Still moving: the progress tab keeps refreshing while any exists. */
   active: boolean
-}> = [
-  { value: "waiting", label: "Ждёт", tone: "neutral", active: true },
-  { value: "blocked", label: "Ждёт повтора", tone: "warning", active: false },
-  { value: "reading_form", label: "Читается форма", tone: "info", active: true },
-  { value: "writing", label: "Пишется письмо", tone: "info", active: true },
-  { value: "kit_ready", label: "Кит готов", tone: "info", active: true },
-  { value: "submitting", label: "Отправка", tone: "info", active: true },
-  { value: "submitted", label: "Отправлен", tone: "success", active: false },
-  { value: "needs_human", label: "Нужен человек", tone: "warning", active: false },
-  { value: "failed", label: "Ошибка", tone: "danger", active: false }
-]
+}> = (
+  [
+    ["waiting", true],
+    ["blocked", false],
+    ["reading_form", true],
+    ["writing", true],
+    ["kit_ready", true],
+    ["submitting", true],
+    ["submitted", false],
+    ["needs_human", false],
+    ["failed", false]
+  ] as const
+).map(([value, active]) => ({ value, active, ...AUTO_STAGE_STATUS[value] }))
 
 export const autoApplyStageMeta = (stage: AutoApplyStage) =>
   autoApplyStages.find((item) => item.value === stage) ?? autoApplyStages[0]!

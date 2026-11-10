@@ -7,12 +7,25 @@ export const applyFilterKeys = {
     ["apply-filter", "get", hhAccountId, resumeId ?? "account"] as const
 }
 
-export const applyFilterSourceLabel = (source: ApplyFilterSource): string =>
+/** Чей фильтр действует для пары «аккаунт + резюме», человеческими словами. */
+export const applyFilterSourceLabel = (source: ApplyFilterSource, resumeSelected: boolean): string =>
   source === "exact"
-    ? "Фильтр этого резюме"
+    ? resumeSelected
+      ? "Свой фильтр для этого резюме"
+      : "Общий фильтр аккаунта"
     : source === "account"
-      ? "Фильтр аккаунта по умолчанию"
-      : "Встроенный фильтр по умолчанию"
+      ? "Общий фильтр аккаунта"
+      : "Фильтр по умолчанию — ещё не настраивали"
+
+/** Что будет, если сохранить: пояснение к бейджу источника; пусто, когда пояснять нечего. */
+export const applyFilterSourceHint = (source: ApplyFilterSource, resumeSelected: boolean): string =>
+  source === "exact"
+    ? ""
+    : source === "account"
+      ? resumeSelected
+        ? "Для этого резюме своего фильтра нет, действует общий фильтр аккаунта. Сохранение создаст отдельный фильтр резюме с теми же настройками автооткликов."
+        : ""
+      : "Фильтр ещё не настраивали: действует встроенный набор правил. Сохранение создаст запись."
 
 export const testsPolicyOptions: ReadonlyArray<{ value: TestsPolicy; label: string }> = [
   { value: "human", label: "Передавать человеку" },
@@ -20,18 +33,15 @@ export const testsPolicyOptions: ReadonlyArray<{ value: TestsPolicy; label: stri
   { value: "skip", label: "Пропускать вакансии с тестом" }
 ]
 
-export const autoModeOptions: ReadonlyArray<{ value: AutoMode; label: string; hint: string }> = [
-  { value: "off", label: "Выкл", hint: "Ничего не создаётся и не отправляется. Режим по умолчанию." },
-  {
-    value: "drafts",
-    label: "Черновики",
-    hint: "Создаёт отклики, читает форму, пишет письмо и ответы и оставляет черновик. Отправляете вы."
-  },
-  {
-    value: "auto",
-    label: "Отправка",
-    hint: "То же, но готовый отклик, прошедший все проверки, уходит на hh.ru сам. Это необратимо."
-  }
+export const autoModeOptions: ReadonlyArray<{
+  value: AutoMode
+  label: string
+  /** Одна строка о последствиях режима. */
+  consequence: string
+}> = [
+  { value: "off", label: "Выключено", consequence: "Ничего не создаётся." },
+  { value: "drafts", label: "Черновики", consequence: "Система готовит письмо и ответы, отправляете вы." },
+  { value: "auto", label: "Авто", consequence: "Система отправляет сама в пределах дневного лимита." }
 ]
 
 export const sortDirectionOptions: ReadonlyArray<{ value: SortDirection; label: string }> = [

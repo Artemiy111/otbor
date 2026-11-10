@@ -4,8 +4,8 @@ import { useQuery } from "@pinia/colada"
 import type { ScheduleRun } from "@otbor/contract"
 import type { ColumnDef } from "@tanstack/vue-table"
 import { CircleAlert } from "@lucide/vue"
-import { scheduleRunApi, scheduleRunKeys } from "@/entities/schedule-run"
-import { describeError, formatDate, runSummary, scheduleKindLabel } from "@/shared/lib"
+import { runResultText, scheduleRunApi, scheduleRunKeys } from "@/entities/schedule-run"
+import { describeError, formatDate, scheduleKindLabel } from "@/shared/lib"
 import { Alert, AlertDescription, AlertTitle, Badge, DataTable, StatusBadge, sortableHeader } from "@/shared/ui"
 
 const runsQuery = useQuery({
@@ -14,7 +14,7 @@ const runsQuery = useQuery({
 })
 const runs = computed<ReadonlyArray<ScheduleRun>>(() => runsQuery.data.value?.items ?? [])
 
-const detailLine = (run: ScheduleRun): string => runSummary(run.detail).join(", ")
+const detailLine = (run: ScheduleRun): string => runResultText(run.kind, run.detail)
 
 /** One lane per kind: what runs now, or how the last run ended. */
 const lanes = computed(() => {
@@ -59,7 +59,7 @@ const columns: ColumnDef<ScheduleRun>[] = [
     cell: ({ row }) =>
       h("div", { class: "max-w-[420px] text-sm" }, [
         h("span", null, detailLine(row.original) || "—"),
-        row.original.error ? h("div", { class: "text-destructive" }, row.original.error) : null
+        row.original.error ? h("div", { class: "text-danger" }, row.original.error) : null
       ])
   }
 ]
@@ -78,8 +78,13 @@ defineExpose({ refetch, loading: computed(() => runsQuery.isLoading.value) })
       </div>
       <p class="mt-1 text-muted-foreground">
         Поиск hh, догрузка вакансий и компаний, анализ, синхронизации почты, Telegram и резюме. Это не очередь заданий:
-        запуски создаются по расписанию (страница «Расписания»). По каждому виду идёт один запуск, разные виды работают
+        запуски создаются по расписанию. По каждому виду идёт один запуск, разные виды работают
         параллельно. Запуск без сигнала жизни 3 минуты считается оборванным.
+      </p>
+      <p class="mt-2">
+        <a href="/schedules" class="text-primary underline-offset-4 hover:underline">
+          Все расписания, следующие запуски и ошибки →
+        </a>
       </p>
     </div>
 
@@ -99,7 +104,7 @@ defineExpose({ refetch, loading: computed(() => runsQuery.isLoading.value) })
           {{ lane.status === "running" ? "идёт с" : "последний запуск" }} {{ formatDate(lane.startedAt) }}
         </div>
         <div v-if="detailLine(lane)" class="mt-1">{{ detailLine(lane) }}</div>
-        <div v-if="lane.error" class="mt-1 text-destructive">{{ lane.error }}</div>
+        <div v-if="lane.error" class="mt-1 text-danger">{{ lane.error }}</div>
       </div>
     </div>
 

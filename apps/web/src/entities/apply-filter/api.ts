@@ -1,46 +1,24 @@
 import type {
-  ApplyBoost,
   ApplyFilterRecord,
   ApplyUsage,
-  AutoMode,
-  ApplySort,
-  SortDirection,
   ApplyFilterView,
   HhAccountId,
-  PresetFilter,
   PresetId,
-  ResumeId,
-  TestsPolicy
+  ResumeId
 } from "@otbor/contract"
 import { call } from "@/shared/api"
+import {
+  buildAutoSavePayload,
+  buildRulesSavePayload,
+  type ApplyFilterSavePayload,
+  type AutoSettingsValues,
+  type RulesValues
+} from "./merge"
 
 export interface ApplyFilterTarget {
   readonly hhAccountId: string
   /** Omitted or null: the account-level row. */
   readonly resumeId?: string | null
-}
-
-export interface ApplyFilterSetInput extends ApplyFilterTarget {
-  readonly filter: PresetFilter
-  readonly minFit: number
-  readonly tests: TestsPolicy
-  readonly freshHalfLifeHours: number
-}
-
-/** Auto-apply settings only: the stored filter is sent back unchanged. */
-export interface ApplyAutoSetInput extends ApplyFilterTarget {
-  readonly filter: PresetFilter
-  readonly autoMode: AutoMode
-  readonly dailyLimit: number
-  readonly batchSize: number
-  readonly sort: ApplySort
-  readonly sortDirection: SortDirection
-  readonly minPriority: number
-  readonly boosts: ReadonlyArray<ApplyBoost>
-  /** Empty string clears a setting (harness default). */
-  readonly writingHarness: string
-  readonly writingModel: string
-  readonly writingEffort: string
 }
 
 export interface ApplyFilterFromPresetInput extends ApplyFilterTarget {
@@ -52,36 +30,44 @@ const target = (input: ApplyFilterTarget) => ({
   resumeId: (input.resumeId ?? undefined) as ResumeId | undefined
 })
 
+const send = (payload: ApplyFilterSavePayload): Promise<ApplyFilterRecord> =>
+  call((client) =>
+    client.ApplyFilterSet({
+      ...target(payload),
+      filter: payload.filter,
+      minFit: payload.minFit,
+      tests: payload.tests,
+      freshHalfLifeHours: payload.freshHalfLifeHours,
+      templatePresetId: payload.templatePresetId as PresetId | null | undefined,
+      autoMode: payload.autoMode,
+      dailyLimit: payload.dailyLimit,
+      batchSize: payload.batchSize,
+      sort: payload.sort,
+      sortDirection: payload.sortDirection,
+      minPriority: payload.minPriority,
+      boosts: payload.boosts,
+      writingHarness: payload.writingHarness,
+      writingModel: payload.writingModel,
+      writingEffort: payload.writingEffort
+    })
+  )
+
 export const applyFilterApi = {
   get: (input: ApplyFilterTarget): Promise<ApplyFilterView> =>
     call((client) => client.ApplyFilterGet(target(input))),
-  set: (input: ApplyFilterSetInput): Promise<ApplyFilterRecord> =>
-    call((client) =>
-      client.ApplyFilterSet({
-        ...target(input),
-        filter: input.filter,
-        minFit: input.minFit,
-        tests: input.tests,
-        freshHalfLifeHours: input.freshHalfLifeHours
-      })
-    ),
-  setAuto: (input: ApplyAutoSetInput): Promise<ApplyFilterRecord> =>
-    call((client) =>
-      client.ApplyFilterSet({
-        ...target(input),
-        filter: input.filter,
-        autoMode: input.autoMode,
-        dailyLimit: input.dailyLimit,
-        batchSize: input.batchSize,
-        sort: input.sort,
-        sortDirection: input.sortDirection,
-        minPriority: input.minPriority,
-        boosts: input.boosts,
-        writingHarness: input.writingHarness,
-        writingModel: input.writingModel,
-        writingEffort: input.writingEffort
-      })
-    ),
+  /**
+   * Правила отбора. Перед записью читается свежий фильтр пары: чужая половина
+   * (настройки автооткликов) собирается из него, а не из кэша формы.
+   */
+  saveRules: async (target: ApplyFilterTarget, values: RulesValues): Promise<ApplyFilterRecord> => {
+    const fresh = await applyFilterApi.get(target)
+    return send(buildRulesSavePayload(fresh, target, values))
+  },
+  /** Настройки автооткликов; фильтр и правила берутся из свежего ответа сервера. */
+  saveAuto: async (target: ApplyFilterTarget, values: AutoSettingsValues): Promise<ApplyFilterRecord> => {
+    const fresh = await applyFilterApi.get(target)
+    return send(buildAutoSavePayload(fresh, target, values))
+  },
   usage: (hhAccountId: string): Promise<ApplyUsage> =>
     call((client) => client.ApplyUsageGet({ hhAccountId: hhAccountId as HhAccountId })),
   fromPreset: (input: ApplyFilterFromPresetInput): Promise<ApplyFilterRecord> =>
