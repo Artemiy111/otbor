@@ -41,6 +41,8 @@ export interface AttentionItem {
   /** Вторая строка: возраст, время повтора, причина. */
   readonly detail: string | null
   readonly action: AttentionAction
+  /** Под строкой можно раскрыть подсказку «как запустить» (нет исполнителя). */
+  readonly guide?: "executor"
   /** Порядок внутри тона: меньше — выше. */
   readonly weight: number
   /** Сколько сущностей за строкой; при равном весе большая группа выше. */
@@ -165,6 +167,7 @@ export const buildAttention = (input: AttentionInput): ReadonlyArray<AttentionIt
             ? `Отклики не отправляются: в очереди ${countWord(pending, TASK_FORMS)}.`
             : "Без него отклики не отправляются и формы не читаются.",
         action: { kind: "link", label: "Проверить", href: "/health" },
+        guide: "executor",
         weight: 2
       })
     }

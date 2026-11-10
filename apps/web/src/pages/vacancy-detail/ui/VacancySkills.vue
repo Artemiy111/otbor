@@ -30,7 +30,7 @@ const found = computed(() => items.value.filter((item) => item.inResume === true
           item.inResume === null
             ? 'border-border bg-muted/40'
             : item.inResume
-              ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+              ? 'border-success/30 bg-success-muted text-success'
               : 'border-border text-muted-foreground'
         "
       >

@@ -1,26 +1,23 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue"
-import { useIntervalFn } from "@vueuse/core"
+import { useIntersectionObserver, useIntervalFn } from "@vueuse/core"
 import { CircleAlert, Inbox, Mail, Search, Send } from "@lucide/vue"
-import type { ConversationSummary } from "@otbor/contract"
-import { CONVERSATION_LIMIT } from "@/entities/conversation"
+import type { InboxConversation } from "@/entities/conversation"
 import { cn } from "@/shared/lib"
 import { Alert, AlertDescription, AlertTitle, Button, Input, Skeleton } from "@/shared/ui"
-import {
-  countUnread,
-  filterConversations,
-  inboxHref,
-  neighbourId,
-  sortConversations,
-  type InboxChannel,
-  type InboxState
-} from "../model/inbox"
+import { inboxHref, neighbourId, type InboxChannel, type InboxState } from "../model/inbox"
 import type { Sources } from "../model/useSources"
 import ConversationListItem from "./ConversationListItem.vue"
 
 const props = defineProps<{
-  conversations: ReadonlyArray<ConversationSummary>
+  /** Уже отфильтрованные и упорядоченные сервером строки загруженных страниц. */
+  conversations: ReadonlyArray<InboxConversation>
   state: InboxState
+  /** Сколько диалогов подходит под фильтры на сервере, а не сколько загружено. */
+  total: number
+  unreadTotal: number
+  hasMore: boolean
+  loadingMore: boolean
   loading: boolean
   errorText: string | null
   sources: Sources
@@ -31,9 +28,12 @@ const emit = defineEmits<{
   select: [id: string | null]
   /** Сменить фильтр или канал, не трогая выбранный диалог. */
   filter: [patch: Partial<Pick<InboxState, "filter" | "channel">>]
+  /** Подгрузить следующую страницу. */
+  more: []
 }>()
 
-const text = ref("")
+/** Текст поиска живёт у родителя: он уходит на сервер. */
+const text = defineModel<string>("search", { default: "" })
 
 /** «5 мин» в строках пересчитывается раз в минуту, а не при каждом рендере. */
 const now = ref(new Date())
@@ -41,13 +41,8 @@ useIntervalFn(() => {
   if (!document.hidden) now.value = new Date()
 }, 60_000)
 
-const sorted = computed(() => sortConversations(props.conversations))
-const visible = computed(() =>
-  filterConversations(sorted.value, { filter: props.state.filter, channel: props.state.channel, text: text.value })
-)
-const unreadTotal = computed(() => countUnread(props.conversations))
-const allTotal = computed(() => props.conversations.filter((item) => !item.archived).length)
-const truncated = computed(() => props.conversations.length >= CONVERSATION_LIMIT)
+const visible = computed(() => props.conversations)
+const filtered = computed(() => props.state.filter !== "all" || props.state.channel !== "all" || text.value.trim() !== "")
 
 const CHANNELS: ReadonlyArray<{ readonly id: InboxChannel; readonly label: string }> = [
   { id: "all", label: "Все каналы" },
@@ -64,6 +59,16 @@ const reset = () => {
 /* ---- клавиатура: ↑ ↓ (и j / k) двигают выбор, Esc снимает его ----------------------- */
 
 const listEl = ref<HTMLElement | null>(null)
+
+/* Бесконечная прокрутка: когда метка под списком появляется в зоне видимости, просим следующую страницу. */
+const sentinel = ref<HTMLElement | null>(null)
+useIntersectionObserver(
+  sentinel,
+  ([entry]) => {
+    if (entry?.isIntersecting && props.hasMore && !props.loadingMore) emit("more")
+  },
+  { root: () => listEl.value, rootMargin: "120px" }
+)
 
 const onKeydown = (event: KeyboardEvent) => {
   if (event.metaKey || event.ctrlKey || event.altKey) return
@@ -138,7 +143,7 @@ const filterHref = (patch: Partial<InboxState>) => inboxHref({ ...props.state, .
             @click="emit('filter', { filter: 'all' })"
           >
             Все
-            <span class="tabular-nums text-muted-foreground">{{ allTotal }}</span>
+            <span v-if="state.filter === 'all'" class="tabular-nums text-muted-foreground">{{ total }}</span>
           </button>
         </div>
 
@@ -181,7 +186,7 @@ const filterHref = (patch: Partial<InboxState>) => inboxHref({ ...props.state, .
       </div>
 
       <div v-else-if="visible.length === 0" class="flex flex-col items-center gap-2 px-6 py-12 text-center">
-        <template v-if="allTotal === 0">
+        <template v-if="!filtered">
           <Inbox class="size-7 text-muted-foreground/60" />
           <p class="text-sm font-medium">
             {{ sources.loaded.value && !sources.hasMail.value && !sources.hasTelegram.value ? "Почта и Telegram не подключены" : "Диалогов пока нет" }}
@@ -226,9 +231,12 @@ const filterHref = (patch: Partial<InboxState>) => inboxHref({ ...props.state, .
           :account-color="sources.accountColor(conversation.accountId)"
           :now="now"
         />
-        <p v-if="truncated" class="px-3 py-3 text-center text-xs text-muted-foreground">
-          Показаны последние {{ CONVERSATION_LIMIT }} диалогов: сервер отдаёт не больше.
-        </p>
+        <div ref="sentinel" class="flex justify-center px-3 py-3">
+          <Button v-if="hasMore" variant="ghost" size="sm" :disabled="loadingMore" @click="emit('more')">
+            {{ loadingMore ? "Загружаем…" : `Показать ещё (${total - conversations.length})` }}
+          </Button>
+          <p v-else-if="total > 0" class="text-xs text-muted-foreground">Показаны все диалоги: {{ total }}</p>
+        </div>
       </template>
     </div>
   </div>

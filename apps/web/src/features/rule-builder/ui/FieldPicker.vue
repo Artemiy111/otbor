@@ -58,7 +58,7 @@ const pick = (field: PresetField) => {
         v-else
         type="button"
         class="inline-flex h-8 w-[150px] shrink-0 items-center justify-between gap-1 whitespace-nowrap rounded-md border bg-transparent px-2 text-xs font-medium shadow-sm hover:bg-accent disabled:opacity-50"
-        :class="currentMeta.ai ? 'border-violet-500/50 bg-violet-500/10 text-violet-500' : 'border-input'"
+        :class="currentMeta.ai ? 'border-ai/50 bg-ai-muted text-ai' : 'border-input'"
         :title="currentMeta.hint"
         :disabled="props.disabled"
       >
@@ -82,8 +82,8 @@ const pick = (field: PresetField) => {
       <div class="max-h-72 overflow-auto">
         <div v-for="group in groups" :key="group.group" class="mb-1">
           <p
-            class="flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.06em]"
-            :class="group.fields.some((m) => m.ai) ? 'text-violet-500' : 'text-muted-foreground'"
+            class="flex items-center gap-1 px-2 py-1 text-xs font-bold uppercase tracking-[0.06em]"
+            :class="group.fields.some((m) => m.ai) ? 'text-ai' : 'text-muted-foreground'"
           >
             <Sparkles v-if="group.fields.some((m) => m.ai)" class="h-3 w-3" />
             {{ group.group }}
@@ -100,7 +100,7 @@ const pick = (field: PresetField) => {
             {{ m.label }}
             <span
               v-if="m.ai"
-              class="ml-auto rounded bg-violet-500/15 px-1 text-[10px] font-semibold text-violet-500"
+              class="ml-auto rounded bg-ai-muted px-1 text-xs font-semibold text-ai"
             >ИИ</span>
           </button>
         </div>

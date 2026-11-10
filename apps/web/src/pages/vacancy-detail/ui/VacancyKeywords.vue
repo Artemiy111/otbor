@@ -58,12 +58,12 @@ const tooltip = (group: (typeof groups.value)[number]) =>
           group.inResume === null
             ? 'border-border bg-muted/40'
             : group.inResume
-              ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+              ? 'border-success/30 bg-success-muted text-success'
               : 'border-border text-muted-foreground'
         "
       >
         {{ group.term }}
-        <span class="rounded-full bg-background/60 px-1.5 text-[10px] tabular-nums opacity-70">{{ group.total }}</span>
+        <span class="rounded-full bg-background/60 px-1.5 text-xs tabular-nums opacity-70">{{ group.total }}</span>
       </span>
       </Hint>
     </div>

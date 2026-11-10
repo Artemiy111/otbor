@@ -63,8 +63,8 @@ const parts = computed(() =>
 <template>
   <svg :viewBox="`0 0 ${W} ${showLabels ? LABEL_Y + 8 : LABEL_Y - 4}`" class="w-full" role="img" aria-label="Воронка правил">
     <g v-for="(part, index) in parts" :key="part.stage.id">
-      <path v-if="part.pass" :d="part.pass" class="fill-emerald-500/20" />
-      <path v-if="part.drop" :d="part.drop" class="fill-amber-500/35" />
+      <path v-if="part.pass" :d="part.pass" class="fill-success/20" />
+      <path v-if="part.drop" :d="part.drop" class="fill-warning/35" />
       <rect
         v-if="part.drop"
         :x="part.x"
@@ -72,15 +72,15 @@ const parts = computed(() =>
         :width="NODE"
         :height="part.dropH"
         rx="1.5"
-        class="fill-amber-500"
+        class="fill-warning"
       />
-      <rect :x="part.x" :y="TOP" :width="NODE" :height="part.h" rx="1.5" class="fill-emerald-500" />
+      <rect :x="part.x" :y="TOP" :width="NODE" :height="part.h" rx="1.5" class="fill-success" />
       <text
         v-if="part.drop && part.dropH >= 10"
         :x="part.x - 4"
         :y="TOP + part.h + GAP + part.dropH / 2 + 3.5"
         text-anchor="end"
-        class="fill-amber-600 text-[10px] tabular-nums dark:fill-amber-400"
+        class="fill-warning text-xs tabular-nums"
       >
         −{{ nf.format(part.dropped) }}
       </text>
@@ -89,7 +89,7 @@ const parts = computed(() =>
         :y="LABEL_Y - 11"
         :text-anchor="index === 0 ? 'start' : index === parts.length - 1 ? 'end' : 'middle'"
         :dx="index === 0 ? -NODE / 2 : index === parts.length - 1 ? NODE / 2 : 0"
-        class="fill-foreground text-[11px] font-semibold tabular-nums"
+        class="fill-foreground text-xs font-semibold tabular-nums"
       >
         {{ nf.format(part.stage.count) }}
       </text>
@@ -99,7 +99,7 @@ const parts = computed(() =>
         :y="LABEL_Y + 2"
         :text-anchor="index === 0 ? 'start' : index === parts.length - 1 ? 'end' : 'middle'"
         :dx="index === 0 ? -NODE / 2 : index === parts.length - 1 ? NODE / 2 : 0"
-        class="fill-muted-foreground text-[10px]"
+        class="fill-muted-foreground text-xs"
       >
         {{ part.stage.label.length > 16 ? `${part.stage.label.slice(0, 15)}…` : part.stage.label }}
       </text>

@@ -16,7 +16,8 @@ import {
   DataTable,
   Input,
   Label,
-  sortableHeader
+  sortableHeader,
+  useToast
 } from "@/shared/ui"
 import ConfirmAction from "./ConfirmAction.vue"
 import MergeSuggestions from "./MergeSuggestions.vue"
@@ -56,16 +57,16 @@ const relinkMutation = useMutation<PeopleRelinkResult, void>({
 })
 const relinking = ref(false)
 const relinkResult = ref<PeopleRelinkResult | null>(null)
-const actionError = ref<string | null>(null)
+const toast = useToast()
 
 const relink = async () => {
-  actionError.value = null
   relinking.value = true
   try {
     relinkResult.value = await relinkMutation.mutateAsync()
     await queryCache.invalidateQueries({ key: personKeys.all })
+    toast.success("Связи пересчитаны", { description: "Итог показан над списком." })
   } catch (error) {
-    actionError.value = describeError(error)
+    toast.error("Не удалось пересчитать связи", { description: describeError(error) })
   } finally {
     relinking.value = false
   }
@@ -149,12 +150,6 @@ const columns: ColumnDef<PersonRow>[] = [
       <AlertTitle>Не удалось загрузить людей</AlertTitle>
       <AlertDescription>{{ errorText }}</AlertDescription>
     </Alert>
-    <Alert v-if="actionError" variant="destructive" class="mb-4">
-      <CircleAlert />
-      <AlertTitle>Не удалось пересчитать связи</AlertTitle>
-      <AlertDescription>{{ actionError }}</AlertDescription>
-    </Alert>
-
     <Alert v-if="relinkResult" variant="info" class="mb-4">
       <CircleAlert />
       <AlertTitle>Связи пересчитаны</AlertTitle>

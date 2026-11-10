@@ -77,8 +77,9 @@ const bodyText = (message: ConversationMessageRecord): string => {
               )
             "
           >
-            <p class="mb-0.5 text-xs font-medium opacity-80">
-              {{ message.direction === "out" ? "Вы" : peerName }}
+            <!-- Отправитель известен у писем (from); у Telegram и чата hh берём собеседника диалога. -->
+            <p class="mb-0.5 text-xs font-medium opacity-80" :title="message.senderAddress ?? undefined">
+              {{ message.direction === "out" ? "Вы" : (message.senderName ?? message.senderAddress ?? peerName) }}
             </p>
             <p v-if="message.kind === 'media'" class="mb-1 flex items-center gap-1 text-xs opacity-80">
               <Paperclip class="size-3.5" />Вложение

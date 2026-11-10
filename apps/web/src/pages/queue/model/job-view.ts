@@ -3,9 +3,9 @@ import { humanizeError } from "@/entities/auto-apply/status"
 import { formatAge, jobStageLabel } from "@/shared/lib"
 
 /**
- * Задание очереди человеческими словами. Контракт `HarnessJob` не несёт ни
- * аккаунта, ни отклика, ни текста ошибки отдельными полями: всё это лежит в
- * `payload` и `result`, поэтому достаём оттуда и тихо пропускаем то, чего нет.
+ * Задание очереди человеческими словами. Сервер сам отдаёт аккаунт, вакансию,
+ * отклик и `lastError`; здесь остались разбор `payload` и `result` для
+ * сервера, который ещё не обновлён, и текст для человека.
  */
 
 const JOB_TITLES: Readonly<Record<string, string>> = {
@@ -58,8 +58,13 @@ export const jobDetail = (job: Pick<HarnessJob, "stage" | "payload">): string | 
   return model === null ? null : `модель ${model}`
 }
 
-/** Сырой текст ошибки из результата задания: разные стадии кладут его в разные поля. */
-export const jobRawError = (job: Pick<HarnessJob, "result">): string | null => {
+/**
+ * Сырой текст ошибки: `lastError` с сервера, а если его нет (старый сервер) -
+ * результат задачи: разные стадии кладут его в разные поля.
+ */
+export const jobRawError = (job: { readonly result?: unknown; readonly lastError?: string | null }): string | null => {
+  const last = text({ lastError: job.lastError }, "lastError")
+  if (last !== null) return last
   const result = record(job.result)
   if (result === null) return null
   const exit = record(result.exit)
@@ -67,10 +72,18 @@ export const jobRawError = (job: Pick<HarnessJob, "result">): string | null => {
 }
 
 const FAILED = new Set(["failed", "dead", "needs_human", "needs_reconcile", "cancelled"])
+/** Задание ждёт повтора: прошлая попытка закончилась ошибкой, и это видно. */
+const RETRYING = new Set(["pending", "leased", "running"])
 
-/** Ошибка для человека; только у заданий, которые закончились плохо. */
-export const jobError = (job: Pick<HarnessJob, "status" | "result">): string | null =>
-  FAILED.has(job.status) ? humanizeError(jobRawError(job)) : null
+/** Ошибка для человека: у неудачных заданий и у тех, что ждут повтора после ошибки. */
+export const jobError = (job: {
+  readonly status: string
+  readonly result?: unknown
+  readonly lastError?: string | null
+}): string | null => {
+  const shown = FAILED.has(job.status) || (RETRYING.has(job.status) && text({ e: job.lastError }, "e") !== null)
+  return shown ? humanizeError(jobRawError(job)) : null
+}
 
 const seconds = (from: string, now: Date): number => {
   const time = Date.parse(from)

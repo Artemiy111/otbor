@@ -6,9 +6,9 @@ export const alertVariants = cva(
     variants: {
       variant: {
         default: "bg-card text-card-foreground",
-        destructive: "border-red-500/30 bg-red-500/10 text-red-800 dark:text-red-200 [&>svg]:text-red-700 dark:[&>svg]:text-red-300",
-        warning: "border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-100 [&>svg]:text-amber-700 dark:[&>svg]:text-amber-300",
-        info: "border-sky-500/30 bg-sky-500/10 text-sky-900 dark:text-sky-100 [&>svg]:text-sky-700 dark:[&>svg]:text-sky-300"
+        destructive: "border-danger/30 bg-danger-muted text-foreground [&>svg]:text-danger",
+        warning: "border-warning/30 bg-warning-muted text-foreground [&>svg]:text-warning",
+        info: "border-info/30 bg-info-muted text-foreground [&>svg]:text-info"
       }
     },
     defaultVariants: {

@@ -36,6 +36,7 @@ import { PageHeader } from "@/widgets/page-header"
 import {
   groupExclusions,
   hhUrl,
+  internalPath,
   originLabel,
   parseHhTarget,
   removalKind,
@@ -147,9 +148,10 @@ const removeDescription = computed(() => {
 
 /* Добавить -------------------------------------------------------------------- */
 const addOpen = ref(false)
-const addScope = ref<"app" | "hh_account" | "hh_native">("app")
+const addScope = ref<"app" | "hh_account" | "hh_native" | "resume">("app")
 const addType = ref<BlacklistTarget>("employer")
 const addAccount = ref("")
+const addResume = ref("")
 const addTarget = ref("")
 const addName = ref("")
 const addReason = ref("")
@@ -160,6 +162,7 @@ const openAdd = () => {
   addScope.value = "app"
   addType.value = "employer"
   addAccount.value = accountFilter.value === ALL ? (accounts.value[0]?.id ?? "") : accountFilter.value
+  addResume.value = ""
   addTarget.value = ""
   addName.value = ""
   addReason.value = ""
@@ -174,7 +177,19 @@ watch(addTarget, (value) => {
     addTarget.value = parsed.externalId
   }
 })
-const addNeedsAccount = computed(() => addScope.value !== "app")
+const addNeedsAccount = computed(() => addScope.value === "hh_account" || addScope.value === "hh_native")
+const addIsResume = computed(() => addScope.value === "resume")
+// Для резюме исключается только вакансия: слой резюме читает решение вакансии.
+watch(addScope, (scope) => {
+  if (scope === "resume") addType.value = "vacancy"
+})
+const accountLabel = (id: string): string => accounts.value.find((account) => account.id === id)?.label ?? ""
+const resumeOptions = computed(() =>
+  (resumesQuery.data.value ?? []).map((resume) => ({
+    id: resume.id,
+    label: `${resume.title}${accountLabel(resume.hhAccountId) === "" ? "" : ` · ${accountLabel(resume.hhAccountId)}`}`
+  }))
+)
 
 const submitAdd = async () => {
   const externalId = addTarget.value.trim()
@@ -186,6 +201,10 @@ const submitAdd = async () => {
     addError.value = "Выберите аккаунт."
     return
   }
+  if (addIsResume.value && addResume.value === "") {
+    addError.value = "Выберите резюме."
+    return
+  }
   addBusy.value = true
   addError.value = null
   try {
@@ -195,7 +214,8 @@ const submitAdd = async () => {
       externalId,
       name: addName.value.trim() === "" ? undefined : addName.value.trim(),
       reason: addReason.value.trim() === "" ? undefined : addReason.value.trim(),
-      hhAccountId: addNeedsAccount.value ? addAccount.value : undefined
+      hhAccountId: addNeedsAccount.value ? addAccount.value : undefined,
+      resumeId: addIsResume.value ? addResume.value : undefined
     })
     addOpen.value = false
     await reload()
@@ -238,20 +258,28 @@ const columns: ColumnDef<ExclusionRow>[] = [
   {
     id: "name",
     header: "Название",
-    cell: ({ row }) =>
-      h("div", { class: "max-w-[22rem] space-y-0.5" }, [
-        h("div", { class: "font-medium" }, row.original.name ?? `№ ${row.original.externalId}`),
+    cell: ({ row }) => {
+      const record = row.original
+      const title = record.name ?? `№ ${record.externalId}`
+      const inside = internalPath(record)
+      return h("div", { class: "max-w-[22rem] space-y-0.5" }, [
+        // Если цель есть в базе otbor, название ведёт на её страницу, а hh.ru остаётся второй ссылкой.
+        inside === null
+          ? h("div", { class: "font-medium" }, title)
+          : h("a", { href: inside, class: "font-medium text-primary underline-offset-4 hover:underline" }, title),
         h(
           "a",
           {
-            href: hhUrl(row.original.targetType, row.original.externalId),
+            href: hhUrl(record.targetType, record.externalId),
             target: "_blank",
             rel: "noopener",
+            "aria-label": `Открыть на hh.ru: ${title}`,
             class: "inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground hover:text-foreground hover:underline"
           },
-          [`hh.ru № ${row.original.externalId}`, h(ExternalLink, { class: "size-3" })]
+          [`hh.ru № ${record.externalId}`, h(ExternalLink, { class: "size-3" })]
         )
       ])
+    }
   },
   {
     id: "type",
@@ -427,7 +455,7 @@ const onPagination = (state: { pageIndex: number; pageSize: number }) => {
           </div>
           <div class="space-y-1.5">
             <Label for="add-type">Что исключаем</Label>
-            <Select v-model="addType">
+            <Select v-model="addType" :disabled="addIsResume">
               <SelectTrigger id="add-type"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="employer">Работодателя</SelectItem>
@@ -442,6 +470,7 @@ const onPagination = (state: { pageIndex: number; pageSize: number }) => {
               <SelectContent>
                 <SelectItem value="app">Для всех аккаунтов</SelectItem>
                 <SelectItem value="hh_account">Для одного аккаунта</SelectItem>
+                <SelectItem value="resume">Для одного резюме (только вакансия)</SelectItem>
                 <SelectItem value="hh_native">Как скрытое на hh.ru (для аккаунта)</SelectItem>
               </SelectContent>
             </Select>
@@ -456,6 +485,16 @@ const onPagination = (state: { pageIndex: number; pageSize: number }) => {
                 </SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div v-if="addIsResume" class="space-y-1.5">
+            <Label for="add-resume">Резюме</Label>
+            <Select v-model="addResume">
+              <SelectTrigger id="add-resume"><SelectValue placeholder="Выберите резюме" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="resume in resumeOptions" :key="resume.id" :value="resume.id">{{ resume.label }}</SelectItem>
+              </SelectContent>
+            </Select>
+            <p class="text-xs text-muted-foreground">Остальные резюме смогут откликаться на эту вакансию.</p>
           </div>
           <div class="space-y-1.5">
             <Label for="add-name">Название (необязательно)</Label>

@@ -29,7 +29,8 @@ import {
   SelectTrigger,
   SelectValue,
   Skeleton,
-  Textarea
+  Textarea,
+  useToast
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
 import {
@@ -168,22 +169,28 @@ const { open: guardOpen, confirmThen, leave: guardLeave, stay: guardStay } = use
 const onSelect = (next: FilterTarget) => confirmThen(() => filterTarget.select(next))
 
 const queryCache = useQueryCache()
+const toast = useToast()
 const savingSection = ref<Section | null>(null)
-const saveErrors = ref<Partial<Record<Section, string>>>({})
+
+const SECTION_TITLE: Record<Section, string> = {
+  notes: "Заметки о работе",
+  salary: "Зарплатные ожидания",
+  faq: "Ответы на частые вопросы"
+}
 
 const saveSection = async (section: Section) => {
   const resume = selectedResume.value
   if (!resume) return
   savingSection.value = section
-  saveErrors.value = { ...saveErrors.value, [section]: undefined }
   try {
     await resumeApi.enrichmentSave(
       resume.id,
       buildSavePayload(section, draft.value, enrichmentQuery.data.value, experienceKeys.value)
     )
     await queryCache.invalidateQueries({ key: resumeKeys.enrichment(resume.id) })
+    toast.success("Сохранено", { description: SECTION_TITLE[section] })
   } catch (error) {
-    saveErrors.value = { ...saveErrors.value, [section]: describeError(error) }
+    toast.error("Не удалось сохранить", { description: `${SECTION_TITLE[section]}: ${describeError(error)}` })
   } finally {
     savingSection.value = null
   }
@@ -279,6 +286,13 @@ const syncMutation = useMutation({
           : `Статус: ${status.status}${status.message ? ` — ${status.message}` : ""}`
     return status
   },
+  onSuccess(status) {
+    if (status.status === "done") toast.success("Резюме обновлены с hh")
+    else toast.warning("Загрузка резюме не завершилась", { description: "Что именно случилось, написано под кнопкой." })
+  },
+  onError(error) {
+    toast.error("Не удалось загрузить резюме", { description: describeError(error) })
+  },
   onSettled() {
     void resumesQuery.refetch()
   }
@@ -324,12 +338,6 @@ const loading = computed(() => filterTarget.loading.value || resumesQuery.isPend
     </PageHeader>
 
     <p v-if="syncMessage" class="mb-4 text-sm text-muted-foreground">{{ syncMessage }}</p>
-
-    <Alert v-if="syncMutation.error.value" variant="destructive" class="mb-4">
-      <CircleAlert />
-      <AlertTitle>Не удалось загрузить резюме</AlertTitle>
-      <AlertDescription>{{ describeError(syncMutation.error.value) }}</AlertDescription>
-    </Alert>
 
     <Alert v-if="resumesQuery.error.value || filterTarget.error.value" variant="destructive" class="mb-4">
       <CircleAlert />
@@ -409,8 +417,8 @@ const loading = computed(() => filterTarget.loading.value || resumesQuery.isPend
           </div>
           <p class="text-xs text-muted-foreground">
             В тексте подсвечено:
-            <mark class="rounded-sm bg-yellow-200/80 px-1 text-foreground dark:bg-yellow-400/25">слово из ≥ {{ keywordLimit }} вакансий</mark>
-            <mark class="ml-1 rounded-sm bg-red-200/70 px-1 text-foreground dark:bg-red-500/30">навык hh из ≥ {{ skillLimit }} вакансий</mark>
+            <mark class="rounded-sm bg-warning/25 px-1 text-foreground">слово из ≥ {{ keywordLimit }} вакансий</mark>
+            <mark class="ml-1 rounded-sm bg-danger/25 px-1 text-foreground">навык hh из ≥ {{ skillLimit }} вакансий</mark>
           </p>
           <dl class="grid gap-3 text-sm sm:grid-cols-[10rem_1fr]">
             <dt class="text-muted-foreground">Зарплата</dt>
@@ -448,7 +456,6 @@ const loading = computed(() => filterTarget.loading.value || resumesQuery.isPend
             editable
             :dirty="dirty.notes"
             :saving="savingSection === 'notes'"
-            :error="saveErrors.notes"
             @save="saveSection('notes')"
             @revert="revert('notes')"
           >
@@ -499,7 +506,6 @@ const loading = computed(() => filterTarget.loading.value || resumesQuery.isPend
             editable
             :dirty="dirty.salary"
             :saving="savingSection === 'salary'"
-            :error="saveErrors.salary"
             @save="saveSection('salary')"
             @revert="revert('salary')"
           >
@@ -523,7 +529,6 @@ const loading = computed(() => filterTarget.loading.value || resumesQuery.isPend
             editable
             :dirty="dirty.faq"
             :saving="savingSection === 'faq'"
-            :error="saveErrors.faq"
             @save="saveSection('faq')"
             @revert="revert('faq')"
           >

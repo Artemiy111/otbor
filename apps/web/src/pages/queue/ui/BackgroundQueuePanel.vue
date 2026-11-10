@@ -73,7 +73,7 @@ defineExpose({ refetch, loading: computed(() => runsQuery.isLoading.value) })
   <div class="space-y-4">
     <div class="rounded-md border p-4 text-sm">
       <div class="flex flex-wrap items-center gap-2">
-        <span class="font-medium">Исполнитель: worker облака, по расписанию</span>
+        <span class="font-medium">Исполнитель: сервер, по расписанию</span>
         <Badge variant="secondary">{{ runningCount }} идёт сейчас</Badge>
       </div>
       <p class="mt-1 text-muted-foreground">

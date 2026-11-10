@@ -45,6 +45,15 @@ describe("jobError", () => {
     expect(jobError({ status: "dead", result: { exit: { message: "Форма изменилась" } } })).toBe("Форма изменилась")
   })
 
+  test("lastError с сервера важнее результата; повторяемая задача тоже показывает ошибку", () => {
+    expect(jobError({ status: "failed", lastError: "timeout", result: { message: "captcha" } })).toBe(
+      "hh слишком долго не отвечал."
+    )
+    expect(jobError({ status: "pending", lastError: "timeout" })).toBe("hh слишком долго не отвечал.")
+    expect(jobError({ status: "pending", lastError: null })).toBeNull()
+    expect(jobError({ status: "done", lastError: "timeout" })).toBeNull()
+  })
+
   test("у выполненного задания ошибки нет, даже если в результате есть message", () => {
     expect(jobError({ status: "done", result: { message: "captcha" } })).toBeNull()
     expect(jobError({ status: "failed", result: null })).toBeNull()

@@ -1,4 +1,5 @@
 import type { BlacklistRecord, BlacklistScope, BlacklistTarget } from "@otbor/contract"
+import { companyPath, vacancyPath } from "@/shared/lib"
 
 /** Строка таблицы: одна цель, скрытая сразу несколькими аккаунтами, это одна строка. */
 export interface ExclusionRow extends BlacklistRecord {
@@ -24,14 +25,23 @@ export const scopeLabel = (scope: BlacklistScope): string => {
 }
 
 /**
- * Кто создал запись. Вакансия с областью «все аккаунты» или «аккаунт» могла прийти
- * и от кнопки «Отбраковать», и из ручной формы: в данных их не отличить.
+ * Кто создал запись. Сервер различает кнопку «Отбраковать» (`reject`) и ручную
+ * форму (`user`). Строки слоёв «все аккаунты» и «аккаунт» до миграции 0062 писались
+ * одинаково, поэтому у вакансии с `user` честно сказано: вручную или старая отбраковка.
+ * Слой резюме раньше создавался только кнопкой, его миграция уже пометила.
  */
 export const originLabel = (record: Pick<BlacklistRecord, "source" | "scope" | "targetType">): string => {
   if (record.source === "hh_hidden") return "Импорт с hh"
+  if (record.source === "reject") return "Кнопка «Отбраковать»"
   if (record.scope === "resume") return "Кнопка «Отбраковать»"
-  if (record.targetType === "vacancy") return "Кнопка «Отбраковать» или вручную"
+  if (record.targetType === "vacancy") return "Вручную (или отбраковка до обновления)"
   return "Вручную"
+}
+
+/** Внутренняя страница цели в otbor, если она есть в базе. */
+export const internalPath = (record: Pick<BlacklistRecord, "targetType" | "vacancyId" | "employerId">): string | null => {
+  if (record.targetType === "vacancy") return record.vacancyId == null ? null : vacancyPath(record.vacancyId)
+  return record.employerId == null ? null : companyPath(record.employerId)
 }
 
 /** Группа записей, которые для человека одно исключение. */

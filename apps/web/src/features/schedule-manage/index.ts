@@ -1,4 +1,4 @@
-export { useScheduleActions, type ScheduleNotice } from "./model/use-schedule-actions"
+export { useScheduleActions } from "./model/use-schedule-actions"
 export { useSchedulesBoard } from "./model/use-schedules-board"
 export { default as ScheduleFormDialog } from "./ui/ScheduleFormDialog.vue"
 export { default as ScheduleRunsPanel } from "./ui/ScheduleRunsPanel.vue"

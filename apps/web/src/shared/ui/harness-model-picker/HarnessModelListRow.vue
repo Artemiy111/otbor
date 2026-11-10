@@ -80,7 +80,7 @@ function chooseEffort(value: string): void {
           :disabled="disabled"
           :class="
             cn(
-              'rounded border px-1.5 py-0.5 text-[10px] leading-none transition-colors',
+              'rounded border px-1.5 py-0.5 text-xs leading-none transition-colors',
               effort === currentEffort
                 ? 'border-primary text-primary'
                 : 'border-border text-muted-foreground hover:bg-background/60',

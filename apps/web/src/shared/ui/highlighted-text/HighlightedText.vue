@@ -57,7 +57,7 @@ const tip = (term: HighlightTerm): string =>
     <Hint v-if="part.term" :text="tip(part.term)">
       <mark
         class="rounded-sm px-0.5 text-foreground"
-        :class="part.term.kind === 'skill' ? 'bg-red-200/70 dark:bg-red-500/30' : 'bg-yellow-200/80 dark:bg-yellow-400/25'"
+        :class="part.term.kind === 'skill' ? 'bg-danger/25' : 'bg-warning/25'"
       >{{ part.text }}</mark>
     </Hint>
     <template v-else>{{ part.text }}</template>

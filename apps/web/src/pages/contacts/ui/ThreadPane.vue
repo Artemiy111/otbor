@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, onBeforeUnmount, watch } from "vue"
 import { useQuery } from "@pinia/colada"
+import { useDocumentVisibility } from "@vueuse/core"
 import { ArrowLeft, CircleAlert } from "@lucide/vue"
-import { conversationApi, conversationKeys } from "@/entities/conversation"
+import { conversationApi, conversationKeys, markAvailable, useConversationRead } from "@/entities/conversation"
 import { describeError } from "@/shared/lib"
 import { Alert, AlertDescription, AlertTitle, Button, Skeleton } from "@/shared/ui"
 import { inboxHref, type InboxState } from "../model/inbox"
@@ -23,6 +24,42 @@ const errorText = computed(() => (query.error.value === null ? null : describeEr
 const peerName = computed(
   () => conversation.value?.personName ?? conversation.value?.title ?? "Собеседник"
 )
+/* ---- «прочитано» -------------------------------------------------------------------- */
+
+/** Сколько диалог должен быть открыт и виден, чтобы считаться прочитанным. */
+const READ_AFTER_MS = 1500
+const read = useConversationRead()
+const visibility = useDocumentVisibility()
+/** Автоотметка срабатывает один раз за открытие: после ручного «непрочитано» она молчит. */
+let autoDone = false
+let timer: ReturnType<typeof setTimeout> | undefined
+const clearTimer = () => {
+  if (timer !== undefined) clearTimeout(timer)
+  timer = undefined
+}
+watch(
+  () => [conversation.value?.unreadCount ?? 0, visibility.value, markAvailable.value] as const,
+  ([unread, visible, available]) => {
+    clearTimer()
+    const current = conversation.value
+    if (autoDone || current === null || unread === 0 || visible !== "visible" || !available) return
+    timer = setTimeout(() => {
+      autoDone = true
+      void read.markRead({ id: current.id, unreadCount: current.unreadCount, archived: current.archived })
+    }, READ_AFTER_MS)
+  },
+  { immediate: true }
+)
+onBeforeUnmount(clearTimer)
+
+const markUnread = () => {
+  const current = conversation.value
+  if (current === null) return
+  autoDone = true
+  clearTimer()
+  void read.markUnread({ id: current.id, unreadCount: current.unreadCount, archived: current.archived })
+}
+
 const backHref = computed(() => inboxHref({ ...props.state, conversation: null }))
 </script>
 
@@ -60,6 +97,7 @@ const backHref = computed(() => inboxHref({ ...props.state, conversation: null }
         :state="state"
         :account-name="sources.accountName(conversation)"
         :account-color="sources.accountColor(conversation.accountId)"
+        @mark-unread="markUnread"
       />
       <ThreadMessages :conversation-id="conversation.id" :messages="detail.messages" :peer-name="peerName" />
       <footer class="border-t border-border px-3 py-2 text-xs text-muted-foreground sm:px-5">

@@ -16,7 +16,8 @@ import {
   AlertDescription,
   AlertTitle,
   Button,
-  EmptyState
+  EmptyState,
+  useToast
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
 import PresetDetail from "./PresetDetail.vue"
@@ -35,7 +36,7 @@ const presets = computed<ReadonlyArray<PresetRecord>>(() => query.data.value ?? 
 /** `"new"` while creating, an id while editing, null while viewing. */
 const editing = ref<"new" | string | null>(null)
 const selectedId = ref<string | null>(null)
-const notice = ref<string | null>(null)
+const toast = useToast()
 const removingId = ref<string | null>(null)
 
 const selected = computed(
@@ -74,18 +75,6 @@ const removeMutation = useMutation<{ readonly deleted: boolean }, string>({
   }
 })
 
-const upsertError = computed(() =>
-  upsertMutation.error.value === null
-    ? null
-    : describeError(upsertMutation.error.value)
-)
-
-const removeError = computed(() =>
-  removeMutation.error.value === null
-    ? null
-    : describeError(removeMutation.error.value)
-)
-
 /**
  * The list owns selection: a deleted row clears it, and the first preset opens
  * by itself so the right column is never blank on a fresh visit.
@@ -118,28 +107,24 @@ const selectPreset = (id: string) => {
   editing.value = null
   upsertMutation.reset()
   removeMutation.reset()
-  notice.value = null
 }
 
 const startCreate = () => {
   editing.value = "new"
   upsertMutation.reset()
   removeMutation.reset()
-  notice.value = null
 }
 
 const startEdit = () => {
   if (selected.value === null || selected.value.system) return
   editing.value = selected.value.id
   upsertMutation.reset()
-  notice.value = null
 }
 
 /** A system preset is shared and read-only; a copy is the user's own and editable. */
 const duplicate = async () => {
   const source = selected.value
   if (source === null) return
-  notice.value = null
   try {
     const saved = await upsertMutation.mutateAsync({
       kind: source.kind,
@@ -148,9 +133,9 @@ const duplicate = async () => {
     })
     selectedId.value = saved.id
     editing.value = saved.id
-    notice.value = "Копия создана, можно менять правила."
-  } catch {
-    // The mutation error is rendered inside the editor.
+    toast.success("Копия создана", { description: "Можно менять правила." })
+  } catch (cause) {
+    toast.error("Не удалось создать копию", { description: describeError(cause) })
   }
 }
 
@@ -164,7 +149,6 @@ const save = async (input: {
   kind: PresetKind
   filter: PresetFilter
 }) => {
-  notice.value = null
   const wasEditing = editingPreset.value !== null
   try {
     const saved = await upsertMutation.mutateAsync({
@@ -175,26 +159,24 @@ const save = async (input: {
     })
     editing.value = null
     selectedId.value = saved.id
-    notice.value = wasEditing ? "Пресет обновлён." : "Пресет создан."
-  } catch {
-    // The mutation error is rendered inside the editor.
+    toast.success(wasEditing ? "Пресет обновлён" : "Пресет создан")
+  } catch (cause) {
+    toast.error("Не удалось сохранить пресет", { description: describeError(cause) })
   }
 }
 
 const remove = async () => {
   const preset = selected.value
   if (preset === null || preset.system) return
-  notice.value = null
   removingId.value = preset.id
   try {
     const result = await removeMutation.mutateAsync(preset.id)
     if (editing.value === preset.id) editing.value = null
     selectedId.value = null
-    notice.value = result.deleted
-      ? "Пресет удалён."
-      : "Пресет не удалён: запись не найдена."
-  } catch {
-    // The mutation error is rendered above the detail card.
+    if (result.deleted) toast.success("Пресет удалён")
+    else toast.warning("Пресет не удалён", { description: "Запись не найдена." })
+  } catch (cause) {
+    toast.error("Не удалось удалить пресет", { description: describeError(cause) })
   } finally {
     removingId.value = null
   }
@@ -222,12 +204,6 @@ const remove = async () => {
       <AlertDescription>{{ listError }}</AlertDescription>
     </Alert>
 
-    <Alert v-if="notice" variant="info" class="mb-4">
-      <CircleAlert />
-      <AlertTitle>Готово</AlertTitle>
-      <AlertDescription>{{ notice }}</AlertDescription>
-    </Alert>
-
     <div class="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start">
       <div class="min-w-0 lg:sticky lg:top-4">
         <PresetList
@@ -244,7 +220,6 @@ const remove = async () => {
           :key="editing === 'new' ? 'new' : (editing ?? 'new')"
           :preset="editingPreset"
           :saving="upsertMutation.isLoading.value"
-          :error="upsertError"
           @save="save"
           @cancel="cancelEdit"
         />
@@ -254,7 +229,6 @@ const remove = async () => {
           :key="selected.id"
           :preset="selected"
           :removing="removingId === selected.id"
-          :error="removeError"
           @edit="startEdit"
           @remove="remove"
           @duplicate="duplicate"

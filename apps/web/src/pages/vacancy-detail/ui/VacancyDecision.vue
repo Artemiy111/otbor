@@ -18,7 +18,7 @@ const decision = computed(
     props.decisions.find((item) => item.hhAccountId === props.defaultAccountId) ??
     props.decisions[0]
 )
-const heading = "mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+const heading = "mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
 </script>
 
 <template>

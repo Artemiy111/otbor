@@ -56,7 +56,8 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue
+  SelectValue,
+  useToast
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
 
@@ -185,30 +186,27 @@ const resetFilter = () => setFilter({ tab: "all", state: null, reason: null, mod
 /* ---- действия над строками --------------------------------------------------------- */
 
 const actions = useApplicationActions()
-const actionError = ref<string | null>(null)
-const actionNotice = ref<string | null>(null)
+const toast = useToast()
 const busyId = ref<string | null>(null)
 const confirmSkipId = ref<string | null>(null)
 
 const runRow = async (id: string, task: () => Promise<unknown>, done: string) => {
   if (busyId.value !== null) return
   busyId.value = id
-  actionError.value = null
-  actionNotice.value = null
   try {
     await task()
-    actionNotice.value = done
+    toast.success(done)
   } catch (cause) {
-    actionError.value = describeError(cause)
+    toast.error("Не удалось выполнить действие", { description: describeError(cause) })
   } finally {
     busyId.value = null
     confirmSkipId.value = null
   }
 }
-const retryRow = (row: ApplicationRecord) => runRow(row.id, () => actions.retry(row.id), "Повтор запущен.")
+const retryRow = (row: ApplicationRecord) => runRow(row.id, () => actions.retry(row.id), "Повтор запущен")
 const retryLetterRow = (row: ApplicationRecord) =>
-  runRow(row.id, () => actions.retryLetter(row.id), "Письмо будет написано заново на ближайшем запуске.")
-const skipRow = (row: ApplicationRecord) => runRow(row.id, () => actions.skip(row.id), "Отклик пропущен.")
+  runRow(row.id, () => actions.retryLetter(row.id), "Письмо будет написано заново на ближайшем запуске")
+const skipRow = (row: ApplicationRecord) => runRow(row.id, () => actions.skip(row.id), "Отклик пропущен")
 
 /* ---- «Повторить все» для выбранной причины ---------------------------------------- */
 
@@ -301,8 +299,9 @@ const columns = computed<ColumnDef<ApplicationRecord>[]>(() => [
     id: "vacancy",
     header: "Вакансия",
     enableSorting: false,
+    meta: { class: "max-sm:w-full" },
     cell: ({ row }) =>
-      h("div", { class: "max-w-[300px] min-w-[180px]" }, [
+      h("div", { class: "max-w-[300px] min-w-[180px] max-sm:max-w-none" }, [
         h(
           "a",
           {
@@ -313,13 +312,29 @@ const columns = computed<ColumnDef<ApplicationRecord>[]>(() => [
         ),
         row.original.employerName
           ? h("div", { class: "text-xs text-muted-foreground" }, row.original.employerName)
-          : null
+          : null,
+        // Уже ширины xl второстепенные колонки сворачиваются сюда второй строкой.
+        h("div", { class: "mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs xl:hidden" }, [
+          h(AccountChip, {
+            accountId: row.original.hhAccountId,
+            accounts: accounts.value,
+            resumeIds: [row.original.resumeId],
+            resumes: resumes.value
+          }),
+          h(Badge, { variant: modeTone(row.original.autoRun) }, () => modeLabel(row.original.autoRun)),
+          h(
+            "span",
+            { class: "whitespace-nowrap text-muted-foreground tabular-nums", title: formatDate(row.original.updatedAt) },
+            ageOf(row.original.updatedAt)
+          )
+        ])
       ])
   },
   {
     id: "account",
     header: "Аккаунт",
     enableSorting: false,
+    meta: { class: "max-xl:hidden" },
     cell: ({ row }) =>
       h(AccountChip, {
         accountId: row.original.hhAccountId,
@@ -349,12 +364,14 @@ const columns = computed<ColumnDef<ApplicationRecord>[]>(() => [
     id: "mode",
     header: "Режим",
     enableSorting: false,
+    meta: { class: "max-xl:hidden" },
     cell: ({ row }) => h(Badge, { variant: modeTone(row.original.autoRun) }, () => modeLabel(row.original.autoRun))
   },
   {
     id: "updatedAt",
     header: "Обновлён",
     enableSorting: false,
+    meta: { class: "max-xl:hidden" },
     cell: ({ row }) =>
       h(
         "span",
@@ -366,6 +383,7 @@ const columns = computed<ColumnDef<ApplicationRecord>[]>(() => [
     id: "actions",
     header: "",
     enableSorting: false,
+    meta: { class: "max-sm:ml-auto" },
     cell: ({ row }) => {
       const item = row.original
       const busy = busyId.value !== null
@@ -612,13 +630,6 @@ const stateChip = computed(() => (filter.value.state === null ? null : applicati
       Повторено: {{ bulkProgress.done }} из {{ bulkProgress.of }}<template v-if="bulkProgress.failed > 0">, не вышло: {{ bulkProgress.failed }}</template>.
     </p>
 
-    <Alert v-if="actionError" variant="destructive" class="mb-4">
-      <CircleAlert />
-      <AlertTitle>Не получилось</AlertTitle>
-      <AlertDescription>{{ actionError }}</AlertDescription>
-    </Alert>
-    <p v-if="actionNotice" class="mb-4 text-sm text-success" role="status">{{ actionNotice }}</p>
-
     <DataTable
       :key="filterToSearch(filter) + '|' + accountScope"
       :columns="columns"
@@ -630,6 +641,7 @@ const stateChip = computed(() => (filter.value.state === null ? null : applicati
       :page-size="pageSize"
       :page-size-options="[...PAGE_SIZES]"
       :row-numbers="false"
+      cards
       @update:pagination="onPagination"
     >
       <template #empty>

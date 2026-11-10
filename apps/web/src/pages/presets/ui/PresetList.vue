@@ -48,10 +48,10 @@ const ruleCount = (preset: PresetRecord): number => presetRules(preset.filter).l
   <Card class="overflow-hidden">
     <CardHeader class="gap-2 border-b border-border p-3">
       <div class="flex items-center justify-between gap-2">
-        <span class="text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
+        <span class="text-xs font-bold uppercase tracking-[0.06em] text-muted-foreground">
           Список
         </span>
-        <span class="text-[11px] tabular-nums text-muted-foreground">
+        <span class="text-xs tabular-nums text-muted-foreground">
           {{ props.presets.length }}
         </span>
       </div>
@@ -81,11 +81,11 @@ const ruleCount = (preset: PresetRecord): number => presetRules(preset.filter).l
         >
           <div class="flex items-center justify-between bg-muted/30 px-3 py-1">
             <span
-              class="text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground"
+              class="text-xs font-semibold uppercase tracking-[0.06em] text-muted-foreground"
             >
               {{ group.title }}
             </span>
-            <span class="text-[10px] tabular-nums text-muted-foreground">
+            <span class="text-xs tabular-nums text-muted-foreground">
               {{ group.items.length }}
             </span>
           </div>
@@ -106,7 +106,7 @@ const ruleCount = (preset: PresetRecord): number => presetRules(preset.filter).l
               <div class="flex items-center gap-1.5">
                 <span class="truncate text-sm font-medium">{{ preset.title }}</span>
               </div>
-              <div class="mt-0.5 text-[11px] text-muted-foreground">
+              <div class="mt-0.5 text-xs text-muted-foreground">
                 правил {{ ruleCount(preset) }} · {{ formatDate(preset.updatedAt) }}
               </div>
             </div>

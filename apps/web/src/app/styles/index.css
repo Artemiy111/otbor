@@ -45,6 +45,9 @@
   --danger: oklch(0.52 0.21 27);
   --danger-foreground: oklch(0.985 0.005 27);
   --danger-muted: oklch(0.52 0.21 27 / 9%);
+  /* Метка «решает модель»: фиолетовый, отдельный от статусных тонов. */
+  --ai: oklch(0.5 0.2 295);
+  --ai-muted: oklch(0.5 0.2 295 / 10%);
 
   --chart-1: oklch(0.52 0.18 272);
   --chart-2: oklch(0.68 0.15 160);
@@ -99,6 +102,8 @@
   --danger: oklch(0.72 0.17 25);
   --danger-foreground: oklch(0.2 0.04 25);
   --danger-muted: oklch(0.72 0.17 25 / 15%);
+  --ai: oklch(0.76 0.13 295);
+  --ai-muted: oklch(0.76 0.13 295 / 15%);
 }
 
 @theme inline {
@@ -133,6 +138,8 @@
   --color-danger: var(--danger);
   --color-danger-foreground: var(--danger-foreground);
   --color-danger-muted: var(--danger-muted);
+  --color-ai: var(--ai);
+  --color-ai-muted: var(--ai-muted);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);

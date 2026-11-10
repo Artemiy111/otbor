@@ -19,7 +19,7 @@ const validUntil = computed(() => props.data.facts?.hh?.validUntil ?? null)
       >
         {{ vacancy.employerName ?? "Без названия" }}
       </a>
-      <span v-if="vacancy.employerRating" class="text-amber-700 dark:text-amber-300">★ {{ formatRating(vacancy.employerRating) }}</span>
+      <span v-if="vacancy.employerRating" class="text-warning">★ {{ formatRating(vacancy.employerRating) }}</span>
     </template>
     <span v-else class="font-medium text-foreground">{{ vacancy.employerName ?? "Компания не указана" }}</span>
     <template v-if="vacancy.areaName">

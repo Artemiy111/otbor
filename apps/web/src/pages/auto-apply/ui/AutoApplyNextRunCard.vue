@@ -40,7 +40,7 @@ const query = useQuery({
 const data = computed(() => query.data.value ?? null)
 const settings = computed(() => data.value?.settings ?? null)
 
-const { applySchedule, run, runState, runCounts, runError, running } = useAutoApplyRun({
+const { applySchedule, run, runState, runCounts, running } = useAutoApplyRun({
   accountId: () => props.accountId,
   scheduleEnabled: () => props.storedMode !== "off"
 })
@@ -186,11 +186,6 @@ const error = computed(() => (query.error.value === null ? null : describeError(
         </div>
       </div>
 
-      <Alert v-if="runError" variant="destructive">
-        <CircleAlert />
-        <AlertTitle>Запуск</AlertTitle>
-        <AlertDescription>{{ runError }}</AlertDescription>
-      </Alert>
       <p v-if="runState === 'done'" class="text-sm" role="status">
         <template v-if="runCounts">
           <span v-for="[key, label] in RUN_COUNT_LABELS" :key="key" class="mr-3 inline-block">

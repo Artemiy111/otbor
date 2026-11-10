@@ -29,7 +29,7 @@ const data = page.data
     <PageHeader :title="data?.vacancy.title ?? 'Вакансия'" back-to="/vacancies" back-label="Вакансии">
       <template v-if="data?.vacancy.archived" #title-aside>
         <span
-          class="-rotate-6 select-none rounded-md border-2 border-double border-red-600/70 px-2.5 py-0.5 text-sm font-black uppercase tracking-[0.25em] text-red-600/70 dark:border-red-400/70 dark:text-red-400/70"
+          class="-rotate-6 select-none rounded-md border-2 border-double border-danger/70 px-2.5 py-0.5 text-sm font-black uppercase tracking-[0.25em] text-danger/70"
         >
           Архив
         </span>

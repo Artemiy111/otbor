@@ -4,7 +4,7 @@ import { useQuery } from "@pinia/colada"
 import { useIntervalFn } from "@vueuse/core"
 import { MessageSquare, RefreshCw } from "@lucide/vue"
 import { conversationApi, conversationKeys } from "@/entities/conversation"
-import { Alert, AlertDescription, Button, Skeleton } from "@/shared/ui"
+import { Button, Skeleton, useToast } from "@/shared/ui"
 import { describeError, formatDate } from "@/shared/lib"
 import type { VacancyPage } from "../model"
 
@@ -30,16 +30,15 @@ useIntervalFn(() => {
 }, 2000)
 
 const busy = ref(false)
-const errorText = ref<string | null>(null)
+const toast = useToast()
 const refresh = async () => {
   if (busy.value || inFlight.value) return
   busy.value = true
-  errorText.value = null
   try {
     await conversationApi.vacancyChatRefresh(key())
     await query.refetch()
   } catch (error) {
-    errorText.value = describeError(error)
+    toast.error("Не удалось обновить чат", { description: describeError(error) })
   } finally {
     busy.value = false
   }
@@ -69,9 +68,6 @@ const resumeTitle = computed(() => props.page.selectedResume.value?.title ?? nul
       </Button>
     </div>
 
-    <Alert v-if="errorText" variant="destructive">
-      <AlertDescription>{{ errorText }}</AlertDescription>
-    </Alert>
     <p v-if="chat?.fetch === 'failed' || chat?.fetch === 'needs_human'" class="text-xs text-destructive">
       {{ chat.message ?? "Не удалось прочитать чат" }}
     </p>
@@ -104,7 +100,7 @@ const resumeTitle = computed(() => props.page.selectedResume.value?.title ?? nul
             :class="message.direction === 'out' ? 'bg-primary text-primary-foreground' : 'bg-muted'"
           >
             <p class="whitespace-pre-wrap break-words">{{ message.text }}</p>
-            <p class="mt-1 text-[11px] opacity-70">{{ formatDate(message.sentAt) }}</p>
+            <p class="mt-1 text-xs opacity-70">{{ formatDate(message.sentAt) }}</p>
           </div>
         </li>
       </ol>

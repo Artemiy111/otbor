@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { CircleAlert } from "@lucide/vue"
-import { Alert, AlertDescription, Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/ui"
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/ui"
 
 /**
  * Раздел страницы резюме. Если раздел можно править (`editable`), внизу одна
@@ -14,9 +13,8 @@ withDefaults(
     editable?: boolean
     dirty?: boolean
     saving?: boolean
-    error?: string | null
   }>(),
-  { description: undefined, editable: false, dirty: false, saving: false, error: null }
+  { description: undefined, editable: false, dirty: false, saving: false }
 )
 const emit = defineEmits<{ save: []; revert: [] }>()
 </script>
@@ -32,10 +30,6 @@ const emit = defineEmits<{ save: []; revert: [] }>()
     </CardHeader>
     <CardContent class="space-y-4">
       <slot />
-      <Alert v-if="error" variant="destructive">
-        <CircleAlert />
-        <AlertDescription>Не удалось сохранить: {{ error }}</AlertDescription>
-      </Alert>
       <div v-if="editable" class="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
         <span class="mr-auto text-xs text-muted-foreground">
           {{ dirty ? "Есть правки, которые ещё не сохранены." : "Все правки сохранены." }}

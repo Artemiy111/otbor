@@ -33,9 +33,8 @@ const props = withDefaults(
   defineProps<{
     preset: PresetRecord | null
     saving?: boolean
-    error?: string | null
   }>(),
-  { saving: false, error: null }
+  { saving: false }
 )
 
 const emit = defineEmits<{
@@ -156,12 +155,6 @@ onMounted(() => {
           <AlertDescription>{{ formError }}</AlertDescription>
         </Alert>
 
-        <Alert v-if="props.error" variant="destructive">
-          <CircleAlert />
-          <AlertTitle>Не удалось сохранить пресет</AlertTitle>
-          <AlertDescription>{{ props.error }}</AlertDescription>
-        </Alert>
-
         <div class="flex flex-wrap items-center gap-2">
           <Input
             v-model="title"
@@ -191,20 +184,20 @@ onMounted(() => {
             @update:model-value="onJsonInput"
           />
           <p v-if="jsonError" class="text-xs text-destructive">{{ jsonError }}</p>
-          <p v-else class="text-[11px] text-muted-foreground">
+          <p v-else class="text-xs text-muted-foreground">
             Это фильтр, который сохраняется. Неполные правила при разборе отбрасываются.
           </p>
         </div>
 
         <p
           v-if="filter.keywordIds !== undefined && filter.keywordIds.length > 0"
-          class="text-[11px] text-muted-foreground"
+          class="text-xs text-muted-foreground"
         >
           Ограничение словаря ({{ filter.keywordIds.length }}) сохранено из старой версии и не влияет на срез.
         </p>
 
         <div v-if="mode === 'rules' && stages.length > 1" class="space-y-1 border-t border-border pt-3">
-          <h3 class="text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
+          <h3 class="text-xs font-bold uppercase tracking-[0.06em] text-muted-foreground">
             Воронка: как правила сужают корпус
           </h3>
           <FunnelSankey :stages="stages" />
@@ -222,12 +215,12 @@ onMounted(() => {
             <Button size="sm" :disabled="props.saving || (!dirty && props.preset !== null)" @click="submit">
               <Save class="h-4 w-4" />
               {{ props.saving ? "Сохраняю…" : "Сохранить" }}
-              <kbd class="ml-1 hidden rounded border border-primary-foreground/30 px-1 text-[10px] font-normal opacity-70 sm:inline">⌘S</kbd>
+              <kbd class="ml-1 hidden rounded border border-primary-foreground/30 px-1 text-xs font-normal opacity-70 sm:inline">⌘S</kbd>
             </Button>
             <Button variant="ghost" size="sm" :disabled="props.saving" @click="requestCancel">
               Отмена
             </Button>
-            <span v-if="dirty" class="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+            <span v-if="dirty" class="flex items-center gap-1 text-xs text-warning">
               <span class="size-1.5 rounded-full bg-current" />
               не сохранено
             </span>

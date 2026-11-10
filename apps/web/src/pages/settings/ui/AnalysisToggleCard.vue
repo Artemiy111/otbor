@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from "vue"
+import { computed } from "vue"
 import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
 import type { SettingsView, UserSettings } from "@otbor/contract"
 import { settingsApi, settingsKeys } from "@/entities/settings"
 import { describeError } from "@/shared/lib"
-import { Alert, AlertDescription, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/ui"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, useToast } from "@/shared/ui"
 
 /**
  * Выключатель анализа вакансий моделью SystemOne. Лежит в настройках пользователя
@@ -13,7 +13,7 @@ import { Alert, AlertDescription, Card, CardContent, CardDescription, CardHeader
 const queryCache = useQueryCache()
 const query = useQuery({ key: () => settingsKeys.get(), query: () => settingsApi.get() })
 const view = computed(() => query.data.value)
-const error = ref<string | null>(null)
+const toast = useToast()
 
 const mutation = useMutation<SettingsView, UserSettings>({
   mutation: (input) => settingsApi.update(input)
@@ -22,12 +22,12 @@ const mutation = useMutation<SettingsView, UserSettings>({
 const toggle = async (event: Event) => {
   const current = view.value
   if (current === undefined) return
-  error.value = null
   const enabled = (event.target as HTMLInputElement).checked
   try {
     await mutation.mutateAsync({ ...current.settings, analysisEnabled: enabled })
+    toast.success(enabled ? "Анализ включён" : "Анализ выключен")
   } catch (cause) {
-    error.value = describeError(cause)
+    toast.error("Не удалось сохранить", { description: describeError(cause) })
   } finally {
     await queryCache.invalidateQueries({ key: settingsKeys.all })
   }
@@ -53,7 +53,6 @@ const toggle = async (event: Event) => {
         />
         Анализировать вакансии по расписанию
       </label>
-      <Alert v-if="error" variant="destructive"><AlertDescription>{{ error }}</AlertDescription></Alert>
     </CardContent>
   </Card>
 </template>

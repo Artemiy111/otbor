@@ -27,7 +27,8 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-  Skeleton
+  Skeleton,
+  useToast
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
 import { useAutoDraft, viewMatches } from "../model/useAutoDraft"
@@ -86,24 +87,16 @@ const { ensureSchedule, applySchedule } = useAutoApplyRun({
   scheduleEnabled: () => true
 })
 
-interface SaveNotice {
-  readonly text: string
-  /** Расписание: показать ссылку на страницу расписаний. */
-  readonly schedule: boolean
-  readonly tone: "info" | "warning"
-}
-const notice = ref<SaveNotice | null>(null)
+const toast = useToast()
 const formError = ref<string | null>(null)
-watch(dirty, (value) => {
-  if (value) notice.value = null
-})
-
 const modeText = (mode: "off" | "drafts" | "auto") =>
   mode === "off"
-    ? "Сохранено. Автоотклики выключены."
+    ? "Автоотклики выключены"
     : mode === "drafts"
-      ? "Сохранено. Режим «Черновики»: система готовит отклики, отправляете вы."
-      : "Сохранено. Режим «Авто» включён."
+      ? "Режим «Черновики»: система готовит отклики, отправляете вы"
+      : "Режим «Авто» включён"
+
+const SCHEDULES_ACTION = { label: "Открыть расписания", href: "/schedules" } as const
 
 const saveMutation = useMutation({
   mutation: async (_: void) => {
@@ -124,32 +117,29 @@ const doSave = async () => {
   try {
     const { saved, schedule } = await saveMutation.mutateAsync()
     draft.load(saved)
-    let next: SaveNotice = { text: modeText(saved.autoMode), schedule: false, tone: "info" }
-    if (schedule?.created)
-      next = {
-        text: `${modeText(saved.autoMode)} Расписание создано: запуск каждые ${schedule.schedule.intervalMinutes} мин.`,
-        schedule: true,
-        tone: "info"
-      }
-    else if (schedule !== null && !schedule.schedule.enabled)
-      next = {
-        text: `${modeText(saved.autoMode)} Но расписание автооткликов на паузе, пока его не включить, запусков не будет.`,
-        schedule: true,
-        tone: "warning"
-      }
-    notice.value = next
+    const title = `Сохранено. ${modeText(saved.autoMode)}`
+    if (schedule?.created) {
+      toast.info(title, {
+        description: `Расписание создано: запуск каждые ${schedule.schedule.intervalMinutes} мин.`,
+        action: SCHEDULES_ACTION
+      })
+    } else if (schedule !== null && !schedule.schedule.enabled) {
+      toast.warning(title, {
+        description: "Расписание автооткликов на паузе: пока его не включить, запусков не будет.",
+        action: SCHEDULES_ACTION
+      })
+    } else toast.success(title)
     await Promise.all([
       queryCache.invalidateQueries({ key: applyFilterKeys.all }),
       queryCache.invalidateQueries({ key: autoApplyKeys.all }),
       queryCache.invalidateQueries({ key: scheduleKeys.all })
     ])
-  } catch {
-    // Текст ошибки показывается из состояния мутации.
+  } catch (cause) {
+    toast.error("Не удалось сохранить", { description: describeError(cause) })
   }
 }
 
 const save = () => {
-  notice.value = null
   const problem = draft.error.value
   formError.value = problem
   if (problem !== null) return
@@ -161,7 +151,6 @@ const save = () => {
   void doSave()
 }
 
-const saveError = computed(() => (saveMutation.error.value === null ? null : describeError(saveMutation.error.value)))
 const saving = computed(() => saveMutation.isLoading.value)
 watch(dirty, () => (formError.value = null))
 
@@ -268,26 +257,13 @@ const refresh = () => {
 
         <!-- Сохранение одно на всю страницу; панель прилипает к низу, пока есть правки. -->
         <div
-          v-if="dirty || saving || notice || formError || saveError"
+          v-if="dirty || saving || formError"
           class="sticky bottom-0 z-10 -mx-1 space-y-2 rounded-xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur"
         >
           <Alert v-if="formError" variant="destructive">
             <CircleAlert />
             <AlertTitle>Проверьте форму</AlertTitle>
             <AlertDescription>{{ formError }}</AlertDescription>
-          </Alert>
-          <Alert v-if="saveError" variant="destructive">
-            <CircleAlert />
-            <AlertTitle>Не удалось сохранить</AlertTitle>
-            <AlertDescription>{{ saveError }}</AlertDescription>
-          </Alert>
-          <Alert v-if="notice && !dirty" :variant="notice.tone" role="status">
-            <CircleAlert />
-            <AlertTitle>Готово</AlertTitle>
-            <AlertDescription>
-              {{ notice.text }}
-              <a v-if="notice.schedule" href="/schedules" class="underline">Расписания</a>
-            </AlertDescription>
           </Alert>
           <div v-if="dirty || saving" class="flex flex-wrap items-center gap-2">
             <Button :disabled="saving" @click="save">

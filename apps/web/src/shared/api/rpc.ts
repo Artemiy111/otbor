@@ -8,7 +8,9 @@ import { RpcClient, RpcSerialization } from "effect/rpc"
  * The same RPC group and the same NDJSON wire format as `@otbor/cli`.
  * There is deliberately no REST adapter and no second API surface here.
  */
-const endpoint = __OTBOR_API_URL__ === "" ? RPC_PATH : __OTBOR_API_URL__
+// Вне сборки Vite (юнит-тесты под bun) константы сборки нет: берём путь по умолчанию.
+const configured = typeof __OTBOR_API_URL__ === "undefined" ? "" : __OTBOR_API_URL__
+const endpoint = configured === "" ? RPC_PATH : configured
 
 export class Api extends Context.Service<Api, OtborApi>()("otbor/web/Api") {}
 
@@ -23,10 +25,11 @@ const ApiLayer = Layer.effect(Api, RpcClient.make(OtborRpcs)).pipe(
  * серверу, так что в Tempo вызов из интерфейса и его обработка на сервере
  * видны одним трейсом. Слой пуст, пока экспорт не включён при сборке.
  */
-const TelemetryLayer = __OTBOR_OTLP_URL__ === ""
+const otlpUrl = typeof __OTBOR_OTLP_URL__ === "undefined" ? "" : __OTBOR_OTLP_URL__
+const TelemetryLayer = otlpUrl === ""
   ? Layer.empty
   : OtlpTracer.layer({
-    url: `${__OTBOR_OTLP_URL__}/v1/traces`,
+    url: `${otlpUrl}/v1/traces`,
     resource: { serviceName: "otbor-web", attributes: { "service.namespace": "otbor" } }
   }).pipe(
     Layer.provide(OtlpSerialization.layerJson),

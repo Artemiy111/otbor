@@ -16,6 +16,7 @@ import {
   CardTitle,
   Input,
   Label,
+  useToast,
   Select,
   SelectContent,
   SelectItem,
@@ -49,7 +50,7 @@ const kind = ref<Kind>("subscription")
 const url = ref("")
 const workers = ref("10")
 const error = ref<string | null>(null)
-const notice = ref<string | null>(null)
+const toast = useToast()
 
 const configureMutation = useMutation<ProxyStatus, Parameters<typeof hydrationApi.proxyConfigure>[0]>({
   mutation: (input) => hydrationApi.proxyConfigure(input)
@@ -71,7 +72,6 @@ const busy = computed(() => configureMutation.isLoading.value || clearMutation.i
 
 const save = async () => {
   error.value = null
-  notice.value = null
   const count = Number(workers.value)
   if (!Number.isInteger(count) || count < 1 || count > 15) {
     error.value = "Воркеры: целое число 1–15."
@@ -84,24 +84,22 @@ const save = async () => {
       workers: count
     })
     url.value = ""
-    notice.value = saved.source === "subscription"
-      ? "Сохранено. Локальный mihomo перезапускается — это займёт до минуты."
-      : "Сохранено."
+    if (saved.source === "subscription") {
+      toast.success("Сохранено", { description: "Локальный mihomo перезапускается, это займёт до минуты." })
+    } else toast.success("Сохранено")
     await queryCache.invalidateQueries({ key: hydrationKeys.proxyStatus() })
   } catch (cause) {
-    error.value = describeError(cause)
+    toast.error("Не удалось сохранить", { description: describeError(cause) })
   }
 }
 
 const clear = async () => {
-  error.value = null
-  notice.value = null
   try {
     await clearMutation.mutateAsync()
-    notice.value = "Сохранённые настройки удалены."
+    toast.success("Сохранённые настройки удалены")
     await queryCache.invalidateQueries({ key: hydrationKeys.proxyStatus() })
   } catch (cause) {
-    error.value = describeError(cause)
+    toast.error("Не удалось удалить настройки", { description: describeError(cause) })
   }
 }
 </script>
@@ -150,7 +148,7 @@ const clear = async () => {
             <div class="text-xs text-muted-foreground">Действует до</div>
             <div class="font-medium">{{ new Date(status.engine.expiresAt).toLocaleDateString("ru-RU") }}</div>
           </div>
-          <p v-if="status.engine.nodes > 0 && (status.workers ?? 1) > status.engine.alive && status.engine.checked > 0" class="col-span-full text-xs text-amber-600">
+          <p v-if="status.engine.nodes > 0 && (status.workers ?? 1) > status.engine.alive && status.engine.checked > 0" class="col-span-full text-xs text-warning">
             Живых нод меньше, чем воркеров: часть воркеров будет делить IP.
           </p>
         </template>
@@ -197,7 +195,6 @@ const clear = async () => {
       </div>
 
       <Alert v-if="error" variant="destructive"><AlertDescription>{{ error }}</AlertDescription></Alert>
-      <p v-if="notice" class="text-sm text-muted-foreground">{{ notice }}</p>
 
       <div class="flex gap-2">
         <Button :disabled="busy || (!status?.configured && url.trim() === '')" @click="save">Сохранить</Button>

@@ -20,10 +20,10 @@ const dots = computed(() =>
 const tone = (stance: string) =>
   stance === "yes"
     ? props.row.conflict
-      ? "bg-amber-400 text-amber-950"
-      : "bg-emerald-500 text-emerald-950"
+      ? "bg-warning text-warning-foreground"
+      : "bg-success text-success-foreground"
     : stance === "other"
-      ? "bg-red-400/80 text-red-950"
+      ? "bg-danger text-danger-foreground"
       : "bg-muted text-muted-foreground/50"
 </script>
 
@@ -31,7 +31,7 @@ const tone = (stance: string) =>
   <span class="inline-flex shrink-0 items-center gap-0.5 align-middle" aria-hidden="true">
     <Hint v-for="dot in dots" :key="dot.id" :text="dot.title">
       <span
-        class="rounded px-1 text-[9px] font-semibold leading-[13px]"
+        class="rounded px-1 text-xs font-semibold leading-none"
         :class="tone(dot.stance)"
       >{{ dot.short === "текст" ? "т" : dot.short }}</span>
     </Hint>

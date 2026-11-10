@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from "vue"
 import { useQuery } from "@pinia/colada"
-import { ArrowLeft, ChevronDown, ExternalLink } from "@lucide/vue"
+import { ArrowLeft, ChevronDown, ExternalLink, MailOpen } from "@lucide/vue"
 import type { ConversationSummary } from "@otbor/contract"
 import { applicationApi, applicationKeys } from "@/entities/application"
+import { markAvailable } from "@/entities/conversation"
 import { EmployerName, confidencePercent, contactLinkText, personApi, personKeys } from "@/entities/person"
 import { vacancyApi, vacancyKeys } from "@/entities/vacancy"
 import {
@@ -25,6 +26,8 @@ const props = defineProps<{
   accountName: string
   accountColor: string
 }>()
+
+const emit = defineEmits<{ markUnread: [] }>()
 
 const personQuery = useQuery({
   key: () => personKeys.detail(props.conversation.personId ?? ""),
@@ -126,6 +129,18 @@ const isHttp = (href: string | null): boolean => href !== null && /^https?:\/\//
           </a>
         </div>
       </div>
+
+      <Button
+        v-if="markAvailable && conversation.unreadCount === 0"
+        variant="ghost"
+        size="sm"
+        class="shrink-0"
+        aria-label="Отметить непрочитанным"
+        @click="emit('markUnread')"
+      >
+        <MailOpen />
+        <span class="hidden xl:inline">Отметить непрочитанным</span>
+      </Button>
 
       <Button
         v-if="conversation.personId"

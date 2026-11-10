@@ -42,7 +42,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Skeleton
+  Skeleton,
+  useToast
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
 
@@ -75,7 +76,7 @@ const minFit = ref(45)
 const tests = ref<TestsPolicy>("human")
 const halfLife = ref(72)
 const formError = ref<string | null>(null)
-const notice = ref<string | null>(null)
+const toast = useToast()
 
 /** Ключ формы: по нему видно, что правки есть. Снимается при загрузке тем же кодом, что и текущий. */
 const formKey = () => JSON.stringify([buildFilter(filter.value), minFit.value, tests.value, halfLife.value])
@@ -166,7 +167,6 @@ const presetMutation = useMutation({
 })
 
 const save = async () => {
-  notice.value = null
   if (!Number.isInteger(minFit.value) || minFit.value < 0 || minFit.value > 100) {
     formError.value = "Минимальное соответствие: целое число от 0 до 100."
     return
@@ -179,24 +179,25 @@ const save = async () => {
   try {
     const saved = await setMutation.mutateAsync()
     load(saved)
-    notice.value = "Фильтр сохранён."
+    toast.success("Фильтр сохранён")
     await invalidate()
-  } catch {
-    // Текст ошибки показывается из состояния мутации.
+  } catch (cause) {
+    toast.error("Не удалось сохранить фильтр", { description: describeError(cause) })
   }
 }
 
 const copyPreset = async () => {
   confirmPreset.value = false
   if (presetId.value === "") return
-  notice.value = null
   try {
     const saved = await presetMutation.mutateAsync()
     load(saved)
-    notice.value = "Правила скопированы из пресета и сохранены. Дальнейшие правки пресета этот фильтр не изменят."
+    toast.success("Правила скопированы из пресета и сохранены", {
+      description: "Дальнейшие правки пресета этот фильтр не изменят."
+    })
     await invalidate()
-  } catch {
-    // Текст ошибки показывается из состояния мутации.
+  } catch (cause) {
+    toast.error("Не удалось применить пресет", { description: describeError(cause) })
   }
 }
 /** Копирование заменяет правила в форме: при несохранённых правках сначала спрашиваем. */
@@ -206,10 +207,7 @@ const fromPreset = () => {
   else void copyPreset()
 }
 
-const errorOf = (error: unknown) => (error === null ? null : describeError(error))
-const loadError = computed(() => errorOf(viewQuery.error.value))
-const saveError = computed(() => errorOf(setMutation.error.value))
-const presetError = computed(() => errorOf(presetMutation.error.value))
+const loadError = computed(() => (viewQuery.error.value === null ? null : describeError(viewQuery.error.value)))
 const busy = computed(() => setMutation.isLoading.value || presetMutation.isLoading.value)
 
 const templateTitle = computed(
@@ -278,12 +276,6 @@ const targetReady = computed(() => accountId.value !== "")
         </a>
       </p>
 
-      <Alert v-if="notice" variant="info" role="status">
-        <CircleAlert />
-        <AlertTitle>Готово</AlertTitle>
-        <AlertDescription>{{ notice }}</AlertDescription>
-      </Alert>
-
       <Card>
         <CardContent class="space-y-2 p-4">
           <h2 class="text-sm font-semibold">Начать с пресета</h2>
@@ -307,11 +299,6 @@ const targetReady = computed(() => accountId.value !== "")
               {{ presetMutation.isLoading.value ? "Копирую…" : "Скопировать правила" }}
             </Button>
           </div>
-          <Alert v-if="presetError" variant="destructive">
-            <CircleAlert />
-            <AlertTitle>Не удалось применить пресет</AlertTitle>
-            <AlertDescription>{{ presetError }}</AlertDescription>
-          </Alert>
         </CardContent>
       </Card>
 
@@ -371,18 +358,13 @@ const targetReady = computed(() => accountId.value !== "")
 
       <!-- Одна кнопка сохранения на страницу; панель прилипает к низу, пока есть правки. -->
       <div
-        v-if="dirty || setMutation.isLoading.value || formError || saveError"
+        v-if="dirty || setMutation.isLoading.value || formError"
         class="sticky bottom-0 z-10 space-y-2 rounded-xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur"
       >
         <Alert v-if="formError" variant="destructive">
           <CircleAlert />
           <AlertTitle>Проверьте форму</AlertTitle>
           <AlertDescription>{{ formError }}</AlertDescription>
-        </Alert>
-        <Alert v-if="saveError" variant="destructive">
-          <CircleAlert />
-          <AlertTitle>Не удалось сохранить фильтр</AlertTitle>
-          <AlertDescription>{{ saveError }}</AlertDescription>
         </Alert>
         <div class="flex flex-wrap items-center gap-2">
           <Button :disabled="busy || !dirty" @click="save">

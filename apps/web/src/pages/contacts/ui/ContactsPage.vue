@@ -2,9 +2,9 @@
 import { computed } from "vue"
 import { useIntervalFn } from "@vueuse/core"
 import { useQueryCache } from "@pinia/colada"
-import { conversationKeys, useConversations } from "@/entities/conversation"
+import { conversationKeys, useUnreadTotal } from "@/entities/conversation"
 import { cn, locationSearch } from "@/shared/lib"
-import { countUnread, parseContactsView } from "../model/inbox"
+import { parseContactsView } from "../model/inbox"
 import ContactsPanel from "./ContactsPanel.vue"
 import InboxView from "./InboxView.vue"
 
@@ -20,8 +20,7 @@ const tab = computed<"inbox" | "people" | "contacts">(() =>
   props.area === "people" ? "people" : view.value === "contacts" ? "contacts" : "inbox"
 )
 
-const conversations = useConversations()
-const unread = computed(() => countUnread(conversations.data.value ?? []))
+const unread = useUnreadTotal()
 
 const TABS = [
   { id: "inbox", label: "Диалоги", href: "/contacts" },

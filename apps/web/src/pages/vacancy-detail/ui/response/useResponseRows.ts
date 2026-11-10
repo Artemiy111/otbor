@@ -78,7 +78,7 @@ export const useResponseRows = (props: ResponseSummaryProps) => {
 
 export const toneClass = (row: Pick<ResponseRow, "tone" | "application">): string => {
   if (row.application === null) return "border-dashed border-border"
-  if (row.tone === "danger") return "border-red-500/50 bg-red-500/10"
-  if (row.tone === "success") return "border-emerald-500/50 bg-emerald-500/10"
-  return "border-sky-500/40 bg-sky-500/5"
+  if (row.tone === "danger") return "border-danger/40 bg-danger-muted"
+  if (row.tone === "success") return "border-success/40 bg-success-muted"
+  return "border-info/30 bg-info-muted"
 }

@@ -17,9 +17,11 @@ import {
   Server,
   ShieldAlert,
   Sparkles,
-  CalendarX
+  CalendarX,
+  ChevronDown
 } from "@lucide/vue"
 import { cn, toneClasses } from "@/shared/lib"
+import { ExecutorStartGuide } from "@/widgets/executor-start"
 import { Button, Skeleton } from "@/shared/ui"
 import type { AttentionIcon, AttentionItem, AttentionTone } from "../model/attention"
 import { agoText } from "../model/time"
@@ -62,6 +64,14 @@ const GROUPS: ReadonlyArray<{ tone: AttentionTone; label: string }> = [
 
 const VISIBLE = 9
 const expanded = ref(false)
+/** Строки, у которых раскрыта подсказка «как запустить». */
+const guideOpen = ref<ReadonlySet<string>>(new Set())
+const toggleGuide = (id: string) => {
+  const next = new Set(guideOpen.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  guideOpen.value = next
+}
 
 /** Сначала считаем видимые строки, потом раскладываем по группам: порядок уже отсортирован. */
 const shown = computed(() => (expanded.value ? props.items : props.items.slice(0, VISIBLE)))
@@ -160,6 +170,22 @@ const checked = computed(() => agoText(props.checkedAt, props.now))
                 {{ item.action.label }}
                 <ArrowRight aria-hidden="true" />
               </Button>
+            </div>
+            <div v-if="item.guide" class="col-span-full sm:col-start-2">
+              <Button
+                variant="link"
+                size="sm"
+                class="h-auto p-0 text-xs"
+                :aria-expanded="guideOpen.has(item.id)"
+                :aria-controls="`guide-${item.id}`"
+                @click="toggleGuide(item.id)"
+              >
+                Как запустить
+                <ChevronDown :class="cn('transition-transform motion-reduce:transition-none', guideOpen.has(item.id) && 'rotate-180')" aria-hidden="true" />
+              </Button>
+              <div v-if="guideOpen.has(item.id)" :id="`guide-${item.id}`" class="mt-2 rounded-md border bg-muted/30 p-3">
+                <ExecutorStartGuide target="browser" />
+              </div>
             </div>
           </li>
         </ul>

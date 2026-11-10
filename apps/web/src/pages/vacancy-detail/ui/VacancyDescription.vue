@@ -18,7 +18,7 @@ const html = computed(() => {
   const escaped = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
   return escaped.replace(
     pattern,
-    (match) => `<mark class="rounded bg-amber-200/60 px-0.5 text-foreground dark:bg-amber-400/30">${match}</mark>`
+    (match) => `<mark class="rounded bg-warning/25 px-0.5 text-foreground">${match}</mark>`
   )
 })
 const box = computed(() => [

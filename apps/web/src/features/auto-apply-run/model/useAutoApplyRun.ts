@@ -6,6 +6,7 @@ import { autoApplyKeys } from "@/entities/auto-apply"
 import { scheduleApi, scheduleKeys } from "@/entities/schedule"
 import { scheduleRunApi } from "@/entities/schedule-run"
 import { describeError } from "@/shared/lib"
+import { useToast } from "@/shared/ui"
 
 export interface RunCounts {
   readonly selected: number
@@ -50,6 +51,7 @@ export const useAutoApplyRun = (options: {
   readonly scheduleEnabled: () => boolean
 }) => {
   const queryCache = useQueryCache()
+  const toast = useToast()
 
   const schedulesQuery = useQuery({ key: () => scheduleKeys.list(), query: () => scheduleApi.list() })
   const applySchedule = computed(
@@ -72,7 +74,6 @@ export const useAutoApplyRun = (options: {
 
   const runState = ref<"idle" | "waiting" | "done" | "error">("idle")
   const runCounts = ref<RunCounts | null>(null)
-  const runError = ref<string | null>(null)
   let pollTimer: ReturnType<typeof setInterval> | null = null
 
   const stopPolling = () => {
@@ -91,12 +92,12 @@ export const useAutoApplyRun = (options: {
   })
 
   const run = async () => {
-    runError.value = null
     runCounts.value = null
     stopPolling()
     try {
       const { scheduleId, startedAt } = await runMutation.mutateAsync()
       runState.value = "waiting"
+      toast.info("Запуск начат", { description: "Результат появится здесь, когда запуск закончится." })
       let attempts = 0
       pollTimer = setInterval(async () => {
         attempts += 1
@@ -107,10 +108,11 @@ export const useAutoApplyRun = (options: {
             stopPolling()
             if (latest.status === "error") {
               runState.value = "error"
-              runError.value = latest.error ?? "Запуск завершился ошибкой."
+              toast.error("Запуск закончился ошибкой", { description: latest.error ?? undefined })
             } else {
               runState.value = "done"
               runCounts.value = asCounts(latest)
+              toast.success("Запуск завершён")
             }
             await Promise.all([
               queryCache.invalidateQueries({ key: applyFilterKeys.usage(options.accountId()) }),
@@ -125,14 +127,17 @@ export const useAutoApplyRun = (options: {
         if (attempts >= 40) {
           stopPolling()
           runState.value = "idle"
-          runError.value = "Результат пока не готов. Смотрите страницу расписаний."
+          toast.warning("Результат пока не готов", {
+            description: "Запуск ещё идёт или не отчитался.",
+            action: { label: "Открыть расписания", href: "/schedules" }
+          })
         }
       }, 3000)
     } catch (error) {
       runState.value = "error"
-      runError.value = describeError(error)
+      toast.error("Не удалось запустить", { description: describeError(error) })
     }
   }
 
-  return { applySchedule, ensureSchedule, run, runState, runCounts, runError, running: runMutation.isLoading }
+  return { applySchedule, ensureSchedule, run, runState, runCounts, running: runMutation.isLoading }
 }

@@ -12,6 +12,8 @@ export type NavBadgeId = "accounts" | "queue" | "applications" | "contacts"
 export interface NavBadge {
   readonly count: number
   readonly tone: Extract<StatusTone, "warning" | "danger">
+  /** Расшифровка для подсказки: из чего сложилось число. */
+  readonly breakdown?: string
 }
 
 /** Как часто обновлять счётчики; на скрытой вкладке опрос стоит. */
@@ -62,14 +64,17 @@ export const useNavBadges = (): ComputedRef<Partial<Record<NavBadgeId, NavBadge>
       const stats = queue.data.value
       return { count: (stats?.needsHuman ?? 0) + (stats?.needsReconcile ?? 0), tone: "warning" }
     }),
-    // Отклики: остановились и ждут человека, закончились ошибкой или ждут проверки черновика.
+    // Отклики: считаем только то, что стоит без оператора (нужно участие и ошибки).
+    // Черновики ждут проверки, но ничего не блокируют: они только в подсказке.
     applications: computed(() => {
       const applications = overview.data.value?.applications
       if (applications === undefined) return { count: 0, tone: "warning" }
-      const stopped = applications.byState.needs_human + applications.byState.failed
+      const needsHuman = applications.byState.needs_human
+      const failed = applications.byState.failed
       return {
-        count: stopped + applications.draftsToReview,
-        tone: applications.byState.failed > 0 ? "danger" : "warning"
+        count: needsHuman + failed,
+        tone: failed > 0 ? "danger" : "warning",
+        breakdown: `нужно участие: ${needsHuman} · ошибки: ${failed} · черновики: ${applications.draftsToReview}`
       }
     }),
     contacts: computed(() => ({ count: overview.data.value?.inbox.unreadConversations ?? 0, tone: "warning" }))

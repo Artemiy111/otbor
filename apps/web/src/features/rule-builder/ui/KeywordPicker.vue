@@ -86,7 +86,7 @@ const clear = () => {
         v-for="term in props.modelValue"
         :key="term"
         type="button"
-        class="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] transition-colors hover:bg-accent disabled:opacity-50"
+        class="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-xs transition-colors hover:bg-accent disabled:opacity-50"
         :disabled="props.disabled"
         @click="remove(term)"
       >
@@ -134,7 +134,7 @@ const clear = () => {
       </div>
     </div>
 
-    <p class="text-[11px] text-muted-foreground">
+    <p class="text-xs text-muted-foreground">
       Сохраняются термины, а не id: правило переживёт переименование в словаре.
     </p>
   </div>

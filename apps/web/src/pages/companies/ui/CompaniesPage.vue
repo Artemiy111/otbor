@@ -112,7 +112,7 @@ const columns: ColumnDef<EmployerSummary>[] = [
     header: sortableHeader<EmployerSummary>("Рейтинг"),
     cell: ({ row }) =>
       h("span", { class: "whitespace-nowrap" }, [
-        h("span", { class: "text-amber-400" }, "★"),
+        h("span", { class: "text-warning" }, "★"),
         ` ${formatRating(row.original.rating)}`,
         row.original.reviewsCount
           ? h(
@@ -181,7 +181,7 @@ const columns: ColumnDef<EmployerSummary>[] = [
         layers.includes("app")
           ? h(
               Badge,
-              { variant: "destructive", class: "text-[10px]", title: "Заблокирована на уровне приложения" },
+              { variant: "destructive", class: "text-xs", title: "Заблокирована на уровне приложения" },
               () => "Приложение"
             )
           : null,

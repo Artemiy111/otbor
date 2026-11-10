@@ -20,6 +20,7 @@ import {
   SidebarRail,
   useSidebar
 } from "@/shared/ui/sidebar"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip"
 import { navSections, type NavSection } from "../model/nav"
 import { useNavBadges, type NavBadgeId } from "../model/useNavBadges"
 
@@ -34,6 +35,8 @@ const closeMobile = () => {
 
 const badges = useNavBadges()
 const badgeFor = (id: string) => badges.value[id as NavBadgeId]
+/** Реальное число до 999, дальше «999+». */
+const badgeText = (count: number) => (count > 999 ? "999+" : String(count))
 
 /** Версия сервера берётся из того же запроса, что и индикатор в шапке. */
 const health = useQuery({ key: () => healthKeys.current(), query: () => healthApi.get() })
@@ -129,15 +132,18 @@ const groupCount = (section: NavSection) =>
               </SidebarMenuButton>
 
               <template v-if="badgeFor(item.id)">
-                <SidebarMenuBadge
-                  :class="
-                    cn(
-                      'rounded-full border',
-                      toneClasses(badgeFor(item.id)!.tone).badge
-                    )
-                  "
-                >
-                  {{ badgeFor(item.id)!.count > 99 ? "99+" : badgeFor(item.id)!.count }}
+                <Tooltip v-if="badgeFor(item.id)!.breakdown">
+                  <TooltipTrigger as-child>
+                    <SidebarMenuBadge
+                      :class="cn('pointer-events-auto rounded-full border', toneClasses(badgeFor(item.id)!.tone).badge)"
+                    >
+                      {{ badgeText(badgeFor(item.id)!.count) }}
+                    </SidebarMenuBadge>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" class="text-xs tabular-nums">{{ badgeFor(item.id)!.breakdown }}</TooltipContent>
+                </Tooltip>
+                <SidebarMenuBadge v-else :class="cn('rounded-full border', toneClasses(badgeFor(item.id)!.tone).badge)">
+                  {{ badgeText(badgeFor(item.id)!.count) }}
                 </SidebarMenuBadge>
                 <!-- В панели из одних иконок счётчик превращается в точку. -->
                 <span

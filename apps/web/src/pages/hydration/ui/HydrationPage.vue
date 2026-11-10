@@ -40,7 +40,8 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
-  sortableHeader
+  sortableHeader,
+  useToast
 } from "@/shared/ui"
 import AnalysisInsightsPanel from "./AnalysisInsightsPanel.vue"
 import { PageHeader } from "@/widgets/page-header"
@@ -122,27 +123,19 @@ const invalidateHydration = async () => {
 }
 
 const hydratingIds = ref(new Set<string>())
-const notice = ref<string | null>(null)
-const actionError = ref<string | null>(null)
-const noticeTone = ref<"info" | "warning">("info")
+const toast = useToast()
 
 const hydrateOne = async (kind: HydrationKind, id: string) => {
-  actionError.value = null
-  notice.value = null
   hydratingIds.value = new Set([...hydratingIds.value, id])
   try {
     const result = kind === "vacancy"
       ? await hydrationApi.hydrateVacancy(id, manualProxyMode.value)
       : await hydrationApi.hydrateEmployer(id, manualProxyMode.value)
-    noticeTone.value = result.hydrated ? "info" : "warning"
-    notice.value = result.hydrated
-      ? kind === "vacancy"
-        ? "Вакансия гидратирована."
-        : "Профиль компании обновлён."
-      : "Не получилось. Проверьте доступ к hh.ru или попробуйте позже."
+    if (result.hydrated) toast.success(kind === "vacancy" ? "Вакансия догружена" : "Профиль компании обновлён")
+    else toast.warning("Не получилось догрузить", { description: "Проверьте доступ к hh.ru или попробуйте позже." })
     await invalidateHydration()
   } catch (error) {
-    actionError.value = describeError(error)
+    toast.error("Не удалось догрузить", { description: describeError(error) })
   } finally {
     const next = new Set(hydratingIds.value)
     next.delete(id)
@@ -172,7 +165,7 @@ const vacancyColumns: ColumnDef<HydrationTarget>[] = [
     cell: ({ row }) =>
       h("a", {
         href: `/vacancies/${row.original.id}`,
-        class: "line-clamp-2 max-w-[320px] text-sm font-medium text-sky-700 dark:text-sky-300 underline-offset-4 hover:underline"
+        class: "line-clamp-2 max-w-[320px] text-sm font-medium text-info underline-offset-4 hover:underline"
       }, row.original.title)
   },
   {
@@ -221,7 +214,7 @@ const employerColumns: ColumnDef<EmployerHydrationTarget>[] = [
     cell: ({ row }) =>
       h("a", {
         href: `/companies/${row.original.id}`,
-        class: "block max-w-[260px] truncate text-sm font-medium text-sky-700 dark:text-sky-300 underline-offset-4 hover:underline"
+        class: "block max-w-[260px] truncate text-sm font-medium text-info underline-offset-4 hover:underline"
       }, row.original.name)
   },
   {
@@ -282,17 +275,6 @@ const employerTargetsPending = computed(() => employerTargetsQuery.isPending.val
         <RefreshButton :loading="isRefreshing" @refresh="refreshAll" />
       </template>
     </PageHeader>
-
-    <Alert v-if="actionError" variant="destructive" class="mb-4">
-      <CircleAlert />
-      <AlertTitle>Не удалось выполнить действие</AlertTitle>
-      <AlertDescription>{{ actionError }}</AlertDescription>
-    </Alert>
-    <Alert v-if="notice" :variant="noticeTone" class="mb-4">
-      <CircleAlert />
-      <AlertTitle>{{ noticeTone === "warning" ? "Обратите внимание" : "Готово" }}</AlertTitle>
-      <AlertDescription>{{ notice }}</AlertDescription>
-    </Alert>
 
     <div class="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
       <StatCard label="Вакансий" :value="stats ? formatNumber(stats.vacancyTotal) : '—'" :hint="`${stats?.vacancyFull ?? 0} с полным описанием`" />

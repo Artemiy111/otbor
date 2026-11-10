@@ -65,7 +65,7 @@ const rows = computed<ReadonlyArray<Row>>(() => {
         <a
           v-if="row.personId"
           :href="personPath(row.personId)"
-          class="font-medium text-sky-700 underline-offset-4 hover:underline dark:text-sky-300"
+          class="font-medium text-info underline-offset-4 hover:underline"
         >{{ row.label }}</a>
         <span v-else class="font-medium text-muted-foreground">{{ row.label }}</span>
         <ul class="mt-1 space-y-0.5">

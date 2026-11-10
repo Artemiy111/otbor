@@ -135,7 +135,7 @@ const onLocation = (value: unknown) => {
   <div class="space-y-2">
     <div
       v-if="props.counts !== undefined && state.rules.length + state.groups.length > 1"
-      class="flex justify-end gap-2 pr-9 text-[10px] uppercase tracking-[0.06em] text-muted-foreground"
+      class="flex justify-end gap-2 pr-9 text-xs uppercase tracking-[0.06em] text-muted-foreground"
       title="Счёт идёт сверху вниз: сколько вакансий отсекло правило и сколько осталось после него"
     >
       осталось
@@ -174,9 +174,9 @@ const onLocation = (value: unknown) => {
     <div
       v-for="group in state.groups"
       :key="group.id"
-      class="space-y-1.5 border-l-2 border-l-violet-400/70 pl-2"
+      class="space-y-1.5 border-l-2 border-l-ai/70 pl-2"
     >
-      <p class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
+      <p class="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.06em] text-muted-foreground">
         Любой из вариантов
         <span
           v-if="stepOf(group.id)"
@@ -187,7 +187,7 @@ const onLocation = (value: unknown) => {
         </span>
       </p>
       <template v-for="(branch, index) in group.branches" :key="branch.id">
-        <div v-if="index > 0" class="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground">
+        <div v-if="index > 0" class="flex items-center gap-2 text-xs font-bold uppercase text-muted-foreground">
           или<span class="h-px flex-1 bg-border" />
         </div>
         <RuleRow

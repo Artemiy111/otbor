@@ -130,8 +130,8 @@ const slowestRun = computed(() => Math.max(1, ...runs.value.map((r) => r.perVaca
                 :class="hovered === i ? 'fill-primary' : 'fill-primary/60'"
               />
             </g>
-            <text x="0" :y="H + 14" class="fill-muted-foreground text-[10px]">{{ series[0]?.day }}</text>
-            <text :x="W" :y="H + 14" text-anchor="end" class="fill-muted-foreground text-[10px]">{{ series[series.length - 1]?.day }}</text>
+            <text x="0" :y="H + 14" class="fill-muted-foreground text-xs">{{ series[0]?.day }}</text>
+            <text :x="W" :y="H + 14" text-anchor="end" class="fill-muted-foreground text-xs">{{ series[series.length - 1]?.day }}</text>
           </svg>
         </CardContent>
       </Card>

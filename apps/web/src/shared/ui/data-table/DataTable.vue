@@ -57,6 +57,8 @@ const props = withDefaults(
     serverSide?: boolean
     /** Total matching rows across all pages; used only in `serverSide` mode. */
     rowCount?: number
+    /** Уже ширины `sm` строки превращаются в карточки: шапка скрыта, ячейки идут потоком. */
+    cards?: boolean
   }>(),
   {
     isLoading: false,
@@ -71,7 +73,8 @@ const props = withDefaults(
     initialSorting: () => [],
     rowNumbers: true,
     serverSide: false,
-    rowCount: undefined
+    rowCount: undefined,
+    cards: false
   }
 )
 
@@ -154,6 +157,14 @@ const globalFilterModel = computed({
   set: (value: string) => table.setGlobalFilter(value)
 })
 
+/** Класс колонки из `meta.class`: так страница прячет второстепенные колонки на узком экране. */
+const metaClass = (column: { columnDef: { meta?: unknown } }): string | undefined =>
+  (column.columnDef.meta as { class?: string } | undefined)?.class
+
+const rowClass = computed(() =>
+  props.cards ? "max-sm:flex max-sm:flex-wrap max-sm:items-center max-sm:gap-x-3 max-sm:gap-y-2 max-sm:px-3 max-sm:py-3" : undefined
+)
+
 const columnCount = computed(
   () => table.getAllLeafColumns().length + (props.rowNumbers ? 1 : 0)
 )
@@ -199,11 +210,13 @@ watchEffect(() => {
 
     <Card>
       <CardContent class="p-0">
-        <TableRoot>
+        <TableRoot
+          :class="props.cards && 'max-sm:block max-sm:[&_tbody]:block max-sm:[&_thead]:hidden'"
+        >
           <TableHeader>
             <TableRow v-for="headerGroup in table.getHeaderGroups()" :key="headerGroup.id">
               <TableHead v-if="props.rowNumbers" class="w-9 px-2 text-right">№</TableHead>
-              <TableHead v-for="header in headerGroup.headers" :key="header.id">
+              <TableHead v-for="header in headerGroup.headers" :key="header.id" :class="metaClass(header.column)">
                 <FlexRender
                   v-if="!header.isPlaceholder"
                   :render="header.column.columnDef.header"
@@ -214,15 +227,15 @@ watchEffect(() => {
           </TableHeader>
           <TableBody>
             <template v-if="props.isLoading">
-              <TableRow v-for="index in props.loadingRowCount" :key="index">
-                <TableCell :colspan="columnCount">
+              <TableRow v-for="index in props.loadingRowCount" :key="index" :class="rowClass">
+                <TableCell :colspan="columnCount" :class="props.cards && 'max-sm:w-full'">
                   <Skeleton class="h-4 w-full" />
                 </TableCell>
               </TableRow>
             </template>
 
-            <TableRow v-else-if="table.getRowModel().rows.length === 0">
-              <TableCell :colspan="columnCount">
+            <TableRow v-else-if="table.getRowModel().rows.length === 0" :class="rowClass">
+              <TableCell :colspan="columnCount" :class="props.cards && 'max-sm:w-full'">
                 <slot name="empty">
                   <EmptyState :title="props.emptyTitle" :description="props.emptyDescription" />
                 </slot>
@@ -232,6 +245,7 @@ watchEffect(() => {
             <TableRow
               v-for="(row, index) in table.getRowModel().rows"
               :key="row.id"
+              :class="rowClass"
             >
               <TableCell
                 v-if="props.rowNumbers"
@@ -239,7 +253,11 @@ watchEffect(() => {
               >
                 {{ rowOffset + index + 1 }}
               </TableCell>
-              <TableCell v-for="cell in row.getVisibleCells()" :key="cell.id">
+              <TableCell
+                v-for="cell in row.getVisibleCells()"
+                :key="cell.id"
+                :class="cn(props.cards && 'max-sm:p-0', metaClass(cell.column))"
+              >
                 <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
               </TableCell>
             </TableRow>

@@ -66,13 +66,6 @@ const openEdit = (schedule: CrawlSchedule) => {
   editing.value = schedule
   dialogOpen.value = true
 }
-const onSaved = () => {
-  actions.notice.value = {
-    tone: "info",
-    text: editing.value === null ? "Расписание создано." : "Изменения сохранены."
-  }
-  actions.error.value = null
-}
 </script>
 
 <template>
@@ -95,17 +88,6 @@ const onSaved = () => {
       <AlertTitle>Не удалось загрузить расписания</AlertTitle>
       <AlertDescription>{{ board.error.value }}</AlertDescription>
     </Alert>
-    <Alert v-if="actions.error.value" variant="destructive">
-      <CircleAlert />
-      <AlertTitle>Не удалось выполнить действие</AlertTitle>
-      <AlertDescription>{{ actions.error.value }}</AlertDescription>
-    </Alert>
-    <Alert v-if="actions.notice.value" :variant="actions.notice.value.tone === 'warning' ? 'warning' : 'info'" role="status">
-      <CircleAlert />
-      <AlertTitle>{{ actions.notice.value.tone === "warning" ? "Обратите внимание" : "Готово" }}</AlertTitle>
-      <AlertDescription>{{ actions.notice.value.text }}</AlertDescription>
-    </Alert>
-
     <ScheduleSummaryStrip :summary="summary" :errors-active="filter.errorsOnly" @toggle-errors="toggleErrors" />
 
     <ScheduleFilters v-model:filter="filter" />
@@ -144,7 +126,6 @@ const onSaved = () => {
       v-model:open="dialogOpen"
       :schedule="editing"
       :existing="board.schedules.value"
-      @saved="onSaved"
     />
   </section>
 </template>

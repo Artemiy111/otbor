@@ -228,7 +228,7 @@ const errorText = computed(() =>
             <div class="flex flex-wrap items-center gap-2">
               <span class="text-lg font-semibold">{{ employer.name }}</span>
               <Badge variant="outline">
-                <span class="mr-1 text-amber-400">★</span>
+                <span class="mr-1 text-warning">★</span>
                 {{ formatRating(employer.rating) }}
               </Badge>
               <Badge v-if="employer.recommendationsPercent !== null && employer.recommendationsPercent !== undefined" variant="success">

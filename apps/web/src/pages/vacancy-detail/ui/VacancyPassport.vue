@@ -71,11 +71,11 @@ const tip = (row: ReconRow): string =>
     .join("\n")
 
 const chipClass = (row: ReconRow): string => {
-  if (row.conflict) return "border-amber-500/60 bg-amber-500/10 text-amber-900 dark:text-amber-100"
-  if (row.group === "risk") return "border-red-500/40 bg-red-500/10 text-red-800 dark:text-red-200"
-  if (row.group === "perk") return "border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200"
+  if (row.conflict) return "border-warning/40 bg-warning-muted text-foreground"
+  if (row.group === "risk") return "border-danger/30 bg-danger-muted text-foreground"
+  if (row.group === "perk") return "border-success/30 bg-success-muted text-foreground"
   if (row.group === "apply" && Object.values(row.cells).some((c) => c.text === "обязательно")) {
-    return "border-amber-500/40 bg-amber-500/5 text-amber-800 dark:text-amber-200"
+    return "border-warning/30 bg-warning-muted/50 text-foreground"
   }
   return "border-border bg-card"
 }
@@ -88,7 +88,7 @@ const numbers = computed(() =>
 )
 const hh = computed(() => props.data.facts?.hh ?? null)
 const isHttp = (href: string | null) => /^https?:/i.test(href ?? "")
-const cap = "text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+const cap = "text-xs font-semibold uppercase tracking-wide text-muted-foreground"
 </script>
 
 <template>
@@ -100,11 +100,11 @@ const cap = "text-[10px] font-semibold uppercase tracking-wide text-muted-foregr
         hh · текст · ИИ
       </span>
       <span v-if="all.length > 0">
-        совпало <b class="text-emerald-700 dark:text-emerald-300">{{ agreed.length }}</b>
-        <template v-if="conflicts.length > 0">, расходятся <b class="text-amber-700 dark:text-amber-300">{{ conflicts.length }}</b></template>
+        совпало <b class="text-success">{{ agreed.length }}</b>
+        <template v-if="conflicts.length > 0">, расходятся <b class="text-warning">{{ conflicts.length }}</b></template>
         <template v-if="single.length > 0">, один источник {{ single.length }}</template>
       </span>
-      <span v-if="!page.analysis.value && !page.analysisPending.value" class="text-amber-700 dark:text-amber-300">модель вакансию не разбирала</span>
+      <span v-if="!page.analysis.value && !page.analysisPending.value" class="text-warning">модель вакансию не разбирала</span>
     </div>
 
     <!-- chips with a source mark per parameter; nothing found, nothing shown -->
@@ -141,14 +141,14 @@ const cap = "text-[10px] font-semibold uppercase tracking-wide text-muted-foregr
             :href="contactHref(contact) ?? undefined"
             :target="isHttp(contactHref(contact)) ? '_blank' : undefined"
             rel="noreferrer"
-            class="break-all text-sky-700 dark:text-sky-300 underline-offset-4 hover:underline"
+            class="break-all text-info underline-offset-4 hover:underline"
           >{{ contact.value }}</a>
         </Hint>
         <span v-else class="break-all">{{ contact.value }}</span>
       </span>
     </div>
 
-    <p class="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+    <p class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
       <template v-if="page.analysis.value">разбор: {{ page.analysis.value.model }}, {{ formatDate(page.analysis.value.updatedAt) }}</template>
       <template v-if="hh === null">
         · данные отклика с hh не загружены

@@ -147,7 +147,7 @@ const onCurrency = (value: unknown) => {
     ref="root"
     data-rule-row
     class="flex items-center gap-1.5 border-l-2 py-0.5 pl-2"
-    :class="isComplete(rule) ? 'border-transparent' : 'border-amber-500/70'"
+    :class="isComplete(rule) ? 'border-transparent' : 'border-warning/70'"
   >
     <button
       v-if="props.sortable"
@@ -295,7 +295,7 @@ const onCurrency = (value: unknown) => {
     <div class="flex shrink-0 items-center gap-1.5">
     <span
       v-if="props.showCount"
-      class="inline-flex w-[44px] shrink-0 items-baseline justify-end text-[11px] tabular-nums"
+      class="inline-flex w-[44px] shrink-0 items-baseline justify-end text-xs tabular-nums"
       :title="
         props.count === undefined
           ? ''

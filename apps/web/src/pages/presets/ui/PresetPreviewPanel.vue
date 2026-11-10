@@ -70,7 +70,7 @@ const vacancyMeta = (vacancy: VacancySummary): string => {
           <div class="text-xl font-semibold leading-none tabular-nums">
             {{ formatNumber(props.preview.count) }}
           </div>
-          <div class="text-[11px] text-muted-foreground">вакансий</div>
+          <div class="text-xs text-muted-foreground">вакансий</div>
         </div>
       </div>
     </CardHeader>
@@ -95,7 +95,7 @@ const vacancyMeta = (vacancy: VacancySummary): string => {
         <div class="grid gap-4 sm:grid-cols-3">
           <div class="min-w-0 space-y-1.5">
             <h4
-              class="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground"
+              class="flex items-center gap-1 text-xs font-bold uppercase tracking-[0.06em] text-muted-foreground"
             >
               <Tag class="h-3 w-3" />
               Ключевые слова
@@ -115,7 +115,7 @@ const vacancyMeta = (vacancy: VacancySummary): string => {
 
           <div class="min-w-0 space-y-1.5">
             <h4
-              class="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground"
+              class="flex items-center gap-1 text-xs font-bold uppercase tracking-[0.06em] text-muted-foreground"
             >
               <Wrench class="h-3 w-3" />
               Навыки hh
@@ -135,7 +135,7 @@ const vacancyMeta = (vacancy: VacancySummary): string => {
 
           <div class="min-w-0 space-y-1.5">
             <h4
-              class="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground"
+              class="flex items-center gap-1 text-xs font-bold uppercase tracking-[0.06em] text-muted-foreground"
             >
               <Building2 class="h-3 w-3" />
               Компании
@@ -162,10 +162,10 @@ const vacancyMeta = (vacancy: VacancySummary): string => {
 
         <div class="space-y-1">
           <div class="flex items-center justify-between gap-2">
-            <h4 class="text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
+            <h4 class="text-xs font-bold uppercase tracking-[0.06em] text-muted-foreground">
               Последние вакансии
             </h4>
-            <span class="text-[11px] text-muted-foreground">
+            <span class="text-xs text-muted-foreground">
               {{ vacancies.length }} из {{ props.preview.vacancies.length }}
             </span>
           </div>
@@ -178,11 +178,11 @@ const vacancyMeta = (vacancy: VacancySummary): string => {
             <a :href="vacancyPath(vacancy.id)" class="min-w-0 flex-1">
               <div class="flex items-center gap-1.5">
                 <span class="truncate text-sm font-medium">{{ vacancy.title }}</span>
-                <Badge v-if="vacancy.archived" variant="neutral" class="shrink-0 text-[10px]">
+                <Badge v-if="vacancy.archived" variant="neutral" class="shrink-0 text-xs">
                   архив
                 </Badge>
               </div>
-              <div class="truncate text-[11px] text-muted-foreground">
+              <div class="truncate text-xs text-muted-foreground">
                 {{ vacancyMeta(vacancy) }}
               </div>
             </a>

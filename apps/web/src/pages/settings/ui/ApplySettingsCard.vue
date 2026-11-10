@@ -15,7 +15,8 @@ import {
   CardHeader,
   CardTitle,
   Input,
-  Label
+  Label,
+  useToast
 } from "@/shared/ui"
 
 /**
@@ -140,7 +141,7 @@ const fields: ReadonlyArray<Field> = [
 ]
 
 const error = ref<string | null>(null)
-const notice = ref<string | null>(null)
+const toast = useToast()
 
 const mutation = useMutation<SettingsView, UserSettings>({
   mutation: (input) => settingsApi.update(input)
@@ -155,7 +156,6 @@ const parse = (field: Field): number | null | "invalid" => {
 
 const save = async () => {
   error.value = null
-  notice.value = null
   const parsed: Record<string, number | null> = {}
   for (const field of fields) {
     const value = parse(field)
@@ -173,13 +173,13 @@ const save = async () => {
   try {
     const saved = await mutation.mutateAsync(next)
     fill(saved.settings)
-    notice.value = "Сохранено. Действует со следующей выдачи задач, перезапуск не нужен."
+    toast.success("Сохранено", { description: "Действует со следующей выдачи задач, перезапуск не нужен." })
     await Promise.all([
       queryCache.invalidateQueries({ key: settingsKeys.all }),
       queryCache.invalidateQueries({ key: queueJobKeys.concurrency() })
     ])
   } catch (cause) {
-    error.value = describeError(cause)
+    toast.error("Не удалось сохранить", { description: describeError(cause) })
   }
 }
 </script>
@@ -211,7 +211,6 @@ const save = async () => {
       </div>
 
       <Alert v-if="error" variant="destructive"><AlertDescription>{{ error }}</AlertDescription></Alert>
-      <p v-if="notice" class="text-sm text-muted-foreground">{{ notice }}</p>
 
       <Button :disabled="mutation.isLoading.value || !view" @click="save">Сохранить</Button>
     </CardContent>

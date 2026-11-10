@@ -3,15 +3,21 @@ import { computed, ref } from "vue"
 import { useQuery } from "@pinia/colada"
 import { queueJobApi, queueJobKeys } from "@/entities/queue-job"
 import { scheduleRunApi, scheduleRunKeys } from "@/entities/schedule-run"
+import { parseQueueFilter, queueFilterSearch, type QueueFilter, type QueueTab } from "@/features/queue-filter"
 import { RefreshButton } from "@/features/refresh-button"
+import { locationSearch, replaceSearch } from "@/shared/lib"
 import { Card, CardContent } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
 import BackgroundQueuePanel from "./BackgroundQueuePanel.vue"
 import ConcurrencyPanel from "./ConcurrencyPanel.vue"
 import JobQueuePanel from "./JobQueuePanel.vue"
 
-type Tab = "browser" | "inference" | "background"
-const tab = ref<Tab>("browser")
+/** Вкладка и фильтры живут в адресе: `?tab=&status=&stage=`, ссылкой можно поделиться. */
+const filter = computed<QueueFilter>(() => parseQueueFilter(locationSearch.value))
+const tab = computed<QueueTab>(() => filter.value.tab)
+const openTab = (next: QueueTab) => replaceSearch(queueFilterSearch({ tab: next, status: [], stage: [] }))
+const setFilter = (patch: { status?: ReadonlyArray<string>; stage?: ReadonlyArray<string> }) =>
+  replaceSearch(queueFilterSearch({ ...filter.value, ...patch }))
 
 const browserStats = useQuery({ key: () => queueJobKeys.stats("browser"), query: () => queueJobApi.stats("browser") })
 const inferenceStats = useQuery({ key: () => queueJobKeys.stats("inference"), query: () => queueJobApi.stats("inference") })
@@ -27,19 +33,19 @@ const overview = computed(() => [
   {
     tab: "browser" as const,
     title: "Браузер",
-    subtitle: "Задания для harness на hh.ru",
+    subtitle: "Работа на hh.ru под вашим аккаунтом",
     line: waiting(browserStats.data.value)
   },
   {
     tab: "inference" as const,
     title: "Генерация",
-    subtitle: "Задания для модели (ACP)",
+    subtitle: "Тексты, которые пишет модель",
     line: waiting(inferenceStats.data.value)
   },
   {
     tab: "background" as const,
     title: "Фоновые запуски",
-    subtitle: "Worker по расписанию",
+    subtitle: "Поиск и обновления по расписанию",
     line:
       runs.data.value === undefined
         ? "…"
@@ -70,7 +76,7 @@ const isRefreshing = computed(() => browserStats.isLoading.value || inferenceSta
   <section>
     <PageHeader
       title="Очереди"
-      description="Три разные очереди с разными исполнителями: браузер, генерация и фоновые запуски worker."
+      description="Три очереди с разными исполнителями: браузер, генерация текстов и фоновые запуски по расписанию."
     >
       <template #actions>
         <RefreshButton :loading="isRefreshing" @refresh="refresh" />
@@ -78,7 +84,7 @@ const isRefreshing = computed(() => browserStats.isLoading.value || inferenceSta
     </PageHeader>
 
     <div class="mb-4 grid gap-3 md:grid-cols-3">
-      <button v-for="item in overview" :key="item.tab" type="button" class="text-left" @click="tab = item.tab">
+      <button v-for="item in overview" :key="item.tab" type="button" class="text-left" @click="openTab(item.tab)">
         <Card :class="tab === item.tab ? 'border-primary ring-1 ring-primary' : 'hover:border-foreground/30'">
           <CardContent class="space-y-0.5 p-4">
             <p class="text-sm font-semibold">{{ item.title }}</p>
@@ -91,8 +97,22 @@ const isRefreshing = computed(() => browserStats.isLoading.value || inferenceSta
 
     <ConcurrencyPanel ref="concurrencyPanel" class="mb-4" />
 
-    <JobQueuePanel v-show="tab === 'browser'" ref="browserPanel" kind="browser" />
-    <JobQueuePanel v-show="tab === 'inference'" ref="inferencePanel" kind="inference" />
+    <JobQueuePanel
+      v-if="tab === 'browser'"
+      ref="browserPanel"
+      kind="browser"
+      :status="filter.status"
+      :stage="filter.stage"
+      @update:filter="setFilter"
+    />
+    <JobQueuePanel
+      v-if="tab === 'inference'"
+      ref="inferencePanel"
+      kind="inference"
+      :status="filter.status"
+      :stage="filter.stage"
+      @update:filter="setFilter"
+    />
     <BackgroundQueuePanel v-show="tab === 'background'" ref="backgroundPanel" />
   </section>
 </template>

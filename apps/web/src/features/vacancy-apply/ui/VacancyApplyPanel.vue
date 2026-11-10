@@ -31,7 +31,7 @@ import AccountResumePicker from "./AccountResumePicker.vue"
 import AnswersEditor from "./AnswersEditor.vue"
 import DraftGenerator from "./DraftGenerator.vue"
 import LetterAttachBlock from "./LetterAttachBlock.vue"
-import { Alert, AlertDescription, AlertTitle, Badge, Button, StatusBadge, Textarea } from "@/shared/ui"
+import { Alert, AlertDescription, AlertTitle, Badge, Button, StatusBadge, Textarea, useToast } from "@/shared/ui"
 
 const props = defineProps<{
   vacancyId: string
@@ -78,8 +78,7 @@ const state = computed(() => detail.value?.application.state ?? existing.value?.
 
 /* ---- the vacancy form: the same for every applicant ---------------------- */
 
-const errorText = ref<string | null>(null)
-const notice = ref<string | null>(null)
+const toast = useToast()
 
 const formQuery = useQuery({
   key: () => applicationKeys.vacancyForm(props.vacancyId),
@@ -128,7 +127,9 @@ watch(
     if (!current.stale || current.reading) return
     if (props.data.facts?.hh?.test.hasTest === false) return
     autoTried.value = true
-    void refreshForm(false).catch((error) => (errorText.value = describeError(error)))
+    void refreshForm(false).catch((error) =>
+      toast.error("Не удалось обновить форму", { description: describeError(error) })
+    )
   },
   { immediate: true }
 )
@@ -147,13 +148,13 @@ const skipPreparing = async () => {
   const id = existing.value?.id
   if (busy.value !== null || id === undefined) return
   busy.value = "save"
-  errorText.value = null
   try {
     await applicationApi.skip(id, "skipped from the vacancy page")
     await detailQuery.refetch()
     emit("changed")
+    toast.success("Отклик пропущен")
   } catch (error) {
-    errorText.value = explain(error)
+    toast.error("Не удалось пропустить отклик", { description: explain(error) })
   } finally {
     busy.value = null
   }
@@ -211,14 +212,14 @@ const applyGenerated = (
   const target = `${meta.accountId}|${meta.resumeId}`
   if (target !== workspaceKey.value) {
     storeGeneratedElsewhere(target, draft)
-    notice.value = "Письмо готово для другого резюме и сохранено в его черновик: переключитесь на него, чтобы увидеть."
+    toast.info("Письмо готово для другого резюме", {
+      description: "Оно сохранено в его черновик: переключитесь на это резюме, чтобы увидеть."
+    })
     void persistElsewhere(meta.accountId, meta.resumeId, draft).catch((error) => {
-      errorText.value = `Не удалось сохранить черновик для другого резюме: ${explain(error)}`
+      toast.error("Не удалось сохранить черновик для другого резюме", { description: explain(error) })
     })
     return
   }
-  errorText.value = null
-  notice.value = null
   const previous: Snapshot = {
     letter: letter.value,
     answers: JSON.parse(JSON.stringify(answers)) as Record<string, AnswerState>,
@@ -243,10 +244,17 @@ const applyGenerated = (
   void nextTick(() => {
     if (changed) snapshot.value = { ...previous, signature: signatureNow() }
   })
-  notice.value = "Письмо и ответы подставлены и сохраняются как черновик. Проверьте их и отредактируйте."
   // A generation is something the operator asked for: keep its result instead of
   // leaving it on the screen only, so a reload or a switch cannot lose it.
-  void nextTick(() => saveDraft().then(() => (notice.value = "Письмо и ответы подставлены и сохранены как черновик. Проверьте их и отредактируйте.")))
+  void nextTick(() =>
+    saveDraft(true).then((saved) => {
+      if (saved) {
+        toast.success("Письмо и ответы подставлены", {
+          description: "Сохранено как черновик. Проверьте и отредактируйте."
+        })
+      }
+    })
+  )
 }
 
 const undoGenerated = () => {
@@ -257,7 +265,7 @@ const undoGenerated = () => {
   Object.assign(answers, saved.answers)
   modelAnswers.clear()
   snapshot.value = null
-  notice.value = "Подстановка отменена."
+  toast.info("Подстановка отменена")
 }
 
 // The undo is offered only until the next edit or save.
@@ -310,8 +318,6 @@ const clearFields = () => {
   modelAnswers.clear()
   snapshot.value = null
   generatedInfo.value = null
-  notice.value = null
-  errorText.value = null
   confirming.value = false
   problems.value = []
 }
@@ -432,7 +438,7 @@ const revertToSaved = () => {
   snapshot.value = null
   hydratedKey = null
   // the hydration watcher fills answers from the saved kit again
-  notice.value = "Возвращён сохранённый черновик."
+  toast.info("Возвращён сохранённый черновик")
   void nextTick(() => {
     hydratedKey = workspaceKey.value
     const saved = savedAnswers()
@@ -474,12 +480,11 @@ const readFormNow = async () => {
 const refreshClick = async () => {
   if (busy.value !== null || accountId.value === "") return
   busy.value = "refresh"
-  errorText.value = null
-  notice.value = null
   try {
     await readFormNow()
+    toast.success("Форма отклика обновлена")
   } catch (error) {
-    errorText.value = explain(error)
+    toast.error("Не удалось обновить форму", { description: explain(error) })
   } finally {
     busy.value = null
   }
@@ -508,20 +513,21 @@ const saveKit = async (applicationId: string) => {
   })
 }
 
-const saveDraft = async () => {
-  if (busy.value !== null || accountId.value === "") return
+/** Сохраняет черновик; `quiet` - без своего уведомления (его покажет вызывающий). Возвращает, получилось ли. */
+const saveDraft = async (quiet = false): Promise<boolean> => {
+  if (busy.value !== null || accountId.value === "") return false
   busy.value = "save"
-  errorText.value = null
-  notice.value = null
   problems.value = []
   try {
     const id = await ensureApplication()
     await saveKit(id)
     await detailQuery.refetch()
     snapshot.value = null
-    notice.value = "Черновик сохранён."
+    if (!quiet) toast.success("Черновик сохранён")
+    return true
   } catch (error) {
-    errorText.value = explain(error)
+    toast.error("Не удалось сохранить черновик", { description: explain(error) })
+    return false
   } finally {
     busy.value = null
   }
@@ -530,8 +536,6 @@ const saveDraft = async () => {
 const send = async () => {
   if (busy.value !== null || accountId.value === "") return
   busy.value = "send"
-  errorText.value = null
-  notice.value = null
   problems.value = []
   try {
     // Right before an irreversible send the form is read again: the employer
@@ -539,7 +543,6 @@ const send = async () => {
     const seen = form.value?.formHash ?? null
     await readFormNow()
     if (seen !== null && form.value?.formHash !== seen) {
-      notice.value = null
       throw new Error("Форма на hh изменилась: проверьте вопросы и отправьте ещё раз.")
     }
     const id = await ensureApplication()
@@ -549,9 +552,9 @@ const send = async () => {
     await detailQuery.refetch()
     emit("changed")
     snapshot.value = null
-    notice.value = "Отклик поставлен в очередь на отправку."
+    toast.success("Отклик поставлен в очередь на отправку")
   } catch (error) {
-    errorText.value = explain(error)
+    toast.error("Не удалось отправить отклик", { description: explain(error) })
     confirming.value = false
   } finally {
     busy.value = null
@@ -658,7 +661,7 @@ const NO_FORM = "no-form"
           :questions="questions"
           :disabled="busy !== null"
           @generated="applyGenerated"
-          @failed="(reason) => (errorText = reason)"
+          @failed="(reason) => toast.error('Не удалось написать письмо', { description: reason })"
         />
         <div v-if="generatedInfo" class="space-y-1 text-xs text-muted-foreground">
           <p>
@@ -721,19 +724,13 @@ const NO_FORM = "no-form"
       />
 
       <!-- result -->
-      <Alert v-if="errorText" variant="destructive">
-        <CircleAlert />
-        <AlertTitle>Не получилось</AlertTitle>
-        <AlertDescription>{{ errorText }}</AlertDescription>
-      </Alert>
-      <p v-if="notice" class="text-xs text-success">{{ notice }}</p>
       <p v-if="missing.length > 0" class="text-xs text-warning">
         Не заполнено: {{ missing.join(", ") }}.
       </p>
 
       <!-- actions -->
       <div class="flex flex-wrap items-center gap-2">
-        <Button variant="outline" :disabled="busy !== null || accountId === ''" @click="saveDraft">
+        <Button variant="outline" :disabled="busy !== null || accountId === ''" @click="saveDraft()">
           <LoaderCircle v-if="busy === 'save'" class="size-4 animate-spin" />
           Сохранить черновик
         </Button>

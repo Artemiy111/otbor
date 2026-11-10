@@ -9,7 +9,7 @@ import { overviewApi, overviewKeys, useOverviewWindow } from "@/entities/overvie
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { RefreshButton } from "@/features/refresh-button"
 import { describeError } from "@/shared/lib"
-import { Alert, AlertDescription, AlertTitle, EmptyState, Skeleton } from "@/shared/ui"
+import { Alert, AlertDescription, AlertTitle, EmptyState, Skeleton, useToast } from "@/shared/ui"
 import { ConfirmSheet } from "@/shared/ui/confirm-sheet"
 import { PageHeader } from "@/widgets/page-header"
 import AccountCard from "./AccountCard.vue"
@@ -49,8 +49,7 @@ const now = ref(Date.now())
 useIntervalFn(() => (now.value = Date.now()), 30_000)
 
 const queryCache = useQueryCache()
-const actionError = ref<string | null>(null)
-const notice = ref<string | null>(null)
+const toast = useToast()
 
 const reload = () =>
   Promise.all([
@@ -74,12 +73,12 @@ const keep = (account: HhAccountRecord) => ({
 })
 
 const save = async (account: HhAccountRecord, patch: { label?: string; color?: string | null }) => {
-  actionError.value = null
   try {
     await hhAccountApi.upsert({ ...keep(account), ...patch })
     await reload()
+    toast.success("Сохранено")
   } catch (error) {
-    actionError.value = describeError(error)
+    toast.error("Не удалось сохранить", { description: describeError(error) })
   }
 }
 
@@ -90,13 +89,13 @@ const confirmDefault = async () => {
   const account = defaultTarget.value
   if (account === null) return
   defaultBusy.value = true
-  actionError.value = null
   try {
     await hhAccountApi.upsert({ ...keep(account), isDefault: true })
     defaultTarget.value = null
     await reload()
+    toast.success("Основной аккаунт изменён", { description: hhAccountName(account) })
   } catch (error) {
-    actionError.value = describeError(error)
+    toast.error("Не удалось сменить основной аккаунт", { description: describeError(error) })
   } finally {
     defaultBusy.value = false
   }
@@ -110,15 +109,15 @@ const toggle = (set: ReadonlySet<string>, id: string, on: boolean): ReadonlySet<
 
 /** Повторяет заявки аккаунта, остановленные капчей или сбоем чтения формы. */
 const retryStopped = async (account: HhAccountRecord) => {
-  actionError.value = null
-  notice.value = null
   retrying.value = toggle(retrying.value, account.id, true)
   try {
     const result = await hhAccountApi.retryCaptcha(account.id)
-    notice.value = `${hhAccountName(account)}: повторено ${result.retried}, пропущено ${result.skipped.length}`
+    const text = `${hhAccountName(account)}: повторено ${result.retried}, пропущено ${result.skipped.length}`
+    if (result.retried > 0) toast.success("Заявки повторены", { description: text })
+    else toast.info("Повторять было нечего", { description: text })
     await reload()
   } catch (error) {
-    actionError.value = describeError(error)
+    toast.error("Не удалось повторить заявки", { description: describeError(error) })
   } finally {
     retrying.value = toggle(retrying.value, account.id, false)
   }
@@ -126,14 +125,13 @@ const retryStopped = async (account: HhAccountRecord) => {
 
 /** Снимает паузу отправок раньше срока. */
 const resumeNow = async (account: HhAccountRecord) => {
-  actionError.value = null
-  notice.value = null
   resuming.value = toggle(resuming.value, account.id, true)
   try {
     await hhAccountApi.resumeSubmits(account.id)
     await reload()
+    toast.success("Пауза снята", { description: hhAccountName(account) })
   } catch (error) {
-    actionError.value = describeError(error)
+    toast.error("Не удалось снять паузу", { description: describeError(error) })
   } finally {
     resuming.value = toggle(resuming.value, account.id, false)
   }
@@ -156,17 +154,6 @@ const refresh = () => {
         <RefreshButton :loading="query.isLoading.value || overview.isLoading.value" @refresh="refresh" />
       </template>
     </PageHeader>
-
-    <Alert v-if="actionError" variant="destructive" class="mb-4">
-      <CircleAlert />
-      <AlertTitle>Не удалось выполнить действие</AlertTitle>
-      <AlertDescription>{{ actionError }}</AlertDescription>
-    </Alert>
-
-    <Alert v-if="notice" class="mb-4">
-      <AlertTitle>Повтор заявок</AlertTitle>
-      <AlertDescription>{{ notice }}</AlertDescription>
-    </Alert>
 
     <Alert v-if="query.error.value" variant="destructive" class="mb-4">
       <CircleAlert />

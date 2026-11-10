@@ -9,6 +9,12 @@ import type {
   VacancyId
 } from "@otbor/contract"
 import { call } from "@/shared/api"
+import { createInboxClient } from "./compat"
+
+const inboxClient = createInboxClient(call)
+
+/** Гаснет, когда сервер ответил «неизвестный вызов»: кнопки отметок тогда прячутся. */
+export const markAvailable = inboxClient.markAvailable
 
 export interface ConversationListInput {
   readonly channel?: ConversationChannel
@@ -17,6 +23,11 @@ export interface ConversationListInput {
 }
 
 export const conversationApi = {
+  /** Страница диалогов с серверным поиском; на старом сервере - прежний список и фильтры на клиенте. */
+  search: inboxClient.search,
+  /** Только состояние otbor. */
+  markRead: inboxClient.markRead,
+  markUnread: inboxClient.markUnread,
   list: (input: ConversationListInput): Promise<ReadonlyArray<ConversationSummary>> =>
     call((client) => client.ConversationsList(input)),
   get: (id: string): Promise<ConversationDetail> =>

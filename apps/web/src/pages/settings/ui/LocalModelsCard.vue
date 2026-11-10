@@ -7,8 +7,6 @@ import { localModelApi, localModelKeys } from "@/entities/local-model"
 import { useHarnessCatalog } from "@/features/harness-catalog"
 import { describeError } from "@/shared/lib"
 import {
-  Alert,
-  AlertDescription,
   Badge,
   Button,
   Card,
@@ -17,7 +15,8 @@ import {
   CardHeader,
   CardTitle,
   Input,
-  Label
+  Label,
+  useToast
 } from "@/shared/ui"
 
 const queryCache = useQueryCache()
@@ -50,8 +49,7 @@ const name = ref("")
 const apiKey = ref("")
 const clearKey = ref(false)
 const editing = ref<string | null>(null)
-const error = ref<string | null>(null)
-const notice = ref<string | null>(null)
+const toast = useToast()
 
 const upsertMutation = useMutation<ReadonlyArray<LocalModelServer>, LocalModelInput>({
   mutation: (input) => localModelApi.upsert(input)
@@ -81,8 +79,6 @@ const edit = (server: LocalModelServer) => {
   name.value = server.name === server.id ? "" : server.name
   apiKey.value = ""
   clearKey.value = false
-  error.value = null
-  notice.value = null
 }
 
 const refresh = async () => {
@@ -93,8 +89,6 @@ const refresh = async () => {
 }
 
 const save = async () => {
-  error.value = null
-  notice.value = null
   try {
     await upsertMutation.mutateAsync({
       id: id.value.trim(),
@@ -103,24 +97,24 @@ const save = async () => {
       ...(apiKey.value.trim() === "" ? {} : { apiKey: apiKey.value.trim() }),
       ...(clearKey.value ? { clearKey: true } : {})
     })
-    notice.value =
-      "Сохранено в ~/.otbor/openai.json. Модели появятся в каталоге после следующего отчёта харнеса: перезапустите его или подождите до 30 минут."
+    toast.success("Сохранено", {
+      description: "Модели появятся в каталоге после следующего отчёта харнеса: перезапустите его или подождите до 30 минут."
+    })
     reset()
     await refresh()
   } catch (cause) {
-    error.value = describeError(cause)
+    toast.error("Не удалось сохранить", { description: describeError(cause) })
   }
 }
 
 const remove = async (target: string) => {
-  error.value = null
-  notice.value = null
   try {
     await removeMutation.mutateAsync(target)
     if (editing.value === target) reset()
     await refresh()
+    toast.success("Сервер удалён")
   } catch (cause) {
-    error.value = describeError(cause)
+    toast.error("Не удалось удалить сервер", { description: describeError(cause) })
   }
 }
 </script>
@@ -205,9 +199,6 @@ const remove = async (target: string) => {
           </label>
         </div>
       </div>
-
-      <Alert v-if="error" variant="destructive"><AlertDescription>{{ error }}</AlertDescription></Alert>
-      <p v-if="notice" class="text-sm text-muted-foreground">{{ notice }}</p>
 
       <div class="flex gap-2">
         <Button :disabled="busy || id.trim() === '' || url.trim() === ''" @click="save">

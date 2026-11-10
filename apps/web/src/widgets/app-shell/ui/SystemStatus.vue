@@ -4,6 +4,7 @@ import { useQuery } from "@pinia/colada"
 import { useDocumentVisibility, useIntervalFn } from "@vueuse/core"
 import { healthApi, healthKeys } from "@/entities/health"
 import { cn, toneClasses, type StatusTone } from "@/shared/lib"
+import { CommandChip } from "@/shared/ui"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip"
 
 const query = useQuery({
@@ -76,6 +77,8 @@ const summary = computed<{ tone: StatusTone; label: string; rows: ReadonlyArray<
   return { tone: "success", label: "Работает", rows }
 })
 
+/** Исполнитель не запущен: в подсказке показываем команду. */
+const executorMissing = computed(() => summary.value.label === "Нет исполнителя")
 const classes = computed(() => toneClasses(summary.value.tone))
 </script>
 
@@ -112,6 +115,10 @@ const classes = computed(() => toneClasses(summary.value.tone))
           <span class="ml-auto pl-3 tabular-nums">{{ row.value }}</span>
         </li>
       </ul>
+      <div v-if="executorMissing" class="space-y-1 text-xs">
+        <p class="text-muted-foreground">Запустите исполнитель браузера:</p>
+        <CommandChip command="otbor harness run" />
+      </div>
       <p class="text-xs text-muted-foreground">Подробнее на странице «Состояние»</p>
     </TooltipContent>
   </Tooltip>

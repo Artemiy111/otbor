@@ -27,6 +27,8 @@ export interface BlacklistUpsertInput {
   readonly id?: string
   readonly scope: BlacklistScope
   readonly hhAccountId?: string
+  /** Только для `scope = resume`: исключение действует на одно резюме (только вакансии). */
+  readonly resumeId?: string
   readonly targetType: BlacklistTarget
   readonly externalId: string
   readonly name?: string
@@ -103,6 +105,7 @@ export const blacklistApi = {
         id: input.id as BlacklistId | undefined,
         scope: input.scope,
         hhAccountId: input.hhAccountId as HhAccountId | undefined,
+        resumeId: input.resumeId as ResumeId | undefined,
         targetType: input.targetType,
         externalId: input.externalId,
         name: input.name,

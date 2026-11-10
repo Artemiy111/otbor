@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue"
 import type { CrawlSchedule, ScheduleKind } from "@otbor/contract"
-import { ArrowLeft, CircleAlert } from "@lucide/vue"
+import { ArrowLeft } from "@lucide/vue"
 import {
   formKindOf,
   MANUAL_KINDS,
@@ -11,7 +11,7 @@ import {
   ScheduleKindIcon,
   type ScheduleUpsertInput
 } from "@/entities/schedule"
-import { Alert, AlertDescription, AlertTitle, Button, Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/shared/ui"
+import { Button, Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/shared/ui"
 import { useScheduleActions } from "../model/use-schedule-actions"
 import GenericScheduleForm from "./forms/GenericScheduleForm.vue"
 import HydrationScheduleForm from "./forms/HydrationScheduleForm.vue"
@@ -38,7 +38,6 @@ const actions = useScheduleActions()
 const kind = ref<ScheduleKind | null>(null)
 
 const reset = () => {
-  actions.reset()
   if (props.schedule !== null) kind.value = formKindOf(props.schedule.kind)
   else kind.value = props.kinds.length === 1 ? (props.kinds[0] ?? null) : null
 }
@@ -101,12 +100,6 @@ const submit = async (input: ScheduleUpsertInput) => {
       </SheetHeader>
 
       <div class="space-y-4 px-4 pb-4">
-        <Alert v-if="actions.error.value" variant="destructive">
-          <CircleAlert />
-          <AlertTitle>Не удалось сохранить</AlertTitle>
-          <AlertDescription>{{ actions.error.value }}</AlertDescription>
-        </Alert>
-
         <div v-if="showPicker" class="space-y-4">
           <ul class="grid gap-2">
             <li v-for="value in kinds" :key="value">

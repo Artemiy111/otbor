@@ -5,21 +5,16 @@ import { crawlRunKeys } from "@/entities/crawl-run"
 import { scheduleApi, scheduleKeys, scheduleKindName, type ScheduleUpsertInput } from "@/entities/schedule"
 import { scheduleRunKeys } from "@/entities/schedule-run"
 import { describeError } from "@/shared/lib"
-
-export interface ScheduleNotice {
-  readonly tone: "info" | "warning"
-  readonly text: string
-}
+import { useToast } from "@/shared/ui"
 
 /**
  * Действия над расписаниями: сохранить, включить, запустить, удалить. Все
  * страницы с расписаниями используют одни и те же действия и одни и те же
- * сообщения; страница только показывает `notice` и `error`.
+ * сообщения: результат каждого действия уходит в уведомления.
  */
 export const useScheduleActions = () => {
   const queryCache = useQueryCache()
-  const notice = ref<ScheduleNotice | null>(null)
-  const error = ref<string | null>(null)
+  const toast = useToast()
   /** Расписания, над которыми сейчас идёт действие. */
   const starting = ref(new Set<string>())
   const removing = ref(new Set<string>())
@@ -47,24 +42,16 @@ export const useScheduleActions = () => {
     if (refreshTimer !== null) clearTimeout(refreshTimer)
   })
 
-  const reset = () => {
-    notice.value = null
-    error.value = null
-  }
-
   const save = async (input: ScheduleUpsertInput): Promise<CrawlSchedule | null> => {
-    reset()
     saving.value = true
     try {
       const saved = await scheduleApi.upsert(input)
-      notice.value = {
-        tone: "info",
-        text: input.id === undefined ? "Расписание создано." : "Изменения сохранены."
-      }
+      if (input.id !== undefined) toast.success("Сохранено")
+      else toast.success(input.kind === "search" ? "Поиск создан" : "Расписание создано")
       await refresh()
       return saved
     } catch (cause) {
-      error.value = describeError(cause)
+      toast.error("Не удалось сохранить", { description: describeError(cause) })
       return null
     } finally {
       saving.value = false
@@ -72,7 +59,6 @@ export const useScheduleActions = () => {
   }
 
   const toggle = async (schedule: CrawlSchedule, enabled: boolean) => {
-    reset()
     mark(toggling, schedule.id, true)
     try {
       await scheduleApi.upsert({
@@ -83,26 +69,23 @@ export const useScheduleActions = () => {
         options: schedule.options,
         enabled
       })
-      notice.value = {
-        tone: "info",
-        text: enabled ? `Включено: ${scheduleKindName(schedule.kind)}.` : `Выключено: ${scheduleKindName(schedule.kind)}.`
-      }
+      toast.success(enabled ? "Расписание включено" : "Расписание выключено", {
+        description: scheduleKindName(schedule.kind)
+      })
       await refresh()
     } catch (cause) {
-      error.value = describeError(cause)
+      toast.error("Не удалось изменить расписание", { description: describeError(cause) })
     } finally {
       mark(toggling, schedule.id, false)
     }
   }
 
   const run = async (schedule: CrawlSchedule) => {
-    reset()
     mark(starting, schedule.id, true)
     try {
       const result = await scheduleApi.runNow(schedule.id)
-      notice.value = result.accepted
-        ? { tone: "info", text: "Запуск принят, работа идёт в фоне." }
-        : { tone: "warning", text: "Запуск не принят: возможно, это расписание уже выполняется." }
+      if (result.accepted) toast.info("Запуск принят", { description: "Работа идёт в фоне." })
+      else toast.warning("Запуск не принят", { description: "Возможно, это расписание уже выполняется." })
       if (result.accepted) {
         if (refreshTimer !== null) clearTimeout(refreshTimer)
         refreshTimer = setTimeout(() => {
@@ -111,27 +94,25 @@ export const useScheduleActions = () => {
         }, 1_500)
       }
     } catch (cause) {
-      error.value = describeError(cause)
+      toast.error("Не удалось запустить", { description: describeError(cause) })
     } finally {
       mark(starting, schedule.id, false)
     }
   }
 
   const remove = async (schedule: CrawlSchedule) => {
-    reset()
     mark(removing, schedule.id, true)
     try {
       const result = await scheduleApi.remove(schedule.id)
-      notice.value = result.deleted
-        ? { tone: "info", text: "Расписание удалено." }
-        : { tone: "warning", text: "Расписание не удалено: такой записи уже нет." }
+      if (result.deleted) toast.success("Расписание удалено")
+      else toast.warning("Расписание не удалено", { description: "Такой записи уже нет." })
       await refresh()
     } catch (cause) {
-      error.value = describeError(cause)
+      toast.error("Не удалось удалить расписание", { description: describeError(cause) })
     } finally {
       mark(removing, schedule.id, false)
     }
   }
 
-  return { notice, error, saving, starting, removing, toggling, save, toggle, run, remove, reset, refresh }
+  return { saving, starting, removing, toggling, save, toggle, run, remove, refresh }
 }

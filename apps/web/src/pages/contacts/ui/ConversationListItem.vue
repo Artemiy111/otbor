@@ -2,14 +2,14 @@
 import { computed, ref } from "vue"
 import { useIntersectionObserver } from "@vueuse/core"
 import { useQuery } from "@pinia/colada"
-import type { ConversationSummary } from "@otbor/contract"
+import type { InboxConversation } from "@/entities/conversation"
 import { vacancyApi, vacancyKeys } from "@/entities/vacancy"
 import { cn, conversationChannelLabel } from "@/shared/lib"
 import { inboxHref, relativeTime, type InboxState } from "../model/inbox"
 import ChannelIcon from "./ChannelIcon.vue"
 
 const props = defineProps<{
-  conversation: ConversationSummary
+  conversation: InboxConversation
   state: InboxState
   selected: boolean
   accountName: string
@@ -18,18 +18,22 @@ const props = defineProps<{
   now: Date
 }>()
 
-/** Название вакансии подгружается, только когда строка попала в видимую часть списка. */
+/** Без поля в ответе (старый сервер) название подгружается, когда строка попала в видимую часть списка. */
 const root = ref<HTMLElement | null>(null)
 const seen = ref(false)
 useIntersectionObserver(root, ([entry]) => {
   if (entry?.isIntersecting) seen.value = true
 })
+/* Новый сервер присылает название вакансии в самой строке; запрос нужен только старому. */
+const hasTitleField = computed(() => props.conversation.vacancyTitle !== undefined)
 const vacancyQuery = useQuery({
   key: () => vacancyKeys.detail(props.conversation.vacancyId ?? ""),
   query: () => vacancyApi.get(props.conversation.vacancyId ?? ""),
-  enabled: () => seen.value && props.conversation.vacancyId !== null
+  enabled: () => !hasTitleField.value && seen.value && props.conversation.vacancyId !== null
 })
-const vacancyTitle = computed(() => vacancyQuery.data.value?.vacancy.title ?? null)
+const vacancyTitle = computed(() =>
+  hasTitleField.value ? (props.conversation.vacancyTitle ?? null) : (vacancyQuery.data.value?.vacancy.title ?? null)
+)
 
 const unread = computed(() => props.conversation.unreadCount > 0)
 const name = computed(
@@ -37,7 +41,10 @@ const name = computed(
 )
 /** Вторая строка: вакансия, а если её нет или она ещё грузится - тема диалога. */
 const context = computed(() => {
-  if (props.conversation.vacancyId !== null && vacancyTitle.value !== null) return vacancyTitle.value
+  if (vacancyTitle.value !== null) {
+    const employer = props.conversation.employerName
+    return employer === undefined || employer === null ? vacancyTitle.value : `${vacancyTitle.value} · ${employer}`
+  }
   if (props.conversation.title !== null && props.conversation.title !== name.value) return props.conversation.title
   return props.conversation.personRole
 })

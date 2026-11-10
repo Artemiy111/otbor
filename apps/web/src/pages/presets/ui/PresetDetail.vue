@@ -2,13 +2,10 @@
 import { computed, ref } from "vue"
 import { useQuery } from "@pinia/colada"
 import type { PresetRecord } from "@otbor/contract"
-import { CircleAlert, Copy, Pencil, Trash2 } from "@lucide/vue"
+import { Copy, Pencil, Trash2 } from "@lucide/vue"
 import { presetApi, presetKeys } from "@/entities/preset"
 import { describeError, formatDate } from "@/shared/lib"
 import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
   Badge,
   Button,
   Card,
@@ -32,9 +29,8 @@ const props = withDefaults(
   defineProps<{
     preset: PresetRecord
     removing?: boolean
-    error?: string | null
   }>(),
-  { removing: false, error: null }
+  { removing: false }
 )
 
 const emit = defineEmits<{ edit: []; remove: []; duplicate: [] }>()
@@ -139,10 +135,10 @@ const keywordCount = computed(() => props.preset.filter.keywordIds?.length ?? 0)
 
       <CardContent class="space-y-2 border-t border-border pt-4">
         <div class="flex items-center justify-between gap-2">
-          <h3 class="text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
+          <h3 class="text-xs font-bold uppercase tracking-[0.06em] text-muted-foreground">
             Правила
           </h3>
-          <span class="text-[11px] tabular-nums text-muted-foreground">{{ rules.length + groups.length }}</span>
+          <span class="text-xs tabular-nums text-muted-foreground">{{ rules.length + groups.length }}</span>
         </div>
 
         <div v-if="rules.length > 0 || groups.length > 0" class="space-y-1">
@@ -155,13 +151,13 @@ const keywordCount = computed(() => props.preset.filter.keywordIds?.length ?? 0)
           <div
             v-for="(group, gi) in groups"
             :key="`g${gi}`"
-            class="mt-1 rounded-md border border-l-2 border-l-violet-400/70 bg-muted/20 p-2 text-sm"
+            class="mt-1 rounded-md border border-l-2 border-l-ai/70 bg-muted/20 p-2 text-sm"
           >
-            <p class="mb-1 text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
+            <p class="mb-1 text-xs font-bold uppercase tracking-[0.06em] text-muted-foreground">
               Любой из вариантов
             </p>
             <template v-for="(branch, bi) in group.branches" :key="bi">
-              <p v-if="bi > 0" class="my-0.5 text-[10px] font-bold uppercase text-muted-foreground">или</p>
+              <p v-if="bi > 0" class="my-0.5 text-xs font-bold uppercase text-muted-foreground">или</p>
               <p v-for="(rule, ri) in branch.rules" :key="ri" class="break-words">
                 <span v-if="ri > 0" class="text-muted-foreground">и </span>{{ describePresetRule(rule) }}
               </p>
@@ -172,7 +168,7 @@ const keywordCount = computed(() => props.preset.filter.keywordIds?.length ?? 0)
           Правил нет — пресет выбирает весь корпус.
         </p>
 
-        <p class="text-[11px] text-muted-foreground">
+        <p class="text-xs text-muted-foreground">
           Правила объединяются через «и», внутри группы варианты через «или».
           <template v-if="props.preset.system">Системный пресет общий и доступен только для чтения: сделайте копию, чтобы изменить правила.</template>
         </p>
@@ -188,12 +184,6 @@ const keywordCount = computed(() => props.preset.filter.keywordIds?.length ?? 0)
         <FunnelSankey :stages="stages" />
       </CardContent>
     </Card>
-
-    <Alert v-if="props.error" variant="destructive">
-      <CircleAlert />
-      <AlertTitle>Не удалось удалить пресет</AlertTitle>
-      <AlertDescription>{{ props.error }}</AlertDescription>
-    </Alert>
 
     <PresetPreviewPanel
       :preview="preview"

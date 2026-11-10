@@ -31,7 +31,8 @@ import {
   Input,
   Label,
   Skeleton,
-  Textarea
+  Textarea,
+  useToast
 } from "@/shared/ui"
 import { PageHeader } from "@/widgets/page-header"
 import ConfirmAction from "./ConfirmAction.vue"
@@ -68,16 +69,11 @@ watch(
   { immediate: true }
 )
 
-const notice = ref<string | null>(null)
-const noticeLink = ref<string | null>(null)
-const actionError = ref<string | null>(null)
+const toast = useToast()
 const busy = ref(false)
 
-/** Одно место для всех действий: сбрасывает сообщения, ловит ошибки и обновляет кэш. */
-const run = async (action: () => Promise<void>) => {
-  actionError.value = null
-  notice.value = null
-  noticeLink.value = null
+/** Одно место для всех действий: ловит ошибки, показывает их уведомлением и обновляет кэш. */
+const run = async (failTitle: string, action: () => Promise<void>) => {
   busy.value = true
   try {
     await action()
@@ -85,7 +81,7 @@ const run = async (action: () => Promise<void>) => {
     await queryCache.invalidateQueries({ key: contactKeys.all })
     await queryCache.invalidateQueries({ key: conversationKeys.all })
   } catch (error) {
-    actionError.value = describeError(error)
+    toast.error(failTitle, { description: describeError(error) })
   } finally {
     busy.value = false
   }
@@ -97,13 +93,13 @@ const updateMutation = useMutation<PersonRecord, Parameters<typeof personApi.upd
   mutation: (input) => personApi.update(props.id, input)
 })
 const save = () =>
-  run(async () => {
+  run("Не удалось сохранить", async () => {
     await updateMutation.mutateAsync({
       name: emptyToNull(name.value),
       role: emptyToNull(role.value),
       notes: emptyToNull(notes.value)
     })
-    notice.value = "Сохранено."
+    toast.success("Сохранено")
   })
 
 /* ------------------------------ идентичности ------------------------------ */
@@ -119,20 +115,19 @@ const splitMutation = useMutation<PersonRecord, string>({
 })
 
 const confirm = (contact: ContactRecord) =>
-  run(async () => {
+  run("Не удалось подтвердить связь", async () => {
     await confirmMutation.mutateAsync(contact.id)
-    notice.value = "Связь подтверждена."
+    toast.success("Связь подтверждена")
   })
 const reject = (contact: ContactRecord) =>
-  run(async () => {
+  run("Не удалось отклонить связь", async () => {
     await rejectMutation.mutateAsync(contact.id)
-    notice.value = "Связь отклонена: контакт больше не привязан к человеку."
+    toast.success("Связь отклонена", { description: "Контакт больше не привязан к человеку." })
   })
 const split = (contact: ContactRecord) =>
-  run(async () => {
+  run("Не удалось вынести контакт", async () => {
     const created = await splitMutation.mutateAsync(contact.id)
-    notice.value = "Контакт вынесен в нового человека."
-    noticeLink.value = personPath(created.id)
+    toast.success("Контакт вынесен в нового человека", { action: { label: "Открыть", href: personPath(created.id) } })
   })
 
 const inboxHref = (conversationId: string): string => `/contacts?c=${encodeURIComponent(conversationId)}`
@@ -154,11 +149,13 @@ const mergeMutation = useMutation<PersonRecord, string>({
   mutation: (into) => personApi.merge(into, props.id)
 })
 const merge = (into: string) =>
-  run(async () => {
+  run("Не удалось объединить", async () => {
     await mergeMutation.mutateAsync(into)
     mergeSearch.value = ""
-    notice.value = "Человек объединён. Контакты и диалоги перенесены."
-    noticeLink.value = personPath(into)
+    toast.success("Человек объединён", {
+      description: "Контакты и диалоги перенесены.",
+      action: { label: "Открыть", href: personPath(into) }
+    })
   })
 </script>
 
@@ -182,20 +179,6 @@ const merge = (into: string) =>
         back-to="/people"
         back-label="Люди"
       />
-
-      <Alert v-if="actionError" variant="destructive" class="mb-4">
-        <CircleAlert />
-        <AlertTitle>Не удалось выполнить действие</AlertTitle>
-        <AlertDescription>{{ actionError }}</AlertDescription>
-      </Alert>
-      <Alert v-if="notice" variant="info" class="mb-4">
-        <CircleAlert />
-        <AlertTitle>Готово</AlertTitle>
-        <AlertDescription>
-          {{ notice }}
-          <a v-if="noticeLink" :href="noticeLink" class="underline underline-offset-4">Открыть</a>
-        </AlertDescription>
-      </Alert>
 
       <div class="grid gap-4 lg:grid-cols-2">
         <Card>

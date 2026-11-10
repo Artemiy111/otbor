@@ -1,20 +1,20 @@
 <script setup lang="ts">
-import { computed, h, ref } from "vue"
+import { computed, h, ref, watch } from "vue"
+import { refDebounced } from "@vueuse/core"
 import { useQuery } from "@pinia/colada"
-import type { HarnessJob } from "@otbor/contract"
-import type { ColumnDef } from "@tanstack/vue-table"
+import type { QueueJob } from "@otbor/contract"
+import type { ColumnDef, PaginationState } from "@tanstack/vue-table"
 import { CircleAlert } from "@lucide/vue"
 import { AccountChip, hhAccountApi, hhAccountKeys } from "@/entities/hh-account"
 import { healthApi, healthKeys } from "@/entities/health"
 import { queueJobApi, queueJobKeys } from "@/entities/queue-job"
-import { queueStatusOptions } from "@/features/queue-filter"
+import { queueStageOptions, queueStatusOptions, valueList } from "@/features/queue-filter"
 import {
   applicationPath,
   cn,
   describeError,
   formatAge,
   formatDate,
-  jobStageLabel,
   payloadText,
   statusLabel,
   toneClasses,
@@ -26,14 +26,21 @@ import {
   AlertTitle,
   DataTable,
   StatusBadge,
-  filterableHeader,
-  sortableHeader
+  filterableHeader
 } from "@/shared/ui"
 import { ExecutorStartGuide } from "@/widgets/executor-start"
 import { StatCard } from "@/widgets/stat-card"
-import { jobDetail, jobError, jobRefs, jobTiming, jobTitle } from "../model/job-view"
+import { jobDetail, jobError, jobRawError, jobTiming, jobTitle } from "../model/job-view"
 
-const props = defineProps<{ kind: "browser" | "inference" }>()
+const PAGE_SIZE = 50
+
+const props = defineProps<{
+  kind: "browser" | "inference"
+  /** Фильтр из адреса страницы: любые из этих статусов и стадий. */
+  status: ReadonlyArray<string>
+  stage: ReadonlyArray<string>
+}>()
+const emit = defineEmits<{ "update:filter": [value: { status?: ReadonlyArray<string>; stage?: ReadonlyArray<string> }] }>()
 
 const COPY = {
   browser: {
@@ -49,12 +56,22 @@ const COPY = {
 } as const
 const copy = computed(() => COPY[props.kind])
 
-const status = ref("all")
-/** В списке статусов без служебных кодов в скобках: код виден в технических деталях. */
-const statusOptions = queueStatusOptions.map((option) => ({
-  ...option,
-  label: option.label.replace(/\s*\([a-z_]+\)$/, "")
-}))
+/** Значения выпадающих списков: группа статусов или одна стадия; «all», если ничего не выбрано. */
+const statusValue = computed(() => (props.status.length === 0 ? "all" : props.status.join(",")))
+const stageValue = computed(() => (props.stage.length === 0 ? "all" : props.stage.join(",")))
+const stageOptions = computed(() => queueStageOptions(props.kind))
+
+const pageSize = ref(PAGE_SIZE)
+const pageIndex = ref(0)
+const searchText = ref("")
+const searchQuery = refDebounced(searchText, 300)
+const onPagination = (state: PaginationState) => {
+  pageSize.value = state.pageSize
+  pageIndex.value = state.pageIndex
+}
+/** Смена состояния или задачи начинает с первой страницы: таблица пересоздаётся по ключу, а поиск сам сбрасывает страницу. */
+const tableKey = computed(() => `${statusValue.value}|${stageValue.value}`)
+watch([statusValue, stageValue], () => (pageIndex.value = 0))
 
 const healthQuery = useQuery({ key: healthKeys.current(), query: healthApi.get })
 const executorOnline = computed(() =>
@@ -69,17 +86,33 @@ const statsQuery = useQuery({
   query: () => queueJobApi.stats(props.kind)
 })
 const jobsQuery = useQuery({
-  key: () => queueJobKeys.list(status.value, props.kind),
-  query: () =>
-    queueJobApi.list({
+  key: () =>
+    queueJobKeys.search({
       kind: props.kind,
-      limit: 200,
-      status: status.value === "all" ? undefined : status.value
-    })
+      status: statusValue.value,
+      stage: stageValue.value,
+      query: searchQuery.value.trim(),
+      offset: pageIndex.value * pageSize.value,
+      limit: pageSize.value
+    }),
+  query: () =>
+    queueJobApi.search({
+      kind: props.kind,
+      status: props.status,
+      stage: props.stage,
+      query: searchQuery.value,
+      limit: pageSize.value,
+      offset: pageIndex.value * pageSize.value
+    }),
+  placeholderData: (previous) => previous
 })
 
 const stats = computed(() => statsQuery.data.value)
-const jobs = computed<ReadonlyArray<HarnessJob>>(() => jobsQuery.data.value ?? [])
+const jobs = computed<ReadonlyArray<QueueJob>>(() => jobsQuery.data.value?.items ?? [])
+const total = computed(() => jobsQuery.data.value?.total ?? 0)
+const shownRange = computed(() =>
+  jobs.value.length === 0 ? "" : `${pageIndex.value * pageSize.value + 1}–${pageIndex.value * pageSize.value + jobs.value.length}`
+)
 
 const cards = computed(() => {
   const s = stats.value
@@ -88,9 +121,9 @@ const cards = computed(() => {
     { label: "Ожидают", value: s.pending },
     { label: "В работе", value: s.leased + s.running },
     { label: "Готовы за сутки", value: s.done },
-    { label: "Ошибки", value: s.failed + s.dead },
+    { label: "Ошибки за сутки", value: s.failed + s.dead },
     ...(props.kind === "browser"
-      ? [{ label: "Нужен человек или проверка", value: s.needsHuman + s.needsReconcile }]
+      ? [{ label: "Нужен человек или проверка (всего)", value: s.needsHuman + s.needsReconcile }]
       : [])
   ]
 })
@@ -122,8 +155,8 @@ const jsonBlock = (title: string, value: unknown) =>
     )
   ])
 
-/** Всё сырое: код этапа и статуса, аренда, JSON задания и результата. */
-const detailsCell = (job: HarnessJob) =>
+/** Всё сырое: код этапа и статуса, аренда, ошибка как есть, JSON задания и результата. */
+const detailsCell = (job: QueueJob) =>
   h("details", { class: "min-w-36 max-w-md" }, [
     h(
       "summary",
@@ -145,16 +178,21 @@ const detailsCell = (job: HarnessJob) =>
         h("dt", { class: "text-muted-foreground" }, "Создано"),
         h("dd", { class: "tabular-nums" }, formatDate(job.createdAt))
       ]),
+      jobRawError(job) === null ? null : jsonBlock("Ошибка как есть", jobRawError(job)),
       jsonBlock("Задание (payload)", job.payload),
       job.result === null || job.result === undefined ? null : jsonBlock("Результат (result)", job.result)
     ])
   ])
 
-const columns = computed<ColumnDef<HarnessJob>[]>(() => [
+const columns = computed<ColumnDef<QueueJob>[]>(() => [
   {
     id: "task",
-    accessorFn: (row) => `${jobTitle(row.stage)} ${jobStageLabel(row.stage)}`,
-    header: sortableHeader<HarnessJob>("Задача"),
+    enableSorting: false,
+    header: filterableHeader<QueueJob>("Задача", {
+      value: () => stageValue.value,
+      options: () => stageOptions.value,
+      onChange: (value) => emit("update:filter", { stage: valueList(value) })
+    }),
     cell: ({ row }) => {
       const detail = jobDetail(row.original)
       return h("div", { class: "min-w-40" }, [
@@ -166,36 +204,38 @@ const columns = computed<ColumnDef<HarnessJob>[]>(() => [
   {
     id: "account",
     enableSorting: false,
-    accessorFn: (row) => accounts.value.find((account) => account.id === jobRefs(row).accountId)?.label ?? "",
     header: "Аккаунт",
     cell: ({ row }) => {
-      const accountId = jobRefs(row.original).accountId
-      return accountId === null
-        ? dash()
-        : h(AccountChip, { accountId, accounts: accounts.value, showName: true })
+      const accountId = row.original.hhAccountId
+      if (accountId === null) return dash()
+      // Список аккаунтов даёт цвет и подпись; если его нет, остаётся имя с сервера.
+      return accounts.value.some((account) => account.id === accountId)
+        ? h(AccountChip, { accountId, accounts: accounts.value, showName: true })
+        : h("span", { class: "text-sm" }, row.original.accountName ?? "—")
     }
   },
   {
     id: "subject",
     enableSorting: false,
-    enableGlobalFilter: false,
     header: "Вакансия и отклик",
     cell: ({ row }) => {
-      const refs = jobRefs(row.original)
-      if (refs.vacancyId === null && refs.applicationId === null) return dash()
-      return h("div", { class: "text-sm" }, [
-        refs.applicationId === null ? null : link(applicationPath(refs.applicationId), "Отклик"),
-        refs.vacancyId === null ? null : link(vacancyPath(refs.vacancyId), "Вакансия")
+      const job = row.original
+      if (job.vacancyId === null && job.applicationId === null) return dash()
+      return h("div", { class: "max-w-72 text-sm" }, [
+        job.vacancyId === null
+          ? null
+          : link(vacancyPath(job.vacancyId), job.vacancyTitle ?? "Вакансия"),
+        job.applicationId === null ? null : link(applicationPath(job.applicationId), "Отклик")
       ])
     }
   },
   {
     id: "status",
-    accessorFn: (row) => statusLabel(row.status),
-    header: filterableHeader<HarnessJob>("Состояние", {
-      value: () => status.value,
-      options: () => statusOptions,
-      onChange: (value) => (status.value = value)
+    enableSorting: false,
+    header: filterableHeader<QueueJob>("Состояние", {
+      value: () => statusValue.value,
+      options: () => queueStatusOptions,
+      onChange: (value) => emit("update:filter", { status: valueList(value) })
     }),
     cell: ({ row }) => {
       const job = row.original
@@ -209,9 +249,8 @@ const columns = computed<ColumnDef<HarnessJob>[]>(() => [
   },
   {
     id: "timing",
-    accessorFn: (row) => row.runAt,
-    enableGlobalFilter: false,
-    header: sortableHeader<HarnessJob>("Время"),
+    enableSorting: false,
+    header: "Время",
     cell: ({ row }) =>
       h(
         "span",
@@ -222,7 +261,6 @@ const columns = computed<ColumnDef<HarnessJob>[]>(() => [
   {
     id: "error",
     enableSorting: false,
-    accessorFn: (row) => jobError(row) ?? "",
     header: "Последняя ошибка",
     cell: ({ row }) => {
       const message = jobError(row.original)
@@ -234,7 +272,6 @@ const columns = computed<ColumnDef<HarnessJob>[]>(() => [
   {
     id: "details",
     enableSorting: false,
-    enableGlobalFilter: false,
     header: "",
     cell: ({ row }) => detailsCell(row.original)
   }
@@ -270,19 +307,28 @@ defineExpose({ refetch, loading: computed(() => statsQuery.isLoading.value || jo
     </div>
 
     <DataTable
+      :key="tableKey"
       :columns="columns"
       :data="jobs"
       :is-loading="jobsQuery.isPending.value"
       :loading-row-count="6"
+      :row-numbers="false"
+      server-side
       filter
       filter-label="Поиск"
-      filter-placeholder="Задача, аккаунт или состояние"
+      filter-placeholder="Вакансия, аккаунт или текст ошибки"
+      :page-size="pageSize"
+      :page-size-options="[25, 50, 100]"
+      :row-count="total"
       empty-title="Заданий нет"
-      :empty-description="copy.empty"
+      :empty-description="status.length > 0 || stage.length > 0 || searchQuery.trim() !== '' ? 'Измените фильтры или поиск.' : copy.empty"
+      @update:pagination="onPagination"
+      @update:globalFilter="(value: string) => (searchText = value)"
     >
       <template #toolbar>
         <span class="pb-2 text-xs text-muted-foreground tabular-nums">
-          Показаны последние {{ jobs.length }}{{ jobs.length >= 200 ? " (больше не выводится)" : "" }}
+          <template v-if="total > 0">Показаны {{ shownRange }} из {{ total }}, новые сверху</template>
+          <template v-else>Всего: 0</template>
         </span>
       </template>
     </DataTable>

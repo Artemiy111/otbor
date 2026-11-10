@@ -47,10 +47,6 @@ const openEdit = (schedule: CrawlSchedule) => {
   editing.value = schedule
   dialogOpen.value = true
 }
-const onSaved = () => {
-  actions.notice.value = { tone: "info", text: editing.value === null ? "Поиск создан." : "Изменения сохранены." }
-  actions.error.value = null
-}
 
 const runColumns: ColumnDef<CrawlRun>[] = [
   {
@@ -141,16 +137,6 @@ const runColumns: ColumnDef<CrawlRun>[] = [
       <AlertTitle>Не удалось загрузить поиски</AlertTitle>
       <AlertDescription>{{ board.error.value }}</AlertDescription>
     </Alert>
-    <Alert v-if="actions.error.value" variant="destructive">
-      <CircleAlert />
-      <AlertTitle>Не удалось выполнить действие</AlertTitle>
-      <AlertDescription>{{ actions.error.value }}</AlertDescription>
-    </Alert>
-    <Alert v-if="actions.notice.value" :variant="actions.notice.value.tone === 'warning' ? 'warning' : 'info'" role="status">
-      <CircleAlert />
-      <AlertTitle>{{ actions.notice.value.tone === "warning" ? "Обратите внимание" : "Готово" }}</AlertTitle>
-      <AlertDescription>{{ actions.notice.value.text }}</AlertDescription>
-    </Alert>
 
     <Card v-if="runningCrawls.length > 0" class="border-info/30">
       <CardHeader>
@@ -225,6 +211,6 @@ const runColumns: ColumnDef<CrawlRun>[] = [
       </CardContent>
     </Card>
 
-    <ScheduleFormDialog v-model:open="dialogOpen" :schedule="editing" :kinds="['search']" @saved="onSaved" />
+    <ScheduleFormDialog v-model:open="dialogOpen" :schedule="editing" :kinds="['search']" />
   </section>
 </template>

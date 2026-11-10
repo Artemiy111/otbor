@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { BlacklistRecord } from "@otbor/contract"
-import { groupExclusions, hhUrl, originLabel, parseHhTarget, removalKind } from "./exclusions"
+import { groupExclusions, hhUrl, internalPath, originLabel, parseHhTarget, removalKind } from "./exclusions"
 
 const record = (patch: Partial<BlacklistRecord>): BlacklistRecord =>
   ({
@@ -37,10 +37,27 @@ describe("groupExclusions", () => {
 })
 
 describe("originLabel", () => {
-  test("импорт, ручная запись и отбраковка различаются", () => {
+  test("импорт, ручная запись и кнопка различаются", () => {
     expect(originLabel({ source: "hh_hidden", scope: "hh_native", targetType: "employer" })).toBe("Импорт с hh")
     expect(originLabel({ source: "user", scope: "app", targetType: "employer" })).toBe("Вручную")
+    expect(originLabel({ source: "reject", scope: "app", targetType: "vacancy" })).toBe("Кнопка «Отбраковать»")
+    expect(originLabel({ source: "reject", scope: "hh_account", targetType: "vacancy" })).toBe("Кнопка «Отбраковать»")
+  })
+
+  test("старые строки: слой резюме точно от кнопки, вакансия с user неоднозначна", () => {
     expect(originLabel({ source: "user", scope: "resume", targetType: "vacancy" })).toBe("Кнопка «Отбраковать»")
+    expect(originLabel({ source: "user", scope: "app", targetType: "vacancy" })).toBe(
+      "Вручную (или отбраковка до обновления)"
+    )
+  })
+})
+
+describe("internalPath", () => {
+  test("ведёт на вакансию или компанию в otbor, если они есть в базе", () => {
+    expect(internalPath(record({ targetType: "vacancy", vacancyId: "v 1" as never }))).toBe("/vacancies/v%201")
+    expect(internalPath(record({ targetType: "employer", employerId: "e1" as never }))).toBe("/companies/e1")
+    expect(internalPath(record({ targetType: "vacancy", vacancyId: null }))).toBeNull()
+    expect(internalPath(record({ targetType: "employer" }))).toBeNull()
   })
 })
 

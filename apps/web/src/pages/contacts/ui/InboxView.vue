@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, ref } from "vue"
+import { refDebounced } from "@vueuse/core"
 import { MessagesSquare } from "@lucide/vue"
-import { useConversations } from "@/entities/conversation"
+import { useInbox } from "@/entities/conversation"
 import { cn, describeError, locationSearch, replaceSearch } from "@/shared/lib"
-import { countUnread, inboxSearch, parseInboxState, type InboxState } from "../model/inbox"
+import { inboxSearch, parseInboxState, type InboxState } from "../model/inbox"
 import { useSources } from "../model/useSources"
 import ConversationList from "./ConversationList.vue"
 import ThreadPane from "./ThreadPane.vue"
@@ -12,10 +13,21 @@ import ThreadPane from "./ThreadPane.vue"
 const state = computed<InboxState>(() => parseInboxState(locationSearch.value))
 const setState = (patch: Partial<InboxState>) => replaceSearch(inboxSearch({ ...state.value, ...patch }))
 
-const query = useConversations()
-const conversations = computed(() => query.data.value ?? [])
+/* Поиск уходит на сервер (имя, тема, текст сообщений), поэтому с задержкой, чтобы не слать запрос на каждую букву. */
+const search = ref("")
+const debouncedSearch = refDebounced(search, 300)
+
+const inbox = useInbox(() => ({
+  channel: state.value.channel,
+  unread: state.value.filter === "unread",
+  search: debouncedSearch.value
+}))
+const query = inbox.query
 const errorText = computed(() => (query.error.value === null ? null : describeError(query.error.value)))
-const unread = computed(() => countUnread(conversations.value))
+const unread = inbox.unreadTotal
+const loadMore = () => {
+  if (query.hasNextPage.value && query.asyncStatus.value !== "loading") void query.loadNextPage()
+}
 const sources = useSources()
 </script>
 
@@ -25,13 +37,19 @@ const sources = useSources()
     <aside :class="cn('min-h-0 min-w-0 border-border lg:flex lg:border-r', state.conversation === null ? 'flex flex-col' : 'hidden')">
       <ConversationList
         class="w-full"
-        :conversations="conversations"
+        v-model:search="search"
+        :conversations="inbox.items.value"
+        :total="inbox.total.value"
+        :unread-total="inbox.unreadTotal.value"
+        :has-more="query.hasNextPage.value"
+        :loading-more="query.asyncStatus.value === 'loading' && inbox.items.value.length > 0"
         :state="state"
         :loading="query.isPending.value"
         :error-text="errorText"
         :sources="sources"
         @select="setState({ conversation: $event })"
         @filter="setState($event)"
+        @more="loadMore"
       />
     </aside>
 

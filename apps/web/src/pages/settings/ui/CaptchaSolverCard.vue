@@ -7,8 +7,6 @@ import { localModelApi, localModelKeys } from "@/entities/local-model"
 import { useHarnessCatalog } from "@/features/harness-catalog"
 import { describeError } from "@/shared/lib"
 import {
-  Alert,
-  AlertDescription,
   Button,
   Card,
   CardContent,
@@ -17,7 +15,8 @@ import {
   CardTitle,
   Input,
   HarnessModelPicker,
-  Label
+  Label,
+  useToast
 } from "@/shared/ui"
 
 const queryCache = useQueryCache()
@@ -47,8 +46,7 @@ const harnessId = ref("")
 const model = ref("")
 const maxAttempts = ref(5)
 const timeoutSeconds = ref(60)
-const error = ref<string | null>(null)
-const notice = ref<string | null>(null)
+const toast = useToast()
 const testResult = ref<CaptchaSolverTestResult | null>(null)
 
 // Форма заполняется сохранёнными настройками, как только они пришли.
@@ -94,24 +92,21 @@ const testMutation = useMutation<CaptchaSolverTestResult, CaptchaSolverSettings>
 const busy = computed(() => saveMutation.isLoading.value || testMutation.isLoading.value)
 
 const save = async () => {
-  error.value = null
-  notice.value = null
   try {
     await saveMutation.mutateAsync(current.value)
-    notice.value = "Сохранено в ~/.otbor/captcha.json. Харнес читает настройки при каждой капче, перезапуск не нужен."
+    toast.success("Сохранено", { description: "Харнес читает настройки при каждой капче, перезапуск не нужен." })
     await queryCache.invalidateQueries({ key: localModelKeys.captcha() })
   } catch (cause) {
-    error.value = describeError(cause)
+    toast.error("Не удалось сохранить", { description: describeError(cause) })
   }
 }
 
 const test = async () => {
-  error.value = null
   testResult.value = null
   try {
     testResult.value = await testMutation.mutateAsync(current.value)
   } catch (cause) {
-    error.value = describeError(cause)
+    toast.error("Не удалось проверить", { description: describeError(cause) })
   }
 }
 </script>
@@ -167,8 +162,6 @@ const test = async () => {
         </div>
       </div>
 
-      <Alert v-if="error" variant="destructive"><AlertDescription>{{ error }}</AlertDescription></Alert>
-      <p v-if="notice" class="text-sm text-muted-foreground">{{ notice }}</p>
       <p v-if="testResult" class="text-sm" :class="testResult.ok ? '' : 'text-destructive'">
         <template v-if="testResult.ok">
           Прочитано: «{{ testResult.text }}» за {{ testResult.durationMs }} мс (картинка {{ testResult.picture }}).
@@ -197,7 +190,7 @@ const test = async () => {
           <ul class="divide-y rounded-md border text-sm">
             <li v-for="item in journal.solves" :key="item.jobId + item.model" class="flex flex-wrap items-center gap-x-3 gap-y-1 p-2">
               <span class="text-muted-foreground">{{ stamp(item.at) }}</span>
-              <span :class="item.solved ? 'text-emerald-600' : 'text-destructive'">{{ item.solved ? "решена" : "не решена" }}</span>
+              <span :class="item.solved ? 'text-success' : 'text-destructive'">{{ item.solved ? "решена" : "не решена" }}</span>
               <span>попыток: {{ item.attempts }}</span>
               <code class="text-xs">{{ item.harness }}/{{ item.model }}</code>
               <span v-if="item.answer" class="text-muted-foreground">ответ «{{ item.answer }}»</span>

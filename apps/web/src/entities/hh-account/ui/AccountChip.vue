@@ -53,7 +53,7 @@ const card = computed(() => !props.showName)
       :style="{ backgroundColor: items.length > 0 || unknownResume ? color + '33' : undefined }"
     >
       <span
-        class="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
+        class="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
         :style="{ backgroundColor: color }"
         :aria-label="name"
         >{{ hhAccountInitials(name) }}</span
@@ -77,7 +77,7 @@ const card = computed(() => !props.showName)
           <span class="flex flex-col"><b class="text-sm">{{ name }}</b><span class="text-muted-foreground">{{ account?.areaName ?? "город не указан" }}</span></span>
         </span>
         <span class="mt-2 flex items-center gap-1.5">
-          <span class="size-2 rounded-full" :class="sessionOk ? 'bg-green-500' : 'bg-red-500'" />сессия hh.ru {{ sessionOk ? "активна" : "не активна" }}
+          <span class="size-2 rounded-full" :class="sessionOk ? 'bg-success' : 'bg-danger'" />сессия hh.ru {{ sessionOk ? "активна" : "не активна" }}
         </span>
         <template v-if="items.length > 0">
           <span class="mt-2 block border-t pt-2 text-muted-foreground">{{ items.length > 1 ? "Откликнулись резюме:" : "Резюме:" }}</span>

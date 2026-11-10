@@ -9,7 +9,7 @@ import { applicationApi, applicationKeys } from "@/entities/application"
 import { useLetterStatus } from "../model"
 import { describeError } from "@/shared/lib"
 import DraftGenerator from "./DraftGenerator.vue"
-import { Button, Textarea } from "@/shared/ui"
+import { Button, Textarea, useToast } from "@/shared/ui"
 
 const props = defineProps<{
   vacancyId: string
@@ -62,6 +62,7 @@ watch(keyNow, () => {
   touched.value = false
 })
 
+const toast = useToast()
 const saving = ref(false)
 const savedAt = ref<string | null>(null)
 const persist = async () => {
@@ -76,7 +77,7 @@ const persist = async () => {
     })
     savedAt.value = new Date().toISOString()
   } catch (error) {
-    errorText.value = describeError(error)
+    toast.error("Не удалось сохранить черновик письма", { description: describeError(error), key: "letter-draft-save" })
   } finally {
     saving.value = false
   }
@@ -107,12 +108,10 @@ const sentText = computed(() => {
 })
 
 const busy = ref(false)
-const errorText = ref<string | null>(null)
 
 const send = async () => {
   if (busy.value || active.value || letter.value.trim() === "" || props.accountId === "") return
   busy.value = true
-  errorText.value = null
   try {
     await applicationApi.letterAttach({
       vacancyId: props.vacancyId,
@@ -122,7 +121,7 @@ const send = async () => {
     })
     await statusQuery.refetch()
   } catch (error) {
-    errorText.value = describeError(error)
+    toast.error("Не удалось отправить письмо", { description: describeError(error) })
   } finally {
     busy.value = false
   }
@@ -148,7 +147,7 @@ const send = async () => {
         :questions="[]"
         :disabled="busy || active"
         @generated="generated"
-        @failed="(reason) => (errorText = reason)"
+        @failed="(reason) => toast.error('Не удалось написать письмо', { description: reason })"
       />
     </div>
     <Textarea
@@ -186,6 +185,5 @@ const send = async () => {
       <CircleAlert class="mt-0.5 size-3.5 shrink-0" />
       Не отправлено: {{ status.message }}
     </p>
-    <p v-if="errorText" class="text-xs text-destructive">{{ errorText }}</p>
   </div>
 </template>
