@@ -1,17 +1,27 @@
 /**
- * Блокировка отправок аккаунта после капчи и эпизоды капчи. Темп
+ * Пауза отправок аккаунта после капчи и эпизоды капчи. Темп
  * (`submit_next_at`) и часовой лимит пишет и читает сам claim в
  * `QueueRepository`; здесь только предохранитель.
  *
- * hh отвечает капчей на POST отклика и показывает её на каждом следующем, пока
- * человек не решил её в профиле браузера. Поэтому блокировка бессрочная: claim
- * не выдаёт действующие задачи аккаунта (submit, letter_attach), читающие идут.
- * Снимает её только оператор (`resume`).
+ * hh отвечает капчей на POST отклика. Пока пауза стоит, claim не выдаёт
+ * действующие задачи аккаунта (submit, letter_attach), читающие идут. Пауза
+ * снимается сама в `submit_retry_at` (`captchaAutoResume`); каждая следующая
+ * капча подряд без подтверждённых откликов удваивает паузу. Оператор может
+ * снять её раньше (`resume`).
  */
 import type { CaptchaEpisode } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
+
+/** Пауза после первой капчи, минут. */
+export const CAPTCHA_BASE_DELAY_MINUTES = 10
+/** Потолок нарастающей паузы, минут. */
+export const CAPTCHA_MAX_DELAY_MINUTES = 240
+
+/** Пауза после капчи: удваивается за каждую капчу подряд без единого отклика между ними. */
+export const captchaDelayMinutes = (failedStreak: number): number =>
+  Math.min(CAPTCHA_MAX_DELAY_MINUTES, CAPTCHA_BASE_DELAY_MINUTES * 2 ** Math.max(0, failedStreak - 1))
 
 export interface SubmitBlock {
   readonly since: Date
@@ -51,6 +61,24 @@ export const recordCaptcha = (tx: Executor, userId: string, hhAccountId: string)
         and submitted_at is not null
         and (${since}::timestamptz is null or submitted_at >= ${since}::timestamptz)
     `)
+
+    // Подряд идущие эпизоды без подтверждённых откликов, новые первыми.
+    const recent = (yield* tx.execute(sql`
+      select submits_confirmed from hh_captcha_episode
+      where hh_account_id = ${hhAccountId}
+      order by captcha_at desc
+      limit 12
+    `)).rows as ReadonlyArray<{ submits_confirmed: number }>
+    let streak = 0
+    for (const episode of recent) {
+      if (Number(episode.submits_confirmed) > 0) break
+      streak += 1
+    }
+    const delay = captchaDelayMinutes(streak)
+    yield* tx.execute(sql`
+      update hh_account set submit_retry_at = now() + (${delay} * interval '1 minute')
+      where id = ${hhAccountId}
+    `)
     return true
   })
 
@@ -74,7 +102,8 @@ export const resume = (tx: Executor, userId: string, hhAccountId: string): RepoE
   Effect.gen(function*() {
     const unblocked = yield* tx.execute(sql`
       update hh_account
-      set submit_blocked_at = null, submit_block_reason = null, submit_resumed_at = now(), updated_at = now()
+      set submit_blocked_at = null, submit_block_reason = null, submit_retry_at = null,
+          submit_resumed_at = now(), updated_at = now()
       where id = ${hhAccountId} and user_id = ${userId} and submit_blocked_at is not null
       returning id
     `)

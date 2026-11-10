@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted } from "vue"
 import { useQuery } from "@pinia/colada"
 import type { StageCount } from "@otbor/contract"
-import { CaptchaBlockAlert } from "@/entities/hh-account"
+import { CaptchaBlockAlert, CaptchaStatus } from "@/entities/hh-account"
 import { queueJobApi, queueJobKeys } from "@/entities/queue-job"
 import { describeError, formatAge, jobStageLabel } from "@/shared/lib"
 import { Badge, Card, CardContent, HelpHint } from "@/shared/ui"
@@ -44,7 +44,7 @@ defineExpose({ refetch, loading: computed(() => query.isLoading.value) })
       <div class="flex items-center gap-2">
         <p class="text-sm font-semibold">Параллельность</p>
         <HelpHint
-          text="Читающие задания (сверка, чаты, синхронизации) идут параллельно до потолка браузерных задач на аккаунт; чтение формы отклика идёт со своим потолком и паузой. Отправки и письма ограничены меньшим потолком и идут с паузой между собой. Капча останавливает отправки аккаунта, пока вы не решите её и не нажмёте «Продолжить». Генерация от аккаунтов не зависит, её ограничивают только потоки харнесса. Все числа меняются в настройках."
+          text="Читающие задания (сверка, чаты, синхронизации) идут параллельно до потолка браузерных задач на аккаунт; чтение формы отклика идёт со своим потолком и паузой. Отправки и письма ограничены меньшим потолком и идут с паузой между собой. Капча ставит отправки аккаунта на паузу, она снимается сама (при капчах подряд пауза растёт). Генерация от аккаунтов не зависит, её ограничивают только потоки харнесса. Все числа меняются в настройках."
         />
         <a href="/settings" class="ml-auto text-xs text-muted-foreground underline underline-offset-2">Изменить в настройках</a>
       </div>
@@ -87,6 +87,7 @@ defineExpose({ refetch, loading: computed(() => query.isLoading.value) })
               </span>
             </p>
             <CaptchaBlockAlert v-if="a.submitBlockedAt" class="mt-2" :account-id="a.id" :account-name="a.name" />
+            <p class="mt-1 text-xs text-muted-foreground"><CaptchaStatus :account="a" /></p>
             <p v-if="a.nextSubmitAt" class="mt-1 text-xs text-muted-foreground">
               следующая отправка не раньше {{ clock(a.nextSubmitAt) }}
             </p>

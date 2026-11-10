@@ -699,7 +699,17 @@ export const concurrency = (
              l.holder, h.name as holder_name,
              case when a.submit_next_at > now() then a.submit_next_at end as next_submit_at,
              a.submit_blocked_at as blocked_at,
-             a.submit_block_reason as block_reason
+             a.submit_block_reason as block_reason,
+             a.submit_retry_at as retry_at,
+             (select max(e.captcha_at) from hh_captcha_episode e where e.hh_account_id = a.id) as last_captcha_at,
+             (select count(*)::int from hh_captcha_episode e
+              where e.hh_account_id = a.id and e.captcha_at > now() - interval '24 hours') as captchas_24h,
+             (select count(*)::int from application p
+              where p.hh_account_id = a.id and p.origin = 'otbor' and p.state = 'submitted'
+                and p.submitted_at > coalesce(
+                  (select max(e.captcha_at) from hh_captcha_episode e where e.hh_account_id = a.id),
+                  '-infinity'::timestamptz
+                )) as submits_since_captcha
       from hh_account a
       left join account_lease l on l.hh_account_id = a.id and l.expires_at > now()
       left join harness h on h.id::text = l.holder and h.user_id = a.user_id
@@ -764,6 +774,10 @@ export const concurrency = (
           nextSubmitAt: row.next_submit_at == null ? null : new Date(String(row.next_submit_at)).toISOString(),
           submitBlockedAt: row.blocked_at == null ? null : new Date(String(row.blocked_at)).toISOString(),
           submitBlockReason: row.block_reason == null ? null : String(row.block_reason),
+          submitRetryAt: row.retry_at == null ? null : new Date(String(row.retry_at)).toISOString(),
+          lastCaptchaAt: row.last_captcha_at == null ? null : new Date(String(row.last_captcha_at)).toISOString(),
+          captchas24h: Number(row.captchas_24h),
+          submitsSinceCaptcha: Number(row.submits_since_captcha),
           running: run,
           browserRunning: sum(run),
           actingRunning: sum(run.filter((c) => ACTING_STAGES.includes(c.stage))),

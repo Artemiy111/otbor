@@ -4,4 +4,5 @@ export { captchaEpisodeText, hhAccountKeys, hhAccountName, hhAccountNameById, hh
 export { ALL_ACCOUNTS, DEFAULT_ACCOUNT, useAccountFilter, useDefaultAccount } from "./scope"
 export { default as AccountChip } from "./ui/AccountChip.vue"
 export { default as CaptchaBlockAlert } from "./ui/CaptchaBlockAlert.vue"
+export { default as CaptchaStatus } from "./ui/CaptchaStatus.vue"
 export { default as CaptchaEpisodesCard } from "./ui/CaptchaEpisodesCard.vue"

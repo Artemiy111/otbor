@@ -143,8 +143,16 @@ export const ConcurrencyAccount = Schema.Struct({
   holderHarnessName: Schema.NullOr(Schema.String),
   /** Раньше этого момента следующая отправка аккаунта не выдастся (темп); null, если можно сейчас. */
   nextSubmitAt: Schema.NullOr(Schema.String),
-  /** Отправки остановлены с этого момента, пока оператор не скажет «Продолжить»; null, если не остановлены. */
+  /** Отправки на паузе после капчи с этого момента; null, если идут. */
   submitBlockedAt: Schema.NullOr(Schema.String),
+  /** Когда пауза снимется сама (пауза растёт при капчах подряд); null, если отправки идут. */
+  submitRetryAt: Schema.NullOr(Schema.String),
+  /** Когда hh в последний раз показал капчу; null, если ещё не показывал. */
+  lastCaptchaAt: Schema.NullOr(Schema.String),
+  /** Сколько капч за последние 24 часа. */
+  captchas24h: Schema.Int,
+  /** Сколько откликов otbor подтверждено после последней капчи (всего, если капчи не было). */
+  submitsSinceCaptcha: Schema.Int,
   /** Почему остановлены: `captcha` - hh попросил капчу. */
   submitBlockReason: Schema.NullOr(Schema.String),
   /** Браузерные задачи в `leased`/`running` по стадиям. */

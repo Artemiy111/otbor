@@ -27,20 +27,18 @@ export const hhResumeCommand = Command.make(
     const hhAccountId = yield* resolveAccount(account)
     const before = (yield* api.HhAccountsList()).find((a) => a.id === hhAccountId)
     if (before?.submitBlockedAt == null) {
-      yield* Console.log("Отправки этого аккаунта не остановлены, возобновлять нечего.")
+      yield* Console.log("Отправки этого аккаунта не на паузе, возобновлять нечего.")
       return
     }
     const result = yield* api.HhAccountSubmitResume({ hhAccountId })
     yield* Console.log(
       `Отправки аккаунта ${result.account.label} возобновлены. Автозаявок, ждавших капчу, вернулось раннеру: ${result.released}.`
     )
-    yield* Console.log(
-      "Если hh снова покажет капчу, отправки остановятся снова: решите её в профиле (otbor hh login --profile <профиль>)."
-    )
+    yield* Console.log("Если hh снова покажет капчу, пауза поставится сама и снимется автоматически.")
   })
 ).pipe(
   Command.withDescription(
-    "Resume the submits of an account after you solved the hh captcha in its browser profile (otbor hh login --profile <name>)"
+    "Retry the paused submits of an account now instead of waiting for the automatic captcha retry"
   )
 )
 

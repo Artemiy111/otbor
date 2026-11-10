@@ -119,7 +119,7 @@ const program = Effect.gen(function*() {
     Effect.repeat(Schedule.spaced(`${scheduleSeconds} seconds`))
   )
 
-  // Блокировка после капчи снимается сама, пока работает решатель и повторы не исчерпаны.
+  // Пауза после капчи снимается сама в `submit_retry_at`; повторы не кончаются, пауза лишь растёт.
   const captchaLoop = resumeCaptchaBlocks().pipe(
     Effect.flatMap((ids) =>
       ids.length > 0

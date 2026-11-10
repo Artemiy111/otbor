@@ -31,7 +31,7 @@ const query = useQuery({
 })
 
 const accounts = computed<ReadonlyArray<HhAccountRecord>>(() => query.data.value ?? [])
-/** Аккаунты, чьи отправки остановлены капчей. */
+/** Аккаунты, чьи отправки на паузе из-за капчи. */
 const blocked = computed(() => accounts.value.filter((account) => account.submitBlockedAt != null))
 
 const queryCache = useQueryCache()

@@ -571,13 +571,13 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                   }
                 }
 
-                // Капча от hh: отправки аккаунта встают без срока, пока оператор не
-                // решит капчу в профиле и не нажмёт «Продолжить». Читающие задачи идут.
+                // Капча от hh: отправки аккаунта встают на паузу и сами возобновятся
+                // (`captchaAutoResume`, пауза растёт). Читающие задачи идут.
                 if (ctx.hhAccountId !== null && exit.tag === "captcha") {
                   const blocked = yield* SubmitPacingRepository.recordCaptcha(tx, ctx.userId, ctx.hhAccountId)
                   if (blocked) {
                     yield* Effect.logWarning(
-                      `hh asked for a captcha (${job.stage}); submits of the account are stopped until the operator resumes them`
+                      `hh asked for a captcha (${job.stage}); submits of the account are paused and will retry automatically`
                     )
                   }
                 }

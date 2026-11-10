@@ -112,6 +112,8 @@ if (!integrationEnabled || serverUrl === null) {
       expect(account.submitBlockReason).toBe("captcha")
       expect(Date.parse(account.submitBlockedAt!)).toBeLessThan(Date.now())
       expect(Date.parse(account.nextSubmitAt!)).toBeGreaterThan(Date.now() + 60_000)
+      expect(account.captchas24h).toBe(0)
+      expect(account.lastCaptchaAt).toBeNull()
     })
 
     test("does not show another user's harnesses or accounts", async () => {
