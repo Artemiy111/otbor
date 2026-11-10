@@ -782,6 +782,17 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
               }
             }
 
+            // Режим строки сменили с `drafts` на `auto`: старые черновики раннера
+            // дальше идут сами, их не нужно одобрять по одному.
+            if (only === undefined) {
+              const promoted = yield* database
+                .asUser(userId, (tx) => ApplicationRepository.promoteDraftsToAuto(tx, userId, hhAccountId))
+                .pipe(Effect.mapError(toStorageError("autoApply.promote")))
+              if (promoted > 0) {
+                yield* Effect.logInfo(`autoapply ${hhAccountId}: ${promoted} drafts promoted to auto`)
+              }
+            }
+
             // Progress: everything the runner created that still waits on it.
             const owned = yield* database
               .asUser(userId, (tx) =>

@@ -528,6 +528,29 @@ interface RunnerRawRow {
  * дождавшиеся `retry_at`) и `drafts` в `draft` без кита. `onlyIds` сужает выбор
  * до перечисленных заявок, условия остаются теми же.
  */
+/**
+ * Черновики раннера (`auto_run = 'drafts'`), чья пара (аккаунт, резюме) теперь
+ * в режиме `auto`, становятся автооткликами: `auto_run = 'auto'`, `preparing`.
+ * Заявки `needs_human` не трогаем: им нужен явный повтор оператора.
+ * Возвращает число переведённых заявок.
+ */
+export const promoteDraftsToAuto = (
+  tx: Executor,
+  userId: string,
+  hhAccountId: string
+): RepoEffect<number> =>
+  tx
+    .execute(sql`
+      update application
+      set auto_run = 'auto', state = 'preparing', last_error = null,
+          blocked_reason = null, retry_at = null, auto_retries = 0, updated_at = now()
+      where user_id = ${userId} and hh_account_id = ${hhAccountId}
+        and auto_run = 'drafts' and state = 'draft'
+        and ${ApplyFilterRepository.governingAutoModeSql("application")} = 'auto'
+      returning id
+    `)
+    .pipe(Effect.map((result) => result.rows.length))
+
 export const listOwnedByRunner = (
   tx: Executor,
   input: {

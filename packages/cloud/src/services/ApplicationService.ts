@@ -559,9 +559,13 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                 // возвращается в draft: иначе следующее чтение формы отправило бы её
                 // без одобрения. Только автоотклик, чей режим всё ещё auto, снова
                 // отдаётся раннеру (`preparing`, слота ещё нет).
+                // Заявка, созданная раннером в режиме `drafts`, при режиме строки
+                // `auto` тоже уходит в авто: оператор включил автоотправку, и
+                // повтор после капчи не должен снова ждать ручного одобрения.
                 const governedByAuto =
                   !unsent &&
-                  application.autoRun === "auto" &&
+                  application.autoRun !== null &&
+                  application.autoRun !== undefined &&
                   (yield* ApplyFilterRepository.governingAutoMode(
                     tx,
                     currentUser.userId,
@@ -577,7 +581,7 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                     from: ["needs_human", "failed", "draft", "preparing"],
                     // Оператор сбрасывает и причину, и счётчик автоповторов.
                     patch: governedByAuto
-                      ? { lastError: null, intentAt: null, autoRetries: 0 }
+                      ? { lastError: null, intentAt: null, autoRetries: 0, autoRun: "auto" }
                       : { lastError: null, autoRetries: 0 }
                   }
                 )

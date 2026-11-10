@@ -374,21 +374,21 @@ if (!enabled || serverUrl === null) {
       expect(b.vacancyId).not.toBe(a.vacancyId)
     }, 120_000)
 
-    test("a drafts application keeps being prepared after the row switches to auto, and stops when it is off", async () => {
+    test("a drafts application becomes an auto application after the row switches to auto, and stops when it is off", async () => {
       const ctx = await setup("aa-drafts-to-auto")
       await configure(ctx, { autoMode: "drafts" })
       await decided(ctx, "aa-drafts-to-auto-1", 90)
       expect((await tick(ctx.tenant.userId)).created).toBe(1)
 
-      // The operator turns the account to auto: the draft is still prepared (letter, kit), never sent.
+      // Оператор включил auto: черновик раннера становится автооткликом и уходит сам, без одобрения.
       await configure(ctx, { autoMode: "auto" })
       expect(await readForms(ctx, responseHtml)).toBe(1)
       expect(await tick(ctx.tenant.userId)).toMatchObject({ writingEnqueued: 1, submitQueued: 0 })
       expect(await writeLetters(ctx, GOOD_DRAFT)).toBe(1)
-      expect(await tick(ctx.tenant.userId)).toMatchObject({ kitsSet: 1, submitQueued: 0 })
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ kitsSet: 1, submitQueued: 1 })
       const [row] = await applicationsOf(ctx.tenant.accountId)
-      expect(row!.state).toBe("draft")
-      expect(row!.auto_run).toBe("drafts")
+      expect(row!.state).toBe("queued")
+      expect(row!.auto_run).toBe("auto")
 
       // Off stops it, and the progress view says why.
       const second = await setup("aa-drafts-to-off")
