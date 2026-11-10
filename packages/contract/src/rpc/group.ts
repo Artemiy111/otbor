@@ -124,6 +124,7 @@ import {
   PersonSplit,
   PersonUpdate
 } from "./people.ts"
+import { OverviewGet } from "./overview.ts"
 import { SettingsGet, SettingsUpdate } from "./settings.ts"
 import { PresetsList, PresetsPreview, PresetsRemove, PresetsUpsert } from "./presets.ts"
 import {
@@ -305,6 +306,7 @@ export const OtborRpcs = RpcGroup.make(
   AutoApplyRetry,
   QueueStatsGet,
   QueueConcurrencyGet,
+  OverviewGet,
   QueueJobsList,
   HarnessRegister,
   HarnessLeaseNext,

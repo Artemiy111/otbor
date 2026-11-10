@@ -311,6 +311,10 @@ export const OtborReadHandlers = OtborReadToolkit.toLayer(Effect.gen(function*()
       return yield* run(rpc.QueueStatsGet({}))
     }),
 
+    overview: Effect.fn("mcp.overview")(function*({ days }) {
+      return yield* run(rpc.OverviewGet({ days }))
+    }),
+
     accounts_list: Effect.fn("mcp.accounts_list")(function*() {
       const accounts = yield* run(rpc.HhAccountsList())
       const applications = yield* run(rpc.ApplicationsList({ limit: APPLICATION_COUNT_WINDOW }))

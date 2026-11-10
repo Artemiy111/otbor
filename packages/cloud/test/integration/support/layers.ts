@@ -29,6 +29,7 @@ import { MailGatewayProvider } from "../../../src/services/MailGatewayProvider.t
 import { MailService } from "../../../src/services/MailService.ts"
 import { MailSync } from "../../../src/services/MailSync.ts"
 import { NegotiationsSync } from "../../../src/services/NegotiationsSync.ts"
+import { OverviewService } from "../../../src/services/OverviewService.ts"
 import { PersonService } from "../../../src/services/PersonService.ts"
 import { PresetService } from "../../../src/services/PresetService.ts"
 import { QueueService } from "../../../src/services/QueueService.ts"
@@ -152,6 +153,7 @@ export const layerFor = (userId: string, options: LayerOptions = {}) => {
       Layer.provide(shared)
     ),
     HhAccountService.layer.pipe(Layer.provide(shared)),
+    OverviewService.layer.pipe(Layer.provide(shared)),
     SettingsService.layerConfigured({
       // Те же значения по умолчанию, что у очереди: темп по умолчанию выключен.
       submitIntervalSeconds: options.submitIntervalSeconds ?? 0,
@@ -179,6 +181,7 @@ type Requirements =
   | QueueService
   | SettingsService
   | HhAccountService
+  | OverviewService
   | NegotiationsSync
   | ResumeSync
   | InferenceService

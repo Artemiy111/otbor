@@ -1,4 +1,4 @@
-import { ContactKind, ConversationChannel, PresetFilter, PresetKind } from "@otbor/contract"
+import { ContactKind, ConversationChannel, Overview as OverviewSnapshot, PresetFilter, PresetKind } from "@otbor/contract"
 import { Schema } from "effect"
 import { Tool, Toolkit } from "effect/ai"
 import { FormView } from "./apply.ts"
@@ -82,6 +82,17 @@ export const QueueStats = readTool("queue_stats", {
     needsReconcile: Schema.Int,
     oldestPendingAgeSeconds: Schema.Int
   })
+})
+
+export const Overview = readTool("overview", {
+  description:
+    "One snapshot of the whole system: applications by state and what needs a human, the funnel " +
+    "(found, decided, sent, viewed, invited, rejected) over `days`, per-account daily usage and pauses, " +
+    "stuck and pending queue jobs, unread conversations and the latest events.",
+  parameters: Schema.Struct({
+    days: Schema.optional(Schema.Int.annotate({ description: "Window in days, 1-60 (default 14)." }))
+  }),
+  success: OverviewSnapshot
 })
 
 export const SchedulesList = readTool("schedules_list", {
@@ -762,7 +773,8 @@ export const OtborReadToolkit = Toolkit.make(
   PeopleList,
   PersonGet,
   SchedulesList,
-  QueueStats
+  QueueStats,
+  Overview
 )
 
 const READ_INSTRUCTIONS = `otbor is an hh.ru auto-apply control plane.

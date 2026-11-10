@@ -36,6 +36,7 @@ import { NegotiationsSync } from "../services/NegotiationsSync.ts"
 import { ChatSync } from "../services/ChatSync.ts"
 import { ResumeSync } from "../services/ResumeSync.ts"
 import { PresetService } from "../services/PresetService.ts"
+import { OverviewService } from "../services/OverviewService.ts"
 import { QueueService } from "../services/QueueService.ts"
 import { SettingsService } from "../services/SettingsService.ts"
 import { ResumeService } from "../services/ResumeService.ts"
@@ -113,6 +114,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
     const applyFilters = yield* ApplyFilterService
     const autoApplyView = yield* AutoApplyViewService
     const queue = yield* QueueService
+    const overview = yield* OverviewService
     const schedules = yield* ScheduleService
     const contacts = yield* ContactService
     const people = yield* PersonService
@@ -349,6 +351,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
 
       QueueStatsGet: ({ kind }) => queue.stats(kind),
       QueueConcurrencyGet: () => queue.concurrency(),
+      OverviewGet: ({ days }) => overview.get({ days }),
       QueueJobsList: (payload) => queue.jobs(payload),
 
       HarnessRegister: (payload) => queue.register(payload),
@@ -444,5 +447,6 @@ export const OtborServices = Layer.mergeAll(
   BrowserApply.layer,
   ChatSync.layer,
   QueueService.layer,
+  OverviewService.layer,
   SettingsService.layer
 )
