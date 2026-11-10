@@ -19,6 +19,8 @@ export interface VacancyListInput {
   readonly applied?: "yes" | "no"
   /** ISO-время: только вакансии, впервые увиденные не раньше него. */
   readonly seenSince?: string
+  /** ISO-время только для счётчика «Новые»; выдачу не сужает. */
+  readonly freshSince?: string
 }
 
 /** Счётчики быстрых фильтров; у сервера без этого поля их просто нет. */
@@ -54,7 +56,8 @@ export const vacancyApi = {
         resumeId: input.resumeId as any,
         verdict: input.verdict,
         applied: input.applied,
-        seenSince: input.seenSince
+        seenSince: input.seenSince,
+        freshSince: input.freshSince
       })
     ),
   get: (id: string): Promise<VacancyDetail> =>

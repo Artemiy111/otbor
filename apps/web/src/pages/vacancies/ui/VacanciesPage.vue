@@ -181,8 +181,8 @@ const listQuery = useQuery({
       includeBlacklisted: filters.value.blacklisted,
       hhAccountId: hhAccountId.value,
       filter: ruleFilter.value,
-      // Для счётчика «Новые» граница нужна при любом быстром фильтре.
-      seenSince: since,
+      // Для счётчика «Новые» граница нужна при любом быстром фильтре; выдачу она не сужает.
+      freshSince: since,
       ...quickViewQuery(filters.value.view, since)
     })
 })

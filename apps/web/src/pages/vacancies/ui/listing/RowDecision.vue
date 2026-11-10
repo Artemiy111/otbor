@@ -19,6 +19,8 @@ const application = computed(() => props.vacancy.application ?? null)
 const known = computed(() => props.vacancy.decision !== undefined)
 
 const fit = computed(() => (decision.value ? fitPercent(decision.value.fit) : 0))
+/** Отсечённая до оценки вакансия хранит соответствие 0: число не считалось, не показываем его. */
+const scored = computed(() => decision.value != null && !(decision.value.verdict === "skip" && fit.value === 0))
 const fitTone = computed(() => toneClasses(FIT_TONE[fitBand(fit.value)]))
 
 const verdict = computed<{ text: string; tone: StatusTone; title?: string }>(() => {
@@ -27,10 +29,11 @@ const verdict = computed<{ text: string; tone: StatusTone; title?: string }>(() 
   if (value.verdict === "apply") return { text: "Подходит", tone: "success" }
   if (value.verdict === "draft") return { text: "Нужна ваша проверка", tone: "info" }
   const reason = value.topReason
-  if (reason === null) return { text: "Пропущена", tone: "danger" }
+  if (reason === null) return { text: "Пропущена", tone: "neutral" }
   return {
     text: `Пропущена: ${lowerFirst(decisionReasonLabel(reason.code))}`,
-    tone: "danger",
+    // Пропуск — обычный исход, а не ошибка: нейтральный тон.
+    tone: "neutral",
     title: reason.detail === undefined ? undefined : `${decisionReasonLabel(reason.code)}: ${reason.detail}`
   }
 })
@@ -41,7 +44,7 @@ const response = computed(() => (application.value === null ? null : employerRes
 
 <template>
   <div v-if="known" class="flex min-w-0 flex-col gap-2">
-    <div v-if="decision" class="space-y-1.5" :title="`Соответствие резюме: ${fit} из 100`">
+    <div v-if="decision && scored" class="space-y-1.5" :title="`Соответствие резюме: ${fit} из 100`">
       <div class="flex items-baseline justify-between gap-2">
         <span class="flex items-baseline gap-1.5">
           <span :class="cn('text-2xl font-semibold leading-none tabular-nums', fitTone.text)">{{ fit }}</span>
