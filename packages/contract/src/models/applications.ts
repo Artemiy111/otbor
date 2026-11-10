@@ -50,6 +50,17 @@ export const ApplicationRecord = Schema.Struct({
 
 export type ApplicationRecord = typeof ApplicationRecord.Type
 
+/** Страница откликов по фильтру: строки, сколько всего подошло и сколько откликов в каждом состоянии. */
+export const ApplicationsSearchResult = Schema.Struct({
+  items: Schema.Array(ApplicationRecord),
+  /** Всего откликов, подходящих под фильтр (не только на этой странице). */
+  total: Schema.Int,
+  /** Отклики аккаунта (или всех аккаунтов) по состояниям, без учёта остальных фильтров: счётчики вкладок. */
+  byState: Schema.Record(Schema.String, Schema.Int)
+})
+
+export type ApplicationsSearchResult = typeof ApplicationsSearchResult.Type
+
 /** What the last negotiations sync of an account did. Counts only; no page bodies. */
 export const NegotiationsSyncCounts = Schema.Struct({
   pages: Schema.Int,

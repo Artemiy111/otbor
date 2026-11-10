@@ -128,6 +128,15 @@ export interface SetKitInput {
 }
 
 export interface ApplicationServiceShape {
+  /** Страница откликов с итогом и счётчиками по состояниям (веб); `list` остаётся для CLI и MCP. */
+  readonly search: (options: ApplicationRepository.SearchOptions) => Effect.Effect<
+    {
+      readonly items: ReadonlyArray<ApplicationRecord>
+      readonly total: number
+      readonly byState: Readonly<Record<string, number>>
+    },
+    ApiError
+  >
   readonly list: (options: {
     readonly state?: string
     readonly hhAccountId?: string
@@ -265,6 +274,11 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
         database
           .asUser(currentUser.userId, (tx) => ApplicationRepository.list(tx, currentUser.userId, options))
           .pipe(Effect.mapError(toStorageError("application.list")))
+
+      const search: ApplicationServiceShape["search"] = (options) =>
+        database
+          .asUser(currentUser.userId, (tx) => ApplicationRepository.search(tx, currentUser.userId, options))
+          .pipe(Effect.mapError(toStorageError("application.search")))
 
       const get: ApplicationServiceShape["get"] = (id) =>
         Effect.gen(function*() {
@@ -736,6 +750,7 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
         get,
         createFromDecision,
         createManual,
+        search,
         approve,
         skip,
         retry,

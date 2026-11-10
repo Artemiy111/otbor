@@ -316,6 +316,7 @@ export const OtborHandlers = OtborRpcs.toLayer(
       FitJudgementSave: (payload) => fitJudge.save(payload),
 
       ApplicationsList: (payload) => applications.list(payload),
+      ApplicationsSearch: (payload) => applications.search(payload),
       ApplicationsGet: ({ id }) => applications.get(id),
       ApplicationsCreateFromDecision: (payload) => applications.createFromDecision(payload),
       ApplicationsCreateManual: (payload) => applications.createManual(payload),

@@ -189,6 +189,85 @@ export const list = (
       )
     )
 
+export interface SearchOptions {
+  readonly states?: ReadonlyArray<string>
+  readonly hhAccountId?: string
+  readonly blockedReason?: string
+  readonly mode?: "manual" | "drafts" | "auto" | "any_auto"
+  readonly search?: string
+  readonly limit?: number
+  readonly offset?: number
+}
+
+/** Подстрока для `ilike`: служебные символы шаблона экранируются. */
+const likePattern = (text: string): string => `%${text.replace(/[\\%_]/g, (char) => `\\${char}`)}%`
+
+/**
+ * Страница откликов с настоящим итогом и счётчиками по состояниям. Счётчики
+ * считаются только по аккаунту: это вкладки страницы, и фильтр причины или
+ * поиск не должны менять их.
+ */
+export const search = (
+  tx: Executor,
+  userId: string,
+  options: SearchOptions = {}
+): RepoEffect<{
+  readonly items: ReadonlyArray<ApplicationRecord>
+  readonly total: number
+  readonly byState: Readonly<Record<string, number>>
+}> =>
+  Effect.gen(function*() {
+    const states = options.states ?? []
+    const text = options.search?.trim() ?? ""
+    const where = sql`
+      a.user_id = ${userId}
+        ${options.hhAccountId === undefined ? sql`` : sql`and a.hh_account_id = ${options.hhAccountId}`}
+        ${states.length === 0
+          ? sql``
+          : sql`and a.state in (${sql.join(states.map((state) => sql`${state}`), sql`, `)})`}
+        ${options.blockedReason === undefined || options.blockedReason === ""
+          ? sql``
+          : sql`and a.blocked_reason = ${options.blockedReason}`}
+        ${options.mode === undefined
+          ? sql``
+          : options.mode === "manual"
+          ? sql`and a.auto_run is null`
+          : options.mode === "any_auto"
+          ? sql`and a.auto_run is not null`
+          : sql`and a.auto_run = ${options.mode}`}
+        ${text === ""
+          ? sql``
+          : sql`and (v.title ilike ${likePattern(text)} escape '\\' or e.name ilike ${likePattern(text)} escape '\\')`}
+    `
+    const limit = Math.min(Math.max(options.limit ?? 50, 1), 200)
+    const offset = Math.max(options.offset ?? 0, 0)
+    const rows = (yield* tx.execute(sql`
+      ${selection}
+      where ${where}
+      order by a.updated_at desc, a.id desc
+      limit ${limit} offset ${offset}
+    `)).rows as unknown as ReadonlyArray<ApplicationRow>
+    const [totalRow] = (yield* tx.execute(sql`
+      select count(*)::int as total
+      from application a
+      join vacancy v on v.id = a.vacancy_id
+      left join employer e on e.id = v.employer_id
+      where ${where}
+    `)).rows as unknown as ReadonlyArray<{ readonly total: number }>
+    const counted = (yield* tx.execute(sql`
+      select a.state, count(*)::int as n
+      from application a
+      where a.user_id = ${userId}
+        ${options.hhAccountId === undefined ? sql`` : sql`and a.hh_account_id = ${options.hhAccountId}`}
+      group by a.state
+    `)).rows as unknown as ReadonlyArray<{ readonly state: string; readonly n: number }>
+    return {
+      items: rows.map(toRecord),
+      total: totalRow?.total ?? 0,
+      byState: Object.fromEntries(counted.map((row) => [row.state, row.n]))
+    }
+  })
+
 /**
  * Transition with an explicit guard, so a stale actor cannot resurrect a submit.
  *

@@ -6,6 +6,7 @@ import { FormAnswer } from "../form.ts"
 import {
   ApplicationDetail,
   ApplicationRecord,
+  ApplicationsSearchResult,
   AutoApplyRetryResult,
   BrowserDrafts,
   BrowserSubmitResult,
@@ -26,6 +27,29 @@ export const ApplicationsList = Rpc.make("ApplicationsList", {
     limit: Schema.optional(Schema.Int)
   }),
   success: Schema.Array(ApplicationRecord),
+  error: ApiError
+})
+
+/**
+ * Страница откликов с настоящим итогом: фильтры по состояниям, причине
+ * остановки, режиму и поиск, `offset` / `limit` (до 200) и счётчики по
+ * состояниям. `ApplicationsList` остаётся для CLI и MCP.
+ */
+export const ApplicationsSearch = Rpc.make("ApplicationsSearch", {
+  payload: Schema.Struct({
+    /** Любое из этих состояний; пусто или не задано - все. */
+    states: Schema.optional(Schema.Array(Schema.String)),
+    hhAccountId: Schema.optional(HhAccountId),
+    /** Код причины остановки (`blockedReason`). */
+    blockedReason: Schema.optional(Schema.String),
+    /** `manual` - без автоотклика, `drafts` / `auto` - режим раннера, `any_auto` - любой автоотклик. */
+    mode: Schema.optional(Schema.Literals(["manual", "drafts", "auto", "any_auto"])),
+    /** Подстрока названия вакансии или компании. */
+    search: Schema.optional(Schema.String),
+    limit: Schema.optional(Schema.Int),
+    offset: Schema.optional(Schema.Int)
+  }),
+  success: ApplicationsSearchResult,
   error: ApiError
 })
 
