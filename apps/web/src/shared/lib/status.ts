@@ -156,6 +156,7 @@ const LABELS: Record<string, string> = {
   role_unknown: "Роль неясна",
   role_rejected: "Роль отклонена",
   blocked_hidden: "Скрыто",
+  blocked_rejected: "Отбракована",
   blocked_applied: "Уже откликались",
   blocked_archived: "Архив",
   blocked_employer_cooldown: "Пауза работодателя",

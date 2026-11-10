@@ -6,7 +6,8 @@ import {
   HhAccountId,
   KeywordAliasId,
   KeywordId,
-  VacancyId
+  VacancyId,
+  ResumeId
 } from "../ids.ts"
 
 export const EmployerDraft = Schema.Struct({
@@ -204,6 +205,8 @@ export const BlacklistRecord = Schema.Struct({
   id: BlacklistId,
   scope: BlacklistScope,
   hhAccountId: Schema.optional(Schema.NullOr(HhAccountId)),
+  /** Только у слоя `resume`. */
+  resumeId: Schema.optional(Schema.NullOr(ResumeId)),
   targetType: BlacklistTarget,
   externalId: Schema.String,
   name: Schema.optional(Schema.NullOr(Schema.String)),

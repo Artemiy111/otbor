@@ -3,6 +3,7 @@ import { sql, type SQL } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
 import { decision } from "../db/tables.ts"
+import * as BlacklistRepository from "./BlacklistRepository.ts"
 import { DEFAULT_APPLY_SETTINGS } from "@otbor/domain"
 
 /**
@@ -407,6 +408,13 @@ const currentApplyFrom = (userId: string, options: AutoApplyCandidateOptions): S
         and a.prompt_version = ${options.analysisPromptVersion}
         and a.updated_at > d.created_at
     )
+    -- Отбраковка действует сразу, не дожидаясь пересчёта решения.
+    and not ${BlacklistRepository.rejectedForDecisionSql({
+      userId,
+      vacancyExternalId: sql`vacancy.external_id`,
+      hhAccountId: sql`d.hh_account_id`,
+      resumeId: sql`d.resume_id`
+    })}
     and not exists (
       select 1 from decision newer
       where newer.user_id = d.user_id

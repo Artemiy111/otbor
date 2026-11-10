@@ -3,7 +3,9 @@ import type {
   BlacklistRecord,
   BlacklistScope,
   BlacklistTarget,
-  HhAccountId
+  HhAccountId,
+  ResumeId,
+  VacancyId
 } from "@otbor/contract"
 import { call } from "@/shared/api"
 
@@ -53,7 +55,37 @@ export interface BlacklistImportHhResult {
   readonly skipped: number
 }
 
+export type RejectScope = "app" | "hh_account" | "resume"
+
+export interface RejectVacancyInput {
+  readonly vacancyId: string
+  readonly scope: RejectScope
+  readonly hhAccountId?: string
+  readonly resumeId?: string
+  readonly reason?: string
+}
+
+export interface RejectVacancyResult {
+  readonly rejection: BlacklistRecord
+  readonly skippedApplications: number
+}
+
 export const blacklistApi = {
+  /** Отбраковка вакансии: для резюме, аккаунта hh или для всех. */
+  rejectVacancy: (input: RejectVacancyInput): Promise<RejectVacancyResult> =>
+    call((client) =>
+      client.VacancyReject({
+        vacancyId: input.vacancyId as VacancyId,
+        scope: input.scope,
+        hhAccountId: input.hhAccountId as HhAccountId | undefined,
+        resumeId: input.resumeId as ResumeId | undefined,
+        reason: input.reason
+      })
+    ),
+  rejections: (vacancyId: string): Promise<ReadonlyArray<BlacklistRecord>> =>
+    call((client) => client.VacancyRejections({ vacancyId: vacancyId as VacancyId })),
+  unreject: (id: string): Promise<BlacklistRemoveResult> =>
+    call((client) => client.VacancyUnreject({ id: id as BlacklistId })),
   list: (input: BlacklistListInput): Promise<BlacklistListResult> =>
     call((client) =>
       client.BlacklistList({

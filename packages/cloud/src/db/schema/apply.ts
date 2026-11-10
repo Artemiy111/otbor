@@ -212,6 +212,8 @@ export const hiddenTarget = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     /** Null for `app` rows; always set for `hh_account`/`hh_native` rows. */
     hhAccountId: uuid("hh_account_id").references(() => hhAccount.id, { onDelete: "cascade" }),
+    /** Только для слоя `resume`: отбраковка действует на одно резюме. */
+    resumeId: uuid("resume_id").references(() => resume.id, { onDelete: "cascade" }),
     scope: text("scope").notNull().default("hh_account"),
     type: text("type").notNull(),
     externalId: text("external_id").notNull(),
@@ -230,7 +232,10 @@ export const hiddenTarget = pgTable(
       .where(sql`scope = 'app'`),
     uniqueIndex("hidden_target_account_scope_unique_idx")
       .on(table.hhAccountId, table.type, table.externalId)
-      .where(sql`scope in ('hh_account', 'hh_native')`)
+      .where(sql`scope in ('hh_account', 'hh_native')`),
+    uniqueIndex("hidden_target_resume_unique_idx")
+      .on(table.resumeId, table.type, table.externalId)
+      .where(sql`scope = 'resume'`)
   ]
 )
 

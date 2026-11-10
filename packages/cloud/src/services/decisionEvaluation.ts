@@ -20,6 +20,7 @@ import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import { Database, type Executor, type RepoEffect } from "../db/Database.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
+import * as BlacklistRepository from "../repositories/BlacklistRepository.ts"
 import * as ApplyFilterRepository from "../repositories/ApplyFilterRepository.ts"
 import * as DecisionRepository from "../repositories/DecisionRepository.ts"
 import * as LexiconRepository from "../repositories/LexiconRepository.ts"
@@ -146,6 +147,17 @@ export const evaluateInTx = (
       ? false
       : yield* ApplicationRepository.existsForVacancy(tx, hhAccountId, row.id, resumeId)
 
+    // Отбраковка оператором: для этого резюме, аккаунта или для всех. Ручная
+    // оценка (`includeBlacklisted`) её снимает, как и чёрный список.
+    const rejected = input.includeBlacklisted === true
+      ? null
+      : yield* BlacklistRepository.rejectedScopeFor(tx, {
+        userId,
+        vacancyExternalId: row.externalId,
+        hhAccountId,
+        resumeId
+      })
+
     // The hard blocks: the (account, resume) apply filter, evaluated by the
     // same SQL as search. The blacklist is part of it; an explicit
     // `includeBlacklisted` still lifts it.
@@ -168,6 +180,7 @@ export const evaluateInTx = (
     }
     const blocks = {
       applied,
+      rejected,
       hasTest: unpaidTest,
       testRequired: unpaidTest
     }
@@ -182,6 +195,7 @@ export const evaluateInTx = (
       boostWeight,
       includeBlacklisted: input.includeBlacklisted === true,
       applied,
+      rejected,
       fit,
       fitJudgement: llm?.id,
       policy: APPLY_POLICY_VERSION,

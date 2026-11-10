@@ -173,6 +173,8 @@ export const DecisionReasonCode = Schema.Literals([
   "role_rejected",
   "blocked_hidden",
   "blocked_blacklist",
+  /** Оператор отбраковал вакансию (для резюме, аккаунта или для всех). */
+  "blocked_rejected",
   "blocked_applied",
   "blocked_archived",
   "blocked_employer_cooldown",
@@ -328,7 +330,7 @@ export type MessageKind = typeof MessageKind.Type
  * `hh_account` only to one, `hh_native` mirrors the account's own hidden list.
  * None of them deletes or permanently forbids a corpus row.
  */
-export const BlacklistScope = Schema.Literals(["app", "hh_account", "hh_native"])
+export const BlacklistScope = Schema.Literals(["app", "hh_account", "hh_native", "resume"])
 
 export type BlacklistScope = typeof BlacklistScope.Type
 

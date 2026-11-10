@@ -49,7 +49,8 @@ const appliedAccount = ref("")
 const scopeLabels: Record<BlacklistScope, string> = {
   app: "Приложение",
   hh_account: "Аккаунт hh",
-  hh_native: "Скрыто в hh"
+  hh_native: "Скрыто в hh",
+  resume: "Резюме"
 }
 
 const targetTypeLabel = (t: BlacklistTarget): string =>

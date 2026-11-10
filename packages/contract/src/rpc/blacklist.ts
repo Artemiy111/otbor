@@ -2,7 +2,7 @@ import { Schema } from "effect"
 import { Rpc } from "effect/rpc"
 import { BlacklistScope, BlacklistTarget } from "../enums.ts"
 import { ApiError } from "../errors.ts"
-import { BlacklistId, HhAccountId } from "../ids.ts"
+import { BlacklistId, HhAccountId, ResumeId, VacancyId } from "../ids.ts"
 import { BlacklistRecord } from "../models/index.ts"
 
 /**
@@ -63,5 +63,41 @@ export const BlacklistImportHh = Rpc.make("BlacklistImportHh", {
     updated: Schema.Int,
     skipped: Schema.Int
   }),
+  error: ApiError
+})
+
+/**
+ * Отбраковка вакансии: на неё не шлются автоотклики. `resume` - для одного
+ * резюме (`resumeId`), `hh_account` - для всех резюме одного hh-аккаунта
+ * (`hhAccountId`), `app` - для всех резюме всех аккаунтов пользователя.
+ * Более широкая отбраковка заменяет узкие строки под ней.
+ */
+export const VacancyReject = Rpc.make("VacancyReject", {
+  payload: Schema.Struct({
+    vacancyId: VacancyId,
+    scope: Schema.Literals(["app", "hh_account", "resume"]),
+    hhAccountId: Schema.optional(HhAccountId),
+    resumeId: Schema.optional(ResumeId),
+    reason: Schema.optional(Schema.String)
+  }),
+  success: Schema.Struct({
+    rejection: BlacklistRecord,
+    /** Сколько неотправленных откликов переведено в `skipped`. */
+    skippedApplications: Schema.Int
+  }),
+  error: ApiError
+})
+
+/** Отбраковки одной вакансии: что и где её сейчас блокирует. */
+export const VacancyRejections = Rpc.make("VacancyRejections", {
+  payload: Schema.Struct({ vacancyId: VacancyId }),
+  success: Schema.Array(BlacklistRecord),
+  error: ApiError
+})
+
+/** Снимает отбраковку и заново решает вакансию для затронутых резюме. */
+export const VacancyUnreject = Rpc.make("VacancyUnreject", {
+  payload: Schema.Struct({ id: BlacklistId }),
+  success: Schema.Struct({ id: BlacklistId, deleted: Schema.Boolean }),
   error: ApiError
 })

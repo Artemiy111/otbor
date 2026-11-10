@@ -5,7 +5,10 @@ export type {
   BlacklistListInput,
   BlacklistListResult,
   BlacklistRemoveResult,
-  BlacklistUpsertInput
+  BlacklistUpsertInput,
+  RejectScope,
+  RejectVacancyInput,
+  RejectVacancyResult
 } from "./api"
 export { blacklistKeys } from "./model"
 export type { BlacklistListKey } from "./model"

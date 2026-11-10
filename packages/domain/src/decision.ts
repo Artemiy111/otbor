@@ -32,6 +32,12 @@ export interface VacancySignal {
  */
 export interface HardBlockInput {
   readonly applied: boolean
+  /**
+   * Оператор отбраковал вакансию для этой пары (аккаунт, резюме): слой
+   * отбраковки (`resume`, `hh_account`, `app`). Не свойство вакансии, поэтому
+   * не правило фильтра: его нельзя случайно убрать правкой фильтра.
+   */
+  readonly rejected?: string | null
   readonly hasTest: boolean
   readonly testRequired: boolean
 }
@@ -180,7 +186,12 @@ export const decide = (input: DecideInput): DecisionResult => {
     policyVersion: APPLY_POLICY_VERSION
   })
 
-  // Applied first: it is a fact about this account and resume, true whatever
+  // Отбраковка первой: заявка, которую она сама перевела в `skipped`, тоже
+  // считается «уже откликались», а оператору важнее знать, что он отбраковал.
+  if (blocks.rejected !== undefined && blocks.rejected !== null) {
+    return skip(reason("blocked_rejected", blocks.rejected))
+  }
+  // Applied next: it is a fact about this account and resume, true whatever
   // the filter says now, and it keeps an applied vacancy labelled as such.
   if (blocks.applied) return skip(reason("blocked_applied", "already applied"))
   if (!input.filter.passed) {

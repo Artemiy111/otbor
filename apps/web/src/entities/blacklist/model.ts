@@ -8,5 +8,6 @@ export interface BlacklistListKey {
 
 export const blacklistKeys = {
   all: ["blacklist"] as const,
+  rejections: (vacancyId: string) => ["blacklist", "rejections", vacancyId] as const,
   list: (params: BlacklistListKey) => ["blacklist", "list", params] as const
 }

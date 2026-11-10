@@ -30,7 +30,8 @@ export interface BlacklistTargetInput {
 const scopeRank: Record<string, number> = {
   app: 0,
   hh_account: 1,
-  hh_native: 2
+  resume: 2,
+  hh_native: 3
 }
 
 /** Distinct scopes, app first, for `VacancySummary.blacklistLayers`. */
@@ -163,6 +164,7 @@ interface BlacklistRow {
   readonly id: string
   readonly scope: string
   readonly hh_account_id: string | null
+  readonly resume_id?: string | null
   readonly type: string
   readonly external_id: string
   readonly name: string | null
@@ -177,6 +179,7 @@ export const toRecord = (row: BlacklistRow): BlacklistRecord => ({
   id: row.id as BlacklistRecord["id"],
   scope: row.scope as BlacklistScope,
   hhAccountId: row.hh_account_id as BlacklistRecord["hhAccountId"],
+  resumeId: (row.resume_id ?? null) as BlacklistRecord["resumeId"],
   targetType: row.type as BlacklistTarget,
   externalId: row.external_id,
   name: row.name,
@@ -221,7 +224,7 @@ export const list = (tx: Executor, filter: BlacklistFilter = {}) => {
       select * from hidden_target
       where ${where}
       order by
-        case scope when 'app' then 0 when 'hh_account' then 1 else 2 end,
+        case scope when 'app' then 0 when 'hh_account' then 1 when 'resume' then 2 else 3 end,
         coalesce(name, external_id)
       limit ${limit} offset ${offset}
     `)
@@ -253,6 +256,7 @@ export const validateInput = (input: {
   readonly externalId: string
 }): string | null => {
   if (input.externalId.trim() === "") return "externalId must not be empty"
+  if (input.scope === "resume") return "resume scope is written by VacancyReject only"
   if (input.scope === "app" && input.hhAccountId !== null && input.hhAccountId !== undefined) {
     return "app scope must not have an hhAccountId"
   }
@@ -431,7 +435,8 @@ export const hiddenSelectorSql = (selector: string): SQL | null => {
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   switch (kind) {
     case "any":
-      return sql`true`
+      // Отбраковка одного резюме - не «спрятано»: её читает только решение.
+      return sql`ht.scope <> 'resume'`
     case "app":
       return sql`ht.scope = 'app'`
     case "accounts":
@@ -470,3 +475,143 @@ export const hiddenBySelectorsSql = (input: {
       and (${sql.join(layers, sql` or `)})
   )`
 }
+
+
+/* -------------------------------------------------------------------------- */
+/* Отбраковка вакансий                                                        */
+/* -------------------------------------------------------------------------- */
+
+export type RejectScope = "app" | "hh_account" | "resume"
+
+/** Слои отбраковки, которые читает решение, от широкого к узкому. */
+const rejectScopeSql = sql`ht.scope in ('app', 'hh_account', 'resume')`
+
+/**
+ * Предикат «вакансия отбракована для пары (аккаунт, резюме) решения `d`».
+ * Нужен там, где решение читается напрямую (выбор кандидатов автоотклика),
+ * чтобы отбраковка действовала сразу, а не после пересчёта решения.
+ */
+export const rejectedForDecisionSql = (input: {
+  readonly userId: string
+  readonly vacancyExternalId: SQL
+  readonly hhAccountId: SQL
+  readonly resumeId: SQL
+}): SQL =>
+  sql`exists (
+    select 1 from hidden_target ht
+    where ht.user_id = ${input.userId}
+      and ht.type = 'vacancy'
+      and ht.external_id = ${input.vacancyExternalId}
+      and (
+        ht.scope = 'app'
+        or (ht.scope = 'hh_account' and ht.hh_account_id = ${input.hhAccountId})
+        or (ht.scope = 'resume' and ht.resume_id = ${input.resumeId})
+      )
+  )`
+
+/** Самый широкий слой, которым вакансия отбракована для этой пары, или `null`. */
+export const rejectedScopeFor = (
+  tx: Executor,
+  input: {
+    readonly userId: string
+    readonly vacancyExternalId: string
+    readonly hhAccountId: string | null
+    readonly resumeId: string | null
+  }
+): RepoEffect<RejectScope | null> =>
+  tx
+    .execute(sql`
+      select ht.scope from hidden_target ht
+      where ht.user_id = ${input.userId}
+        and ht.type = 'vacancy'
+        and ht.external_id = ${input.vacancyExternalId}
+        and (
+          ht.scope = 'app'
+          or (ht.scope = 'hh_account' and ht.hh_account_id = ${input.hhAccountId}::uuid)
+          or (ht.scope = 'resume' and ht.resume_id = ${input.resumeId}::uuid)
+        )
+      order by case ht.scope when 'app' then 0 when 'hh_account' then 1 else 2 end
+      limit 1
+    `)
+    .pipe(
+      Effect.map((result) => (result.rows[0] as { scope?: RejectScope } | undefined)?.scope ?? null)
+    )
+
+/** Все отбраковки одной вакансии пользователя. */
+export const rejectionsFor = (
+  tx: Executor,
+  userId: string,
+  vacancyExternalId: string
+): RepoEffect<ReadonlyArray<BlacklistRecord>> =>
+  tx
+    .execute(sql`
+      select * from hidden_target ht
+      where ht.user_id = ${userId}
+        and ht.type = 'vacancy'
+        and ht.external_id = ${vacancyExternalId}
+        and ${rejectScopeSql}
+      order by case ht.scope when 'app' then 0 when 'hh_account' then 1 else 2 end, ht.created_at
+    `)
+    .pipe(
+      Effect.map((result) => (result.rows as unknown as ReadonlyArray<BlacklistRow>).map(toRecord))
+    )
+
+export interface RejectInput {
+  readonly userId: string
+  readonly vacancyExternalId: string
+  readonly name: string | null
+  readonly scope: RejectScope
+  readonly hhAccountId: string | null
+  readonly resumeId: string | null
+  readonly reason: string | null
+}
+
+/**
+ * Записывает отбраковку и убирает узкие строки, которые она накрывает: «для
+ * всех» стирает строки аккаунтов и резюме, «для аккаунта» - строки его резюме.
+ */
+export const reject = (tx: Executor, input: RejectInput): RepoEffect<BlacklistRecord> =>
+  Effect.gen(function*() {
+    const conflict = input.scope === "app"
+      ? sql`(user_id, type, external_id) where scope = 'app'`
+      : input.scope === "hh_account"
+      ? sql`(hh_account_id, type, external_id) where scope in ('hh_account', 'hh_native')`
+      : sql`(resume_id, type, external_id) where scope = 'resume'`
+
+    const rows = yield* tx.execute(sql`
+      insert into hidden_target
+        (user_id, hh_account_id, resume_id, scope, type, external_id, name, source, reason)
+      values (
+        ${input.userId},
+        ${input.scope === "hh_account" ? input.hhAccountId : null}::uuid,
+        ${input.scope === "resume" ? input.resumeId : null}::uuid,
+        ${input.scope}, 'vacancy', ${input.vacancyExternalId}, ${input.name}, 'user', ${input.reason}
+      )
+      on conflict ${conflict}
+      do update set
+        name = coalesce(excluded.name, hidden_target.name),
+        reason = coalesce(excluded.reason, hidden_target.reason),
+        updated_at = now()
+      returning *
+    `)
+    const record = toRecord(rows.rows[0] as unknown as BlacklistRow)
+
+    if (input.scope === "app") {
+      yield* tx.execute(sql`
+        delete from hidden_target
+        where user_id = ${input.userId} and type = 'vacancy'
+          and external_id = ${input.vacancyExternalId}
+          and scope in ('hh_account', 'resume') and source = 'user'
+      `)
+    } else if (input.scope === "hh_account") {
+      yield* tx.execute(sql`
+        delete from hidden_target
+        where user_id = ${input.userId} and type = 'vacancy'
+          and external_id = ${input.vacancyExternalId}
+          and scope = 'resume'
+          and resume_id in (select id from resume where hh_account_id = ${input.hhAccountId}::uuid)
+      `)
+    }
+
+    return record
+  })

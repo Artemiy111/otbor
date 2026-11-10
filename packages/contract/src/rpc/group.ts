@@ -34,7 +34,15 @@ import {
   AutoApplyProgress,
   AutoApplyRetry
 } from "./apply-filter.ts"
-import { BlacklistImportHh, BlacklistList, BlacklistRemove, BlacklistUpsert } from "./blacklist.ts"
+import {
+  BlacklistImportHh,
+  BlacklistList,
+  BlacklistRemove,
+  BlacklistUpsert,
+  VacancyReject,
+  VacancyRejections,
+  VacancyUnreject
+} from "./blacklist.ts"
 import {
   ContactRemove,
   ContactsExtract,
@@ -178,6 +186,9 @@ export const OtborRpcs = RpcGroup.make(
   BlacklistUpsert,
   BlacklistRemove,
   BlacklistImportHh,
+  VacancyReject,
+  VacancyRejections,
+  VacancyUnreject,
   VacanciesUpsert,
   VacanciesHydrationTargets,
   VacanciesHydrateOne,

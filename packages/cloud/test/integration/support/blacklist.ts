@@ -97,3 +97,30 @@ export const hiddenTargetRowsFor = async (userId: string) =>
       tx.select().from(hiddenTarget).where(eq(hiddenTarget.userId, userId))
     )
   )
+
+export const rejectVacancy = (
+  userId: string,
+  input: {
+    readonly vacancyId: string
+    readonly scope: "app" | "hh_account" | "resume"
+    readonly hhAccountId?: string
+    readonly resumeId?: string
+    readonly reason?: string
+  }
+) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const blacklist = yield* BlacklistService
+      return yield* blacklist.rejectVacancy(input)
+    })
+  )
+
+export const unrejectVacancy = (userId: string, id: string) =>
+  runAs(
+    userId,
+    Effect.gen(function*() {
+      const blacklist = yield* BlacklistService
+      return yield* blacklist.unrejectVacancy(id)
+    })
+  )

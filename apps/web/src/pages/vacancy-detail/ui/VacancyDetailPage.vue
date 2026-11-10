@@ -3,6 +3,7 @@ import { computed } from "vue"
 import { useStorage } from "@vueuse/core"
 import { CircleAlert, ExternalLink, RefreshCw } from "@lucide/vue"
 import { Alert, AlertDescription, AlertTitle, Button, Hint, Skeleton } from "@/shared/ui"
+import { RejectVacancyButton } from "@/features/vacancy-reject"
 import { PageHeader } from "@/widgets/page-header"
 import { useVacancyPage } from "../model"
 import { LAYOUTS, type LayoutId } from "./layouts"
@@ -34,6 +35,14 @@ const data = page.data
         </span>
       </template>
       <template #actions>
+        <RejectVacancyButton
+          v-if="data"
+          :vacancy-id="props.id"
+          :accounts="page.accounts.value"
+          :resumes="page.resumes.value"
+          :account-id="page.accountId.value"
+          :resume-id="page.resumeId.value"
+        />
         <Hint v-if="data" text="Заново скачать страницу вакансии с hh">
         <Button
           variant="outline"

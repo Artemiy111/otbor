@@ -171,6 +171,10 @@ export const OtborHandlers = OtborRpcs.toLayer(
       BlacklistRemove: ({ id }) =>
         blacklist.remove(id).pipe(Effect.map((deleted) => ({ id, deleted }))),
       BlacklistImportHh: (payload) => blacklist.importHh(payload),
+      VacancyReject: (payload) => blacklist.rejectVacancy(payload),
+      VacancyRejections: ({ vacancyId }) => blacklist.rejections(vacancyId),
+      VacancyUnreject: ({ id }) =>
+        blacklist.unrejectVacancy(id).pipe(Effect.map((deleted) => ({ id, deleted }))),
 
       HhAccountsList: () => hhAccounts.list(),
       HhAccountUpsert: (payload) => hhAccounts.upsert(payload),

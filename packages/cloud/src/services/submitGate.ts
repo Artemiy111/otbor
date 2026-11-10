@@ -12,6 +12,7 @@ import type { ApplicationRecord, KitRecord, ResponseForm } from "@otbor/contract
 import { Effect } from "effect"
 import type { DatabaseError, Executor } from "../db/Database.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
+import * as BlacklistRepository from "../repositories/BlacklistRepository.ts"
 import * as ApplyFilterRepository from "../repositories/ApplyFilterRepository.ts"
 import * as SubmitPacingRepository from "../repositories/SubmitPacingRepository.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
@@ -39,6 +40,7 @@ export type RefusedReason =
   | "not_auto"
   | "auto_off"
   | "no_vacancy"
+  | "rejected"
 
 export type SubmitOutcome =
   /** Слот занят, submit-задача поставлена (`jobQueued`) или уже шла (`jobQueued: false`). */
@@ -179,13 +181,26 @@ export const trySubmit = Effect.fnUntraced(function*(
   const target = yield* targetFor(tx, application)
   if (target === null) return refused("no_vacancy", `vacancy ${application.vacancyId} is gone`)
 
-  // Блокировка после капчи: автоотклик не ставим в очередь, он ждёт оператора в
-  // preparing (код captcha, без retry_at). Одобрение оператором ставит submit
-  // как обычно: задача стоит в очереди, пока claim не увидит снятую блокировку.
+  // Отбраковку могли поставить после того, как заявка встала в очередь: ещё раз
+  // сверяем её прямо перед слотом, как и форму. Отбракованное не отправляем.
+  const rejectedBy = yield* BlacklistRepository.rejectedScopeFor(tx, {
+    userId: input.userId,
+    vacancyExternalId: target.externalId,
+    hhAccountId: application.hhAccountId,
+    resumeId: application.resumeId ?? null
+  })
+  if (rejectedBy !== null) {
+    return refused("rejected", `the vacancy was rejected (${rejectedBy}); it is not submitted`)
+  }
+
+  // Блокировка после капчи: автоотклик не ставим в очередь, он ждёт
+  // в preparing (код captcha, без retry_at), пока пауза не снимется сама.
+  // Одобрение оператором ставит submit как обычно: задача стоит в очереди,
+  // пока claim не увидит снятую блокировку.
   if (trigger === "auto") {
     const block = yield* SubmitPacingRepository.activeBlock(tx, application.hhAccountId)
     if (block !== null) {
-      const message = "hh asked for a captcha; submits of the account are stopped until the operator resumes them"
+      const message = "hh asked for a captcha; submits of the account are paused and will retry automatically"
       yield* ApplicationRepository.transition(tx, input.userId, application.id, "preparing", {
         from: ["preparing"],
         patch: { lastError: message, blockedReason: "captcha", retryAt: null }

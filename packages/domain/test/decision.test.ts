@@ -35,7 +35,7 @@ const passed = { passed: true, failed: [] as ReadonlyArray<string> }
 
 const settings: DecisionSettings = { ...DEFAULT_APPLY_SETTINGS }
 
-const blocks = {
+const blocks: { applied: boolean; rejected?: string | null; hasTest: boolean; testRequired: boolean } = {
   applied: false,
   hasTest: false,
   testRequired: false
@@ -198,5 +198,18 @@ describe("decide", () => {
     const result = run({ publishedAt: null })
     expect(result.verdict).toBe("apply")
     expect(result.reasons.find((r) => r.code === "freshness")?.detail).toBeUndefined()
+  })
+})
+
+describe("decide: отбраковка", () => {
+  test("отбракованная вакансия - skip с причиной blocked_rejected и слоем в detail", () => {
+    const result = run({}, { blockOverrides: { rejected: "resume" } })
+    expect(result.verdict).toBe("skip")
+    expect(result.reasons).toEqual([{ code: "blocked_rejected", detail: "resume" }])
+  })
+
+  test("отбраковка называется причиной и тогда, когда заявка уже есть", () => {
+    const result = run({}, { blockOverrides: { applied: true, rejected: "app" } })
+    expect(result.reasons[0]!.code).toBe("blocked_rejected")
   })
 })
