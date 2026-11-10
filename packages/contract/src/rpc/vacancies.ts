@@ -78,6 +78,8 @@ export const VacanciesList = Rpc.make("VacanciesList", {
     applied: Schema.optional(Schema.Literals(["yes", "no"])),
     /** ISO-время: только вакансии, впервые увиденные не раньше него (`created_at`). */
     seenSince: Schema.optional(Schema.String),
+    /** ISO-время только для счётчика `counts.fresh`; выдачу не сужает. Без него берётся `seenSince`. */
+    freshSince: Schema.optional(Schema.String),
     /**
      * Ad-hoc rules, compiled by the same builder as presets. Ad-hoc
      * rules are ANDed with the list's own `includeArchived` / `includeBlacklisted` toggles.

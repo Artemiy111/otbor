@@ -1,5 +1,5 @@
 import { computed, ref, watch } from "vue"
-import { useQuery } from "@pinia/colada"
+import { useQuery, useQueryCache } from "@pinia/colada"
 import { useStorage } from "@vueuse/core"
 import { applicationApi, applicationKeys } from "@/entities/application"
 import { contactApi, contactKeys } from "@/entities/contact"
@@ -8,6 +8,7 @@ import { useDefaultAccount } from "@/entities/hh-account"
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { vacancyApi, vacancyKeys } from "@/entities/vacancy"
 import { buildRecon, describeError, reconByKey } from "@/shared/lib"
+import { decisionsFilter, pickDecision } from "./lib"
 
 /** Everything a vacancy page needs, shared by every layout variant. */
 export const useVacancyPage = (id: () => string) => {
@@ -15,9 +16,17 @@ export const useVacancyPage = (id: () => string) => {
     key: () => vacancyKeys.detail(id()),
     query: () => vacancyApi.get(id())
   })
+  // Решения этой вакансии: узкая выборка по названию и работодателю (отдельного
+  // запроса «по id» нет), свежее решение на пару аккаунт+резюме, дальше отбор по id.
   const decisionsQuery = useQuery({
-    key: decisionKeys.list("all"),
-    query: () => decisionApi.list({ limit: 200 })
+    key: () => decisionKeys.vacancy(id()),
+    query: () =>
+      decisionApi.list({
+        limit: 100,
+        latestPerVacancy: true,
+        filter: decisionsFilter(vacancyQuery.data.value!.vacancy)
+      }),
+    enabled: () => vacancyQuery.data.value !== undefined
   })
   const applicationsQuery = useQuery({
     key: () => applicationKeys.vacancy(id()),
@@ -71,6 +80,26 @@ export const useVacancyPage = (id: () => string) => {
   const decisions = computed(() =>
     (decisionsQuery.data.value ?? []).filter((decision) => decision.vacancyId === id())
   )
+  /** Решение для выбранных аккаунта и резюме; `null`, пока такого нет. */
+  const decision = computed(() => pickDecision(decisions.value, accountId.value, resumeId.value))
+  const decisionState = computed<"loading" | "error" | "ready" | "missing">(() => {
+    if (decisionsQuery.error.value !== null && decisionsQuery.error.value !== undefined) return "error"
+    if (decisionsQuery.data.value === undefined) return "loading"
+    return decisions.value.length === 0 ? "missing" : "ready"
+  })
+  const queryCache = useQueryCache()
+  const evaluating = ref(false)
+  /** Пересчитывает решение для выбранных аккаунта и резюме; hh при этом не трогается. */
+  const evaluate = async (): Promise<void> => {
+    if (evaluating.value || accountId.value === "") return
+    evaluating.value = true
+    try {
+      await vacancyApi.evaluate({ vacancyId: id(), hhAccountId: accountId.value, resumeId: resumeId.value })
+      await queryCache.invalidateQueries({ key: decisionKeys.vacancy(id()) })
+    } finally {
+      evaluating.value = false
+    }
+  }
   const applications = computed(() =>
     (applicationsQuery.data.value ?? []).filter((application) => application.vacancyId === id())
   )
@@ -83,12 +112,17 @@ export const useVacancyPage = (id: () => string) => {
     vacancyQuery.error.value === null ? null : describeError(vacancyQuery.error.value)
   )
 
+  const retryDecisions = () => void decisionsQuery.refetch()
+  const notFound = computed(() => errorText.value !== null && /NotFound/.test(errorText.value))
   const refreshApplications = () => void applicationsQuery.refetch()
 
   const hydrating = ref(false)
+  /** Итог последней загрузки полной страницы: нужен, чтобы сбой не выглядел пустой вакансией. */
+  const hydrateFailed = ref(false)
   const hydrate = async (force: boolean, syncResponses = false) => {
     if (hydrating.value) return
     hydrating.value = true
+    hydrateFailed.value = false
     try {
       const result = await vacancyApi.hydrate(id(), force)
       if (result.hydrated || force) {
@@ -100,7 +134,8 @@ export const useVacancyPage = (id: () => string) => {
         void applicationApi.syncRun(accountId.value).catch(() => undefined)
       }
     } catch {
-      // Best effort: the stub stays visible and the operator can retry.
+      // Заглушка остаётся на экране, а страница честно говорит, что догрузка не удалась.
+      hydrateFailed.value = true
     } finally {
       hydrating.value = false
     }
@@ -135,10 +170,17 @@ export const useVacancyPage = (id: () => string) => {
     recon,
     reconMap,
     decisions,
+    decision,
+    decisionState,
+    evaluating,
+    evaluate,
+    retryDecisions,
     applications,
     isLoading,
     errorText,
+    notFound,
     hydrating,
+    hydrateFailed,
     refreshApplications,
     hydrate: () => hydrate(true, true)
   }

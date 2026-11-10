@@ -2,7 +2,7 @@
 import { computed, nextTick, reactive, ref, watch } from "vue"
 import { useQuery } from "@pinia/colada"
 import { useIntervalFn } from "@vueuse/core"
-import { CircleAlert, CircleCheck, LoaderCircle, Send, Undo2 } from "@lucide/vue"
+import { CircleAlert } from "@lucide/vue"
 import type { GeneratedDraft } from "@otbor/domain"
 import type {
   ApplicationRecord,
@@ -14,7 +14,8 @@ import type {
   VacancyDetail
 } from "@otbor/contract"
 import { applicationApi, applicationKeys } from "@/entities/application"
-import { describeError, formatDate, statusLabel } from "@/shared/lib"
+import { HumanStatusBadge, humanStatus } from "@/entities/auto-apply"
+import { applicationPath, describeError, statusLabel } from "@/shared/lib"
 import {
   buildKitAnswers,
   isChoice,
@@ -28,10 +29,14 @@ import {
   type KitProblem
 } from "../lib/answers"
 import AccountResumePicker from "./AccountResumePicker.vue"
-import AnswersEditor from "./AnswersEditor.vue"
-import DraftGenerator from "./DraftGenerator.vue"
+import ApplyEmpty from "./apply/ApplyEmpty.vue"
+import ApplyFooter from "./apply/ApplyFooter.vue"
+import ApplyFormStep from "./apply/ApplyFormStep.vue"
+import ApplyLetterStep from "./apply/ApplyLetterStep.vue"
+import ApplyPreparing from "./apply/ApplyPreparing.vue"
+import ApplyStep from "./apply/ApplyStep.vue"
 import LetterAttachBlock from "./LetterAttachBlock.vue"
-import { Alert, AlertDescription, AlertTitle, Badge, Button, StatusBadge, Textarea, useToast } from "@/shared/ui"
+import { Alert, AlertDescription, AlertTitle, Badge, useToast } from "@/shared/ui"
 
 const props = defineProps<{
   vacancyId: string
@@ -563,201 +568,137 @@ const send = async () => {
 
 const maxLetter = 10_000
 const NO_FORM = "no-form"
+
+/* ---- что показать в шапке и подвале -------------------------------------- */
+
+/** Состояние найденного отклика на общем словаре; `null`, пока откликов с этим резюме нет. */
+const humanState = computed(() => (existing.value === null ? null : humanStatus(existing.value)))
+/** С этого аккаунта уже откликались (этим или другим резюме): форма скрыта. */
+const alreadyApplied = computed(() => finished.value || sent.value.some((item) => item.accountId === accountId.value))
+const accountResumes = computed(() => props.resumes.filter((resume) => resume.hhAccountId === accountId.value))
+const emptyReason = computed<"no-accounts" | "no-resumes" | null>(() =>
+  props.accounts.length === 0 ? "no-accounts" : accountResumes.value.length === 0 ? "no-resumes" : null
+)
+const editable = computed(() => emptyReason.value === null && !alreadyApplied.value && !preparing.value)
+const hasForm = computed(() => form.value !== null)
+const dismissGenerated = (reason: string) => toast.error("Не удалось написать письмо", { description: reason })
 </script>
 
 <template>
-  <section class="space-y-4 text-sm">
-    <div class="flex items-center justify-between gap-2">
-      <h2 class="text-base font-semibold">Отклик</h2>
-      <StatusBadge v-if="state && !finished" :value="state" />
-    </div>
+  <section class="flex h-full min-h-0 flex-col bg-card text-sm" aria-labelledby="apply-title">
+    <header class="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+      <h2 id="apply-title" class="text-base font-semibold">Отклик</h2>
+      <HumanStatusBadge v-if="humanState && !finished" :status="humanState" :show-detail="false" />
+    </header>
 
-    <!-- who responds: one click opens, hover an account, click a resume -->
-    <AccountResumePicker
-      v-model:account-id="accountId"
-      v-model:resume-id="resumeId"
-      :accounts="accounts"
-      :resumes="resumes"
-      :sent="sent"
-      :disabled="busy !== null"
-    />
-
-    <div v-if="data.facts?.hh?.test.hasTest || data.facts?.hh?.letterRequired" class="flex flex-wrap gap-1.5">
-      <Badge v-if="data.facts?.hh?.letterRequired" variant="warning">hh требует письмо</Badge>
-      <Badge v-if="data.facts?.hh?.test.hasTest" variant="warning">
-        {{ data.facts.hh.test.required === false ? "тест необязательный" : "есть тест" }}
-      </Badge>
-    </div>
-
-    <LetterAttachBlock
-      v-if="finished || sent.some((item) => item.accountId === accountId)"
-      :vacancy-id="vacancyId"
-      :account-id="accountId"
-      :resume-id="resumeId"
-      :applications="applications"
-      :sent-letter="state === 'submitted' ? (savedKit?.letter ?? null) : null"
-      :sending="state === 'submitting' || state === 'queued'"
-    />
-
-    <Alert v-else-if="preparing">
-      <LoaderCircle class="animate-spin" />
-      <AlertTitle>Автоотклик готовится</AlertTitle>
-      <AlertDescription>
-        <p>Раннер автооткликов сам читает форму, пишет письмо и отправляет. Пока он работает, редактор заперт.</p>
-        <Button variant="ghost" size="sm" :disabled="busy !== null" @click="skipPreparing">Пропустить</Button>
-      </AlertDescription>
-    </Alert>
-
-    <template v-else>
-      <!-- the vacancy form: read once, shared by every applicant -->
-      <div v-if="waitingForForm" class="flex items-center gap-2 rounded-md border border-border p-3 text-muted-foreground">
-        <LoaderCircle class="size-4 animate-spin" />
-        Читаю форму отклика на hh…
-      </div>
-      <template v-else-if="form === null && data.facts?.hh?.test.hasTest === false" />
-      <div
-        v-else-if="form === null"
-        class="rounded-md border border-dashed border-border p-3 text-muted-foreground"
-      >
-        Про тест у этой вакансии пока ничего не известно, форму ещё не читали.
-        <Button variant="ghost" size="sm" :disabled="busy !== null || accountId === ''" @click="refreshClick">
-          Прочитать форму
-        </Button>
-      </div>
-      <div v-else class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <span>
-          Форма с hh, прочитана {{ formatDate(formState?.checkedAt) }}<template
-            v-if="(formState?.versions ?? 0) > 1"
-          >; вопросы менялись {{ formatDate(formState?.changedAt) }}</template>.
-        </span>
-        <Button variant="ghost" size="sm" :disabled="busy !== null || accountId === ''" @click="refreshClick">
-          <LoaderCircle v-if="busy === 'refresh'" class="size-4 animate-spin" />
-          Обновить форму
-        </Button>
-      </div>
-      <Alert v-if="formState?.lastError" variant="destructive">
-        <CircleAlert />
-        <AlertTitle>Форму не удалось обновить</AlertTitle>
-        <AlertDescription>{{ formState.lastError }}</AlertDescription>
-      </Alert>
-      <p v-if="kitIsOld" class="text-xs text-warning">
-        Вопросы на hh изменились после сохранения черновика. Проверьте ответы перед отправкой.
-      </p>
-      <Alert v-if="state === 'needs_human' || state === 'failed'" variant="destructive">
-        <CircleAlert />
-        <AlertTitle>{{ statusLabel(state) }}</AlertTitle>
-        <AlertDescription>Проверьте ответы и отправьте ещё раз, либо откройте отклик, чтобы увидеть попытки.</AlertDescription>
-      </Alert>
-
-      <!-- generator: one model call for the letter and the test answers -->
-      <div class="space-y-2 rounded-md border border-border p-3">
-        <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Составить с помощью модели
-        </span>
-        <DraftGenerator
-          :vacancy-id="vacancyId"
-          :account-id="accountId"
-          :resume-id="resumeId"
-          :questions="questions"
-          :disabled="busy !== null"
-          @generated="applyGenerated"
-          @failed="(reason) => toast.error('Не удалось написать письмо', { description: reason })"
-        />
-        <div v-if="generatedInfo" class="space-y-1 text-xs text-muted-foreground">
-          <p>
-            Составила: {{ generatedInfo.model ?? "модель не указана" }}<template
-              v-if="generatedInfo.durationMs !== null"
-            >, {{ (generatedInfo.durationMs / 1000).toFixed(1) }} с</template>. Ничего не сохранено и не отправлено.
-          </p>
-          <ul v-if="generatedInfo.problems.length > 0" class="list-disc space-y-0.5 pl-5 text-warning">
-            <li v-for="problem in generatedInfo.problems" :key="problem">{{ problem }}</li>
-          </ul>
-        </div>
-        <Button v-if="snapshot" variant="ghost" size="sm" @click="undoGenerated">
-          <Undo2 class="size-4" />
-          Отменить подстановку
-        </Button>
-      </div>
-
-      <!-- letter -->
-      <div class="space-y-1.5">
-        <div class="flex items-center justify-between">
-          <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Сопроводительное письмо
-          </span>
-          <span class="text-xs text-muted-foreground">
-            <template v-if="letterRule === 'required'">обязательно</template>
-            <template v-else-if="letterRule === 'optional'">по желанию</template>
-            <template v-else-if="letterRule === 'absent'">hh не принимает письмо</template>
-            <template v-else>формат уточнится после чтения формы</template>
-          </span>
-        </div>
-        <Textarea
-          v-model="letter"
-          class="min-h-40 leading-relaxed"
-          :maxlength="maxLetter"
-          :disabled="letterRule === 'absent' || busy !== null"
-          placeholder="Здравствуйте! Меня заинтересовала вакансия…"
-        />
-        <div class="text-right text-xs text-muted-foreground">{{ letter.length }} / {{ maxLetter }}</div>
-        <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-          <span v-if="savedKit">
-            Черновик для этого резюме сохранён {{ formatDate(savedKit.createdAt) }}.
-          </span>
-          <span v-else>Для этого резюме черновика нет.</span>
-          <span v-if="dirty" class="text-warning">Есть несохранённые изменения.</span>
-          <Button v-if="dirty && savedKit" variant="ghost" size="sm" :disabled="busy !== null" @click="revertToSaved">
-            Вернуть сохранённое
-          </Button>
-        </div>
-      </div>
-
-      <!-- test -->
-      <AnswersEditor
-        v-if="form !== null"
-        :questions="questions"
-        :answers="answers"
-        :hints="hints"
-        :problems="problemMap"
-        :disabled="busy !== null"
-        @change="changeAnswer"
-      />
-
-      <!-- result -->
-      <p v-if="missing.length > 0" class="text-xs text-warning">
-        Не заполнено: {{ missing.join(", ") }}.
-      </p>
-
-      <!-- actions -->
-      <div class="flex flex-wrap items-center gap-2">
-        <Button variant="outline" :disabled="busy !== null || accountId === ''" @click="saveDraft()">
-          <LoaderCircle v-if="busy === 'save'" class="size-4 animate-spin" />
-          Сохранить черновик
-        </Button>
-        <Button
-          v-if="!confirming"
-          :disabled="busy !== null || accountId === '' || missing.length > 0"
-          @click="confirming = true"
-        >
-          <Send class="size-4" />
-          Отправить отклик
-        </Button>
+    <div class="min-h-0 flex-1 space-y-5 px-4 py-4 xl:overflow-y-auto">
+      <ApplyStep :n="1" title="Кем откликаемся" id="apply-who">
+        <ApplyEmpty v-if="emptyReason === 'no-accounts'" reason="no-accounts" />
         <template v-else>
-          <span class="text-xs text-muted-foreground">Форма прочитается заново, отклик уйдёт на hh.ru, отменить нельзя.</span>
-          <Button variant="destructive" :disabled="busy !== null" @click="send">
-            <LoaderCircle v-if="busy === 'send'" class="size-4 animate-spin" />
-            Да, отправить
-          </Button>
-          <Button variant="ghost" :disabled="busy !== null" @click="confirming = false">Отмена</Button>
+          <AccountResumePicker
+            v-model:account-id="accountId"
+            v-model:resume-id="resumeId"
+            :accounts="accounts"
+            :resumes="resumes"
+            :sent="sent"
+            :disabled="busy !== null"
+          />
+          <p v-if="sent.length > 0" class="text-xs text-muted-foreground">
+            Резюме, с которыми вы уже откликались, помечены в списке.
+          </p>
+          <ApplyEmpty v-if="emptyReason === 'no-resumes'" reason="no-resumes" />
+          <div v-if="data.facts?.hh?.test.hasTest || data.facts?.hh?.letterRequired" class="flex flex-wrap gap-1.5">
+            <Badge v-if="data.facts?.hh?.letterRequired" variant="warning">hh требует письмо</Badge>
+            <Badge v-if="data.facts?.hh?.test.hasTest" variant="warning">
+              {{ data.facts.hh.test.required === false ? "тест необязательный" : "есть тест" }}
+            </Badge>
+          </div>
         </template>
-        <a
-          v-if="existing"
-          :href="`/applications/${existing.id}`"
-          class="ml-auto text-xs text-muted-foreground hover:text-primary"
-        >
-          Подробности отклика
-        </a>
-      </div>
-    </template>
+      </ApplyStep>
+
+      <template v-if="emptyReason === null">
+        <!-- уже откликались: статус и письмо, форма не нужна -->
+        <section v-if="alreadyApplied" class="space-y-3" aria-label="Отклик уже отправлен">
+          <div class="flex flex-wrap items-center gap-2">
+            <HumanStatusBadge v-if="humanState" :status="humanState" :show-detail="false" />
+            <span class="text-muted-foreground">Вы уже откликнулись с этого аккаунта, форма закрыта.</span>
+            <a
+              v-if="existing"
+              :href="applicationPath(existing.id)"
+              class="rounded-sm text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+            >Подробности отклика</a>
+          </div>
+          <LetterAttachBlock
+            :vacancy-id="vacancyId"
+            :account-id="accountId"
+            :resume-id="resumeId"
+            :applications="applications"
+            :sent-letter="state === 'submitted' ? (savedKit?.letter ?? null) : null"
+            :sending="state === 'submitting' || state === 'queued'"
+          />
+        </section>
+
+        <ApplyPreparing v-else-if="preparing" :busy="busy !== null" @skip="skipPreparing" />
+
+        <template v-else>
+          <Alert v-if="state === 'needs_human' || state === 'failed'" variant="destructive">
+            <CircleAlert />
+            <AlertTitle>{{ statusLabel(state) }}</AlertTitle>
+            <AlertDescription>Проверьте ответы и отправьте ещё раз, либо откройте отклик, чтобы увидеть попытки.</AlertDescription>
+          </Alert>
+
+          <ApplyFormStep
+            :n="2"
+            :form-state="formState"
+            :has-test="data.facts?.hh?.test.hasTest"
+            :waiting="waitingForForm"
+            :refreshing="busy === 'refresh' || refreshing"
+            :busy="busy !== null"
+            :disabled-refresh="accountId === ''"
+            :questions="questions"
+            :answers="answers"
+            :hints="hints"
+            :problems="problemMap"
+            :kit-is-old="kitIsOld"
+            :has-form="hasForm"
+            @refresh="refreshClick"
+            @change="changeAnswer"
+          />
+
+          <ApplyLetterStep
+            v-model="letter"
+            :n="3"
+            :vacancy-id="vacancyId"
+            :account-id="accountId"
+            :resume-id="resumeId"
+            :questions="questions"
+            :busy="busy !== null"
+            :letter-rule="letterRule"
+            :max-letter="maxLetter"
+            :generated-info="generatedInfo"
+            :can-undo="snapshot !== null"
+            @generated="applyGenerated"
+            @failed="dismissGenerated"
+            @undo="undoGenerated"
+          />
+        </template>
+      </template>
+    </div>
+
+    <ApplyFooter
+      v-if="editable"
+      v-model:confirming="confirming"
+      :busy="busy"
+      :can-act="accountId !== ''"
+      :dirty="dirty"
+      :saved-at="savedKit?.createdAt ?? null"
+      :has-saved="savedKit !== null"
+      :missing="missing"
+      :application-id="existing?.id ?? null"
+      class="sticky bottom-0 z-10"
+      @save="saveDraft()"
+      @send="send"
+      @revert="revertToSaved"
+    />
   </section>
 </template>

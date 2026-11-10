@@ -244,6 +244,10 @@ if (!integrationEnabled || serverUrl === null) {
       expect(news.items.map((item) => item.title)).toEqual([`${tag} a`])
       expect(news.counts?.fresh).toBe(1)
       expect(news.counts?.all).toBe(2)
+      // freshSince считает «Новые», но выдачу не сужает.
+      const counted = await list(tenant.userId, { search: tag, freshSince: since })
+      expect(counted.total).toBe(2)
+      expect(counted.counts?.fresh).toBe(news.total)
       // Мусорное значение игнорируется, а не роняет запрос.
       expect((await list(tenant.userId, { search: tag, seenSince: "вчера" })).total).toBe(2)
 

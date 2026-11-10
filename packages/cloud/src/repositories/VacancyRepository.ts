@@ -646,6 +646,8 @@ export interface VacancyFilter {
   readonly applied?: "yes" | "no"
   /** ISO-время: `vacancy.created_at >= seenSince`. Непарсящееся значение игнорируется. */
   readonly seenSince?: string
+  /** ISO-время только для счётчика `fresh`; выдачу не сужает. Без него берётся `seenSince`. */
+  readonly freshSince?: string
   /** Set by the service; RLS already scopes `hidden_target` to this user. */
   readonly userId?: string
   /**
@@ -750,6 +752,9 @@ export const list = (tx: Executor, filter: VacancyFilter = {}) => {
 
   const seenSince = filter.seenSince === undefined ? null : new Date(filter.seenSince)
   const seenSinceValid = seenSince !== null && !Number.isNaN(seenSince.getTime())
+  // Граница счётчика «Новые» отдельна от фильтра: счётчик нужен и при выдаче без него.
+  const freshRaw = filter.freshSince === undefined ? null : new Date(filter.freshSince)
+  const freshSince = freshRaw !== null && !Number.isNaN(freshRaw.getTime()) ? freshRaw : seenSinceValid ? seenSince : null
 
   const verdictClause =
     filter.verdict === undefined
@@ -852,8 +857,8 @@ export const list = (tx: Executor, filter: VacancyFilter = {}) => {
         (count(*) filter (where dec.verdict = 'apply'))::int as apply,
         (count(*) filter (where app.state in ${ACTIVE_RESPONSE_STATES}))::int as applied,
         (count(*) filter (where app.state is null or app.state not in ${ACTIVE_RESPONSE_STATES}))::int as not_applied,
-        ${seenSinceValid
-          ? sql`(count(*) filter (where vacancy.created_at >= ${seenSince!.toISOString()}::timestamptz))::int`
+        ${freshSince !== null
+          ? sql`(count(*) filter (where vacancy.created_at >= ${freshSince.toISOString()}::timestamptz))::int`
           : sql`null::int`} as fresh
       from vacancy
       left join employer on employer.id = vacancy.employer_id

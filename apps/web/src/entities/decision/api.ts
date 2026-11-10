@@ -1,4 +1,4 @@
-import type { DecisionRecord, HhAccountId } from "@otbor/contract"
+import type { DecisionRecord, HhAccountId, PresetFilter } from "@otbor/contract"
 import { call } from "@/shared/api"
 
 export interface DecisionListInput {
@@ -6,6 +6,10 @@ export interface DecisionListInput {
   readonly hhAccountId?: string
   readonly limit?: number
   readonly offset?: number
+  /** Оставить только свежее решение по каждой паре «вакансия + аккаунт». */
+  readonly latestPerVacancy?: boolean
+  /** Произвольные правила по полям вакансии: сужают выборку до нужной вакансии. */
+  readonly filter?: PresetFilter
 }
 
 export const decisionApi = {

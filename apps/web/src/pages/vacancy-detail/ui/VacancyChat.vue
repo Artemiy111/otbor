@@ -51,11 +51,11 @@ const resumeTitle = computed(() => props.page.selectedResume.value?.title ?? nul
 <template>
   <section class="space-y-3">
     <div class="flex flex-wrap items-center justify-between gap-2">
-      <h2 class="flex items-center gap-1.5 text-sm font-semibold">
+      <h3 class="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
         <MessageSquare class="size-4" />
         Переписка
-        <span v-if="resumeTitle" class="font-normal text-muted-foreground">· {{ resumeTitle }}</span>
-      </h2>
+        <span v-if="resumeTitle" class="font-normal">· {{ resumeTitle }}</span>
+      </h3>
       <Button
         v-if="chat?.chatId"
         variant="outline"
@@ -68,7 +68,7 @@ const resumeTitle = computed(() => props.page.selectedResume.value?.title ?? nul
       </Button>
     </div>
 
-    <p v-if="chat?.fetch === 'failed' || chat?.fetch === 'needs_human'" class="text-xs text-destructive">
+    <p v-if="chat?.fetch === 'failed' || chat?.fetch === 'needs_human'" class="text-xs text-danger">
       {{ chat.message ?? "Не удалось прочитать чат" }}
     </p>
 

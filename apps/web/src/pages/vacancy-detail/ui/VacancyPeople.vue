@@ -58,9 +58,8 @@ const rows = computed<ReadonlyArray<Row>>(() => {
 </script>
 
 <template>
-  <section v-if="rows.length > 0">
-    <h2 class="mb-2 text-sm font-semibold">Люди и диалоги</h2>
-    <ul class="space-y-2">
+  <div v-if="rows.length > 0">
+    <ul class="space-y-3">
       <li v-for="row in rows" :key="row.personId ?? 'loose'" class="text-sm">
         <a
           v-if="row.personId"
@@ -72,14 +71,19 @@ const rows = computed<ReadonlyArray<Row>>(() => {
           <li
             v-for="conversation in row.conversations"
             :key="conversation.id"
-            class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
           >
-            <Badge variant="secondary">{{ conversationChannelLabel(conversation.channel) }}</Badge>
-            <span class="min-w-0 truncate">{{ conversation.lastMessage ?? conversation.title ?? "—" }}</span>
-            <span>{{ formatDate(conversation.lastMessageAt) }}</span>
+            <a
+              :href="`/contacts?c=${encodeURIComponent(conversation.id)}`"
+              class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md px-1 py-0.5 text-xs text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+              title="Открыть диалог во входящих"
+            >
+              <Badge variant="secondary">{{ conversationChannelLabel(conversation.channel) }}</Badge>
+              <span class="min-w-0 flex-1 truncate">{{ conversation.lastMessage ?? conversation.title ?? "—" }}</span>
+              <span class="tabular-nums">{{ formatDate(conversation.lastMessageAt) }}</span>
+            </a>
           </li>
         </ul>
       </li>
     </ul>
-  </section>
+  </div>
 </template>

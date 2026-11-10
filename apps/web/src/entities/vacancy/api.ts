@@ -1,4 +1,4 @@
-import type { PresetFilter, VacancyAnalysis, VacancyDetail, VacancySummary } from "@otbor/contract"
+import type { DecisionRecord, HhAccountId, PresetFilter, VacancyAnalysis, VacancyDetail, VacancySummary } from "@otbor/contract"
 import type { VacancyId, VacancySort } from "@otbor/contract"
 import { call } from "@/shared/api"
 
@@ -61,6 +61,19 @@ export const vacancyApi = {
     call((client) => client.VacanciesGet({ id: id as VacancyId })),
   analysis: (id: string): Promise<VacancyAnalysis | null> =>
     call((client) => client.VacancyAnalysisGet({ vacancyId: id as VacancyId })),
+  /** Пересчитывает решение по вакансии для аккаунта и резюме (без обращения к hh). */
+  evaluate: (input: {
+    readonly vacancyId: string
+    readonly hhAccountId?: string
+    readonly resumeId?: string
+  }): Promise<DecisionRecord> =>
+    call((client) =>
+      client.VacanciesEvaluate({
+        vacancyId: input.vacancyId as VacancyId,
+        hhAccountId: (input.hhAccountId || undefined) as HhAccountId | undefined,
+        resumeId: input.resumeId || undefined
+      })
+    ),
   hydrate: (id: string, force = false): Promise<{ readonly hydrated: boolean }> =>
     call((client) => client.VacanciesHydrateOne({ id: id as VacancyId, force: force || undefined }))
 }

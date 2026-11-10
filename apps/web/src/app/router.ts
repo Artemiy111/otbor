@@ -1,5 +1,5 @@
 import { computed, ref } from "vue"
-import { syncLocation } from "@/shared/lib"
+import { rememberVacanciesSearch, syncLocation } from "@/shared/lib"
 
 export type Route =
   | { readonly name: "overview" }
@@ -92,9 +92,13 @@ const parse = (): Route => {
 /** One history entry per page; direct URLs work without a hash. */
 const navigate = (path: string, replace = false): void => {
   const url = new URL(path, window.location.origin)
-  const current = window.location.pathname + window.location.search
-  const next = url.pathname + url.search
+  const current = window.location.pathname + window.location.search + window.location.hash
+  const next = url.pathname + url.search + url.hash
   if (current === next) return
+  // Уходим из списка вакансий: запоминаем его фильтры для ссылки «назад» на странице вакансии.
+  if (window.location.pathname.replace(/\/+$/, "") === "/vacancies") {
+    rememberVacanciesSearch(window.location.search)
+  }
 
   if (replace) window.history.replaceState({}, "", next)
   else window.history.pushState({}, "", next)
@@ -136,7 +140,7 @@ window.addEventListener("click", (event) => {
   if (url.origin !== window.location.origin) return
 
   event.preventDefault()
-  navigate(url.pathname + url.search)
+  navigate(url.pathname + url.search + url.hash)
 })
 
 /** Detail pages keep their parent list item active in the sidebar. */

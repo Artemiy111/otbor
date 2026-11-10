@@ -2,16 +2,21 @@
 import { VacancyApplyPanel } from "@/features/vacancy-apply"
 import type { VacancyPage } from "../model"
 
+/** Рабочая панель справа: форма отклика или, для архивной вакансии, объяснение. */
 defineProps<{ page: VacancyPage }>()
 </script>
 
 <template>
   <section
     v-if="page.data.value?.vacancy.archived"
-    class="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground"
+    class="space-y-2 p-4 text-sm"
+    aria-labelledby="apply-closed-title"
   >
-    <h2 class="text-base font-semibold text-foreground">Отклик закрыт</h2>
-    <p class="mt-1">Вакансия в архиве, hh больше не принимает отклики и письма. Новые черновики не создаются.</p>
+    <h2 id="apply-closed-title" class="text-base font-semibold">Отклик закрыт</h2>
+    <p class="text-muted-foreground">
+      Вакансия в архиве: hh больше не принимает на неё отклики и письма, поэтому форма скрыта и новые черновики не
+      создаются. Отклики, которые уже были, видны слева.
+    </p>
   </section>
   <VacancyApplyPanel
     v-else-if="page.data.value"
