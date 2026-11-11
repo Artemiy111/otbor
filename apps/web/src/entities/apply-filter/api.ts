@@ -45,6 +45,7 @@ const send = (payload: ApplyFilterSavePayload): Promise<ApplyFilterRecord> =>
       sort: payload.sort,
       sortDirection: payload.sortDirection,
       minPriority: payload.minPriority,
+      requireLetter: payload.requireLetter,
       boosts: payload.boosts,
       writingHarness: payload.writingHarness,
       writingModel: payload.writingModel,

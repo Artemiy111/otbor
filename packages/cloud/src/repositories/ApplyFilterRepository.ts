@@ -21,6 +21,7 @@ export const toRecord = (row: typeof applyFilter.$inferSelect): ApplyFilterRecor
   sort: row.sort as ApplyFilterRecord["sort"],
   sortDirection: row.sortDirection === "asc" ? "asc" : "desc",
   minPriority: Number(row.minPriority),
+  requireLetter: row.requireLetter,
   boosts: parseBoosts(row.boosts),
   writingHarness: row.writingHarness,
   writingModel: row.writingModel,
@@ -87,6 +88,7 @@ export const resolve = (
       sort: DEFAULT_APPLY_FILTER.sort,
       sortDirection: DEFAULT_APPLY_FILTER.sortDirection,
       minPriority: DEFAULT_APPLY_FILTER.minPriority,
+      requireLetter: DEFAULT_APPLY_FILTER.requireLetter,
       boosts: DEFAULT_APPLY_FILTER.boosts,
       writingHarness: DEFAULT_APPLY_FILTER.writingHarness,
       writingModel: DEFAULT_APPLY_FILTER.writingModel,
@@ -121,6 +123,7 @@ const fromRecord = (record: ApplyFilterRecord, source: ApplyFilterSource): Resol
   sort: record.sort,
   sortDirection: record.sortDirection,
   minPriority: record.minPriority,
+  requireLetter: record.requireLetter,
   boosts: record.boosts,
   writingHarness: record.writingHarness,
   writingModel: record.writingModel,
@@ -151,6 +154,7 @@ export interface UpsertApplyFilterInput {
   readonly sort?: ApplyFilterSettings["sort"]
   readonly sortDirection?: ApplyFilterSettings["sortDirection"]
   readonly minPriority?: number
+  readonly requireLetter?: boolean
   readonly boosts?: ApplyFilterSettings["boosts"]
   /** `undefined` keeps the stored value; `null` or a blank string clears it. */
   readonly writingHarness?: string | null
@@ -180,6 +184,7 @@ export const upsert = (
         sort: input.sort ?? existing.sort,
         sortDirection: input.sortDirection ?? existing.sortDirection,
         minPriority: input.minPriority ?? existing.minPriority,
+        requireLetter: input.requireLetter ?? existing.requireLetter,
         boosts: input.boosts ?? existing.boosts,
         writingHarness: writingValue(input.writingHarness, existing.writingHarness),
         writingModel: writingValue(input.writingModel, existing.writingModel),
@@ -188,7 +193,7 @@ export const upsert = (
       // Only a real change of what decide() reads makes decisions stale; a
       // repeated save would otherwise leave them stale for ever (their input
       // hash is the same). auto_mode, daily_limit, batch_size, sort, sort_direction, writing_* and
-      // min_priority steer the runner and the cap, not the verdict or fit.
+      // min_priority, require_letter steer the runner and the cap, not the verdict or fit.
       const scoring = (value: {
         readonly filter: PresetFilter
         readonly minFit: number
@@ -235,6 +240,7 @@ export const upsert = (
         sort: input.sort ?? DEFAULT_APPLY_FILTER.sort,
         sortDirection: input.sortDirection ?? DEFAULT_APPLY_FILTER.sortDirection,
         minPriority: input.minPriority ?? DEFAULT_APPLY_FILTER.minPriority,
+        requireLetter: input.requireLetter ?? DEFAULT_APPLY_FILTER.requireLetter,
         boosts: [...(input.boosts ?? DEFAULT_APPLY_FILTER.boosts)],
         writingHarness: writingValue(input.writingHarness, null),
         writingModel: writingValue(input.writingModel, null),

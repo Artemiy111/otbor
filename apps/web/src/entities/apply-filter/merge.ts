@@ -31,6 +31,8 @@ export interface AutoSettingsValues {
   readonly sort: ApplySort
   readonly sortDirection: SortDirection
   readonly minPriority: number
+  /** Автоотправка только с сопроводительным письмом. */
+  readonly requireLetter: boolean
   readonly boosts: ReadonlyArray<ApplyBoost>
   /** Пустая строка очищает значение (умолчание харнеса). */
   readonly writingHarness: string
@@ -53,6 +55,7 @@ export interface ApplyFilterSavePayload {
   readonly sort?: ApplySort
   readonly sortDirection?: SortDirection
   readonly minPriority?: number
+  readonly requireLetter?: boolean
   readonly boosts?: ReadonlyArray<ApplyBoost>
   readonly writingHarness?: string | null
   readonly writingModel?: string | null
@@ -84,6 +87,7 @@ export const autoHalf = (fresh: ApplyFilterView) => ({
   sort: fresh.sort,
   sortDirection: fresh.sortDirection,
   minPriority: fresh.minPriority,
+  requireLetter: fresh.requireLetter,
   boosts: fresh.boosts,
   writingHarness: fresh.writingHarness,
   writingModel: fresh.writingModel,
@@ -115,6 +119,7 @@ export const buildAutoSavePayload = (
   sort: values.sort,
   sortDirection: values.sortDirection,
   minPriority: values.minPriority,
+  requireLetter: values.requireLetter,
   boosts: values.boosts,
   writingHarness: values.writingHarness.trim(),
   writingModel: values.writingModel.trim(),
@@ -172,6 +177,7 @@ export const settingsKey = (values: AutoSettingsValues): string =>
     values.sort,
     values.sortDirection,
     values.minPriority,
+    values.requireLetter,
     values.writingHarness.trim(),
     values.writingModel.trim(),
     values.writingEffort.trim(),
@@ -188,6 +194,7 @@ export const settingsOf = (
     | "sort"
     | "sortDirection"
     | "minPriority"
+    | "requireLetter"
     | "boosts"
     | "writingHarness"
     | "writingModel"
@@ -200,6 +207,7 @@ export const settingsOf = (
   sort: source.sort,
   sortDirection: source.sortDirection,
   minPriority: source.minPriority,
+  requireLetter: source.requireLetter,
   boosts: source.boosts,
   writingHarness: source.writingHarness ?? "",
   writingModel: source.writingModel ?? "",

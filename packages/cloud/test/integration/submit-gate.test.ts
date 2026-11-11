@@ -261,6 +261,28 @@ if (!enabled || serverUrl === null) {
       expect((await rowOf(theirs)).intent_at).not.toBeNull()
     }, 60_000)
 
+    test("require_letter: an auto application without a letter is not sent, with the switch off it is", async () => {
+      const tenant = await support.seedTenant("gate-letter")
+      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      await support.applyFilterSet(tenant.userId, {
+        hhAccountId: tenant.accountId, filter: {}, autoMode: "auto", requireLetter: true
+      })
+      const vacancyId = await support.seedVacancy("gate-letter")
+      const applicationId = await support.seedApplication({
+        userId: tenant.userId, accountId: tenant.accountId, vacancyId, state: "preparing", autoRun: "auto"
+      })
+      await support.applicationSetKit(tenant.userId, {
+        applicationId,
+        formHash: await formHashOf(vacancyId),
+        letter: null,
+        answers: fullAnswers()
+      })
+
+      await readForm(tenant, harness, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
+      expect(await support.countJobs(applicationId, "submit")).toBe(0)
+      expect((await rowOf(applicationId)).state).toBe("needs_human")
+    }, 60_000)
+
     test("a failed form read of account A does not park the application of account B", async () => {
       const tenant = await support.seedTenant("gate-park")
       const other = await support.addAccount(tenant.userId, "gate-park-b")

@@ -28,6 +28,7 @@ const view = (patch: Partial<ApplyFilterView> = {}): ApplyFilterView => ({
   sort: "fit",
   sortDirection: "desc",
   minPriority: 3,
+  requireLetter: false,
   boosts: [],
   writingHarness: "claude",
   writingModel: null,

@@ -31,6 +31,7 @@ export const useAutoDraft = () => {
   const sort = ref<ApplySort>("priority")
   const sortDirection = ref<SortDirection>("desc")
   const minPriority = ref(0)
+  const requireLetter = ref(false)
   const writingHarness = ref("")
   const writingModel = ref("")
   const writingEffort = ref("")
@@ -45,6 +46,7 @@ export const useAutoDraft = () => {
     sort: sort.value,
     sortDirection: sortDirection.value,
     minPriority: minPriority.value,
+    requireLetter: requireLetter.value,
     writingHarness: writingHarness.value,
     writingModel: writingModel.value,
     writingEffort: writingEffort.value,
@@ -66,6 +68,7 @@ export const useAutoDraft = () => {
     sort.value = next.sort
     sortDirection.value = next.sortDirection
     minPriority.value = next.minPriority
+    requireLetter.value = next.requireLetter
     writingHarness.value = next.writingHarness
     writingModel.value = next.writingModel
     writingEffort.value = next.writingEffort
@@ -98,6 +101,7 @@ export const useAutoDraft = () => {
     sort,
     sortDirection,
     minPriority,
+    requireLetter,
     writingHarness,
     writingModel,
     writingEffort,

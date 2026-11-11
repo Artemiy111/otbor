@@ -189,6 +189,7 @@ export const DEFAULT_APPLY_SETTINGS: ApplyFilterSettings = {
   sort: "priority",
   sortDirection: "desc",
   minPriority: 0,
+  requireLetter: false,
   boosts: DEFAULT_BOOSTS,
   writingHarness: null,
   writingModel: null,

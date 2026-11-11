@@ -45,6 +45,7 @@ export const ApplyFilterSet = Rpc.make("ApplyFilterSet", {
     sort: Schema.optional(ApplySort),
     sortDirection: Schema.optional(SortDirection),
     minPriority: Schema.optional(Schema.Number),
+    requireLetter: Schema.optional(Schema.Boolean),
     boosts: Schema.optional(Schema.Array(ApplyBoost)),
     /** Left out keeps the stored value; `null` or a blank string clears it (harness default). */
     writingHarness: Schema.optional(Schema.NullOr(Schema.String)),

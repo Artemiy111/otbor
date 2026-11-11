@@ -44,6 +44,8 @@ export const ApplyFilterSettings = Schema.Struct({
   sortDirection: SortDirection,
   /** The runner skips decisions below this priority. Never changes a verdict. */
   minPriority: Schema.Number,
+  /** Автоотправка только с сопроводительным письмом. */
+  requireLetter: Schema.Boolean,
   /** Scoring rules added to the deterministic fit. */
   boosts: Schema.Array(ApplyBoost),
   /**
@@ -72,6 +74,8 @@ export const ApplyFilterRecord = Schema.Struct({
   sort: ApplySort,
   sortDirection: SortDirection,
   minPriority: Schema.Number,
+  /** Автоотправка только с сопроводительным письмом. */
+  requireLetter: Schema.Boolean,
   boosts: Schema.Array(ApplyBoost),
   writingHarness: Schema.NullOr(Schema.String),
   writingModel: Schema.NullOr(Schema.String),
@@ -109,6 +113,8 @@ export const ApplyFilterView = Schema.Struct({
   sort: ApplySort,
   sortDirection: SortDirection,
   minPriority: Schema.Number,
+  /** Автоотправка только с сопроводительным письмом. */
+  requireLetter: Schema.Boolean,
   boosts: Schema.Array(ApplyBoost),
   writingHarness: Schema.NullOr(Schema.String),
   writingModel: Schema.NullOr(Schema.String),

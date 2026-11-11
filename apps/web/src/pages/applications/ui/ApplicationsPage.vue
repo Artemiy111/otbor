@@ -350,6 +350,18 @@ const columns = computed<ColumnDef<ApplicationRecord>[]>(() => [
     cell: ({ row }) => h(HumanStatusBadge, { status: statusOf(row.original) })
   },
   {
+    id: "letter",
+    header: "Письмо",
+    enableSorting: false,
+    meta: { class: "max-xl:hidden" },
+    cell: ({ row }) => {
+      const has = row.original.hasLetter
+      return has === null || has === undefined
+        ? h("span", { class: "text-muted-foreground" }, "—")
+        : h(Badge, { variant: has ? "success" : "warning" }, () => (has ? "Есть" : "Нет"))
+    }
+  },
+  {
     id: "response",
     header: "Ответ работодателя",
     enableSorting: false,

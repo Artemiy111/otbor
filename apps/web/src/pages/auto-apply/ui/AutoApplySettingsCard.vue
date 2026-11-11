@@ -68,6 +68,13 @@ const resetWriter = () => {
           <Input v-model.number="draft.minPriority.value" type="number" min="0" class="h-8" :disabled="disabled" />
         </div>
         <div class="space-y-1">
+          <FieldLabel :hint="autoApplyHelp.requireLetter">Только с письмом</FieldLabel>
+          <label class="flex h-8 items-center gap-2 text-sm">
+            <input v-model="draft.requireLetter.value" type="checkbox" class="size-4" :disabled="disabled" />
+            Не отправлять без сопроводительного
+          </label>
+        </div>
+        <div class="space-y-1">
           <FieldLabel :hint="autoApplyHelp.sort">Сортировка</FieldLabel>
           <Select v-model="draft.sort.value" :disabled="disabled">
             <SelectTrigger class="h-8 w-full text-sm"><SelectValue /></SelectTrigger>

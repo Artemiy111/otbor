@@ -44,6 +44,8 @@ export const ApplicationRecord = Schema.Struct({
   retryAt: Schema.optional(Schema.NullOr(Schema.String)),
   /** Сколько автоповторов уже потрачено (письмо, чтение формы). */
   autoRetries: Schema.optional(Schema.Int),
+  /** Есть ли в ките непустое сопроводительное письмо; `null`, пока кита нет. */
+  hasLetter: Schema.optional(Schema.NullOr(Schema.Boolean)),
   createdAt: Schema.String,
   updatedAt: Schema.String
 })

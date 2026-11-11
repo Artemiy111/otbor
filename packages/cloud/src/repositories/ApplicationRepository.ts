@@ -38,12 +38,17 @@ export interface ApplicationRow {
   readonly blocked_reason?: string | null
   readonly retry_at?: Date | null
   readonly auto_retries?: number
+  readonly has_letter?: boolean | null
   readonly created_at: Date
   readonly updated_at: Date
 }
 
 const selection = sql`
-  select a.*, v.title as vacancy_title, e.name as employer_name
+  select a.*, v.title as vacancy_title, e.name as employer_name,
+    -- Есть ли в последнем ките непустое письмо; null, пока кита нет.
+    (select k.letter is not null and btrim(k.letter) <> ''
+       from application_kit k where k.application_id = a.id
+       order by k.created_at desc limit 1) as has_letter
   from application a
   join vacancy v on v.id = a.vacancy_id
   left join employer e on e.id = v.employer_id
@@ -67,6 +72,7 @@ export const toRecord = (row: ApplicationRow): ApplicationRecord => ({
   blockedReason: (row.blocked_reason ?? null) as ApplicationRecord["blockedReason"],
   retryAt: row.retry_at == null ? null : new Date(row.retry_at).toISOString(),
   autoRetries: row.auto_retries ?? 0,
+  hasLetter: row.has_letter ?? null,
   createdAt: row.created_at.toISOString(),
   updatedAt: row.updated_at.toISOString()
 })

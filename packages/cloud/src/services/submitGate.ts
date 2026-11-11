@@ -153,6 +153,26 @@ export const trySubmit = Effect.fnUntraced(function*(
     return refused("kit_refused", `kit refused: ${problems.map((problem) => problem.code).join(", ")}`, problems)
   }
 
+  // Настройка «только с письмом»: автоотправка без письма не уходит, заявка
+  // ждёт человека. Одобрение оператором письмо не требует.
+  if (trigger === "auto" && (kit.letter ?? "").trim() === "") {
+    const settings = yield* ApplyFilterRepository.resolve(
+      tx,
+      input.userId,
+      application.hhAccountId,
+      application.resumeId ?? null
+    )
+    if (settings.requireLetter) {
+      return refused("kit_refused", "kit refused: letter_required", [
+        {
+          code: "letter_required",
+          questionId: "",
+          message: "в настройках включено «только с сопроводительным письмом», а письма нет"
+        }
+      ])
+    }
+  }
+
   // At-most-once: пока есть submit-задача, шлюз может её только заметить.
   // Терминальный сбой значит «разберись руками» (reconcile), а не «кликни ещё
   // раз». Исключение - отправка, про которую харнесс доказал, что клика не

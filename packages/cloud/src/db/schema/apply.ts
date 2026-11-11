@@ -99,6 +99,8 @@ export const applyFilter = pgTable(
     sort: text("sort").notNull().default("priority"),
     sortDirection: text("sort_direction").notNull().default("desc"),
     minPriority: numeric("min_priority", { mode: "number" }).notNull().default(0),
+    // Автоотправка только с письмом (migration 0063).
+    requireLetter: boolean("require_letter").notNull().default(false),
     boosts: jsonb("boosts").$type<ReadonlyArray<unknown>>().notNull().default([]),
     // Who writes the auto-apply letters (migration 0041); null: the harness default.
     writingHarness: text("writing_harness"),

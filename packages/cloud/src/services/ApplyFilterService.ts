@@ -31,6 +31,7 @@ export interface ApplyFilterSetInput extends ApplyFilterTarget {
   readonly sort?: ApplyFilterRecord["sort"]
   readonly sortDirection?: ApplyFilterRecord["sortDirection"]
   readonly minPriority?: number
+  readonly requireLetter?: boolean
   readonly boosts?: ApplyFilterRecord["boosts"]
   readonly writingHarness?: string | null
   readonly writingModel?: string | null
@@ -76,6 +77,7 @@ export class ApplyFilterService extends Context.Service<ApplyFilterService, Appl
         readonly batchSize?: number
         readonly sortDirection?: ApplyFilterRecord["sortDirection"]
         readonly minPriority?: number
+        readonly requireLetter?: boolean
         readonly boosts?: ApplyFilterRecord["boosts"]
         readonly writingHarness?: string | null
         readonly writingModel?: string | null
@@ -166,6 +168,7 @@ export class ApplyFilterService extends Context.Service<ApplyFilterService, Appl
                   sort: input.sort,
                   sortDirection: input.sortDirection,
                   minPriority: input.minPriority,
+                  requireLetter: input.requireLetter,
                   boosts: input.boosts === undefined ? undefined : parseBoosts(input.boosts),
                   writingHarness: input.writingHarness,
                   writingModel: input.writingModel,
