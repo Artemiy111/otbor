@@ -225,6 +225,10 @@ export const ProxyMode = Schema.Literals(["auto", "direct", "proxy"])
 export type ProxyMode = typeof ProxyMode.Type
 export const ProxySource = Schema.Literals(["endpoint", "subscription"])
 export type ProxySource = typeof ProxySource.Type
+/** Фильтр картинки капчи перед моделью: `none` - как есть, `normalize` - нормировка на локальный фон. */
+export const CaptchaFilter = Schema.Literals(["none", "normalize"])
+export type CaptchaFilter = typeof CaptchaFilter.Type
+
 export const ProxyRotate = Schema.Literals(["off", "captcha"])
 export type ProxyRotate = typeof ProxyRotate.Type
 export const ProxyConfigOrigin = Schema.Literals(["env", "file"])

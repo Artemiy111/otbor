@@ -9,6 +9,7 @@ import type {
 import { InvalidInput } from "@otbor/contract"
 import {
   probeLocalModel,
+  prepareCaptchaImage,
   readCaptchaSettings,
   recognizeCaptcha,
   writeCaptchaSettings,
@@ -165,7 +166,8 @@ export class LocalModelService extends Context.Service<LocalModelService, LocalM
               harnessId: input.harnessId.trim(),
               model: input.model.trim(),
               maxAttempts: input.maxAttempts,
-              timeoutSeconds: input.timeoutSeconds
+              timeoutSeconds: input.timeoutSeconds,
+              filter: input.filter
             }
             if (next.maxAttempts < 1 || next.maxAttempts > 10) throw invalid("попыток от 1 до 10")
             if (next.timeoutSeconds < 5 || next.timeoutSeconds > 300) throw invalid("таймаут от 5 до 300 секунд")
@@ -201,10 +203,13 @@ export class LocalModelService extends Context.Service<LocalModelService, LocalM
             .sort()
             .at(-1)
           if (latest === undefined) return failure("сохранённых картинок капчи ещё нет")
+          const prepared = yield* Effect.promise(() =>
+            prepareCaptchaImage(readFileSync(join(dir, latest)), settings.filter)
+          )
           const result = yield* Effect.promise(() =>
             recognizeCaptcha(
               { endpoint, model: settings.model, timeoutSeconds: settings.timeoutSeconds },
-              readFileSync(join(dir, latest))
+              prepared.image
             )
           )
           return {

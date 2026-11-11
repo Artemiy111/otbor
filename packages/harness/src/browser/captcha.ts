@@ -5,6 +5,7 @@ import {
   CAPTCHA_SOLVE_MIN_DELAY_SECONDS,
   cleanCaptchaAnswer,
   loadCaptchaSolver,
+  prepareCaptchaImage,
   recognizeCaptcha,
   type CaptchaRecognition,
   type CaptchaSolverConfig
@@ -170,6 +171,8 @@ export const makeCaptchaSolve = (
       }
 
       const recorder = yield* Effect.serviceOption(CaptchaRecorder)
+      // Фильтр картинки: что именно увидела модель, пишем в журнал.
+      const prepared = yield* Effect.promise(() => prepareCaptchaImage(image!, config.filter))
       const note = (
         outcome: CaptchaAttemptReport["outcome"],
         answer: string | null,
@@ -180,6 +183,7 @@ export const makeCaptchaSolve = (
           recorder.value.attempts.push({
             harness: config.harnessId,
             model: config.model,
+            filter: prepared.filter,
             attempt: used + 1,
             answer,
             outcome,
@@ -189,7 +193,7 @@ export const makeCaptchaSolve = (
         }
       }
 
-      const result = yield* recognize(config, image)
+      const result = yield* recognize(config, prepared.image)
       if (!result.ok || result.text === null) {
         note("error", null, result.durationMs, result.error)
         yield* Effect.logWarning(`captcha: ${config.harnessId}/${config.model} failed: ${result.error}`)
@@ -219,7 +223,7 @@ export const makeCaptchaSolve = (
       }
 
       yield* Effect.logInfo(
-        `captcha: answered "${text}" with ${config.harnessId}/${config.model} in ${result.durationMs} ms (attempt ${used + 1}/${config.maxAttempts})`
+        `captcha: answered "${text}" with ${config.harnessId}/${config.model} filter=${prepared.filter} in ${result.durationMs} ms (attempt ${used + 1}/${config.maxAttempts})`
       )
       yield* Effect.sleep(`${AFTER_SUBMIT_MS} millis`)
       // Приняла ли hh ответ: капча на странице осталась - значит, нет.

@@ -23,10 +23,10 @@ export const record = (
     (item) =>
       tx.execute(sql`
         insert into captcha_attempt (
-          user_id, hh_account_id, job_id, stage, harness, model, attempt, answer, outcome, duration_ms, error
+          user_id, hh_account_id, job_id, stage, harness, model, filter, attempt, answer, outcome, duration_ms, error
         ) values (
           ${input.userId}, ${input.hhAccountId}::uuid, ${input.jobId}::uuid, ${input.stage},
-          ${item.harness.slice(0, 80)}, ${item.model.slice(0, 200)}, ${item.attempt},
+          ${item.harness.slice(0, 80)}, ${item.model.slice(0, 200)}, ${item.filter}, ${item.attempt},
           ${item.answer === null ? null : item.answer.slice(0, 200)}, ${item.outcome}, ${item.durationMs},
           ${item.error === null ? null : item.error.slice(0, 500)}
         )
@@ -53,6 +53,7 @@ export const recent = (
              count(*)::int as attempts,
              bool_or(outcome = 'solved') as solved,
              (array_agg(answer order by attempt desc))[1] as answer,
+             (array_agg(filter order by attempt desc))[1] as filter,
              sum(duration_ms)::int as duration_ms
       from captcha_attempt
       where user_id = ${userId}
@@ -76,6 +77,7 @@ export const recent = (
         harness: String(row.harness),
         model: String(row.model),
         attempts: Number(row.attempts),
+        filter: String(row.filter) as CaptchaSolveRecord["filter"],
         solved: Boolean(row.solved),
         answer: row.answer === null ? null : String(row.answer),
         durationMs: Number(row.duration_ms)

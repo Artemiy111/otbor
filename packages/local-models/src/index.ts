@@ -162,4 +162,5 @@ export const probeLocalModel = async (
   }
 }
 
+export * from "./captcha-image.ts"
 export * from "./captcha.ts"

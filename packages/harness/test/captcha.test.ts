@@ -8,7 +8,8 @@ const config = {
   endpoint: { id: "omlx", url: "http://x/v1" },
   model: "gemma",
   maxAttempts: 2,
-  timeoutSeconds: 5
+  timeoutSeconds: 5,
+  filter: "none" as const
 }
 
 /** Страница-двойник: после «Отправить» показывает то, что задал `after`. */
@@ -54,7 +55,7 @@ describe("captcha solver journal", () => {
     expect(await result).toBe(true)
     expect(filled).toEqual(["раёк"])
     expect(recorder.attempts).toEqual([
-      { harness: "omlx", model: "gemma", attempt: 1, answer: "раёк", outcome: "solved", durationMs: 800, error: null }
+      { harness: "omlx", model: "gemma", filter: "none", attempt: 1, answer: "раёк", outcome: "solved", durationMs: 800, error: null }
     ])
   })
 
@@ -62,6 +63,23 @@ describe("captcha solver journal", () => {
     const { result, recorder } = run("<div>Неверный текст. Пожалуйста, повторите</div>")
     expect(await result).toBe(true)
     expect(recorder.attempts[0]?.outcome).toBe("rejected")
+  })
+
+  test("фильтр включён, но картинка не PNG: уходит оригинал, в журнале none", async () => {
+    const { page } = fakePage("<div>Вы откликнулись</div>")
+    const recorder: { attempts: Array<CaptchaAttemptReport> } = { attempts: [] }
+    const seen: Array<number> = []
+    const solve = makeCaptchaSolve(
+      () => ({ ...config, filter: "normalize" as const }),
+      (_config, image) => {
+        seen.push(image.byteLength)
+        return Effect.succeed({ ok: true, text: "x", durationMs: 1, error: null })
+      },
+      () => Effect.void
+    )
+    await Effect.runPromise(solve(page).pipe(Effect.provideService(CaptchaRecorder, recorder)))
+    expect(recorder.attempts[0]?.filter).toBe("none")
+    expect(seen.length).toBe(1)
   })
 
   test("модель не ответила: попытка error, ничего не введено", async () => {

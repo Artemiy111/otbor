@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { CaptchaFilter } from "../enums.ts"
 
 /**
  * Локальный сервер моделей с OpenAI-совместимым API (oMLX, LM Studio, ...).
@@ -51,7 +52,9 @@ export const CaptchaSolverSettings = Schema.Struct({
   model: Schema.String,
   /** Сколько раз подряд вводить ответ, прежде чем остановить аккаунт. */
   maxAttempts: Schema.Int,
-  timeoutSeconds: Schema.Int
+  timeoutSeconds: Schema.Int,
+  /** Фильтр картинки перед моделью; `none` отправляет оригинал. */
+  filter: CaptchaFilter
 })
 export type CaptchaSolverSettings = typeof CaptchaSolverSettings.Type
 

@@ -3,6 +3,9 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
+  decodePng,
+  encodeGrayPng,
+  prepareCaptchaImage,
   cleanCaptchaAnswer,
   loadCaptchaSolver,
   readCaptchaSettings,
@@ -33,7 +36,7 @@ describe("captcha settings", () => {
       join(dir, "openai.json"),
       JSON.stringify({ endpoints: [{ id: "omlx", url: "http://127.0.0.1:1111/v1" }] })
     )
-    const base = { enabled: true, model: "gemma", maxAttempts: 5, timeoutSeconds: 60 }
+    const base = { enabled: true, model: "gemma", maxAttempts: 5, timeoutSeconds: 60, filter: "normalize" as const }
     writeCaptchaSettings({ ...base, harnessId: "omlx" }, join(dir, "captcha.json"))
     expect(loadCaptchaSolver({ OTBOR_HARNESS_DIR: dir })?.endpoint?.id).toBe("omlx")
     writeCaptchaSettings({ ...base, harnessId: "opencode" }, join(dir, "captcha.json"))
@@ -80,5 +83,34 @@ describe("recognizeCaptcha", () => {
     )
     expect(result.ok).toBe(false)
     expect(result.error).not.toBeNull()
+  })
+})
+
+describe("prepareCaptchaImage", () => {
+  const png = (w: number, h: number, fill: (x: number, y: number) => number) =>
+    encodeGrayPng({ width: w, height: h, data: Uint8Array.from({ length: w * h }, (_, i) => fill(i % w, Math.floor(i / w))) })
+
+  test("none отдаёт оригинал", async () => {
+    const source = png(8, 8, () => 200)
+    const result = await prepareCaptchaImage(source, "none")
+    expect(result.filter).toBe("none")
+    expect(result.image).toBe(source)
+  })
+
+  test("normalize выравнивает фон до белого и оставляет штрих тёмным", async () => {
+    // Градиент фона 120..220 и тёмный штрих.
+    const source = png(60, 20, (x, y) => (x === 30 && y > 3 && y < 16 ? 20 : 120 + x))
+    const result = await prepareCaptchaImage(source, "normalize")
+    expect(result.filter).toBe("normalize")
+    const out = decodePng(result.image)
+    const at = (x: number, y: number) => out.data[(y * out.width + x) * 4]!
+    expect(at(5, 10)).toBeGreaterThan(220)
+    expect(at(55, 10)).toBeGreaterThan(220)
+    expect(at(30, 10)).toBeLessThan(120)
+  })
+
+  test("не PNG - оригинал и честный none", async () => {
+    const result = await prepareCaptchaImage(new Uint8Array([1, 2, 3]), "normalize")
+    expect(result.filter).toBe("none")
   })
 })

@@ -2,6 +2,7 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import { Schema } from "effect"
+import { CAPTCHA_FILTERS, type CaptchaFilter } from "./captcha-image.ts"
 import { readOpenAiStore, type OpenAiEndpointDef } from "./index.ts"
 
 /**
@@ -25,7 +26,9 @@ export const CaptchaSettingsFile = Schema.Struct({
   model: Schema.String,
   /** Сколько раз подряд пробовать ввести ответ, прежде чем сдаться. */
   maxAttempts: Schema.Int,
-  timeoutSeconds: Schema.Int
+  timeoutSeconds: Schema.Int,
+  /** Фильтр картинки перед моделью: `none` - отправлять как есть. */
+  filter: Schema.Literals(CAPTCHA_FILTERS)
 })
 export type CaptchaSettingsFile = typeof CaptchaSettingsFile.Type
 
@@ -35,7 +38,8 @@ const CaptchaSettingsPartial = Schema.Struct({
   harnessId: Schema.optional(Schema.String),
   model: Schema.optional(Schema.String),
   maxAttempts: Schema.optional(Schema.Int),
-  timeoutSeconds: Schema.optional(Schema.Int)
+  timeoutSeconds: Schema.optional(Schema.Int),
+  filter: Schema.optional(Schema.Literals(CAPTCHA_FILTERS))
 })
 
 export const DEFAULT_CAPTCHA_SETTINGS: CaptchaSettingsFile = {
@@ -43,7 +47,8 @@ export const DEFAULT_CAPTCHA_SETTINGS: CaptchaSettingsFile = {
   harnessId: "",
   model: "",
   maxAttempts: DEFAULT_CAPTCHA_ATTEMPTS,
-  timeoutSeconds: DEFAULT_CAPTCHA_TIMEOUT_SECONDS
+  timeoutSeconds: DEFAULT_CAPTCHA_TIMEOUT_SECONDS,
+  filter: "normalize"
 }
 
 const isMissing = (error: unknown): boolean =>
@@ -86,6 +91,7 @@ export interface CaptchaSolverConfig {
   readonly model: string
   readonly maxAttempts: number
   readonly timeoutSeconds: number
+  readonly filter: CaptchaFilter
 }
 
 /**
@@ -106,7 +112,8 @@ export const loadCaptchaSolver = (
       endpoint,
       model: settings.model.trim(),
       maxAttempts: Math.max(1, settings.maxAttempts),
-      timeoutSeconds: Math.max(1, settings.timeoutSeconds)
+      timeoutSeconds: Math.max(1, settings.timeoutSeconds),
+      filter: settings.filter
     }
   } catch {
     return null

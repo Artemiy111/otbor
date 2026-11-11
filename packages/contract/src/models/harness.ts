@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { JobKind, JobStage, JobStatus } from "../enums.ts"
+import { CaptchaFilter, JobKind, JobStage, JobStatus } from "../enums.ts"
 import { ApplicationId, HarnessId, HarnessJobId, HhAccountId, LeaseId, VacancyId } from "../ids.ts"
 
 export const HarnessJob = Schema.Struct({
@@ -262,6 +262,8 @@ export const CaptchaAttemptReport = Schema.Struct({
   /** Харнес, который читал картинку: `omlx`, `opencode`, `claude`... */
   harness: Schema.String,
   model: Schema.String,
+  /** Фильтр, который реально применён к картинке (`none` - модель видела оригинал). */
+  filter: CaptchaFilter,
   /** Номер попытки на этой капче, с 1. */
   attempt: Schema.Int,
   /** Что модель вернула; `null`, если ответа не было. */
@@ -282,6 +284,8 @@ export const CaptchaSolveRecord = Schema.Struct({
   harness: Schema.String,
   model: Schema.String,
   attempts: Schema.Int,
+  /** Фильтр последней попытки. */
+  filter: CaptchaFilter,
   solved: Schema.Boolean,
   /** Ответ последней попытки. */
   answer: Schema.NullOr(Schema.String),

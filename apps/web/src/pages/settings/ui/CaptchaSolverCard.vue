@@ -46,6 +46,7 @@ const harnessId = ref("")
 const model = ref("")
 const maxAttempts = ref(5)
 const timeoutSeconds = ref(60)
+const filter = ref<CaptchaSolverSettings["filter"]>("normalize")
 const toast = useToast()
 const testResult = ref<CaptchaSolverTestResult | null>(null)
 
@@ -59,6 +60,7 @@ watch(
     model.value = saved.model
     maxAttempts.value = saved.maxAttempts
     timeoutSeconds.value = saved.timeoutSeconds
+    filter.value = saved.filter
   },
   { immediate: true }
 )
@@ -80,7 +82,8 @@ const current = computed<CaptchaSolverSettings>(() => ({
   harnessId: harnessId.value,
   model: model.value,
   maxAttempts: Number(maxAttempts.value),
-  timeoutSeconds: Number(timeoutSeconds.value)
+  timeoutSeconds: Number(timeoutSeconds.value),
+  filter: filter.value
 }))
 
 const saveMutation = useMutation<CaptchaSolverSettings, CaptchaSolverSettings>({
@@ -160,6 +163,13 @@ const test = async () => {
           <Label for="captcha-timeout" class="text-xs text-muted-foreground">Таймаут модели, секунд</Label>
           <Input id="captcha-timeout" v-model="timeoutSeconds" type="number" min="5" max="300" />
         </div>
+        <div class="space-y-1.5 md:col-span-2">
+          <Label for="captcha-filter" class="text-xs text-muted-foreground">Фильтр картинки перед моделью</Label>
+          <select id="captcha-filter" v-model="filter" class="h-9 w-full rounded-md border bg-background px-2 text-sm">
+            <option value="normalize">Нормировка на фон (лучше по эксперименту)</option>
+            <option value="none">Без фильтра (оригинал)</option>
+          </select>
+        </div>
       </div>
 
       <p v-if="testResult" class="text-sm" :class="testResult.ok ? '' : 'text-destructive'">
@@ -192,6 +202,7 @@ const test = async () => {
               <span class="text-muted-foreground">{{ stamp(item.at) }}</span>
               <span :class="item.solved ? 'text-success' : 'text-destructive'">{{ item.solved ? "решена" : "не решена" }}</span>
               <span>попыток: {{ item.attempts }}</span>
+              <span class="text-muted-foreground">фильтр: {{ item.filter === "none" ? "нет" : "нормировка" }}</span>
               <code class="text-xs">{{ item.harness }}/{{ item.model }}</code>
               <span v-if="item.answer" class="text-muted-foreground">ответ «{{ item.answer }}»</span>
               <span class="text-muted-foreground">{{ item.stage }}, {{ (item.durationMs / 1000).toFixed(1) }} с</span>
