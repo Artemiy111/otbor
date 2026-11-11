@@ -91,6 +91,7 @@ export const importTopics = (
     let imported = 0
     let updated = 0
     let unchanged = 0
+    let covered = 0
     const unknownIds: Array<string> = []
 
     for (const topic of input.topics) {
@@ -182,6 +183,25 @@ export const importTopics = (
         updated += 1
         continue
       }
+      // Отклик на вакансию на hh уже есть, но не этим резюме (резюме совпало бы
+      // и закрыло заявку выше): автозаявка аккаунта отправиться не может, снимаем
+      // её. Только полностью прочитанный список: неполный не доказывает отсутствие.
+      // Ручные заявки (`auto_run` пуст) оператор решает сам.
+      if (input.complete) {
+        const duplicates = yield* tx.execute(sql`
+          update application
+          set state = 'skipped', blocked_reason = null, retry_at = null,
+              last_error = 'на hh уже есть отклик на эту вакансию (с другим резюме); отправка не нужна',
+              updated_at = now()
+          where hh_account_id = ${input.hhAccountId}
+            and vacancy_id = ${vacancyId}
+            and origin = 'otbor'
+            and auto_run is not null
+            and state in ('draft', 'needs_human', 'failed')
+          returning id
+        `)
+        covered += duplicates.rows.length
+      }
       const result = yield* tx.execute(sql`
         insert into application (user_id, hh_account_id, vacancy_id, resume_id, state, origin, hh_status, hh_responded_at)
         select ${input.userId}, ${input.hhAccountId}, ${vacancyId}, ${resumeId}, 'submitted', 'imported',
@@ -231,7 +251,7 @@ export const importTopics = (
         pages: input.pages,
         topics: input.topics.length,
         imported,
-        updated,
+        updated: updated + covered,
         unchanged,
         unknownVacancy: unknownIds.length,
         unknownVacancyIds: unknownIds.slice(0, MAX_UNKNOWN_IDS),

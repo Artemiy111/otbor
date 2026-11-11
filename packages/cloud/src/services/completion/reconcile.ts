@@ -6,6 +6,7 @@ import * as ResumeRepository from "../../repositories/ResumeRepository.ts"
 import * as VacancyRepository from "../../repositories/VacancyRepository.ts"
 import { judgeReconcile, reconcileArtifacts } from "../applyRules.ts"
 import { retryLater } from "./common.ts"
+import { requestNegotiationsRecheck } from "./negotiationsRecheck.ts"
 import { outcome, type StageHandler } from "./types.ts"
 
 /**
@@ -101,6 +102,15 @@ export const completeReconcile: StageHandler = (tx, ctx, exit) =>
         jobResult: { found: false, reading: verdict.reading },
         reconcileKept,
         settle: { status: "failed", result: { clicked: false, reconciled: true }, message }
+      })
+    }
+    // Не удалось понять, ушёл ли отклик: сверяем со всем списком откликов hh.
+    if (verdict._tag === "human" || (verdict._tag === "retry" && job.attempts >= job.maxAttempts)) {
+      yield* requestNegotiationsRecheck(tx, {
+        userId: ctx.userId,
+        hhAccountId: ctx.hhAccountId,
+        sessionProfile: (job.payload as { sessionProfile?: unknown } | null)?.sessionProfile,
+        exit
       })
     }
     if (verdict._tag === "human") {

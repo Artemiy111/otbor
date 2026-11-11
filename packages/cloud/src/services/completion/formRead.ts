@@ -7,7 +7,7 @@ import * as VacancyFormRepository from "../../repositories/VacancyFormRepository
 import * as VacancyRepository from "../../repositories/VacancyRepository.ts"
 import { judgePrepare } from "../applyRules.ts"
 import { deferOrPark, parkWithCode } from "../blocked.ts"
-import { negotiationsSyncJob } from "../jobs.ts"
+import { requestNegotiationsRecheck } from "./negotiationsRecheck.ts"
 import { trySubmit } from "../submitGate.ts"
 import { retryLater } from "./common.ts"
 import { outcome, type StageHandler } from "./types.ts"
@@ -156,16 +156,11 @@ export const completeFormRead: StageHandler = (tx, ctx, exit, options) =>
         if (exit.tag === "already_responded" && ctx.hhAccountId !== null) {
           // hh knows a response otbor does not: import it, so the
           // vacancy shows "responded" instead of a form error.
-          const latest = yield* QueueRepository.latestForAccount(tx, ctx.hhAccountId, "negotiations_sync")
-          if (latest === null || !["pending", "leased", "running"].includes(latest.job.status)) {
-            const profile = (job.payload as { sessionProfile?: unknown } | null)?.sessionProfile
-            yield* negotiationsSyncJob(tx, {
-              userId: ctx.userId,
-              hhAccountId: ctx.hhAccountId,
-              sessionProfile: typeof profile === "string" ? profile : null,
-              sequence: (yield* QueueRepository.countForAccount(tx, ctx.hhAccountId, "negotiations_sync")) + 1
-            })
-          }
+          yield* requestNegotiationsRecheck(tx, {
+            userId: ctx.userId,
+            hhAccountId: ctx.hhAccountId,
+            sessionProfile: (job.payload as { sessionProfile?: unknown } | null)?.sessionProfile
+          })
         }
         return outcome("done", message)
       }

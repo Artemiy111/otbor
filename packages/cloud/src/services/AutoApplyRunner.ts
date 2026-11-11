@@ -712,6 +712,16 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
               )
             }
 
+            // Вакансии, ушедшие в архив hh: заявки на них снимаем, а не мучаем формой.
+            if (only === undefined) {
+              const archived = yield* database
+                .asUser(userId, (tx) => ApplicationRepository.skipArchivedVacancies(tx, userId, hhAccountId))
+                .pipe(Effect.mapError(toStorageError("autoApply.archived")))
+              if (archived > 0) {
+                yield* Effect.logInfo(`autoapply ${hhAccountId}: ${archived} applications skipped, vacancy archived`)
+              }
+            }
+
             const pairResumeIds = accountRows.flatMap((row) => (row.resumeId === null ? [] : [row.resumeId]))
             // A pair row decides for its resume; the account row for the rest.
             const modeOf: ModeOf = (resumeId) => {

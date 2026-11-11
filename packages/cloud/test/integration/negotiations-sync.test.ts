@@ -212,6 +212,27 @@ if (!enabled || serverUrl === null) {
       expect(await support.countJobs(row!.id, "submit")).toBe(0)
     })
 
+    test("a stuck auto application is settled once the list shows hh already holds a response", async () => {
+      const ctx = await setup("sync-covered")
+      const { userId, accountId } = ctx.tenant
+      const vacancyId = await support.seedVacancyWithExternal("9300001", "Covered vacancy")
+      const stuckId = await support.seedApplication({
+        userId,
+        accountId,
+        vacancyId,
+        state: "needs_human",
+        autoRun: "auto"
+      })
+
+      await support.negotiationsRun(userId, accountId)
+      await ctx.finish(syncExit(listHtml([{ vacancyId: 9300001, lastState: "RESPONSE" }]), emptyList))
+      const rows = await support.applicationRowsFor(accountId)
+      const stuck = rows.find((row) => row.id === stuckId)
+      // Резюме темы неизвестно, поэтому заявка закрыта как отправленная; дубль не создан.
+      expect(stuck?.state).toBe("submitted")
+      expect(rows.length).toBe(1)
+    })
+
     test("an unreadable result is retried, a login page needs a human, nothing is imported", async () => {
       const ctx = await setup("sync-failures")
       const { userId, accountId } = ctx.tenant

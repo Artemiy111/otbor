@@ -608,8 +608,10 @@ interface RunnerRawRow {
  * до перечисленных заявок, условия остаются теми же.
  */
 /**
- * Черновики раннера (`auto_run = 'drafts'`), чья пара (аккаунт, резюме) теперь
- * в режиме `auto`, становятся автооткликами: `auto_run = 'auto'`, `preparing`.
+ * Черновики (`auto_run` `drafts` или `auto` после выключенного режима; ручные
+ * не трогаем), чья пара (аккаунт, резюме) теперь в режиме `auto`, становятся
+ * автооткликами: `auto_run = 'auto'`, `preparing`. Вакансию, на которую у
+ * аккаунта уже есть отправленный отклик, не трогаем.
  * Заявки `needs_human` не трогаем: им нужен явный повтор оператора.
  * Возвращает число переведённых заявок.
  */
@@ -624,9 +626,39 @@ export const promoteDraftsToAuto = (
       set auto_run = 'auto', state = 'preparing', last_error = null,
           blocked_reason = null, retry_at = null, auto_retries = 0, updated_at = now()
       where user_id = ${userId} and hh_account_id = ${hhAccountId}
-        and auto_run = 'drafts' and state = 'draft'
+        and auto_run in ('drafts', 'auto') and state = 'draft'
         and ${ApplyFilterRepository.governingAutoModeSql("application")} = 'auto'
+        -- Уже сделанный на hh отклик не воскрешаем: черновик не должен уйти дублем.
+        and not exists (
+          select 1 from application o
+          where o.hh_account_id = application.hh_account_id and o.vacancy_id = application.vacancy_id
+            and o.id <> application.id and o.state = 'submitted'
+        )
       returning id
+    `)
+    .pipe(Effect.map((result) => result.rows.length))
+
+/**
+ * Заявки на вакансии, которые hh перевёл в архив: отправлять некуда, ошибка
+ * формы или отправки здесь вторична. Снимаем их (`skipped`) с понятной причиной.
+ * `queued`/`submitting` не трогаем: у них идёт задача. Возвращает число заявок.
+ */
+export const skipArchivedVacancies = (
+  tx: Executor,
+  userId: string,
+  hhAccountId: string
+): RepoEffect<number> =>
+  tx
+    .execute(sql`
+      update application a
+      set state = 'skipped', blocked_reason = null, retry_at = null,
+          last_error = 'вакансия в архиве hh; отклик не нужен', updated_at = now()
+      from vacancy v
+      where v.id = a.vacancy_id and v.archived
+        and a.user_id = ${userId} and a.hh_account_id = ${hhAccountId}
+        and a.origin = 'otbor'
+        and a.state in ('draft', 'preparing', 'needs_human', 'failed')
+      returning a.id
     `)
     .pipe(Effect.map((result) => result.rows.length))
 
