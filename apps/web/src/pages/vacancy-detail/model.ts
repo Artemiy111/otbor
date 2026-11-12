@@ -8,7 +8,7 @@ import { useDefaultAccount } from "@/entities/hh-account"
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { vacancyApi, vacancyKeys } from "@/entities/vacancy"
 import { buildRecon, describeError, reconByKey } from "@/shared/lib"
-import { decisionsFilter, pickDecision } from "./lib"
+import { decisionsFilter, isLegacyDecisionsResponse, pickDecision } from "./lib"
 
 /** Everything a vacancy page needs, shared by every layout variant. */
 export const useVacancyPage = (id: () => string) => {
@@ -16,17 +16,23 @@ export const useVacancyPage = (id: () => string) => {
     key: () => vacancyKeys.detail(id()),
     query: () => vacancyApi.get(id())
   })
-  // Решения этой вакансии: узкая выборка по названию и работодателю (отдельного
-  // запроса «по id» нет), свежее решение на пару аккаунт+резюме, дальше отбор по id.
+  // Решения этой вакансии: точный запрос по id. Свежее решение на пару аккаунт+резюме
+  // выбирает pickDecision, поэтому серверное сворачивание (latestPerVacancy) не нужно.
   const decisionsQuery = useQuery({
     key: () => decisionKeys.vacancy(id()),
-    query: () =>
-      decisionApi.list({
+    query: async () => {
+      const decisions = await decisionApi.list({ vacancyId: id(), limit: 200 })
+      if (!isLegacyDecisionsResponse(decisions, id())) return decisions
+      // Запасной путь: сервер без `vacancyId` вернул чужие решения. Нужна вакансия:
+      // берём её из кэша запроса или дожидаемся загрузки, без второго запроса.
+      const detail = vacancyQuery.data.value ?? (await vacancyQuery.refresh()).data
+      if (detail === undefined) throw vacancyQuery.error.value ?? new Error("vacancy not loaded")
+      return decisionApi.list({
         limit: 100,
         latestPerVacancy: true,
-        filter: decisionsFilter(vacancyQuery.data.value!.vacancy)
-      }),
-    enabled: () => vacancyQuery.data.value !== undefined
+        filter: decisionsFilter(detail.vacancy)
+      })
+    }
   })
   const applicationsQuery = useQuery({
     key: () => applicationKeys.vacancy(id()),

@@ -188,13 +188,25 @@ export const pickDecision = (
   )
 }
 
-/** Узкая выборка решений одной вакансии: по названию и работодателю, дальше отбор по id. */
+/**
+ * Запасной путь для сервера без `vacancyId` в запросе решений: узкая выборка по
+ * названию и работодателю, дальше отбор по id на клиенте.
+ */
 export const decisionsFilter = (vacancy: Pick<VacancySummary, "title" | "employerName">): PresetFilter => ({
   rules: [
     { field: "title", op: "contains", value: vacancy.title },
     ...(vacancy.employerName ? [{ field: "employer" as const, op: "contains" as const, value: vacancy.employerName }] : [])
   ]
 })
+
+/**
+ * Ответ пришёл от старого сервера: он молча игнорирует `vacancyId` и отдаёт
+ * решения по другим вакансиям. Пустой ответ - честное «решений нет».
+ */
+export const isLegacyDecisionsResponse = (
+  decisions: ReadonlyArray<Pick<DecisionRecord, "vacancyId">>,
+  vacancyId: string
+): boolean => decisions.some((decision) => decision.vacancyId !== vacancyId)
 
 /* ---- ключевые факты и сверка источников ------------------------------------- */
 

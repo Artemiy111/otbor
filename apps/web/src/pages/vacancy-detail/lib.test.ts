@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { DecisionRecord } from "@otbor/contract"
 import type { ReconRow } from "@/shared/lib"
-import { latestApplications, decidedBy, filterRulesText, fitWasComputed, descriptionBlocks, pickDecision, reasonLine, reconWording, verdictText } from "./lib"
+import { latestApplications, decidedBy, filterRulesText, fitWasComputed, descriptionBlocks, isLegacyDecisionsResponse, pickDecision, reasonLine, reconWording, verdictText } from "./lib"
 
 const NOW = new Date("2026-11-10T12:00:00Z")
 
@@ -68,6 +68,16 @@ describe("pickDecision", () => {
     expect(String(pickDecision(list, "acc1", "r1")?.id)).toBe("a")
     expect(String(pickDecision(list, "acc1", "r2")?.id)).toBe("b")
     expect(pickDecision(list, "acc3", "r1")).toBeNull()
+  })
+})
+
+describe("isLegacyDecisionsResponse", () => {
+  test("чужая вакансия в ответе выдаёт старый сервер", () => {
+    expect(isLegacyDecisionsResponse([{ vacancyId: "v1" as never }, { vacancyId: "v2" as never }], "v1")).toBe(true)
+  })
+  test("только своя вакансия и пустой ответ - новый сервер", () => {
+    expect(isLegacyDecisionsResponse([{ vacancyId: "v1" as never }], "v1")).toBe(false)
+    expect(isLegacyDecisionsResponse([], "v1")).toBe(false)
   })
 })
 
