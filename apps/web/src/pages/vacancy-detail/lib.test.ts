@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import type { DecisionRecord } from "@otbor/contract"
 import type { ReconRow } from "@/shared/lib"
-import { latestApplications, decidedBy, filterRulesText, fitWasComputed, descriptionBlocks, isLegacyDecisionsResponse, pickDecision, reasonLine, reconWording, verdictText } from "./lib"
+import { latestApplications, decidedBy, filterRulesText, fitWasComputed, listPreview, parseFilterFailures, descriptionBlocks, isLegacyDecisionsResponse, pickDecision, reasonLine, reconWording, verdictText } from "./lib"
+
+/** `formatNumber` разделяет тысячи неразрывным пробелом: в тестах приводим к обычному. */
+const plain = (text: string): string => text.replace(/[\u00a0\u202f]/g, " ")
 
 const NOW = new Date("2026-11-10T12:00:00Z")
 
@@ -15,10 +18,10 @@ describe("reasonLine", () => {
   })
 
   test("правило фильтра и порог соответствия", () => {
-    expect(reasonLine({ code: "blocked_filter", detail: "зарплата от 200 000" })).toEqual({
-      mark: "no",
-      text: "не прошла правило фильтра: зарплата от 200 000"
-    })
+    const filter = reasonLine({ code: "blocked_filter", detail: "salary >= 200000 (RUR)" })
+    expect(filter.mark).toBe("no")
+    expect(plain(filter.text)).toBe("Зарплата: нужно от 200 000 ₽")
+    expect(filter.text).not.toContain("не прошла")
     expect(reasonLine({ code: "blocked_low_fit", detail: "fit 40 < 60" }).text).toBe(
       "соответствие 40 ниже порога 60"
     )
@@ -143,13 +146,104 @@ describe("latestApplications", () => {
 })
 
 describe("filterRulesText", () => {
-  test("правила фильтра читаются словами", () => {
-    expect(filterRulesText("salary gte 200000")).toBe("зарплата: от 200000")
-    expect(filterRulesText("location in 113, location in 113")).toBe("место работы")
-    expect(filterRulesText("work_format in REMOTE, HYBRID")).toBe("формат работы: из списка REMOTE, HYBRID")
-    expect(filterRulesText("что-то своё")).toBe("что-то своё")
+  test("обычные правила читаются словами", () => {
+    expect(plain(filterRulesText("salary >= 200000 (RUR, or missing)"))).toBe("Зарплата: нужно от 200 000 ₽")
+    expect(plain(filterRulesText("salary gte 200000"))).toBe("Зарплата: нужно от 200 000")
+    expect(filterRulesText("location in 113, location in 113")).toBe("Место работы вне выбранных")
+    expect(filterRulesText("work_format in remote,hybrid")).toBe("Формат работы не из допустимых: удалённо, гибрид")
+    expect(filterRulesText("archived is false")).toBe("Вакансия в архиве")
+    expect(filterRulesText("applied not_in account:01a19cde-c2a7-79c4-adcd-e92ab3edd592")).toBe("Вы уже откликались в эту компанию")
+    expect(filterRulesText("hidden not_in any")).toBe("Вакансия скрыта: в чёрном списке")
+    expect(filterRulesText("seniority in middle,senior")).toBe("Уровень не из допустимых: Мидл, Сеньор")
   })
 
+  test("несколько правил идут через запятую сервера и остаются отдельными", () => {
+    const failures = parseFilterFailures("title not_contains_any k8s, kubernetes, salary >= 200000, archived is false")
+    expect(failures.map((failure) => plain(failure.alternatives[0]![0]!.text))).toEqual([
+      "Название содержит стоп-слова",
+      "Зарплата: нужно от 200 000",
+      "Вакансия в архиве"
+    ])
+    expect(failures[0]!.alternatives[0]![0]!.items).toEqual(["k8s", "kubernetes"])
+  })
+
+  test("незнакомый вид остаётся как есть", () => {
+    expect(filterRulesText("что-то своё")).toBe("что-то своё")
+    expect(filterRulesText("weird_field contains x")).toBe("weird_field contains x")
+    expect(filterRulesText("any of: сломанное ? условие")).toBe("any of: сломанное ? условие")
+  })
+})
+
+describe("parseFilterFailures: группы «any of»", () => {
+  test("обрезанная группа с одним условием читается как правило со списком", () => {
+    const [failure] = parseFilterFailures(
+      "any of: title contains_any devops,dev ops,dev-ops,devsecops,dev sec ops,sre,platform,k8s,kubernetes,pl…"
+    )
+    const condition = failure!.alternatives[0]![0]!
+    expect(failure!.group).toBe(true)
+    expect(failure!.alternatives).toHaveLength(1)
+    expect(condition.text).toBe("Название не содержит ни одного из слов")
+    // Оборванное «pl» отброшено, список помечен как неполный.
+    expect(condition.items).toEqual(["devops", "dev ops", "dev-ops", "devsecops", "dev sec ops", "sre", "platform", "k8s", "kubernetes"])
+    expect(condition.cut).toBe(true)
+  })
+
+  test("варианты через | и условия через &", () => {
+    const [failure] = parseFilterFailures("any of: title contains_any devops,sre | analysis_role in devops,sre & salary >= 100000")
+    expect(failure!.alternatives).toHaveLength(2)
+    expect(failure!.alternatives[1]!.map((condition) => plain(condition.text))).toEqual([
+      "Роль по разбору не из допустимых",
+      "Зарплата: нужно от 100 000"
+    ])
+    expect(failure!.more).toBe(false)
+    expect(filterRulesText("any of: title contains_any devops,sre | analysis_role in devops,sre")).toBe(
+      "Название не содержит ни одного из слов: devops, sre или Роль по разбору не из допустимых: devops, sre"
+    )
+  })
+
+  test("оборванный на середине оператора хвост уходит в «и другие»", () => {
+    const [failure] = parseFilterFailures("any of: title contains_any devops,sre | analysis_ro…")
+    expect(failure!.alternatives).toHaveLength(1)
+    expect(failure!.more).toBe(true)
+  })
+
+  test("группа и обычные правила в одной детали", () => {
+    const failures = parseFilterFailures("any of: title contains_any devops,sre, archived is false")
+    expect(failures).toHaveLength(2)
+    expect(failures[1]!.alternatives[0]![0]!.text).toBe("Вакансия в архиве")
+  })
+})
+
+describe("listPreview", () => {
+  const many = Array.from({ length: 10 }, (_, index) => `w${index}`)
+  test("короткий список показывается целиком", () => {
+    expect(listPreview(["a", "b"], false)).toEqual({ shown: ["a", "b"], hidden: 0, other: false, canExpand: false })
+    expect(listPreview(many.slice(0, 7), false).shown).toHaveLength(7)
+  })
+  test("длинный сворачивается и разворачивается", () => {
+    const folded = listPreview(many, false)
+    expect(folded.shown).toHaveLength(6)
+    expect(folded.hidden).toBe(4)
+    expect(folded.canExpand).toBe(true)
+    expect(listPreview(many, false, true).shown).toHaveLength(10)
+  })
+  test("обрезанный сервером не разворачивается: «и другие»", () => {
+    const cut = listPreview(many, true, true)
+    expect(cut).toMatchObject({ hidden: 0, other: true, canExpand: false })
+    expect(cut.shown).toHaveLength(6)
+  })
+})
+
+describe("descriptionBlocks: пункты в одной строке с заголовком", () => {
+  test("заголовок с первым значком и продолжение списка через «;»", () => {
+    const blocks = descriptionBlocks("Обязанности: • Первое;\nВторое;\nТретье.\n\nТребования:\n- Опыт")
+    expect(blocks[0]).toEqual({ kind: "heading", text: "Обязанности" })
+    expect(blocks[1]).toEqual({ kind: "list", items: ["Первое;", "Второе;", "Третье."] })
+    expect(blocks[2]).toEqual({ kind: "heading", text: "Требования" })
+  })
+})
+
+describe("fitWasComputed", () => {
   test("соответствие не считалось у пропуска по правилу", () => {
     expect(fitWasComputed({ verdict: "skip", reasons: [{ code: "blocked_filter" }] })).toBe(false)
     expect(fitWasComputed({ verdict: "skip", reasons: [{ code: "blocked_low_fit", detail: "fit 40 < 60" }] })).toBe(true)

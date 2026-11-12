@@ -1,6 +1,6 @@
 import { computed, ref, watch } from "vue"
 import { useQuery, useQueryCache } from "@pinia/colada"
-import { useStorage } from "@vueuse/core"
+import { useDocumentVisibility, useIntervalFn, useStorage } from "@vueuse/core"
 import { applicationApi, applicationKeys } from "@/entities/application"
 import { contactApi, contactKeys } from "@/entities/contact"
 import { decisionApi, decisionKeys } from "@/entities/decision"
@@ -160,6 +160,48 @@ export const useVacancyPage = (id: () => string) => {
     { immediate: true }
   )
 
+  /**
+   * Состояние описания. Известно два признака: запрос на догрузку идёт (`hydrating`)
+   * либо упал (`hydrateFailed`); отдельной «очереди» у страницы нет, догрузка
+   * идёт одним запросом, поэтому «загружается» = запрос в полёте.
+   */
+  const descriptionMissing = computed(
+    () => data.value !== undefined && data.value !== null && (data.value.descriptionText ?? "").trim() === ""
+  )
+  const descriptionState = computed<"ready" | "loading" | "failed" | "missing">(() => {
+    if (!descriptionMissing.value) return "ready"
+    if (hydrating.value) return "loading"
+    return hydrateFailed.value ? "failed" : "missing"
+  })
+  // Описание могла докачать и фоновая очередь на сервере: пока его нет, тихо спрашиваем
+  // вакансию заново. На скрытой вкладке опрос стоит, после получения описания и после
+  // нескольких попыток (5 минут) прекращается.
+  const visibility = useDocumentVisibility()
+  let polls = 0
+  const MAX_POLLS = 20
+  const poll = useIntervalFn(
+    () => {
+      if (visibility.value !== "visible" || hydrating.value || vacancyQuery.isLoading.value) return
+      polls += 1
+      if (polls > MAX_POLLS) {
+        poll.pause()
+        return
+      }
+      void vacancyQuery.refetch()
+    },
+    15_000,
+    { immediate: false }
+  )
+  watch(
+    [descriptionMissing, id],
+    ([missing]) => {
+      polls = 0
+      if (missing) poll.resume()
+      else poll.pause()
+    },
+    { immediate: true }
+  )
+
   return {
     id,
     vacancyQuery,
@@ -187,6 +229,7 @@ export const useVacancyPage = (id: () => string) => {
     notFound,
     hydrating,
     hydrateFailed,
+    descriptionState,
     refreshApplications,
     hydrate: () => hydrate(true, true)
   }

@@ -35,6 +35,7 @@ const groups = computed(() =>
 )
 const conflicts = computed(() => wording.value.filter((item) => item.words.verdict === "conflict").length)
 const agreed = computed(() => wording.value.filter((item) => item.words.verdict === "agree").length)
+const singles = computed(() => wording.value.filter((item) => item.words.verdict === "single").length)
 
 const wanted = new Set(["probation", "interviewStages", "vacation", "sickLeave"])
 const numbers = computed(() =>
@@ -61,7 +62,11 @@ const analysis = computed(() => props.page.analysis.value)
         Факты и источники
         <span class="ml-auto text-sm font-normal tabular-nums text-muted-foreground">
           <template v-if="wording.length > 0">
-            совпало {{ agreed }}<template v-if="conflicts > 0">, расходятся <span :class="toneClasses('warning').text">{{ conflicts }}</span></template>
+            <span v-if="conflicts > 0" :class="toneClasses('warning').text">расходятся {{ conflicts }}</span>
+            <template v-if="conflicts > 0 && agreed + singles > 0">, </template>
+            <template v-if="agreed > 0">совпало {{ agreed }}</template>
+            <template v-if="agreed > 0 && singles > 0">, </template>
+            <template v-if="singles > 0">из одного источника {{ singles }}</template>
           </template>
           <template v-else>нет данных</template>
         </span>
@@ -78,7 +83,7 @@ const analysis = computed(() => props.page.analysis.value)
         <table class="w-full text-left">
           <caption class="sr-only">{{ entry.title }}</caption>
           <tbody class="divide-y divide-border">
-            <tr v-for="item in entry.rows" :key="item.row.key" class="align-top">
+            <tr v-for="item in entry.rows" :key="item.row.key" class="align-baseline">
               <th scope="row" class="w-1/4 min-w-24 py-1.5 pr-3 font-medium">{{ item.words.label }}</th>
               <td class="py-1.5 pr-3 text-muted-foreground">{{ item.words.sources }}</td>
               <td
@@ -116,7 +121,7 @@ const analysis = computed(() => props.page.analysis.value)
         <template v-if="analysis">Разбор модели: {{ analysis.model }}, {{ formatDate(analysis.updatedAt) }}.</template>
         <template v-else-if="!page.analysisPending.value">Модель эту вакансию не разбирала.</template>
         <template v-if="hh === null">
-          Данные отклика с hh не загружены.
+          Часть данных с hh (условия отклика, число откликов) не загружена.
           <Button size="sm" variant="outline" :disabled="page.hydrating.value" @click="page.hydrate">Загрузить</Button>
         </template>
       </p>

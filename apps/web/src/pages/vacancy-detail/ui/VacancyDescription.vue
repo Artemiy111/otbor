@@ -2,14 +2,16 @@
 import { computed, ref } from "vue"
 import type { VacancyDetail } from "@otbor/contract"
 import { termsPattern } from "@otbor/domain"
-import { EmptyState } from "@/shared/ui"
+import { Inbox, LoaderCircle } from "@lucide/vue"
+import { Button } from "@/shared/ui"
 import { descriptionBlocks } from "../lib"
+import type { VacancyPage } from "../model"
 
 /** Описание как основной текст для чтения: узкая колонка, заголовки и списки, ключевые слова подсвечены. */
-const props = defineProps<{ data: VacancyDetail }>()
+const props = defineProps<{ data: VacancyDetail; page: VacancyPage }>()
 const highlight = ref(true)
 
-const blocks = computed(() => descriptionBlocks(props.data.descriptionText))
+const blocks = computed(() => descriptionBlocks(props.data.descriptionText ?? ""))
 const pattern = computed(() =>
   highlight.value ? termsPattern(props.data.keywords.map((item) => item.matchedForm)) : null
 )
@@ -40,5 +42,28 @@ const mark = (text: string): string => {
       </template>
     </div>
   </div>
-  <EmptyState v-else title="Описание ещё не загружено" description="Откройте меню «⋯» вверху страницы и выберите «Заново загрузить с hh»." />
+  <!-- Пустое описание: что говорить, зависит от догрузки, иначе шапка и блок противоречат друг другу. -->
+  <div
+    v-else-if="page.descriptionState.value === 'loading'"
+    class="flex items-center gap-2 rounded-lg border border-dashed border-border px-4 py-6 text-sm text-muted-foreground"
+    role="status"
+  >
+    <LoaderCircle class="size-4 shrink-0 animate-spin" />
+    Описание загружается, появится здесь само.
+  </div>
+  <div
+    v-else-if="page.descriptionState.value === 'failed'"
+    class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-dashed border-warning/30 bg-warning-muted px-4 py-4 text-sm"
+    role="status"
+  >
+    <span class="text-warning">Описание не удалось загрузить: hh не ответил или страница не открылась.</span>
+    <Button variant="outline" size="sm" @click="page.hydrate">Повторить</Button>
+  </div>
+  <div v-else class="flex items-start gap-3 rounded-lg border border-dashed border-border px-4 py-4 text-sm">
+    <Inbox class="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+    <div class="space-y-0.5">
+      <p class="font-medium">Описание ещё не загружено</p>
+      <p class="text-muted-foreground">Откройте меню «⋯» вверху страницы и выберите «Заново загрузить с hh».</p>
+    </div>
+  </div>
 </template>
