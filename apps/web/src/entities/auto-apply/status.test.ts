@@ -66,6 +66,11 @@ describe("humanizeError и режим", () => {
     expect(humanizeError("hh asked for a captcha")).toBe("hh попросил капчу.")
     expect(humanizeError("request timed out after 30s")).toBe("hh слишком долго не отвечал.")
     expect(humanizeError("ECONNRESET")).toContain("Нет связи")
+    expect(humanizeError(`the resume "DevOps" (291000851) did not appear in hh's resume select`)).toBe(
+      "Резюме не появилось в списке на странице отклика hh."
+    )
+    expect(humanizeError("the form shows another resume")).toContain("другое резюме")
+    expect(humanizeError("the response page was not recognized: <div>")).toContain("исполнитель браузера")
     expect(humanizeError("   ")).toBeNull()
     expect(humanizeError(null)).toBeNull()
     expect(humanizeError("xyzzy")).toContain("сбоем")

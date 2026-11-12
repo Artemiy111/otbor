@@ -6,6 +6,8 @@ import { autoModeOptions } from "@/entities/apply-filter"
 import { autoModeTone } from "@/entities/auto-apply"
 import {
   CommandChip,
+  describeSubmitPause,
+  retryTimeText,
   hhAccountColor,
   hhAccountInitials,
   hhAccountName
@@ -42,8 +44,15 @@ const loginTone = computed(() => toneClasses(login.value.tone))
 const usage = computed(() => (props.snapshot ? describeUsage(props.snapshot.usage) : null))
 const usageTone = computed(() => (usage.value ? toneClasses(usage.value.tone) : null))
 
-/** Пауза после капчи берётся из аккаунта: это самые свежие данные списка. */
+/** Пауза берётся из аккаунта: это самые свежие данные списка. Старый сервер причины не присылает: это капча. */
 const pausedSince = computed(() => props.account.submitBlockedAt ?? null)
+const pause = computed(() =>
+  describeSubmitPause({ reason: props.account.submitBlockReason, detail: props.account.submitBlockDetail })
+)
+const retryClockText = computed(() => {
+  const clock = retryTimeText(props.snapshot?.submitRetryAt ?? null, new Date(props.now))
+  return clock === null ? "Попробуем снова в ближайшую минуту." : `Попробуем снова в ${clock}.`
+})
 const retryMinutes = computed(() => minutesUntil(props.snapshot?.submitRetryAt ?? null, props.now))
 const retryText = computed(() => {
   const at = props.snapshot?.submitRetryAt ?? null
@@ -164,12 +173,22 @@ const commitEdit = () => {
         <div v-if="pausedSince" class="space-y-2 rounded-md border p-3" :class="toneClasses('warning').border">
           <div class="flex items-center gap-2 text-sm font-medium" :class="toneClasses('warning').text">
             <span class="size-2 shrink-0 rounded-full" :class="toneClasses('warning').dot" aria-hidden="true" />
-            Пауза после капчи
+            {{ pause.title }}
           </div>
-          <p class="text-sm text-muted-foreground">
+          <p v-if="pause.kind === 'captcha'" class="text-sm text-muted-foreground">
             hh.ru показал проверку «я не робот» {{ formatDate(pausedSince) }}. Отправки остановлены, чтение вакансий идёт как обычно.
             {{ retryText }}
           </p>
+          <template v-else>
+            <p class="text-sm">{{ pause.humanError ?? "Исполнитель браузера получал один и тот же отказ, причина не записана." }}</p>
+            <p class="text-sm text-muted-foreground">
+              Остановлено {{ formatDate(pausedSince) }}, чтение вакансий идёт как обычно. {{ retryClockText }}
+            </p>
+            <details v-if="pause.rawDetail" class="text-xs text-muted-foreground">
+              <summary class="cursor-pointer">Технические детали</summary>
+              <p class="mt-1 break-words font-mono">{{ pause.rawDetail }}</p>
+            </details>
+          </template>
           <Button variant="outline" size="sm" :disabled="resuming" @click="emit('resumeNow')">
             {{ resuming ? "Снимаю паузу…" : "Повторить сейчас" }}
           </Button>

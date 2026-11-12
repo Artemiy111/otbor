@@ -1,4 +1,5 @@
 import type { BlockedReason, CrawlSchedule, Health, Overview, ProxyStatus } from "@otbor/contract"
+import { describeSubmitPause } from "@/entities/hh-account/pause"
 import { formatAge, formatNumber } from "@/shared/lib/format"
 import { countWord, plural, type PluralForms } from "@/shared/lib/plural"
 import { jobStageLabel, scheduleKindLabel } from "@/shared/lib/status"
@@ -227,7 +228,23 @@ export const buildAttention = (input: AttentionInput): ReadonlyArray<AttentionIt
         })
       } else if (isPaused(account, now)) {
         const retry = inText(account.submitRetryAt, now)
-        push({
+        if (account.submitBlockReason === "repeated_failure") {
+          // Серия одинаковых отказов исполнителя: «повторить заявки капчи» тут не лечит,
+          // паузу снимают на странице аккаунтов.
+          const pause = describeSubmitPause({ reason: account.submitBlockReason, detail: account.submitBlockDetail })
+          push({
+            id: `pause-${account.id}`,
+            tone: "warning",
+            icon: "stalled",
+            title: `${pause.title}: ${account.name}`,
+            detail: [
+              pause.humanError,
+              retry === null ? null : `Система попробует снова ${retry}.`
+            ].filter((part): part is string => part !== null).join(" ") || "Отправки с аккаунта на паузе.",
+            action: { kind: "link", label: "К аккаунтам", href: "/accounts" },
+            weight: 11
+          })
+        } else push({
           id: `captcha-${account.id}`,
           tone: "warning",
           icon: "captcha",

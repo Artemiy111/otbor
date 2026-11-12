@@ -104,6 +104,20 @@ describe("buildAttention", () => {
     expect(item?.detail).toContain("через 12 мин")
   })
 
+  test("серия одинаковых отказов: своя причина, текст ошибки и ссылка на аккаунты", () => {
+    const overview = overviewWithAccount({
+      submitBlockedAt: ago(5),
+      submitBlockReason: "repeated_failure",
+      submitBlockDetail: `the resume "DevOps" (291000851) did not appear in hh's resume select`,
+      submitRetryAt: new Date(NOW + 12 * 60_000).toISOString()
+    })
+    const [item] = buildAttention(base({ overview }))
+    expect(item).toMatchObject({ id: "pause-acc-1", tone: "warning" })
+    expect(item?.title).toContain("5 раз подряд")
+    expect(item?.detail).toContain("Резюме не появилось")
+    expect(item?.action).toMatchObject({ kind: "link", href: "/accounts" })
+  })
+
   test("истёкшая сессия — срочно и называет аккаунт", () => {
     const overview = overviewWithAccount({ session: "expired" })
     const [item] = buildAttention(base({ overview }))

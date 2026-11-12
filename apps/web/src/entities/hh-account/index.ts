@@ -1,6 +1,7 @@
 export { hhAccountApi } from "./api"
 export { defaultHhAccountColor, hhAccountColor, hhAccountColorById } from "./colors"
 export { captchaEpisodeText, hhAccountKeys, hhAccountName, hhAccountNameById, hhAccountHue, hhAccountInitials } from "./model"
+export { describeSubmitPause, retryTimeText, type SubmitPauseView } from "./pause"
 export { ALL_ACCOUNTS, DEFAULT_ACCOUNT, VIEW_ALL, useAccountFilter, useDefaultAccount } from "./scope"
 export { default as AccountChip } from "./ui/AccountChip.vue"
 export { default as CaptchaBlockAlert } from "./ui/CaptchaBlockAlert.vue"

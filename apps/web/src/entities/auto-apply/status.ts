@@ -208,6 +208,16 @@ export const humanizeError = (raw: string | null | undefined): string | null => 
   if (raw === null || raw === undefined) return null
   const text = raw.trim()
   if (text === "") return null
+  // Сообщения исполнителя браузера: идут раньше проверки на кириллицу, ведь в них бывает название резюме по-русски.
+  if (/resume select|did not appear in hh/i.test(text)) {
+    return "Резюме не появилось в списке на странице отклика hh."
+  }
+  if (/another resume|different resume|resume mismatch|resume_mismatch|wrong resume/i.test(text)) {
+    return "Форма отклика показывает другое резюме, не то, что выбрано."
+  }
+  if (/response page was not recognized/i.test(text)) {
+    return "Страница отклика на hh выглядит не так, как ждёт исполнитель браузера."
+  }
   if (/[а-яё]/i.test(text)) return text
   if (/captcha/i.test(text)) return "hh попросил капчу."
   if (/rate.?limit|too many|\b429\b/i.test(text)) return "hh ограничил частоту запросов."

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import type { Overview } from "@otbor/contract"
-import { defaultHhAccountColor, hhAccountInitials } from "@/entities/hh-account"
+import { defaultHhAccountColor, describeSubmitPause, hhAccountInitials } from "@/entities/hh-account"
 import { cn, formatNumber, toneClasses } from "@/shared/lib"
 import { Skeleton } from "@/shared/ui"
 import { modeChips, sessionText } from "../model/accounts"
@@ -23,6 +23,10 @@ const percent = (account: Account): number =>
 const paused = (account: Account): boolean =>
   account.submitBlockedAt !== null &&
   (account.submitRetryAt === null || Date.parse(account.submitRetryAt) > props.now - 60_000)
+
+/** Пауза словами; старый сервер причины не присылает, тогда это капча. */
+const pauseOf = (account: Account) =>
+  describeSubmitPause({ reason: account.submitBlockReason, detail: account.submitBlockDetail })
 
 /** Цвет полосы: нейтральный, пока лимит не выбран; тон — только для исчерпанного. */
 const barClass = (account: Account): string =>
@@ -108,7 +112,8 @@ const list = computed(() => props.accounts ?? [])
           v-if="paused(account)"
           :class="cn('mt-3 rounded-md border px-3 py-2 text-xs', toneClasses('warning').badge)"
         >
-          hh просит капчу — отправки на паузе<template v-if="inText(account.submitRetryAt, props.now)">, снова {{ inText(account.submitRetryAt, props.now) }}</template>.
+          {{ pauseOf(account).kind === "captcha" ? pauseOf(account).summary : pauseOf(account).title }}<template v-if="inText(account.submitRetryAt, props.now)">, снова {{ inText(account.submitRetryAt, props.now) }}</template>.
+          <span v-if="pauseOf(account).humanError" class="mt-1 block">{{ pauseOf(account).humanError }}</span>
         </p>
 
         <dl class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground tabular-nums">
