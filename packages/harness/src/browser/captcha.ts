@@ -157,6 +157,19 @@ export const makeCaptchaSolve = (
       const picture = page.locator(CAPTCHA_PICTURE_SELECTOR).first()
       // Картинка дорисовывается после появления окна: скриншот раньше времени
       // даёт белый прямоугольник. Пробуем несколько раз, пустой не отправляем.
+      // Пока картинка не загрузилась, браузер рисует значок «битой картинки» с
+      // подписью `captcha`: он не белый, проходит проверку на пустоту и съедает
+      // попытку модели. Ждём до ~4 с, пока `<img>` реально загрузится.
+      for (let waited = 0; waited < 4_000; waited += 250) {
+        const loaded = yield* Effect.tryPromise(() =>
+          picture.evaluate((node) => {
+            const img = node instanceof HTMLImageElement ? node : node.querySelector("img")
+            return img === null ? true : img.complete && img.naturalWidth > 0
+          }, undefined, { timeout: 2_000 })
+        ).pipe(Effect.orElseSucceed(() => true))
+        if (loaded) break
+        yield* Effect.sleep("250 millis")
+      }
       let image: Buffer | null = null
       for (let tryNo = 0; tryNo < BLANK_RETRIES && image === null; tryNo++) {
         const shot = yield* Effect.tryPromise(() => picture.screenshot({ type: "png", timeout: 5_000 })).pipe(

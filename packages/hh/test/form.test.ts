@@ -149,6 +149,17 @@ describe("parseResponseForm: markup variations", () => {
     expect(parseResponseForm(wrap(""), URL_OF).coverLetter).toBe("absent")
   })
 
+  test("cover letter: required by the page state or by hh's form error, not by the textarea", () => {
+    // Живая страница: поле без `required`, обязательность лежит в состоянии вакансии.
+    const field = `<textarea data-qa="vacancy-response-popup-form-letter-input" name="letter"></textarea>`
+    const state = (required: boolean) =>
+      `<template id="HH-Lux-InitialState">{"vacancyView":{"responseLetterRequired":${required}}}</template>`
+    expect(parseResponseForm(wrap("", field + state(true)), URL_OF).coverLetter).toBe("required")
+    expect(parseResponseForm(wrap("", field + state(false)), URL_OF).coverLetter).toBe("optional")
+    const error = `<div class="vacancy-response-error" data-qa-popup-error-code="letter-required">Пожалуйста, введите сопроводительное письмо</div>`
+    expect(parseResponseForm(wrap("", field + error), URL_OF).coverLetter).toBe("required")
+  })
+
   test("vacancy id falls back to the form input, then /vacancy/ URLs", () => {
     const html = wrap(`<input type="hidden" name="vacancyId" value="777">`)
     expect(parseResponseForm(html, "https://hh.ru/applicant/vacancy_response").vacancyId).toBe("777")

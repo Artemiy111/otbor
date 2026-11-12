@@ -262,12 +262,17 @@ const coverLetterOf = (html: string): CoverLetterRequirement => {
   const field = [...html.matchAll(/<textarea\b[^>]*>/gi)]
     .map((match) => attrsOf(match[0]))
     .find((attrs) => LETTER_RE.test(`${attrs.name ?? ""} ${attrs["data-qa"] ?? ""}`))
+  // На живой странице отклика поле письма не несёт `required`: обязательность
+  // записана в состоянии страницы (`responseLetterRequired`) и в подсказке под полем,
+  // а код ошибки `letter-required` появляется только после неудачного клика.
+  const stated = /"responseLetterRequired"\s*:\s*true/.test(html)
+    || /data-qa-popup-error-code=["']letter-required["']/i.test(html)
   if (field !== undefined) {
-    return field.required !== undefined || /required/i.test(field["data-qa"] ?? "")
+    return stated || field.required !== undefined || /required/i.test(field["data-qa"] ?? "")
       ? "required"
       : "optional"
   }
-  if (/data-qa=["']vacancy-response-letter-required["']/i.test(html)) return "required"
+  if (stated || /data-qa=["']vacancy-response-letter-required["']/i.test(html)) return "required"
   if (/data-qa=["']vacancy-response-letter-toggle["']/i.test(html)) return "optional"
   return "absent"
 }

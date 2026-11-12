@@ -341,12 +341,16 @@ export const postClickExit = (
         message: "hh asked for a captcha after the click",
         artifacts: { ...evidence("captcha") }
       }
-    default:
+    default: {
+      // Код ошибки формы (например `letter-required`) называет причину точнее выдержки.
+      // Исход остаётся `ambiguous`: что считать неотправленным, решает сверка в облаке.
+      const code = /data-qa-popup-error-code=["']([\w-]{1,60})["']/i.exec(html)?.[1]
       return {
         tag: "ambiguous",
-        message: `hh did not confirm the response (${kind}): ${pageExcerpt(html, 200)}`,
+        message: `hh did not confirm the response (${kind}${code === undefined ? "" : `, form error ${code}`}): ${pageExcerpt(html, 200)}`,
         artifacts: { ...evidence(kind === "form" ? "error" : "none") }
       }
+    }
   }
 }
 

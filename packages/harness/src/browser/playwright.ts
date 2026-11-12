@@ -771,6 +771,15 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
 
         const letter = (payload.kit.letter ?? "").trim()
         let pendingLetter: string | null = null
+        if (letter === "" && preflight.form.coverLetter === "required") {
+          // Без письма hh форму не примет («Пожалуйста, введите сопроводительное
+          // письмо»), а клик дал бы «не ясно, ушёл ли отклик». Не нажимаем.
+          return {
+            tag: "answer_rejected",
+            message: "the form requires a cover letter but the kit has none",
+            ...unclicked(lastUrl)
+          } satisfies HarnessExit
+        }
         if (letter !== "") {
           const field = page.locator(LETTER_SELECTOR).first()
           const present = (yield* attempt(() => field.count())) > 0 && (yield* attempt(() => field.isVisible()))

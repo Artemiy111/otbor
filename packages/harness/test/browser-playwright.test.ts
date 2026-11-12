@@ -116,7 +116,7 @@ const resumeWidget = (opts: { slow?: boolean; broken?: boolean; single?: boolean
 </script>`
 }
 
-const page = (opts: { silent?: boolean; letter?: boolean; rename?: boolean; resume?: "ok" | "slow" | "broken" | "single" } = {}) => {
+const page = (opts: { silent?: boolean; letter?: boolean; letterRequired?: boolean; rename?: boolean; resume?: "ok" | "slow" | "broken" | "single" } = {}) => {
   let html = base
   if (opts.rename) html = html.replace("В каком городе проживаете?", "В какой стране проживаете?")
   if (opts.letter) {
@@ -124,6 +124,9 @@ const page = (opts: { silent?: boolean; letter?: boolean; rename?: boolean; resu
       '<button type="submit"',
       '<textarea data-qa="vacancy-response-popup-form-letter-input" name="letter"></textarea>\n<button type="submit"'
     )
+  }
+  if (opts.letterRequired) {
+    html = html.replace("</body>", '<template id="HH-Lux-InitialState">{"vacancyView":{"responseLetterRequired":true}}</template></body>')
   }
   const widget = opts.resume === undefined ? "" : resumeWidget({ slow: opts.resume === "slow", broken: opts.resume === "broken", single: opts.resume === "single" })
   html = html.replace("</body>", `${widget}</body>`)
@@ -216,8 +219,8 @@ beforeAll(async () => {
               ? page({ silent: true })
               : mode === "renamed"
                 ? page({ rename: true })
-                : mode === "letter"
-                  ? page({ letter: true })
+                : mode === "letter" || mode === "letter-required"
+                  ? page({ letter: true, letterRequired: mode === "letter-required" })
                   : mode === "resume" || mode === "resume-slow" || mode === "resume-broken" || mode === "resume-single"
                     ? page({ resume: mode === "resume" ? "ok" : mode === "resume-slow" ? "slow" : mode === "resume-single" ? "single" : "broken" })
                   : page()
@@ -632,6 +635,28 @@ describe.skipIf(!hasBrowser)("PlaywrightBrowserExecutor against a local hh imita
     expect(exit.tag).toBe("submitted")
     expect(posts).toBe(1)
   }, 40_000)
+
+  test("a form that requires a cover letter is not clicked when the kit has none", async () => {
+    mode = "letter-required"
+    posts = 0
+    const exit = await run(
+      executor().submit({ payload: submitPayload({ kit: { formHash: liveHash, letter: null, answers } }), beforeClick: Effect.succeed(true) })
+    )
+    expect(exit.tag).toBe("answer_rejected")
+    expect(exit.message).toContain("requires a cover letter")
+    expect(exit.artifacts).toMatchObject({ clicked: false })
+    expect(posts).toBe(0)
+    // С письмом та же форма уходит.
+    const sent = await run(
+      executor().submit({
+        payload: submitPayload({ kit: { formHash: liveHash, letter: "Здравствуйте, это письмо", answers } }),
+        beforeClick: Effect.succeed(true)
+      })
+    )
+    expect(sent.tag).toBe("submitted")
+    expect(posts).toBe(1)
+    mode = "ok"
+  }, 60_000)
 })
 
 if (!hasBrowser) {
