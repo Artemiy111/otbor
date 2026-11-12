@@ -163,8 +163,11 @@ export const makeCaptchaSolve = (
       for (let waited = 0; waited < 4_000; waited += 250) {
         const loaded = yield* Effect.tryPromise(() =>
           picture.evaluate((node) => {
-            const img = node instanceof HTMLImageElement ? node : node.querySelector("img")
-            return img === null ? true : img.complete && img.naturalWidth > 0
+            // В пакете нет DOM-типов: читаем поля `<img>` как у обычного объекта.
+            type Img = { readonly complete?: boolean; readonly naturalWidth?: number }
+            const element = node as unknown as { readonly tagName: string; querySelector(selector: string): unknown }
+            const img = (element.tagName === "IMG" ? element : element.querySelector("img")) as Img | null
+            return img === null ? true : img.complete === true && (img.naturalWidth ?? 0) > 0
           }, undefined, { timeout: 2_000 })
         ).pipe(Effect.orElseSucceed(() => true))
         if (loaded) break
