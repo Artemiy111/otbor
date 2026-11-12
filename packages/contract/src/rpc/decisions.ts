@@ -19,6 +19,8 @@ export const DecisionsList = Rpc.make("DecisionsList", {
     hhAccountId: Schema.optional(HhAccountId),
     /** Collapse history: keep the newest decision per vacancy and account. */
     latestPerVacancy: Schema.optional(Schema.Boolean),
+    /** Только решения этой вакансии (по всем аккаунтам и резюме). */
+    vacancyId: Schema.optional(VacancyId),
     /** Only decisions with `fit <= maxFit`. */
     maxFit: Schema.optional(Schema.Int),
     /**

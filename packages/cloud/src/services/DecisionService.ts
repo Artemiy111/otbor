@@ -28,6 +28,8 @@ export interface DecisionListOptions {
   readonly filter?: PresetFilter
   readonly presetId?: string
   readonly hhAccountId?: string
+  /** Только решения этой вакансии. */
+  readonly vacancyId?: string
   readonly latestPerVacancy?: boolean
 }
 

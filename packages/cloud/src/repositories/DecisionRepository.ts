@@ -163,6 +163,8 @@ export interface DecisionListOptions {
   readonly maxFit?: number
   readonly sort?: "priority" | "fit" | "newest" | "salary" | "random"
   readonly hhAccountId?: string
+  /** Только решения этой вакансии. */
+  readonly vacancyId?: string
   /** Newest decision per vacancy and account only. */
   readonly latestPerVacancy?: boolean
   /** A preset's vacancy filter, already compiled over the `vacancy` table. */
@@ -208,6 +210,7 @@ export const list = (
         select distinct on (x.vacancy_id, x.hh_account_id) x.*
         from decision x
         where x.user_id = ${userId}
+          ${options.vacancyId === undefined ? sql`` : sql`and x.vacancy_id = ${options.vacancyId}`}
         order by x.vacancy_id, x.hh_account_id, x.created_at desc, x.id desc
       ) d`
     : sql`decision d`
@@ -229,6 +232,7 @@ export const list = (
         ${options.hhAccountId === undefined
           ? sql``
           : sql`and d.hh_account_id = ${options.hhAccountId}`}
+        ${options.vacancyId === undefined ? sql`` : sql`and d.vacancy_id = ${options.vacancyId}`}
         ${options.vacancyFilter === undefined ? sql`` : sql`and ${options.vacancyFilter}`}
       order by ${order}
       limit ${Math.min(Math.max(options.limit ?? 50, 1), 200)}
