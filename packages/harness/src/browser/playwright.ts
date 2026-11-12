@@ -11,7 +11,7 @@ import type {
   SubmitEvidence
 } from "@otbor/contract"
 import { isTrackerUrl } from "./trackers.ts"
-import { BUMP_BUTTON_SELECTOR, BUMP_PAYWALL_SELECTOR, decideBump, normalizeBumpText, parseLastBump, classifyResponsePage, parseResumeRefs, readResponseStatus, responseResumeHash } from "@otbor/hh"
+import { BUMP_BUTTON_SELECTOR, BUMP_PAYWALL_SELECTOR, decideBump, normalizeBumpText, parseLastBump, classifyResponsePage, parseResumeRefs, readResponseStatus, isOnlyOfferedResume, responseResumeHash } from "@otbor/hh"
 import { Effect, Layer, Schema, Semaphore } from "effect"
 import { existsSync } from "node:fs"
 import { mkdir } from "node:fs/promises"
@@ -647,17 +647,37 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
           const blockedWith = (message: string) =>
             ({ tag: "blocked", message, ...unclicked(lastUrl) }) satisfies HarnessExit
 
+          /**
+           * Когда hh предлагает одно резюме (у аккаунта оно одно либо остальными
+           * на вакансию уже откликались), селекта с вариантами в форме нет:
+           * выбирать нечего, отклик уйдёт с ним. Это видно по состоянию страницы,
+           * а карточка выбранного резюме, если она есть, должна называть его же.
+           */
+          let single = false
           if ((yield* chosenHash()) !== hash) {
             yield* openSelect
             if (!(yield* waitOption)) {
-              return blockedWith(`the resume ${label} did not appear in hh's resume select`)
+              if (!isOnlyOfferedResume((yield* content(page)) ?? html, wantedId)) {
+                return blockedWith(`the resume ${label} did not appear in hh's resume select`)
+              }
+              const card = yield* attempt(async () => {
+                const shown = page.locator(RESUME_SELECTED_SELECTOR).first()
+                return (await shown.count()) === 0 ? "" : ((await shown.innerText({ timeout: 2_000 })) ?? "")
+              }).pipe(Effect.orElseSucceed(() => ""))
+              const norm = (text: string) => text.replace(/\s+/g, " ").trim().toLowerCase()
+              if (wantedTitle !== "" && norm(card) !== "" && !norm(card).includes(norm(wantedTitle))) {
+                return blockedWith(`the response form shows the resume "${norm(card).slice(0, 80)}" instead of ${label}`)
+              }
+              yield* closeSelect
+              single = true
+            } else {
+              yield* attempt(() => option.first().click({ timeout: 5_000 }))
+              yield* sleep(300)
             }
-            yield* attempt(() => option.first().click({ timeout: 5_000 }))
-            yield* sleep(300)
           }
           // Проверка по id: после клика выбранным должен быть вариант этого хэша.
           // Если список закрылся и вариантов в DOM нет, открываем его заново.
-          let verified = false
+          let verified = single
           for (let waited = 0; waited < 5_000 && !verified; waited += 250) {
             let current = yield* chosenHash()
             if (current === null && waited === 0) {

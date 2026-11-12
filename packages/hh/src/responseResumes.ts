@@ -98,3 +98,17 @@ export const parseResponseResumes = (html: string): ResponseResumes => {
 /** Хэш резюме с этим numeric id на странице отклика, либо `null`. */
 export const responseResumeHash = (html: string, resumeId: string): string | null =>
   parseResponseResumes(html).resumes.find((resume) => resume.id === resumeId)?.hash ?? null
+
+/**
+ * `true`, если hh предлагает для отклика ровно одно резюме и это оно. Тогда
+ * выбирать не из чего: селекта с вариантами в форме нет, и hh отправит отклик
+ * с этим резюме. Кандидаты это `unusedResumeIds` (резюме, которыми на вакансию
+ * ещё не откликались), а без списка все резюме страницы. Скрытые резюме из
+ * кандидатов не убираются: hh может предлагать их в селекте, и при любом
+ * втором кандидате ответ `false`.
+ */
+export const isOnlyOfferedResume = (html: string, resumeId: string): boolean => {
+  const parsed = parseResponseResumes(html)
+  const offered = [...new Set(parsed.unusedIds ?? parsed.resumes.map((resume) => resume.id))]
+  return offered.length === 1 && offered[0] === resumeId && parsed.resumes.some((resume) => resume.id === resumeId)
+}

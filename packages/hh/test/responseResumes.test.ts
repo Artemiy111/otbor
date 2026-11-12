@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { parseResponseResumes, responseResumeHash } from "../src/index.ts"
+import { isOnlyOfferedResume, parseResponseResumes, responseResumeHash } from "../src/index.ts"
 
 /** Синтетика по форме реальной страницы отклика (id, хэши и названия выдуманы). */
 const A = "aaaa00000000000000000000000000000000aa01"
@@ -47,5 +47,35 @@ describe("parseResponseResumes", () => {
   test("нет резюме или нет состояния -> пусто, неизвестный id -> null", () => {
     expect(parseResponseResumes("<html></html>").resumes).toEqual([])
     expect(responseResumeHash(page(popup), "9999")).toBeNull()
+  })
+})
+
+describe("isOnlyOfferedResume", () => {
+  const vacancy = (unused: ReadonlyArray<string> | undefined, ids: ReadonlyArray<string>) =>
+    page({
+      vacancyResponsePopup: {
+        vacancy: {
+          ...(unused === undefined ? {} : { usedResumeIds: [], unusedResumeIds: unused }),
+          resumes: Object.fromEntries(ids.map((id, index) => [id, { hash: index === 0 ? A : B, id }]))
+        }
+      }
+    })
+
+  test("единственное резюме аккаунта", () => {
+    expect(isOnlyOfferedResume(vacancy(["1001"], ["1001"]), "1001")).toBe(true)
+  })
+  test("вторым резюме на вакансию уже откликались: осталось одно", () => {
+    expect(isOnlyOfferedResume(vacancy(["1001"], ["1001", "1002"]), "1001")).toBe(true)
+    expect(isOnlyOfferedResume(vacancy(["1001"], ["1001", "1002"]), "1002")).toBe(false)
+  })
+  test("два кандидата, даже если один скрыт: выбор нужен", () => {
+    expect(isOnlyOfferedResume(page(popup), "1001")).toBe(false)
+    expect(isOnlyOfferedResume(vacancy(["1001", "1002"], ["1001", "1002"]), "1001")).toBe(false)
+  })
+  test("без списка считаются все резюме страницы; без состояния - false", () => {
+    expect(isOnlyOfferedResume(vacancy(undefined, ["1001"]), "1001")).toBe(true)
+    expect(isOnlyOfferedResume(vacancy(undefined, ["1001", "1002"]), "1001")).toBe(false)
+    expect(isOnlyOfferedResume("<html></html>", "1001")).toBe(false)
+    expect(isOnlyOfferedResume(vacancy([], ["1001"]), "1001")).toBe(false)
   })
 })
