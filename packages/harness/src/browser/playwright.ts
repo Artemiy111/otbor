@@ -14,7 +14,7 @@ import { isTrackerUrl } from "./trackers.ts"
 import { BUMP_BUTTON_SELECTOR, BUMP_PAYWALL_SELECTOR, decideBump, normalizeBumpText, parseLastBump, classifyResponsePage, parseResumeRefs, readResponseStatus, isOnlyOfferedResume, responseResumeHash } from "@otbor/hh"
 import { Effect, Layer, Schema, Semaphore } from "effect"
 import { existsSync } from "node:fs"
-import { mkdir } from "node:fs/promises"
+import { mkdir, readdir, rm, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright"
@@ -106,6 +106,12 @@ export interface PlaywrightOptions {
    */
   readonly captchaShotsDir?: string | null
   /**
+   * Папка следов страницы (абсолютный путь): HTML и снимок экрана того, что
+   * hh показал, когда задача закончилась неудачей. По умолчанию
+   * `~/.otbor/page-traces` или `OTBOR_PAGE_TRACES_DIR`; `null` или `off` выключает.
+   */
+  readonly pageTracesDir?: string | null
+  /**
    * Решатель капчи (локальная модель читает картинку). По умолчанию берёт
    * настройки из `~/.otbor/captcha.json`; в тестах подменяется.
    */
@@ -117,6 +123,30 @@ const defaultCaptchaShotsDir = (): string | null => {
   if (override === "off") return null
   return override !== undefined && override !== "" ? override : join(homedir(), ".otbor", "captcha-shots")
 }
+
+const defaultPageTracesDir = (): string | null => {
+  const override = process.env.OTBOR_PAGE_TRACES_DIR?.trim()
+  if (override === "off") return null
+  return override !== undefined && override !== "" ? override : join(homedir(), ".otbor", "page-traces")
+}
+
+/**
+ * Исходы, после которых полезно видеть страницу: hh показал не то, чего ждал
+ * исполнитель. Капча снимается отдельно (`withCaptchaShot`), обрыв связи и
+ * успешные исходы следа не оставляют.
+ */
+const TRACED_EXITS: ReadonlySet<string> = new Set([
+  "blocked",
+  "answer_rejected",
+  "ambiguous",
+  "form_changed",
+  "resume_mismatch",
+  "site_rejected",
+  "not_submitted"
+])
+
+/** Сколько файлов следов держим в папке; старые удаляются. */
+const PAGE_TRACES_KEEP = 300
 
 const defaults = {
   baseUrl: "https://hh.ru",
@@ -161,6 +191,9 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
 
   /** Куда класть скриншоты капчи; `null` выключает их. */
   const shotsDir = config.captchaShotsDir === undefined ? defaultCaptchaShotsDir() : config.captchaShotsDir
+
+  /** Куда класть следы страницы при неудачном исходе; `null` выключает их. */
+  const tracesDir = config.pageTracesDir === undefined ? defaultPageTracesDir() : config.pageTracesDir
 
   /**
    * Cookies аккаунта берутся из хранилища на каждую задачу, а Chrome один на
@@ -277,6 +310,48 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
     })
 
   /**
+   * След страницы: если задача закончилась исходом из `TRACED_EXITS`, пока
+   * страница ещё открыта, сохраняет её HTML и снимок экрана в `tracesDir` и
+   * кладёт пути в `artifacts.trace` / `artifacts.traceShot`. Так причину видно
+   * на самой странице hh, а не по догадке из сообщения. Файлы остаются на этой
+   * машине (в них имя и резюме владельца аккаунта); сбой записи ничего не ломает.
+   */
+  const withPageTrace = <A>(page: Page, label: string | undefined, result: A) =>
+    Effect.gen(function*() {
+      const exit = result as unknown as HarnessExit | undefined
+      if (tracesDir === null || exit === undefined || exit === null || typeof exit !== "object") return result
+      if (typeof exit.tag !== "string" || !TRACED_EXITS.has(exit.tag)) return result
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-")
+      const safe = (label ?? "job").replace(/[^\w.-]+/g, "_")
+      const base = join(tracesDir, `${stamp}-${safe}-${exit.tag}`)
+      const html = yield* attempt(async () => {
+        await mkdir(tracesDir, { recursive: true, mode: 0o700 })
+        const text = `<!-- ${page.url()} | ${exit.tag} | ${(exit.message ?? "").replace(/--/g, "- -")} -->\n${await page.content()}`
+        await writeFile(`${base}.html`, text, { mode: 0o600 })
+        return `${base}.html`
+      }).pipe(Effect.orElseSucceed(() => null as string | null))
+      const shot = yield* attempt(async () => {
+        await page.screenshot({ path: `${base}.png`, fullPage: true, timeout: 10_000 })
+        return `${base}.png`
+      }).pipe(Effect.orElseSucceed(() => null as string | null))
+      if (html === null && shot === null) return result
+      // Папка не растёт без конца: остаются последние файлы (имена начинаются со времени).
+      yield* attempt(async () => {
+        const files = (await readdir(tracesDir)).filter((name) => /\.(html|png)$/.test(name)).sort()
+        await Promise.all(files.slice(0, Math.max(0, files.length - PAGE_TRACES_KEEP)).map((name) => rm(join(tracesDir, name), { force: true })))
+      }).pipe(Effect.ignore)
+      yield* Effect.logWarning(`page trace saved: ${html ?? shot} (${exit.tag}, ${page.url()})`)
+      return {
+        ...exit,
+        artifacts: {
+          ...(exit.artifacts ?? {}),
+          ...(html === null ? {} : { trace: html }),
+          ...(shot === null ? {} : { traceShot: shot })
+        }
+      } as unknown as A
+    })
+
+  /**
    * Opens a page of the profile's browser, runs `use`, always closes the page and
    * releases the browser. Jobs that act on the account (everything but a form
    * read) делят пул разрешений профиля (`accountActingConcurrency`); читающие
@@ -301,7 +376,7 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
           (opened) => Effect.promise(() => opened.close().catch(() => undefined))
         )
         const result = yield* use(page)
-        return yield* withCaptchaShot(page, options.label, result)
+        return yield* withPageTrace(page, options.label, yield* withCaptchaShot(page, options.label, result))
       })
     )
     if (options.parallel === true) return run

@@ -9,6 +9,9 @@ import { join } from "node:path"
 import { chromium } from "playwright"
 import { makePlaywrightExecutor } from "../src/browser/playwright.ts"
 
+// Следы страниц из тестов не пишем в ~/.otbor: включаем их только там, где проверяем.
+process.env.OTBOR_PAGE_TRACES_DIR = "off"
+
 /**
  * Real Chromium against a local server that imitates the hh response page.
  * Nothing here touches hh.ru or a real Chrome profile: the executor is pointed
@@ -63,7 +66,25 @@ const HASH_B = "bbbb00000000000000000000000000000000bb02"
  * открывает список `label[role=option]` с хэшем, выбор закрывает (размонтирует) его.
  * Резюме 1001 (хэш A) выбрано заранее, 1002 (хэш B) предлагается; 1003 страница не знает.
  */
-const resumeWidget = (opts: { slow?: boolean; broken?: boolean }) => {
+const resumeWidget = (opts: { slow?: boolean; broken?: boolean; single?: boolean }) => {
+  if (opts.single) {
+    // Резюме 1001 уже использовано на вакансию, hh предлагает одно 1002: списка нет вовсе.
+    const only = JSON.stringify({
+      vacancyResponsePopup: {
+        vacancy: {
+          usedResumeIds: ["1001"],
+          unusedResumeIds: ["1002"],
+          resumes: {
+            "1001": { hash: HASH_A, id: "1001", title: [{ string: "Первое" }] },
+            "1002": { hash: HASH_B, id: "1002", title: [{ string: "Второе" }] }
+          }
+        }
+      }
+    })
+    return `<template id="HH-Lux-InitialState">${only}</template>
+<div id="resume-host"><div data-qa="resume-title"><div data-qa="cell-text-content" id="resume-name">Второе</div></div></div>
+<script>window.__resume = '${HASH_B}';</script>`
+  }
   const state = JSON.stringify({
     vacancyResponsePopup: {
       vacancy: {
@@ -95,7 +116,7 @@ const resumeWidget = (opts: { slow?: boolean; broken?: boolean }) => {
 </script>`
 }
 
-const page = (opts: { silent?: boolean; letter?: boolean; rename?: boolean; resume?: "ok" | "slow" | "broken" } = {}) => {
+const page = (opts: { silent?: boolean; letter?: boolean; rename?: boolean; resume?: "ok" | "slow" | "broken" | "single" } = {}) => {
   let html = base
   if (opts.rename) html = html.replace("В каком городе проживаете?", "В какой стране проживаете?")
   if (opts.letter) {
@@ -104,7 +125,7 @@ const page = (opts: { silent?: boolean; letter?: boolean; rename?: boolean; resu
       '<textarea data-qa="vacancy-response-popup-form-letter-input" name="letter"></textarea>\n<button type="submit"'
     )
   }
-  const widget = opts.resume === undefined ? "" : resumeWidget({ slow: opts.resume === "slow", broken: opts.resume === "broken" })
+  const widget = opts.resume === undefined ? "" : resumeWidget({ slow: opts.resume === "slow", broken: opts.resume === "broken", single: opts.resume === "single" })
   html = html.replace("</body>", `${widget}</body>`)
   const flag = opts.silent ? "<script>window.__silent = true</script>" : ""
   return html.replace("</body>", `${flag}${SCRIPT}</body>`)
@@ -197,8 +218,8 @@ beforeAll(async () => {
                 ? page({ rename: true })
                 : mode === "letter"
                   ? page({ letter: true })
-                  : mode === "resume" || mode === "resume-slow" || mode === "resume-broken"
-                    ? page({ resume: mode === "resume" ? "ok" : mode === "resume-slow" ? "slow" : "broken" })
+                  : mode === "resume" || mode === "resume-slow" || mode === "resume-broken" || mode === "resume-single"
+                    ? page({ resume: mode === "resume" ? "ok" : mode === "resume-slow" ? "slow" : mode === "resume-single" ? "single" : "broken" })
                   : page()
         return new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } })
       }
@@ -389,6 +410,57 @@ describe.skipIf(!hasBrowser)("PlaywrightBrowserExecutor against a local hh imita
     const exit = await withResume("resume-broken", { resumeExternalId: "1002" })
     expect(exit.tag).toBe("blocked")
     expect(posts).toBe(0)
+  }, 40_000)
+
+  test("a single offered resume has no select: the submit goes with it", async () => {
+    const exit = await withResume("resume-single", { resumeExternalId: "1002", resumeTitle: "Второе" })
+    expect(exit).toMatchObject({ tag: "submitted" })
+    expect(posts).toBe(1)
+    expect(lastResume).toBe(HASH_B)
+  }, 40_000)
+
+  test("a single offered resume that is not the wanted one is blocked", async () => {
+    const used = await withResume("resume-single", { resumeExternalId: "1001", resumeTitle: "Первое" })
+    expect(used.tag).toBe("blocked")
+    expect(posts).toBe(0)
+    // Состояние называет нужное резюме, а карточка формы показывает другое название.
+    const renamed = await withResume("resume-single", { resumeExternalId: "1002", resumeTitle: "Другое" })
+    expect(renamed.tag).toBe("blocked")
+    expect(renamed.message).toContain("instead of")
+    expect(posts).toBe(0)
+  }, 60_000)
+
+  test("a failed exit leaves a page trace: html, screenshot and their paths in artifacts", async () => {
+    mode = "resume"
+    posts = 0
+    const traces = await mkdtemp(join(tmpdir(), "otbor-traces-"))
+    try {
+      const exit = await run(
+        makePlaywrightExecutor({
+          baseUrl: origin,
+          profilesDir: profiles,
+          executablePath: null,
+          headless: true,
+          navigationTimeoutMs: 10_000,
+          settleMs: 4_000,
+          afterClickMs: 2_000,
+          pageTracesDir: traces
+        }).submit({ payload: submitPayload({ resumeExternalId: "1003", resumeTitle: "Третье" }), beforeClick: Effect.succeed(true) })
+      )
+      expect(exit.tag).toBe("blocked")
+      const files = readdirSync(traces).sort()
+      expect(files).toHaveLength(2)
+      expect(files[0]).toMatch(/-blocked\.html$/)
+      expect(files[1]).toMatch(/-blocked\.png$/)
+      const artifacts = exit.artifacts as { trace: string; traceShot: string; clicked: boolean }
+      expect(artifacts.trace).toBe(join(traces, files[0]!))
+      expect(artifacts.traceShot).toBe(join(traces, files[1]!))
+      expect(artifacts.clicked).toBe(false)
+      expect(readFileSync(artifacts.trace, "utf8")).toContain("HH-Lux-InitialState")
+      expect(posts).toBe(0)
+    } finally {
+      await rm(traces, { recursive: true, force: true })
+    }
   }, 40_000)
 
   test("a legacy payload with a title but no id is blocked", async () => {
