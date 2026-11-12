@@ -5,7 +5,7 @@ import { useQuery } from "@pinia/colada"
 import type { InboxConversation } from "@/entities/conversation"
 import { vacancyApi, vacancyKeys } from "@/entities/vacancy"
 import { cn, conversationChannelLabel } from "@/shared/lib"
-import { inboxHref, relativeTime, type InboxState } from "../model/inbox"
+import { conversationLines, inboxHref, relativeTime, type InboxState } from "../model/inbox"
 import ChannelIcon from "./ChannelIcon.vue"
 
 const props = defineProps<{
@@ -36,18 +36,18 @@ const vacancyTitle = computed(() =>
 )
 
 const unread = computed(() => props.conversation.unreadCount > 0)
-const name = computed(
-  () => props.conversation.personName ?? props.conversation.title ?? "Без названия"
+/** Кто пишет и о чём: письма-уведомления hh называем по работодателю и вакансии, а не «hh.ru». */
+const lines = computed(() =>
+  conversationLines({
+    personName: props.conversation.personName,
+    personRole: props.conversation.personRole,
+    title: props.conversation.title,
+    vacancyTitle: vacancyTitle.value,
+    employerName: props.conversation.employerName ?? null
+  })
 )
-/** Вторая строка: вакансия, а если её нет или она ещё грузится - тема диалога. */
-const context = computed(() => {
-  if (vacancyTitle.value !== null) {
-    const employer = props.conversation.employerName
-    return employer === undefined || employer === null ? vacancyTitle.value : `${vacancyTitle.value} · ${employer}`
-  }
-  if (props.conversation.title !== null && props.conversation.title !== name.value) return props.conversation.title
-  return props.conversation.personRole
-})
+const name = computed(() => lines.value.headline)
+const context = computed(() => lines.value.context)
 const href = computed(() => inboxHref({ ...props.state, conversation: props.conversation.id }))
 const snippet = computed(() => {
   // Письма hh приходят с разметкой: «[https://…png]» вместо картинок и
@@ -57,6 +57,8 @@ const snippet = computed(() => {
       ?.replace(/\[https?:\/\/[^\]\s]*\]/g, " ")
       .replace(/\[([^\]]*)\]\(https?:\/\/[^)\s]*\)/g, "$1")
       .replace(/https?:\/\/\S+/g, " ")
+      // Невидимая набивка из писем (нулевой ширины, мягкие переносы, пустой знак Брайля) давала хвост «…».
+      .replace(/\u034f|[\u200b-\u200f\u00ad\u2060\u2800\ufeff]/g, "")
       .replace(/\s+/g, " ")
       .trim() ?? ""
   return text === "" ? "Нет текста" : text

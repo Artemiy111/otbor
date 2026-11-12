@@ -106,6 +106,42 @@ export const filterConversations = (
 export const countUnread = (items: ReadonlyArray<ConversationSummary>): number =>
   items.reduce((sum, item) => (item.archived || item.unreadCount === 0 ? sum : sum + 1), 0)
 
+/** Отправитель-рассылка: имя сервиса, а не человека или компании. */
+const isServiceSender = (name: string): boolean => /^(hh(\.ru)?|headhunter|no-?reply)$/i.test(name.trim())
+
+export interface ConversationLinesInput {
+  readonly personName: string | null
+  readonly personRole: string | null
+  readonly title: string | null
+  readonly vacancyTitle: string | null
+  readonly employerName: string | null
+}
+
+/**
+ * Две верхние строки диалога в списке. Заголовок отвечает на вопрос «кто пишет»:
+ * человек, а если письмо пришло от сервиса (все уведомления hh подписаны «hh.ru») -
+ * работодатель, вакансия или тема. Вторая строка - о чём: вакансия и то, что не
+ * попало в заголовок. `null` во второй строке - показать название канала.
+ */
+export const conversationLines = (
+  input: ConversationLinesInput
+): { readonly headline: string, readonly context: string | null } => {
+  const clean = (value: string | null): string | null => (value === null || value.trim() === "" ? null : value.trim())
+  const sender = clean(input.personName)
+  const person = sender !== null && !isServiceSender(sender) ? sender : null
+  const service = sender !== null && person === null ? sender : null
+  const title = clean(input.title)
+  const topic = title !== null && !isServiceSender(title) ? title : null
+  const vacancy = clean(input.vacancyTitle)
+  const employer = clean(input.employerName)
+
+  const headline = person ?? employer ?? vacancy ?? topic ?? service ?? title ?? "Без названия"
+  const parts = (vacancy !== null ? [vacancy, employer] : [topic, clean(input.personRole)])
+    .filter((part): part is string => part !== null && part !== headline)
+  if (service !== null && service !== headline) parts.push(`через ${service}`)
+  return { headline, context: parts.length === 0 ? null : parts.join(" · ") }
+}
+
 /** Сосед выбранного диалога в списке; без выбора первая стрелка берёт край списка. */
 export const neighbourId = (
   items: ReadonlyArray<{ readonly id: string }>,

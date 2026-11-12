@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { ConversationMessageRecord, ConversationSummary } from "@otbor/contract"
 import {
+  conversationLines,
   countUnread,
   filterConversations,
   groupMessagesByDay,
@@ -213,5 +214,25 @@ describe("linkify", () => {
 
   test("не создаёт ссылок из других схем", () => {
     expect(linkify("javascript:alert(1)")).toEqual([{ kind: "text", value: "javascript:alert(1)" }])
+  })
+})
+
+describe("conversationLines", () => {
+  const base = { personName: null, personRole: null, title: null, vacancyTitle: null, employerName: null }
+  test("уведомление hh называется по работодателю, вакансия уходит во вторую строку", () => {
+    expect(conversationLines({ ...base, personName: "hh.ru", title: "Вакансия закрыта", vacancyTitle: "DevOps Engineer", employerName: "Lamoda Tech" }))
+      .toEqual({ headline: "Lamoda Tech", context: "DevOps Engineer · через hh.ru" })
+  })
+  test("без вакансии заголовком становится тема письма", () => {
+    expect(conversationLines({ ...base, personName: "hh.ru", title: "Новое сообщение от работодателя" }))
+      .toEqual({ headline: "Новое сообщение от работодателя", context: "через hh.ru" })
+  })
+  test("человек остаётся заголовком, вакансия и работодатель - контекстом", () => {
+    expect(conversationLines({ ...base, personName: "Анна Петрова", personRole: "HR", vacancyTitle: "SRE", employerName: "Яндекс" }))
+      .toEqual({ headline: "Анна Петрова", context: "SRE · Яндекс" })
+  })
+  test("только сервис: заголовок - его имя, второй строки нет", () => {
+    expect(conversationLines({ ...base, personName: "hh.ru", title: "hh.ru" })).toEqual({ headline: "hh.ru", context: null })
+    expect(conversationLines(base)).toEqual({ headline: "Без названия", context: null })
   })
 })
