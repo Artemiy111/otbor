@@ -17,6 +17,7 @@ export interface StoredHhAccount {
   readonly color?: string | null
   readonly submit_blocked_at?: Date | string | null
   readonly submit_block_reason?: string | null
+  readonly submit_block_detail?: string | null
   readonly session_state?: string | null
   readonly session_last_ok_at?: Date | string | null
   readonly session_last_error?: string | null
@@ -42,6 +43,7 @@ export const toRecord = (row: StoredHhAccount): HhAccountRecord => ({
   color: row.color ?? null,
   submitBlockedAt: row.submit_blocked_at == null ? null : iso(row.submit_blocked_at),
   submitBlockReason: row.submit_block_reason ?? null,
+  submitBlockDetail: row.submit_block_detail ?? null,
   session:
     row.session_state === null || row.session_state === undefined
       ? null
@@ -69,7 +71,7 @@ export const toRecord = (row: StoredHhAccount): HhAccountRecord => ({
 const selection = sql`
   select a.id, a.user_id, a.label, a.is_default, a.first_name, a.last_name, a.email,
          a.phone, a.area_name, a.session_profile, a.color, a.created_at, a.updated_at,
-         a.submit_blocked_at, a.submit_block_reason,
+         a.submit_blocked_at, a.submit_block_reason, a.submit_block_detail,
          s.state as session_state, s.last_ok_at as session_last_ok_at,
          s.last_error as session_last_error, s.updated_at as session_updated_at,
          (select c.value from hh_account_contact c where c.hh_account_id = a.id and c.kind = 'phone'

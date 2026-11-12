@@ -171,7 +171,7 @@ export const snapshot = (
              ) as name,
              a.color, a.is_default,
              s.state as session_state, s.last_error as session_error,
-             a.submit_blocked_at, a.submit_block_reason, a.submit_retry_at,
+             a.submit_blocked_at, a.submit_block_reason, a.submit_block_detail, a.submit_retry_at,
              (select f.daily_limit from apply_filter f
                where f.hh_account_id = a.id and f.resume_id is null limit 1) as daily_limit,
              (select count(*)::int from hh_captcha_episode e
@@ -364,6 +364,7 @@ export const snapshot = (
           usage: { used, limit, remaining: Math.max(0, limit - used) },
           submitBlockedAt: iso(row.submit_blocked_at),
           submitBlockReason: str(row.submit_block_reason),
+          submitBlockDetail: str(row.submit_block_detail),
           submitRetryAt: iso(row.submit_retry_at),
           captchas24h: int(row.captchas_24h),
           lastSentAt: iso(row.last_sent_at),

@@ -1,5 +1,6 @@
 /**
- * Пауза отправок аккаунта после капчи и эпизоды капчи. Темп
+ * Пауза отправок аккаунта (после капчи или после серии одинаковых отказов
+ * исполнителя) и эпизоды капчи. Темп
  * (`submit_next_at`) и часовой лимит пишет и читает сам claim в
  * `QueueRepository`; здесь только предохранитель.
  *
@@ -8,11 +9,21 @@
  * снимается сама в `submit_retry_at` (`captchaAutoResume`); каждая следующая
  * капча подряд без подтверждённых откликов удваивает паузу. Оператор может
  * снять её раньше (`resume`).
+ *
+ * Вторая причина, `repeated_failure`: N одинаковых детерминированных отказов
+ * submit подряд (`decideRepeatedFailure`) - так одна и та же поломка не
+ * съедает сотни заходов в браузер. Те же поля, тот же claim, то же снятие.
  */
 import type { CaptchaEpisode } from "@otbor/contract"
+import { decideRepeatedFailure, REPEATED_FAILURE_BASE_DELAY_MINUTES, REPEATED_FAILURE_WINDOW } from "@otbor/domain"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
+
+/** Запасной срок паузы `repeated_failure` без `submit_retry_at`, минут. */
+export const REPEATED_FAILURE_FALLBACK_MINUTES = REPEATED_FAILURE_BASE_DELAY_MINUTES
+
+export type SubmitBlockReason = "captcha" | "repeated_failure"
 
 /** Пауза после первой капчи, минут. */
 export const CAPTCHA_BASE_DELAY_MINUTES = 5
@@ -25,8 +36,16 @@ export const captchaDelayMinutes = (failedStreak: number): number =>
 
 export interface SubmitBlock {
   readonly since: Date
-  readonly reason: "captcha"
+  readonly reason: SubmitBlockReason
+  /** Текст отказа для `repeated_failure`; у капчи `null`. */
+  readonly detail: string | null
 }
+
+/** Сообщение для заявки, которая из-за паузы не ушла (автозаявки ждут в `preparing`). */
+export const blockMessage = (block: SubmitBlock): string =>
+  block.reason === "captcha"
+    ? "hh asked for a captcha; submits of the account are paused and will retry automatically"
+    : `submits of the account are paused after repeated identical failures (${block.detail ?? "unknown"}); they will retry automatically`
 
 const asDate = (value: unknown): Date | null =>
   value === null || value === undefined ? null : new Date(value as string | Date)
@@ -82,28 +101,70 @@ export const recordCaptcha = (tx: Executor, userId: string, hhAccountId: string)
     return true
   })
 
+/**
+ * Ставит паузу `repeated_failure`, если последние завершённые попытки `submit`
+ * аккаунта - один и тот же детерминированный отказ (см. `decideRepeatedFailure`).
+ * Вызывать сразу после записи попытки в журнал. Если аккаунт уже на паузе
+ * (капча, submit в полёте), ничего не меняет. Возвращает `true`, если пауза
+ * поставлена сейчас.
+ */
+export const recordRepeatedFailure = (tx: Executor, hhAccountId: string): RepoEffect<boolean> =>
+  Effect.gen(function*() {
+    const rows = (yield* tx.execute(sql`
+      select t.exit ->> 'tag' as tag, t.exit ->> 'message' as message
+      from application_attempt t
+      join application p on p.id = t.application_id
+      where p.hh_account_id = ${hhAccountId} and t.stage = 'submit' and t.finished_at is not null
+      order by t.finished_at desc, t.seq desc
+      limit ${REPEATED_FAILURE_WINDOW}
+    `)).rows as ReadonlyArray<{ tag: string | null; message: string | null }>
+    const pause = decideRepeatedFailure(rows.map((row) => ({ tag: row.tag ?? "", message: row.message })))
+    if (pause === null) return false
+
+    const set = yield* tx.execute(sql`
+      update hh_account
+      set submit_blocked_at = now(), submit_block_reason = 'repeated_failure',
+          submit_block_detail = ${pause.detail},
+          submit_retry_at = now() + (${pause.delayMinutes}::int * interval '1 minute'),
+          updated_at = now()
+      where id = ${hhAccountId} and submit_blocked_at is null
+      returning id
+    `)
+    return set.rows.length > 0
+  })
+
 /** Блокировка аккаунта; `null`, если отправки идут. */
 export const activeBlock = (tx: Executor, hhAccountId: string): RepoEffect<SubmitBlock | null> =>
   tx
-    .execute(sql`select submit_blocked_at from hh_account where id = ${hhAccountId} and submit_blocked_at is not null`)
+    .execute(sql`
+      select submit_blocked_at, submit_block_reason, submit_block_detail
+      from hh_account where id = ${hhAccountId} and submit_blocked_at is not null
+    `)
     .pipe(
       Effect.map((result) => {
-        const since = asDate((result.rows[0] as { submit_blocked_at?: unknown } | undefined)?.submit_blocked_at)
-        return since === null ? null : { since, reason: "captcha" as const }
+        const row = result.rows[0] as
+          | { submit_blocked_at?: unknown; submit_block_reason?: string | null; submit_block_detail?: string | null }
+          | undefined
+        const since = asDate(row?.submit_blocked_at)
+        if (since === null) return null
+        const reason: SubmitBlockReason = row?.submit_block_reason === "repeated_failure" ? "repeated_failure" : "captcha"
+        return { since, reason, detail: row?.submit_block_detail ?? null }
       })
     )
 
 /**
- * Снимает блокировку, закрывает открытый эпизод и возвращает раннеру
- * автозаявки, которые ждали капчу. Ничего не делает, если блокировки нет.
+ * Снимает блокировку любой причины (очищая текст отказа), закрывает открытый
+ * эпизод капчи, если он есть, и возвращает раннеру автозаявки, которые ждали
+ * паузу (они стоят в `preparing` с кодом `captcha` при любой причине: новый код
+ * ломал бы старых клиентов). Ничего не делает, если блокировки нет.
  * Возвращает id освобождённых заявок.
  */
 export const resume = (tx: Executor, userId: string, hhAccountId: string): RepoEffect<ReadonlyArray<string>> =>
   Effect.gen(function*() {
     const unblocked = yield* tx.execute(sql`
       update hh_account
-      set submit_blocked_at = null, submit_block_reason = null, submit_retry_at = null,
-          submit_resumed_at = now(), updated_at = now()
+      set submit_blocked_at = null, submit_block_reason = null, submit_block_detail = null,
+          submit_retry_at = null, submit_resumed_at = now(), updated_at = now()
       where id = ${hhAccountId} and user_id = ${userId} and submit_blocked_at is not null
       returning id
     `)

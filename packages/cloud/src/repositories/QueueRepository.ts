@@ -701,6 +701,7 @@ export const concurrency = (
              case when a.submit_next_at > now() then a.submit_next_at end as next_submit_at,
              a.submit_blocked_at as blocked_at,
              a.submit_block_reason as block_reason,
+             a.submit_block_detail as block_detail,
              a.submit_retry_at as retry_at,
              (select max(e.captcha_at) from hh_captcha_episode e where e.hh_account_id = a.id) as last_captcha_at,
              (select count(*)::int from hh_captcha_episode e
@@ -775,6 +776,7 @@ export const concurrency = (
           nextSubmitAt: row.next_submit_at == null ? null : new Date(String(row.next_submit_at)).toISOString(),
           submitBlockedAt: row.blocked_at == null ? null : new Date(String(row.blocked_at)).toISOString(),
           submitBlockReason: row.block_reason == null ? null : String(row.block_reason),
+          submitBlockDetail: row.block_detail == null ? null : String(row.block_detail),
           submitRetryAt: row.retry_at == null ? null : new Date(String(row.retry_at)).toISOString(),
           lastCaptchaAt: row.last_captcha_at == null ? null : new Date(String(row.last_captcha_at)).toISOString(),
           captchas24h: Number(row.captchas_24h),

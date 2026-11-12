@@ -74,8 +74,10 @@ export const HhAccountRecord = Schema.Struct({
    * не остановлены. Снимает оператор (`HhAccountSubmitResume`).
    */
   submitBlockedAt: Schema.optional(Schema.NullOr(Schema.String)),
-  /** Почему остановлены: `captcha`. */
+  /** Почему остановлены: `captcha` или `repeated_failure` (много одинаковых отказов подряд). */
   submitBlockReason: Schema.optional(Schema.NullOr(Schema.String)),
+  /** Исходный текст последнего отказа при `repeated_failure`; для капчи пусто. */
+  submitBlockDetail: Schema.optional(Schema.NullOr(Schema.String)),
   createdAt: Schema.String,
   updatedAt: Schema.String
 })

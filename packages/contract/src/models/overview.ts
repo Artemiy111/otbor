@@ -166,8 +166,10 @@ export const OverviewAccount = Schema.Struct({
   usage: OverviewUsage,
   /** Когда отправки аккаунта поставлены на паузу (капча); null - не на паузе. */
   submitBlockedAt: Schema.NullOr(Schema.String),
-  /** Причина паузы отправок (`captcha`). */
+  /** Причина паузы отправок (`captcha`, `repeated_failure`). */
   submitBlockReason: Schema.NullOr(Schema.String),
+  /** Исходный текст последнего отказа при `repeated_failure`. */
+  submitBlockDetail: Schema.optional(Schema.NullOr(Schema.String)),
   /** Когда пауза снимется сама (ISO). */
   submitRetryAt: Schema.NullOr(Schema.String),
   /** Эпизодов капчи за 24 часа. */

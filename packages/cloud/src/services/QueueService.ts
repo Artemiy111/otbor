@@ -13,6 +13,7 @@ import type {
   UserSettings
 } from "@otbor/contract"
 import { HarnessRejected, NotFound } from "@otbor/contract"
+import { REPEATED_FAILURE_TAGS } from "@otbor/domain"
 import { sql } from "drizzle-orm"
 import { Cause, Config, Context, Effect, Layer } from "effect"
 import { generateHarnessToken, hashHarnessToken } from "../auth/harnessToken.ts"
@@ -621,6 +622,16 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                       kept === null ? exit : { ...exit, artifacts: kept },
                       kept
                     )
+                    // Предохранитель: серия одинаковых детерминированных отказов submit
+                    // останавливает отправки аккаунта (попытка уже в журнале).
+                    if (stage === "submit" && ctx.hhAccountId !== null && REPEATED_FAILURE_TAGS.includes(exit.tag)) {
+                      const paused = yield* SubmitPacingRepository.recordRepeatedFailure(tx, ctx.hhAccountId)
+                      if (paused) {
+                        yield* Effect.logWarning(
+                          `submit failed with the same error several times in a row (${exit.tag}); submits of the account are paused and will retry automatically`
+                        )
+                      }
+                    }
                   }
                 }
 

@@ -69,7 +69,9 @@ export const completeReconcile: StageHandler = (tx, ctx, exit) =>
             return outcome("done", message, {
               appState: "preparing",
               appPatch: {
-                lastError: "hh asked for a captcha; the response did not go out, it will be sent after you resume the account",
+                lastError: block.reason === "captcha"
+                  ? "hh asked for a captcha; the response did not go out, it will be sent after you resume the account"
+                  : "submits of the account are paused after repeated identical failures; the response did not go out, it will be sent after the pause ends",
                 blockedReason: "captcha",
                 retryAt: null
               },

@@ -186,8 +186,10 @@ export const ConcurrencyAccount = Schema.Struct({
   captchas24h: Schema.Int,
   /** Сколько откликов otbor подтверждено после последней капчи (всего, если капчи не было). */
   submitsSinceCaptcha: Schema.Int,
-  /** Почему остановлены: `captcha` - hh попросил капчу. */
+  /** Почему остановлены: `captcha` - hh попросил капчу, `repeated_failure` - много одинаковых отказов подряд. */
   submitBlockReason: Schema.NullOr(Schema.String),
+  /** Исходный текст последнего отказа при `repeated_failure`. */
+  submitBlockDetail: Schema.optional(Schema.NullOr(Schema.String)),
   /** Браузерные задачи в `leased`/`running` по стадиям. */
   running: Schema.Array(StageCount),
   browserRunning: Schema.Int,

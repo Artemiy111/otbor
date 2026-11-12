@@ -213,14 +213,15 @@ export const trySubmit = Effect.fnUntraced(function*(
     return refused("rejected", `the vacancy was rejected (${rejectedBy}); it is not submitted`)
   }
 
-  // Блокировка после капчи: автоотклик не ставим в очередь, он ждёт
-  // в preparing (код captcha, без retry_at), пока пауза не снимется сама.
+  // Пауза аккаунта (капча или серия одинаковых отказов): автоотклик не ставим
+  // в очередь, он ждёт в preparing (код captcha для любой причины, без retry_at;
+  // сообщение объясняет настоящую), пока пауза не снимется сама.
   // Одобрение оператором ставит submit как обычно: задача стоит в очереди,
   // пока claim не увидит снятую блокировку.
   if (trigger === "auto") {
     const block = yield* SubmitPacingRepository.activeBlock(tx, application.hhAccountId)
     if (block !== null) {
-      const message = "hh asked for a captcha; submits of the account are paused and will retry automatically"
+      const message = SubmitPacingRepository.blockMessage(block)
       yield* ApplicationRepository.transition(tx, input.userId, application.id, "preparing", {
         from: ["preparing"],
         patch: { lastError: message, blockedReason: "captcha", retryAt: null }

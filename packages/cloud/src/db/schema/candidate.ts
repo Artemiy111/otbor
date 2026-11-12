@@ -36,7 +36,10 @@ export const hhAccount = pgTable(
     submitNextAt: timestamp("submit_next_at", { withTimezone: true }),
     /** Капча ставит паузу отправок; её снимает worker по `submitRetryAt` или оператор (`HhAccountSubmitResume`). */
     submitBlockedAt: timestamp("submit_blocked_at", { withTimezone: true }),
+    /** `captcha` или `repeated_failure` (много одинаковых отказов исполнителя подряд). */
     submitBlockReason: text("submit_block_reason"),
+    /** Исходное сообщение последнего отказа при `repeated_failure`; для капчи пусто. */
+    submitBlockDetail: text("submit_block_detail"),
     /** Когда блокировка после капчи снимется сама (с нарастающей паузой). */
     submitRetryAt: timestamp("submit_retry_at", { withTimezone: true }),
     /** Когда оператор в последний раз снял блокировку. */

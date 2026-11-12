@@ -10,8 +10,12 @@ import * as SubmitPacingRepository from "../repositories/SubmitPacingRepository.
  * подтверждённого отклика (`captchaDelayMinutes`), так что hh не получает
  * капчу каждые несколько минут, но и человека никто не ждёт.
  *
+ * Так же снимается пауза `repeated_failure` (серия одинаковых отказов
+ * исполнителя): у неё свой срок в `submit_retry_at`, 6 часов и больше.
+ *
  * Строки без `submit_retry_at` (блокировка, поставленная до появления столбца)
- * получают базовую паузу от момента блокировки.
+ * получают базовую паузу от момента блокировки: для капчи минуты, для
+ * `repeated_failure` её первые 6 часов.
  */
 export const resumeCaptchaBlocks = () =>
   Effect.gen(function*() {
@@ -23,7 +27,11 @@ export const resumeCaptchaBlocks = () =>
           where submit_blocked_at is not null
             and coalesce(
               submit_retry_at,
-              submit_blocked_at + (${SubmitPacingRepository.CAPTCHA_BASE_DELAY_MINUTES} * interval '1 minute')
+              submit_blocked_at + (
+                case when submit_block_reason = 'repeated_failure'
+                  then ${SubmitPacingRepository.REPEATED_FAILURE_FALLBACK_MINUTES}::int
+                  else ${SubmitPacingRepository.CAPTCHA_BASE_DELAY_MINUTES}::int
+                end * interval '1 minute')
             ) <= now()
         `)).rows as ReadonlyArray<{ id: string; user_id: string }>
 
