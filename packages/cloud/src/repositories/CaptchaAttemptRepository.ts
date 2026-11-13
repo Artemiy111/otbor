@@ -54,6 +54,7 @@ export const recent = (
              bool_or(outcome = 'solved') as solved,
              (array_agg(answer order by attempt desc))[1] as answer,
              (array_agg(filter order by attempt desc))[1] as filter,
+             (array_agg(error order by attempt desc))[1] as error,
              sum(duration_ms)::int as duration_ms
       from captcha_attempt
       where user_id = ${userId}
@@ -80,6 +81,7 @@ export const recent = (
         filter: String(row.filter) as CaptchaSolveRecord["filter"],
         solved: Boolean(row.solved),
         answer: row.answer === null ? null : String(row.answer),
+        error: row.error === null ? null : String(row.error),
         durationMs: Number(row.duration_ms)
       })),
       models: (models.rows as ReadonlyArray<Record<string, unknown>>).map((row): CaptchaModelStat => ({

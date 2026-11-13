@@ -150,6 +150,12 @@ export interface CaptchaRecognition {
   readonly text: string | null
   readonly durationMs: number
   readonly error: string | null
+  /**
+   * Харнес недоступен: нет связи, таймаут, отказ сервера. Повтор с новой
+   * картинкой ничего не изменит - решать нечем. Пустой ответ при живом
+   * сервере, наоборот, обычный промах, и его стоит повторить.
+   */
+  readonly unavailable: boolean
 }
 
 /**
@@ -202,20 +208,22 @@ export const recognizeCaptcha = async (
         ok: false,
         text: null,
         durationMs,
+        unavailable: true,
         error: scrub(`HTTP ${response.status}${typeof message === "string" ? `: ${message.slice(0, 300)}` : ""}`)
       }
     }
     const content = body?.choices?.[0]?.message?.content
     const text = typeof content === "string" ? cleanCaptchaAnswer(content) : ""
     return text === ""
-      ? { ok: false, text: null, durationMs, error: "модель не вернула текст" }
-      : { ok: true, text, durationMs, error: null }
+      ? { ok: false, text: null, durationMs, unavailable: false, error: "модель не вернула текст" }
+      : { ok: true, text, durationMs, unavailable: false, error: null }
   } catch (cause) {
     const timedOut = cause instanceof Error && cause.name === "TimeoutError"
     return {
       ok: false,
       text: null,
       durationMs: Date.now() - started,
+      unavailable: true,
       error: scrub(
         timedOut
           ? `нет ответа за ${config.timeoutSeconds} с`

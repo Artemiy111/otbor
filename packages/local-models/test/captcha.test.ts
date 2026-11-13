@@ -76,13 +76,31 @@ describe("recognizeCaptcha", () => {
     }
   })
 
-  test("недоступный сервер — ok:false, а не исключение", async () => {
+  test("недоступный сервер — ok:false, unavailable:true, а не исключение", async () => {
     const result = await recognizeCaptcha(
       { endpoint: { id: "t", url: "http://127.0.0.1:1/v1" }, model: "m", timeoutSeconds: 2 },
       new Uint8Array([1])
     )
     expect(result.ok).toBe(false)
     expect(result.error).not.toBeNull()
+    // Решать нечем: повтор с новой картинкой не поможет.
+    expect(result.unavailable).toBe(true)
+  })
+
+  test("пустой ответ при живом сервере — обычный промах, unavailable:false", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: async () => Response.json({ choices: [{ message: { content: "  " } }] })
+    })
+    try {
+      const result = await recognizeCaptcha(
+        { endpoint: { id: "t", url: `http://127.0.0.1:${server.port}/v1` }, model: "m", timeoutSeconds: 5 },
+        new Uint8Array([1])
+      )
+      expect(result).toMatchObject({ ok: false, text: null, unavailable: false })
+    } finally {
+      await server.stop(true)
+    }
   })
 })
 

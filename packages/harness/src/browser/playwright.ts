@@ -57,7 +57,7 @@ import {
   wantsMoreSyncPages
 } from "./core.ts"
 import { BrowserExecutor, type LetterAttachRequest, type ResumeBumpRequest, type SubmitRequest } from "./executor.ts"
-import { makeCaptchaSolve, type CaptchaSolve } from "./captcha.ts"
+import { lastCaptchaFailure, makeCaptchaSolve, type CaptchaSolve } from "./captcha.ts"
 import { makeHumanizer, noHumanizer } from "./humanize.ts"
 import { DEFAULT_CHROME_PATH } from "./profile.ts"
 import { fileSessionStore, type LoadedSession, type SessionStore } from "./sessionStore.ts"
@@ -137,6 +137,7 @@ const defaultPageTracesDir = (): string | null => {
  */
 const TRACED_EXITS: ReadonlySet<string> = new Set([
   "blocked",
+  "captcha",
   "answer_rejected",
   "ambiguous",
   "form_changed",
@@ -302,10 +303,16 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
         })
         return pictureFile
       }).pipe(Effect.orElseSucceed(() => null as string | null))
+      // Точная причина, по которой решатель не справился: она попадает в
+      // сообщение выхода (журнал задач, веб), в лог и в комментарий следа.
+      const why = lastCaptchaFailure(page)
       yield* Effect.logWarning(
-        `captcha screenshot saved: ${saved}${picture === null ? "" : `, picture: ${picture}`} (${page.url()})`
+        `captcha screenshot saved: ${saved}${picture === null ? "" : `, picture: ${picture}`}${why === null ? "" : `, reason: ${why}`} (${page.url()})`
       )
-      const note = picture === null ? `screenshot: ${saved}` : `screenshot: ${saved}, picture: ${picture}`
+      const note = [
+        why === null ? null : `причина: ${why}`,
+        picture === null ? `screenshot: ${saved}` : `screenshot: ${saved}, picture: ${picture}`
+      ].filter((item) => item !== null).join("; ")
       return { ...exit, message: `${exit.message ?? ""} (${note})`.trim() } as unknown as A
     })
 
@@ -531,8 +538,15 @@ export const makePlaywrightExecutor = (options: PlaywrightOptions = {}) => {
         }
         yield* sleep(config.settleMs)
         lastUrl = page.url()
-        const html = (yield* content(page)) ?? ""
-        const kind = classifyResponsePage(html, lastUrl)
+        let html = (yield* content(page)) ?? ""
+        let kind = classifyResponsePage(html, lastUrl)
+        // Капчу здесь решает тот же решатель, что и на отклике: письмо
+        // прикрепляют после отклика, и hh показывает её и тут.
+        while (kind === "captcha" && (yield* solveCaptcha(page))) {
+          lastUrl = page.url()
+          html = (yield* content(page)) ?? ""
+          kind = classifyResponsePage(html, lastUrl)
+        }
         if (kind === "login") return letterUnclicked(lastUrl, "session_expired", "hh redirected to the login page")
         if (kind === "captcha") return letterUnclicked(lastUrl, "captcha", "hh asked for a captcha")
         if (kind === "archived") {

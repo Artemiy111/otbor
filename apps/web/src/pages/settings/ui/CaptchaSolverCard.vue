@@ -122,8 +122,10 @@ const test = async () => {
         Когда hh показывает капчу, браузер харнеса снимает картинку и отдаёт её выбранной модели, затем
         вводит ответ и жмёт «Отправить». Подойдёт любой харнес каталога с поддержкой изображений: локальный
         сервер (oMLX, LM Studio), <code>opencode</code>, <code>claude</code>. Если ответ не принят за
-        указанное число попыток, аккаунт останавливается, как и без распознавания. Картинка уходит только
-        выбранному харнесу. Настройка хранится локально в <code>~/.otbor/captcha.json</code>.
+        указанное число попыток, аккаунт останавливается, как и без распознавания. Попытка — это введённый
+        ответ: если модель не ответила, не отрисовалась картинка или не нашлось поле, попытка не тратится,
+        а картинка запрашивается заново. Картинка уходит только выбранному харнесу. Настройка хранится
+        локально в <code>~/.otbor/captcha.json</code>.
       </CardDescription>
     </CardHeader>
     <CardContent class="space-y-4">
@@ -205,6 +207,7 @@ const test = async () => {
               <span class="text-muted-foreground">фильтр: {{ item.filter === "none" ? "нет" : "нормировка" }}</span>
               <code class="text-xs">{{ item.harness }}/{{ item.model }}</code>
               <span v-if="item.answer" class="text-muted-foreground">ответ «{{ item.answer }}»</span>
+              <span v-if="item.error" class="text-destructive">причина: {{ item.error }}</span>
               <span class="text-muted-foreground">{{ item.stage }}, {{ (item.durationMs / 1000).toFixed(1) }} с</span>
             </li>
           </ul>

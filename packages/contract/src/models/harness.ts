@@ -291,6 +291,8 @@ export const CaptchaSolveRecord = Schema.Struct({
   solved: Schema.Boolean,
   /** Ответ последней попытки. */
   answer: Schema.NullOr(Schema.String),
+  /** Точная причина, по которой последняя попытка не дала ответа; `null`, если капча решена. */
+  error: Schema.NullOr(Schema.String),
   durationMs: Schema.Int
 })
 export type CaptchaSolveRecord = typeof CaptchaSolveRecord.Type
