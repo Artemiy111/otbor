@@ -570,6 +570,69 @@ if (!enabled || serverUrl === null) {
         expect(cleared).toMatchObject({ writingHarness: null, writingModel: null, writingEffort: null })
       })
 
+      test("писатель строки аккаунта действует и для резюме без своего писателя", async () => {
+        const tenant = await support.seedTenant("af-writing-inherit")
+        const resumeId = await support.seedResume({
+          userId: tenant.userId,
+          accountId: tenant.accountId,
+          title: "Системный администратор"
+        })
+        // Оператор выбрал писателя один раз, на аккаунте.
+        await support.applyFilterSet(tenant.userId, {
+          hhAccountId: tenant.accountId,
+          filter: {},
+          writingHarness: "omlx",
+          writingModel: "gemma"
+        })
+        // У резюме своя строка (правила, режим), но писателя в ней нет.
+        await support.applyFilterSet(tenant.userId, {
+          hhAccountId: tenant.accountId,
+          resumeId,
+          filter: {},
+          autoMode: "auto"
+        })
+        const inherited = await support.applyFilterGet(tenant.userId, {
+          hhAccountId: tenant.accountId,
+          resumeId
+        })
+        expect(inherited).toMatchObject({
+          source: "exact",
+          writingHarness: "omlx",
+          writingModel: "gemma",
+          writingEffort: null
+        })
+
+        // Свой писатель резюме перекрывает выбор аккаунта целиком.
+        await support.applyFilterSet(tenant.userId, {
+          hhAccountId: tenant.accountId,
+          resumeId,
+          filter: {},
+          writingHarness: "claude",
+          writingModel: "haiku",
+          writingEffort: "low"
+        })
+        const own = await support.applyFilterGet(tenant.userId, {
+          hhAccountId: tenant.accountId,
+          resumeId
+        })
+        expect(own).toMatchObject({ writingHarness: "claude", writingModel: "haiku", writingEffort: "low" })
+
+        // «Сбросить» у резюме возвращает выбор аккаунта, а не писателя по умолчанию.
+        await support.applyFilterSet(tenant.userId, {
+          hhAccountId: tenant.accountId,
+          resumeId,
+          filter: {},
+          writingHarness: null,
+          writingModel: null,
+          writingEffort: null
+        })
+        const back = await support.applyFilterGet(tenant.userId, {
+          hhAccountId: tenant.accountId,
+          resumeId
+        })
+        expect(back).toMatchObject({ writingHarness: "omlx", writingModel: "gemma", writingEffort: null })
+      })
+
       test("out-of-range parameters are InvalidInput", async () => {
         const tenant = await support.seedTenant("af-params-invalid")
         const bad = (extra: Record<string, unknown>) =>

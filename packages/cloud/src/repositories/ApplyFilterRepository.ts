@@ -59,8 +59,16 @@ export const find = (
     .pipe(Effect.map((rows) => (rows[0] === undefined ? null : toRecord(rows[0]))))
 
 /**
- * The fallback chain: the exact (account, resume) row, else the account row
- * (resume null), else the built-in default. No account at all is the default.
+ * Цепочка наследования: строка ровно этой пары (аккаунт, резюме), иначе строка
+ * аккаунта (резюме null), иначе встроенные значения по умолчанию. Без аккаунта
+ * действуют значения по умолчанию.
+ *
+ * Писатель писем — не правило отбора, а один выбор оператора, поэтому он
+ * наследуется отдельно: если у строки резюме своего писателя нет, действует
+ * писатель строки аккаунта. Иначе выбор модели на аккаунте молча не применялся
+ * бы к резюме, у которого есть своя строка (а она есть у всех, где правили
+ * правила или режим). Писатель наследуется целиком: агент, модель и усилие
+ * берутся из одной строки, а не собираются по полям из двух.
  */
 export const resolve = (
   tx: Executor,
@@ -71,7 +79,14 @@ export const resolve = (
   Effect.gen(function*() {
     if (hhAccountId !== null) {
       const exact = resumeId === null ? null : yield* find(tx, userId, hhAccountId, resumeId)
-      if (exact !== null) return fromRecord(exact, "exact")
+      if (exact !== null) {
+        const resolved = fromRecord(exact, "exact")
+        if (!(writerIsSet(resolved))) {
+          const account = yield* find(tx, userId, hhAccountId, null)
+          if (account !== null) return withWriter(resolved, account)
+        }
+        return resolved
+      }
       const account = yield* find(tx, userId, hhAccountId, null)
       if (account !== null) return fromRecord(account, resumeId === null ? "exact" : "account")
     }
@@ -130,6 +145,25 @@ const fromRecord = (record: ApplyFilterRecord, source: ApplyFilterSource): Resol
   writingEffort: record.writingEffort,
   templatePresetId: record.templatePresetId,
   updatedAt: record.updatedAt
+})
+
+/** У строки есть свой писатель хотя бы в одном поле. */
+const writerIsSet = (row: {
+  readonly writingHarness: string | null
+  readonly writingModel: string | null
+  readonly writingEffort: string | null
+}): boolean =>
+  row.writingHarness !== null || row.writingModel !== null || row.writingEffort !== null
+
+/** Писатель строки аккаунта целиком, без смешивания полей двух строк. */
+const withWriter = (
+  resolved: ResolvedApplyFilter,
+  account: ApplyFilterRecord
+): ResolvedApplyFilter => ({
+  ...resolved,
+  writingHarness: account.writingHarness,
+  writingModel: account.writingModel,
+  writingEffort: account.writingEffort
 })
 
 /** `undefined` keeps the stored value; `null` or a blank string clears it; else the trimmed text. */
