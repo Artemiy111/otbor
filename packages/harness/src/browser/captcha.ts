@@ -285,12 +285,26 @@ export const makeCaptchaSolve = (
       }).pipe(Effect.orElseSucceed(() => false))
     })
 
-  return (page) =>
+  /**
+   * Один проход решателя по странице. Целиком оборачивается в спан
+   * `captcha.solve`: в Tempo видна длительность и все попытки, а строки лога
+   * внутри становятся событиями спана (номер попытки, ответ, причина отказа).
+   */
+  const solvePage = (page: Page) =>
     Effect.gen(function*() {
       const config = load()
       if (config === null) return false
       const answeredBefore = attempts.get(page) ?? 0
-      if (answeredBefore >= config.maxAttempts) return false
+      if (answeredBefore >= config.maxAttempts) {
+        yield* Effect.annotateCurrentSpan({ "captcha.outcome": "exhausted", "captcha.answered_before": answeredBefore })
+        return false
+      }
+      yield* Effect.annotateCurrentSpan({
+        "captcha.harness": config.harnessId,
+        "captcha.model": config.model,
+        "captcha.max_attempts": config.maxAttempts,
+        "captcha.answered_before": answeredBefore
+      })
 
       const recorder = yield* Effect.serviceOption(CaptchaRecorder)
       const note = (
@@ -336,7 +350,18 @@ export const makeCaptchaSolve = (
         }
 
         const prepared = yield* Effect.promise(() => prepareCaptchaImage(image, config.filter))
-        const result = yield* recognize(config, prepared.image)
+        // Вызов модели отдельным спаном: видно, сколько занимает само
+        // распознавание, а не пауза перед вводом ответа.
+        const result = yield* recognize(config, prepared.image).pipe(
+          Effect.withSpan("captcha.recognize", {
+            attributes: {
+              "captcha.harness": config.harnessId,
+              "captcha.model": config.model,
+              "captcha.filter": prepared.filter,
+              "captcha.attempt": answered + 1
+            }
+          })
+        )
 
         // Харнес недоступен: повторять нечего, но это не капча hh - задача
         // завершится как `transport`, и её поставят в очередь заново.
@@ -347,6 +372,7 @@ export const makeCaptchaSolve = (
           yield* Effect.logWarning(
             `captcha: solver ${config.harnessId}/${config.model} is unavailable: ${error}`
           )
+          yield* Effect.annotateCurrentSpan({ "captcha.outcome": "unavailable", "captcha.error": error })
           return yield* Effect.fail(
             new Error(`капча: решатель ${config.harnessId}/${config.model} недоступен - ${error}`)
           )
@@ -396,7 +422,10 @@ export const makeCaptchaSolve = (
         )
         const rejected = html !== null && classifyResponsePage(html, page.url()) === "captcha"
         note(answered, rejected ? "rejected" : "solved", text, result.durationMs, null, prepared.filter)
-        if (!rejected) return true
+        if (!rejected) {
+          yield* Effect.annotateCurrentSpan({ "captcha.outcome": "solved", "captcha.answered": answered })
+          return true
+        }
         failures.set(page, `hh не принял ответ «${text}»`)
         yield* Effect.logWarning(
           `captcha: hh showed the captcha again after "${text}" (attempt ${answered}/${config.maxAttempts})`
@@ -404,12 +433,20 @@ export const makeCaptchaSolve = (
       }
 
       if (answered >= config.maxAttempts) {
+        yield* Effect.annotateCurrentSpan({ "captcha.outcome": "exhausted", "captcha.answered": answered })
         yield* Effect.logWarning(`captcha: ${answered} answers entered, hh still asks for a captcha`)
       } else {
+        yield* Effect.annotateCurrentSpan({
+          "captcha.outcome": "stalls",
+          "captcha.stalls": stalls,
+          "captcha.error": failures.get(page) ?? "unknown"
+        })
         yield* Effect.logWarning(
           `captcha: gave up after ${stalls} stalls without an answer, last reason: ${failures.get(page) ?? "unknown"}`
         )
       }
       return answered > answeredBefore
     })
+
+  return (page) => solvePage(page).pipe(Effect.withSpan("captcha.solve"))
 }

@@ -34,6 +34,7 @@ export {
   runInferenceExit,
   type InferenceArtifacts
 } from "./inference.ts"
+export { telemetryLayer } from "./observability.ts"
 export {
   BROWSER_UNAVAILABLE_MESSAGE,
   HEARTBEAT_INTERVAL,

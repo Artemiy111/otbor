@@ -9,6 +9,7 @@ import {
   readOpenAiStore,
   removeOpenAiEndpoint,
   runHarness,
+  telemetryLayer,
   upsertOpenAiEndpoint
 } from "@otbor/harness"
 import { Config, Console, Effect, Option } from "effect"
@@ -166,7 +167,11 @@ const run = Command.make(
           }
         : {}
     ).pipe(
-      Effect.provide(HarnessGateway.layer(config.apiUrl))
+      Effect.provide(HarnessGateway.layer(config.apiUrl)),
+      // Логи, трейсы и метрики харнесса идут в OTLP, если заданы `OTEL_*`:
+      // тогда в Tempo видно задачи и попытки решить капчу, а в Loki — те же
+      // строки, что печатаются в терминал и `logs/harness.log`.
+      Effect.provide(telemetryLayer("otbor-harness"))
     )
   })
 ).pipe(Command.withDescription("Run the local edge harness loop"))
