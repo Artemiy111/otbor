@@ -278,7 +278,10 @@ if (!integrationEnabled || serverUrl === null) {
             sentAt: new Date(Date.UTC(2026, 10, 2, 9)),
             kind: "text",
             text: "Добрый день! Пишите мне: maria@corp.ru",
-            authorName: "Мария HR"
+            authorName: "Мария HR",
+            authorId: "chat-participant-1",
+            isBot: false,
+            replyOptions: []
           },
           {
             externalId: "2",
@@ -286,7 +289,10 @@ if (!integrationEnabled || serverUrl === null) {
             sentAt: new Date(Date.UTC(2026, 10, 2, 10)),
             kind: "text",
             text: "Моя почта me@mail.ru",
-            authorName: null
+            authorName: null,
+            authorId: "chat-participant-2",
+            isBot: null,
+            replyOptions: []
           }
         ]
       }
