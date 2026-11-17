@@ -75,7 +75,13 @@ export const PresetField = Schema.Literals([
    * at least one selector has an application, `not_in` when none does.
    * Rules are ANDed, so "applied with resume A but not with resume B" is two rules.
    */
-  "applied"
+  "applied",
+  /**
+   * Отдельный фильтр по отклику именно на эту вакансию, а не на компанию, как
+   * `applied`. Селекторы те же: `any`, `account:<id>`, `resume:<id>`; `in`
+   * совпадает при отправленном отклике, `not_in` — когда его нет.
+   */
+  "applied_vacancy"
 ])
 
 export type PresetField = typeof PresetField.Type

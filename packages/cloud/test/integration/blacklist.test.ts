@@ -357,6 +357,75 @@ if (!integrationEnabled || serverUrl === null) {
       expect(await matching({ op: "in", value: [`resume:${randomUUID()}`] })).toEqual([])
     })
 
+    test("the applied_vacancy rule filters by an application to this exact vacancy", async () => {
+      const tenant = await seedTenant("applied-vacancy-rule")
+      const second = await addAccount(tenant.userId, "applied-vacancy-second")
+      const suffix = tag()
+      const resumeA = await seedResume({ userId: tenant.userId, accountId: tenant.accountId, title: "A" })
+      const resumeB = await seedResume({ userId: tenant.userId, accountId: tenant.accountId, title: "B" })
+      const resumeC = await seedResume({ userId: tenant.userId, accountId: second, title: "C" })
+
+      const make = async (name: string) => {
+        const row = await seedVacancyForEmployer({
+          label: `${name}-${suffix}`,
+          title: `Appliedvacrule ${name} ${suffix}`,
+          employerExternalId: `apvac-${name}-${suffix}`,
+          employerName: `Applied vacancy ${name} ${suffix}`
+        })
+        // Та же компания, другая вакансия: правило обязано различать их.
+        const sibling = await seedVacancyForEmployer({
+          label: `${name}-sib-${suffix}`,
+          title: `Appliedvacrule ${name} sibling ${suffix}`,
+          employerExternalId: `apvac-${name}-${suffix}`,
+          employerName: `Applied vacancy ${name} ${suffix}`
+        })
+        return { ...row, siblingId: sibling.vacancyId }
+      }
+      const pair = await make("pair")
+      const onlyC = await make("c")
+      const draftOnly = await make("draft")
+      const clean = await make("clean")
+
+      const apply = (vacancyId: string, accountId: string, resumeId: string, state: "submitted" | "draft" = "submitted") =>
+        seedApplication({ userId: tenant.userId, accountId, vacancyId, resumeId, state })
+      await apply(pair.vacancyId, tenant.accountId, resumeA)
+      await apply(pair.siblingId, tenant.accountId, resumeB)
+      await apply(onlyC.vacancyId, second, resumeC)
+      await apply(draftOnly.vacancyId, tenant.accountId, resumeA, "draft")
+
+      const matching = async (...rules: ReadonlyArray<{ op: "in" | "not_in"; value: ReadonlyArray<string> }>) => {
+        const preview = await presetPreview(tenant.userId, {
+          rules: [
+            { field: "title", op: "contains", value: "Appliedvacrule" },
+            { field: "title", op: "contains", value: suffix },
+            ...rules.map((rule) => ({ field: "applied_vacancy" as const, ...rule }))
+          ]
+        })
+        return preview.vacancies.map((item) => String(item.id)).sort()
+      }
+      const sorted = (...values: ReadonlyArray<string>) => values.map(String).sort()
+
+      expect(await matching({ op: "in", value: ["any"] })).toEqual(
+        sorted(pair.vacancyId, pair.siblingId, onlyC.vacancyId)
+      )
+      expect(await matching({ op: "not_in", value: ["any"] })).toEqual(
+        sorted(onlyC.siblingId, draftOnly.vacancyId, draftOnly.siblingId, clean.vacancyId, clean.siblingId)
+      )
+      expect(await matching({ op: "in", value: [`account:${tenant.accountId}`] })).toEqual(
+        sorted(pair.vacancyId, pair.siblingId)
+      )
+      expect(await matching({ op: "in", value: [`resume:${resumeA}`] })).toEqual(sorted(pair.vacancyId))
+      expect(await matching({ op: "in", value: [`resume:${resumeB}`] })).toEqual(sorted(pair.siblingId))
+      // Отклик с резюме A на одну вакансию не означает отклик с ним же на sibling.
+      expect(
+        await matching(
+          { op: "in", value: [`resume:${resumeA}`] },
+          { op: "not_in", value: [`resume:${resumeB}`] }
+        )
+      ).toEqual(sorted(pair.vacancyId))
+      expect(await matching({ op: "in", value: [`resume:${randomUUID()}`] })).toEqual([])
+    })
+
     test("hh-native import is idempotent, updates names and never deletes absent entries", async () => {
       const tenant = await seedTenant("blacklist-native")
       const suffix = tag()

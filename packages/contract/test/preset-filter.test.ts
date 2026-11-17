@@ -93,6 +93,15 @@ test("a location rule keeps its area ids and an empty one is dropped", () => {
   expect(parsePresetFilter({ rules: [{ field: "location", op: "in", value: [] }] })).toEqual({})
 })
 
+test("a vacancy-level applied rule is kept with its selectors", () => {
+  const rule = {
+    field: "applied_vacancy",
+    op: "not_in",
+    value: ["any", "resume:0190f0aa-0000-7000-8000-000000000001"]
+  } as const
+  expect(parsePresetFilter({ rules: [rule] })).toEqual({ rules: [rule] })
+})
+
 describe("apply boosts parsing", () => {
   test("incomplete boost rules are dropped, complete ones kept", () => {
     expect(parseBoosts(undefined)).toEqual([])

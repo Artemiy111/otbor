@@ -25,6 +25,14 @@ export type PresetFieldGroup = (typeof PRESET_FIELD_GROUP_ORDER)[number]
 export interface PresetFieldOption {
   readonly value: string
   readonly label: string
+  /** Иконка в списке значений: аккаунт, резюме или любой источник. */
+  readonly icon?: "any" | "account" | "resume"
+  /** Вторая строка с пояснением. */
+  readonly description?: string
+  /** Заголовок группы: аккаунт, к которому относится селектор. */
+  readonly group?: string
+  /** Id аккаунта группы, чтобы нарисовать его принятый кружок с инициалами. */
+  readonly groupId?: string
 }
 
 export interface PresetFieldMeta {
@@ -118,36 +126,63 @@ const EMPLOYMENT_FORM_OPTIONS = OPTIONS(
 )
 
 /** Static selectors of the `hidden` rule; per-account ones are added from the account list. */
-export const HIDDEN_OPTIONS = OPTIONS(
-  ["any", "Где угодно (приложение, аккаунты, hh)"],
-  ["app", "Глобально в приложении"],
-  ["accounts", "У любого из моих аккаунтов (список или hh)"],
-  ["hh", "На hh у любого аккаунта"]
-)
+export const HIDDEN_OPTIONS: ReadonlyArray<PresetFieldOption> = [
+  { value: "any", label: "Где угодно", description: "приложение, аккаунты, hh", icon: "any" },
+  { value: "app", label: "В приложении", description: "глобальный чёрный список", icon: "any" },
+  { value: "accounts", label: "У любого аккаунта", description: "список или hh", icon: "account" },
+  { value: "hh", label: "На hh", description: "у любого аккаунта", icon: "account" }
+]
 
 /** Selectors for one account: its lists plus hh, and hh alone. */
 export const hiddenAccountOptions = (
   accounts: ReadonlyArray<{ readonly id: string; readonly name: string }>
 ): ReadonlyArray<PresetFieldOption> =>
   accounts.flatMap((account) => [
-    { value: `account:${account.id}`, label: `У аккаунта ${account.name} (список или hh)` },
-    { value: `hh:${account.id}`, label: `На hh у аккаунта ${account.name}` }
+    {
+      value: `account:${account.id}`,
+      label: "Список и hh",
+      group: account.name,
+      groupId: account.id,
+      icon: "account"
+    },
+    {
+      value: `hh:${account.id}`,
+      label: "Только hh",
+      group: account.name,
+      groupId: account.id,
+      icon: "account"
+    }
   ])
 
 /** Static selector of the `applied` rule; per-account and per-resume ones come from the lists. */
-export const APPLIED_OPTIONS = OPTIONS(["any", "Любым аккаунтом и резюме"])
+export const APPLIED_OPTIONS: ReadonlyArray<PresetFieldOption> = [
+  { value: "any", label: "Любой аккаунт и резюме", icon: "any" }
+]
 
 export const appliedAccountOptions = (
   accounts: ReadonlyArray<{ readonly id: string; readonly name: string }>
 ): ReadonlyArray<PresetFieldOption> =>
-  accounts.map((account) => ({ value: `account:${account.id}`, label: `Аккаунтом ${account.name}` }))
+  accounts.map((account) => ({
+    value: `account:${account.id}`,
+    label: account.name,
+    description: "аккаунт hh",
+    icon: "account"
+  }))
 
 export const appliedResumeOptions = (
-  resumes: ReadonlyArray<{ readonly id: string; readonly title: string; readonly accountName: string }>
+  resumes: ReadonlyArray<{
+    readonly id: string
+    readonly title: string
+    readonly accountName: string
+    readonly accountId: string
+  }>
 ): ReadonlyArray<PresetFieldOption> =>
   resumes.map((resume) => ({
     value: `resume:${resume.id}`,
-    label: `Резюме «${resume.title}» (${resume.accountName})`
+    label: resume.title,
+    group: resume.accountName,
+    groupId: resume.accountId,
+    icon: "resume"
   }))
 
 export const PRESET_FIELDS: ReadonlyArray<PresetFieldMeta> = [
@@ -364,6 +399,15 @@ export const PRESET_FIELDS: ReadonlyArray<PresetFieldMeta> = [
     hint: "Отправленный отклик на любую вакансию этой компании: любым аккаунтом, конкретным аккаунтом или резюме. Несколько правил складываются через И."
   },
   {
+    field: "applied_vacancy",
+    label: "Отклик на вакансию",
+    group: "Прочее",
+    kind: "select",
+    ops: ["in", "not_in"],
+    options: APPLIED_OPTIONS,
+    hint: "Отправленный отклик именно на эту вакансию: любым аккаунтом, конкретным аккаунтом или резюме. Несколько правил складываются через И."
+  },
+  {
     field: "archived",
     label: "Архивная",
     group: "Прочее",
@@ -448,7 +492,8 @@ export const presetValueLabel = (
   if (typeof value === "boolean") return value ? "да" : "нет"
   if (field === "location") return areaLabel(value)
   const option = presetFieldMeta(field).options?.find((item) => item.value === String(value))
-  return option?.label ?? String(value)
+  if (option === undefined) return String(value)
+  return option.description === undefined ? option.label : `${option.label} (${option.description})`
 }
 
 /** A rule value as the detail page reads it: arrays and booleans included. */

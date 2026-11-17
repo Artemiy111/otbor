@@ -33,6 +33,7 @@ import FieldPicker from "./FieldPicker.vue"
 import AreaPicker from "./AreaPicker.vue"
 import KeywordPicker from "./KeywordPicker.vue"
 import TagInput from "./TagInput.vue"
+import ValuePicker from "./ValuePicker.vue"
 
 /** One rule on one line: field, operator, value (and currency for salary). Edited in place. */
 const props = withDefaults(
@@ -63,6 +64,8 @@ onMounted(() => {
 
 const rule = computed(() => props.rule)
 const meta = computed(() => presetFieldMeta(props.rule.field))
+const usesAppliedSelectors = (field: PresetField): boolean =>
+  field === "applied" || field === "applied_vacancy"
 
 const lexiconQuery = useQuery({
   key: () => keywordKeys.list(""),
@@ -74,34 +77,35 @@ const lexicon = computed(() => lexiconQuery.data.value ?? [])
 const accountsQuery = useQuery({
   key: () => hhAccountKeys.list(),
   query: () => hhAccountApi.list(),
-  enabled: () => props.rule.field === "hidden" || props.rule.field === "applied"
+  enabled: () => props.rule.field === "hidden" || usesAppliedSelectors(props.rule.field)
 })
 
 const resumesQuery = useQuery({
   key: () => resumeKeys.list(),
   query: () => resumeApi.list(),
-  enabled: () => props.rule.field === "applied"
+  enabled: () => usesAppliedSelectors(props.rule.field)
 })
+
+const accounts = computed(() => accountsQuery.data.value ?? [])
+const resumes = computed(() => resumesQuery.data.value ?? [])
 
 const options = computed(() => {
   const base = [...(meta.value.options ?? [])]
   if (props.rule.field === "hidden") {
     base.push(
-      ...hiddenAccountOptions(
-        (accountsQuery.data.value ?? []).map((account) => ({ id: account.id, name: hhAccountName(account) }))
-      )
+      ...hiddenAccountOptions(accounts.value.map((account) => ({ id: account.id, name: hhAccountName(account) })))
     )
   }
-  if (props.rule.field === "applied") {
-    const accounts = accountsQuery.data.value ?? []
-    const accountNames = new Map(accounts.map((account) => [account.id as string, hhAccountName(account)]))
+  if (usesAppliedSelectors(props.rule.field)) {
+    const accountNames = new Map(accounts.value.map((account) => [account.id as string, hhAccountName(account)]))
     base.push(
-      ...appliedAccountOptions(accounts.map((account) => ({ id: account.id, name: hhAccountName(account) }))),
+      ...appliedAccountOptions(accounts.value.map((account) => ({ id: account.id, name: hhAccountName(account) }))),
       ...appliedResumeOptions(
-        (resumesQuery.data.value ?? []).map((resume) => ({
+        resumes.value.map((resume) => ({
           id: resume.id,
           title: resume.title,
-          accountName: accountNames.get(resume.hhAccountId) ?? "?"
+          accountName: accountNames.get(resume.hhAccountId) ?? "?",
+          accountId: resume.hhAccountId
         }))
       )
     )
@@ -214,6 +218,19 @@ const onCurrency = (value: unknown) => {
         </button>
       </template>
     </template>
+
+    <ValuePicker
+      v-else-if="usesList(rule.field) && isMultiValueOperator(rule.op) && (usesAppliedSelectors(rule.field) || rule.field === 'hidden')"
+      :model-value="rule.values"
+      :options="options"
+      :accounts="accounts"
+      :resumes="resumes"
+      :autofocus="props.autofocus"
+      :disabled="props.disabled"
+      placeholder="Выбрать…"
+      search-placeholder="Аккаунт или резюме…"
+      @update:model-value="(values) => (rule.values = values)"
+    />
 
     <Popover v-else-if="usesList(rule.field) && isMultiValueOperator(rule.op)" :default-open="openList">
       <PopoverTrigger as-child>

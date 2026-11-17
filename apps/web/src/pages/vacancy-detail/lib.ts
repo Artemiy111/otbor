@@ -62,7 +62,8 @@ const FIELD_WORDS: Readonly<Record<string, FieldWord>> = {
   analysis_role: { label: "Роль по разбору" },
   analysis_level: { label: "Уровень по разбору" },
   hidden: { label: "Скрытие" },
-  applied: { label: "Отклик в компанию" }
+  applied: { label: "Отклик в компанию" },
+  applied_vacancy: { label: "Отклик на вакансию" }
 }
 
 type RuleOp =
@@ -198,6 +199,7 @@ const parseCondition = (source: string, truncated: boolean): FilterCondition | n
     case "not_in":
       // `applied not_in account:<id>`: идентификаторы человеку не нужны.
       if (fieldCode === "applied") return cond("Вы уже откликались в эту компанию")
+      if (fieldCode === "applied_vacancy") return cond("Вы уже откликались на эту вакансию")
       if (fieldCode === "location") return cond("Место работы в исключённых")
       return fieldCode === "hidden" ? cond("Вакансия скрыта", items) : cond(`${label} из исключённых`, items)
     case "eq":
@@ -217,6 +219,7 @@ const parseCondition = (source: string, truncated: boolean): FilterCondition | n
     case "is_false":
       if (fieldCode === "archived") return cond("Вакансия в архиве")
       if (fieldCode === "applied") return cond("Вы уже откликались в эту компанию")
+      if (fieldCode === "applied_vacancy") return cond("Вы уже откликались на эту вакансию")
       if (fieldCode === "hidden") return cond("Вакансия скрыта")
       return cond(`${label}: нужно «нет»`)
   }

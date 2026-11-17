@@ -137,8 +137,9 @@ const numberFieldSql = (field: PresetRule["field"]): SQL | null => {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
- * `applied` selectors: `any`, `account:<id>`, `resume:<id>`. Unknown or stale
- * selectors match nothing, so they never hide a company by accident.
+ * Селекторы правил `applied` и `applied_vacancy`: `any`, `account:<id>`,
+ * `resume:<id>`. Неизвестный или устаревший селектор не совпадает ни с чем,
+ * чтобы правило случайно ничего не скрывало.
  */
 const appliedSelectorSql = (selector: string): SQL | null => {
   const [kind, id] = selector.split(":", 2) as [string, string | undefined]
@@ -154,24 +155,42 @@ const appliedSelectorSql = (selector: string): SQL | null => {
   }
 }
 
-/** `true` when a sent application from any selector exists to a vacancy of this employer. */
+/** Область правила: компания вакансии (`applied`) или сама вакансия (`applied_vacancy`). */
+type AppliedScope =
+  | { readonly kind: "employer"; readonly employerId: SQL }
+  | { readonly kind: "vacancy"; readonly vacancyId: SQL }
+
+/**
+ * `true`, когда отправленный отклик из селекторов есть в области правила:
+ * у работодателя — на любой вакансии компании, у вакансии — только на ней самой.
+ */
 const appliedBySelectorsSql = (input: {
   readonly userId: string | undefined
   readonly selectors: ReadonlyArray<string>
-  readonly employerId: SQL
+  readonly scope: AppliedScope
 }): SQL => {
   const layers = input.selectors.flatMap((selector) => {
     const clause = appliedSelectorSql(selector)
     return clause === null ? [] : [clause]
   })
   if (input.userId === undefined || layers.length === 0) return sql`false`
-  return sql`(${input.employerId} is not null and exists (
+  const selectors = sql.join(layers, sql` or `)
+  if (input.scope.kind === "vacancy") {
+    return sql`exists (
+      select 1 from application ap
+      where ap.user_id = ${input.userId}
+        and ap.state = 'submitted'
+        and ap.vacancy_id = ${input.scope.vacancyId}
+        and (${selectors})
+    )`
+  }
+  return sql`(${input.scope.employerId} is not null and exists (
     select 1 from application ap
     join vacancy v_ap on v_ap.id = ap.vacancy_id
     where ap.user_id = ${input.userId}
       and ap.state = 'submitted'
-      and v_ap.employer_id = ${input.employerId}
-      and (${sql.join(layers, sql` or `)})
+      and v_ap.employer_id = ${input.scope.employerId}
+      and (${selectors})
   ))`
 }
 
@@ -193,11 +212,13 @@ const ruleClause = (rule: PresetRule, filter: PresetFilter, context: VacancyFilt
     return op === "not_in" || op === "neq" ? sql`not (${hidden})` : hidden
   }
 
-  if (rule.field === "applied") {
+  if (rule.field === "applied" || rule.field === "applied_vacancy") {
     const applied = appliedBySelectorsSql({
       userId: context.userId,
       selectors: stringList(value),
-      employerId: sql`vacancy.employer_id`
+      scope: rule.field === "applied"
+        ? { kind: "employer", employerId: sql`vacancy.employer_id` }
+        : { kind: "vacancy", vacancyId: sql`vacancy.id` }
     })
     return op === "not_in" || op === "neq" ? sql`not (${applied})` : applied
   }

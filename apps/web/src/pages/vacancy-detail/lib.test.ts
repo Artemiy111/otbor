@@ -153,6 +153,7 @@ describe("filterRulesText", () => {
     expect(filterRulesText("work_format in remote,hybrid")).toBe("Формат работы не из допустимых: удалённо, гибрид")
     expect(filterRulesText("archived is false")).toBe("Вакансия в архиве")
     expect(filterRulesText("applied not_in account:01a19cde-c2a7-79c4-adcd-e92ab3edd592")).toBe("Вы уже откликались в эту компанию")
+    expect(filterRulesText("applied_vacancy not_in any")).toBe("Вы уже откликались на эту вакансию")
     expect(filterRulesText("hidden not_in any")).toBe("Вакансия скрыта: в чёрном списке")
     expect(filterRulesText("seniority in middle,senior")).toBe("Уровень не из допустимых: Мидл, Сеньор")
   })
