@@ -132,9 +132,17 @@ export const loadCaptchaSolver = (
 }
 
 export const CAPTCHA_PROMPT =
-  "You read CAPTCHA images. The picture contains a word or 2 words, possibly curved or noisy. " +
+  "You read CAPTCHA images. The picture contains 2 words, possibly curved or noisy. " +
   "Return ONLY the text from the image, exactly as it is written, in its own language, " +
   "keeping spaces between words. No quotes, no explanations, no trailing punctuation."
+
+/**
+ * Инструкция про язык добавляется только когда мы знаем, что показано на
+ * картинке: после нажатия кнопки это выбранный язык, без переключения -
+ * язык, на котором hh показал капчу по умолчанию.
+ */
+export const captchaPrompt = (language: CaptchaLanguage | null): string =>
+  language === null ? CAPTCHA_PROMPT : `${CAPTCHA_PROMPT} The CAPTCHA text is in ${language === "en" ? "English" : "Russian"}.`
 
 /**
  * Пауза между появлением капчи и отправкой ответа (как в hh-applicant-tool:
@@ -177,7 +185,8 @@ export interface CaptchaRecognition {
 export const recognizeCaptcha = async (
   config: { readonly endpoint: OpenAiEndpointDef; readonly model: string; readonly timeoutSeconds: number },
   image: Uint8Array,
-  mime = "image/png"
+  mime = "image/png",
+  prompt = CAPTCHA_PROMPT
 ): Promise<CaptchaRecognition> => {
   const started = Date.now()
   const key = config.endpoint.apiKey?.trim() ?? ""
@@ -198,7 +207,7 @@ export const recognizeCaptcha = async (
         messages: [{
           role: "user",
           content: [
-            { type: "text", text: CAPTCHA_PROMPT },
+            { type: "text", text: prompt },
             {
               type: "image_url",
               image_url: { url: `data:${mime};base64,${Buffer.from(image).toString("base64")}` }

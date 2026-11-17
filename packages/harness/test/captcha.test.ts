@@ -65,6 +65,7 @@ const run = (input: {
 }) => {
   const { page, filled, languageClicks } = fakePage(input.after, input.languageLabel ?? null)
   const recorder: { attempts: Array<CaptchaAttemptReport> } = { attempts: [] }
+  const shownLanguages: Array<"en" | "ru" | null> = []
   let asked = 0
   const solve = makeCaptchaSolve(
     () => ({
@@ -72,7 +73,8 @@ const run = (input: {
       language: input.language ?? "en",
       ...(input.maxAttempts === undefined ? {} : { maxAttempts: input.maxAttempts })
     }),
-    () => {
+    (_config, _image, language) => {
+      shownLanguages.push(language)
       const answer = input.answers[Math.min(asked, input.answers.length - 1)]!
       asked += 1
       return Effect.succeed(answer)
@@ -86,7 +88,7 @@ const run = (input: {
       Effect.catch((error: Error) => Effect.succeed({ ok: false as const, message: error.message }))
     )
   )
-  return { result, recorder, filled, languageClicks, asked: () => asked }
+  return { result, recorder, filled, languageClicks, shownLanguages, asked: () => asked }
 }
 
 describe("captcha solver journal", () => {
@@ -195,7 +197,7 @@ describe("blank picture", () => {
 
 describe("captcha language", () => {
   test("английский по умолчанию: жмём «English», попытка не тратится", async () => {
-    const { result, languageClicks, filled, recorder } = run({
+    const { result, languageClicks, filled, recorder, shownLanguages } = run({
       after: "<div>Вы откликнулись</div>",
       answers: [read("careful")],
       languageLabel: "English"
@@ -204,20 +206,24 @@ describe("captcha language", () => {
     expect(languageClicks).toEqual(["English"])
     expect(filled).toEqual(["careful"])
     expect(recorder.attempts[0]?.attempt).toBe(1)
+    // После клика в промпт уходит подсказка про английский.
+    expect(shownLanguages).toEqual(["en"])
   }, 20_000)
 
   test("английский уже показан: кнопка «Русский» не нажимается", async () => {
-    const { result, languageClicks } = run({
+    const { result, languageClicks, shownLanguages } = run({
       after: "<div>Вы откликнулись</div>",
       answers: [read("careful")],
       languageLabel: "Русский"
     })
     expect(await result).toEqual({ ok: true, value: true })
     expect(languageClicks).toEqual([])
+    // Кнопки «English» нет: капча уже английская, подсказка та же.
+    expect(shownLanguages).toEqual(["en"])
   }, 20_000)
 
   test("русский выбран: жмём кнопку «Русский»", async () => {
-    const { result, languageClicks, recorder } = run({
+    const { result, languageClicks, recorder, shownLanguages } = run({
       after: "<div>Вы откликнулись</div>",
       answers: [read("осторожно")],
       language: "ru",
@@ -226,10 +232,11 @@ describe("captcha language", () => {
     expect(await result).toEqual({ ok: true, value: true })
     expect(languageClicks).toEqual(["Русский"])
     expect(recorder.attempts[0]?.language).toBe("ru")
+    expect(shownLanguages).toEqual(["ru"])
   }, 20_000)
 
   test("кнопки языка нет: решаем показанную капчу", async () => {
-    const { result, languageClicks, filled } = run({
+    const { result, languageClicks, filled, shownLanguages } = run({
       after: "<div>Вы откликнулись</div>",
       answers: [read("раёк")],
       languageLabel: null
@@ -237,5 +244,7 @@ describe("captcha language", () => {
     expect(await result).toEqual({ ok: true, value: true })
     expect(languageClicks).toEqual([])
     expect(filled).toEqual(["раёк"])
+    // Кнопки нет — капча осталась русской, в промпте подсказка про русский.
+    expect(shownLanguages).toEqual(["ru"])
   }, 20_000)
 })

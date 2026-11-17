@@ -3,9 +3,11 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
+  CAPTCHA_PROMPT,
   decodePng,
   encodeGrayPng,
   prepareCaptchaImage,
+  captchaPrompt,
   cleanCaptchaAnswer,
   loadCaptchaSolver,
   readCaptchaSettings,
@@ -62,6 +64,15 @@ describe("captcha settings", () => {
   })
 })
 
+describe("captchaPrompt", () => {
+  test("подсказка о языке добавляется по показанному языку капчи", () => {
+    expect(captchaPrompt(null)).toBe(CAPTCHA_PROMPT)
+    expect(captchaPrompt("en")).toContain("The CAPTCHA text is in English.")
+    expect(captchaPrompt("ru")).toContain("The CAPTCHA text is in Russian.")
+    expect(captchaPrompt("en")).toContain("contains 2 words")
+  })
+})
+
 describe("cleanCaptchaAnswer", () => {
   test("убирает размышления, кавычки и точку, сохраняя пробел", () => {
     expect(cleanCaptchaAnswer("<think>так...</think>\n«изгибистую раёк».")).toBe("изгибистую раёк")
@@ -82,10 +93,13 @@ describe("recognizeCaptcha", () => {
     try {
       const result = await recognizeCaptcha(
         { endpoint: { id: "t", url: `http://127.0.0.1:${server.port}/v1` }, model: "m", timeoutSeconds: 5 },
-        new Uint8Array([1, 2, 3])
+        new Uint8Array([1, 2, 3]),
+        "image/png",
+        captchaPrompt("ru")
       )
       expect(result).toMatchObject({ ok: true, text: "Привет" })
       expect(body.model).toBe("m")
+      expect(body.messages[0].content[0].text).toBe(captchaPrompt("ru"))
       expect(body.messages[0].content[1].image_url.url).toStartWith("data:image/png;base64,AQID")
     } finally {
       await server.stop(true)

@@ -1,8 +1,8 @@
 import { AcpClient } from "@otbor/acp"
 import {
-  CAPTCHA_PROMPT,
   CAPTCHA_SOLVE_MAX_DELAY_SECONDS,
   CAPTCHA_SOLVE_MIN_DELAY_SECONDS,
+  captchaPrompt,
   cleanCaptchaAnswer,
   loadCaptchaSolver,
   prepareCaptchaImage,
@@ -105,18 +105,22 @@ export const lastCaptchaFailure = (page: Page): string | null => failures.get(pa
  */
 export type CaptchaRecognize = (
   config: CaptchaSolverConfig,
-  image: Uint8Array
+  image: Uint8Array,
+  /** Язык, который реально показан на картинке после нажатия кнопки (или до неё). */
+  language: CaptchaLanguage | null
 ) => Effect.Effect<CaptchaRecognition>
 
-export const recognizeWithHarness: CaptchaRecognize = (config, image) =>
+export const recognizeWithHarness: CaptchaRecognize = (config, image, language) =>
   config.endpoint !== null
-    ? Effect.promise(() => recognizeCaptcha({ ...config, endpoint: config.endpoint! }, image))
+    ? Effect.promise(() =>
+      recognizeCaptcha({ ...config, endpoint: config.endpoint! }, image, "image/png", captchaPrompt(language))
+    )
     : Effect.gen(function*() {
       const started = Date.now()
       const acp = yield* AcpClient
       yield* selectModelAndEffort(acp, { harness: config.harnessId, model: config.model })
       const events = yield* Stream.runCollect(
-        acp.promptEvents(CAPTCHA_PROMPT, [{ data: Buffer.from(image).toString("base64"), mimeType: "image/png" }])
+        acp.promptEvents(captchaPrompt(language), [{ data: Buffer.from(image).toString("base64"), mimeType: "image/png" }])
       )
       const done = Array.from(events).find((event) => event._tag === "Done")
       const text = done === undefined ? "" : cleanCaptchaAnswer(done.text)
@@ -258,15 +262,19 @@ export const makeCaptchaSolve = (
     })
 
   /**
-   * Выбранный язык капчи: кнопка hh предлагает перейти на другой язык. Клик
-   * не отправляет ответ, попытка не тратится, но картинка меняется - ждём
-   * смены `src`. Нет кнопки или непонятная подпись - решаем то, что показано.
+   * Язык, который реально показан на картинке. Кнопка hh предлагает перейти на
+   * другой язык: подпись «English» значит, что сейчас русский. Клик не отправляет
+   * ответ, попытка не тратится, но картинка меняется - ждём смены `src`. Возврат
+   * используется для подсказки языку в промпте модели.
    */
   const ensureLanguage = (page: Page, language: CaptchaLanguage) =>
     Effect.gen(function*() {
+      // hh по умолчанию показывает русскую капчу; если кнопки нет или подпись
+      // непонятна, композиция промпта всё равно получит язык по умолчанию.
+      const fallback: CaptchaLanguage = "ru"
       const before = yield* pictureSrc(page)
       // Картинка ещё не отрисована - окно капчи не готово, кнопку искать рано.
-      if (before === null) return false
+      if (before === null) return fallback
       let button: Locator | null = null
       for (let waited = 0; waited < CAPTCHA_FIELD_WAIT_MS; waited += 250) {
         button = yield* Effect.tryPromise(() => firstVisible(page, [CAPTCHA_LANGUAGE_SELECTOR])).pipe(
@@ -277,7 +285,7 @@ export const makeCaptchaSolve = (
       }
       if (button === null) {
         yield* Effect.logWarning("captcha: language button not found, solving as shown")
-        return false
+        return fallback
       }
       const label = yield* Effect.tryPromise(async () => (await button!.textContent({ timeout: 2_000 })) ?? "").pipe(
         Effect.orElseSucceed(() => "")
@@ -285,19 +293,20 @@ export const makeCaptchaSolve = (
       const offered = languageOfferedBy(label)
       if (offered === null) {
         yield* Effect.logWarning(`captcha: unknown language button label "${label}", solving as shown`)
-        return false
+        return fallback
       }
-      if (offered !== language) return false
+      if (offered !== language) return offered === "en" ? ("ru" as const) : ("en" as const)
       const clicked = yield* Effect.tryPromise(async () => {
         await button!.click({ timeout: 5_000 })
         return true
       }).pipe(Effect.orElseSucceed(() => false))
       if (!clicked) {
         yield* Effect.logWarning("captcha: language button click failed, solving as shown")
-        return false
+        return fallback
       }
       yield* waitPictureChange(page, before)
-      return true
+      yield* Effect.logInfo(`captcha: switched the captcha to ${language}`)
+      return language
     })
 
   /** Картинка капчи; `null`, если она так и не отрисовалась. */
@@ -411,9 +420,8 @@ export const makeCaptchaSolve = (
         if (answered > answeredBefore || stalls > 0) yield* refreshPicture(page)
         // «Другой текст» может вернуть капчу исходного языка, поэтому язык
         // проверяем перед каждым кадром. Кнопка не отправляет ответ hh.
-        if (yield* ensureLanguage(page, config.language)) {
-          yield* Effect.logInfo(`captcha: switched the captcha to ${config.language}`)
-        }
+        // Подсказка в промпте зависит от языка, который показан на картинке.
+        const shownLanguage = yield* ensureLanguage(page, config.language)
 
         const image = yield* capturePicture(page)
         if (image === null) {
@@ -431,7 +439,7 @@ export const makeCaptchaSolve = (
         const prepared = yield* Effect.promise(() => prepareCaptchaImage(image, config.filter))
         // Вызов модели отдельным спаном: видно, сколько занимает само
         // распознавание, а не пауза перед вводом ответа.
-        const result = yield* recognize(config, prepared.image).pipe(
+        const result = yield* recognize(config, prepared.image, shownLanguage).pipe(
           Effect.withSpan("captcha.recognize", {
             attributes: {
               "captcha.harness": config.harnessId,
