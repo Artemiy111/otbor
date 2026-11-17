@@ -70,6 +70,58 @@ describe("extractVacancy", () => {
     expect(draft.descriptionText).toContain("Kubernetes, Terraform")
   })
 
+  test("сохраняет новые поля live-страницы в raw", async () => {
+    const vacancy = {
+      ...rawVacancy.vacancyView.vacancyFull.vacancy,
+      // На живой странице professionalRoles заменён на professionalRoleIds.
+      professionalRoleIds: [96],
+      address: {
+        city: "Москва",
+        street: "проспект Андропова",
+        building: "10А",
+        displayName: "Москва, проспект Андропова, 10А",
+        disabled: false,
+        wrong: false,
+        canEdit: false,
+        metroStations: [{ id: 2, name: "Автозаводская" }],
+        districtDto: { id: 286, areaId: 1, zpDistrictId: 25, microDistrict: false },
+        mapData: "{}",
+        marker: { lat: 55.69, lng: 37.66 }
+      },
+      employerManager: { hhid: 159616202, managerId: 13164577, userId: 137018121 },
+      chatWritePossibility: "ENABLED_AFTER_INVITATION",
+      closedForApplicants: false,
+      acceptLaborContract: true,
+      internship: false,
+      nightShifts: false,
+      showContact: false,
+      showSkillsSurvey: false,
+      vacancyPlatforms: ["HH"],
+      experimentalModes: ["newContractFields", "newEmploymentTerms"],
+      civilLawContracts: [],
+      driverLicenseTypes: [],
+      flyInFlyOutDurations: [],
+      inclusivenessTypes: [],
+      languages: [],
+      vacancyProperties: { id: "HH_STANDARD", properties: [] }
+    }
+    const draft = await Effect.runPromise(
+      extractVacancy(
+        page({ vacancyView: { vacancyFull: { vacancy } } }),
+        { url: "https://hh.ru/vacancy/12345" }
+      )
+    )
+    const raw = draft.raw as Record<string, unknown>
+    expect(raw.professionalRoleIds).toEqual([96])
+    expect((raw.address as Record<string, unknown>).displayName).toBe(
+      "Москва, проспект Андропова, 10А"
+    )
+    expect(raw.chatWritePossibility).toBe("ENABLED_AFTER_INVITATION")
+    expect(raw.vacancyPlatforms).toEqual(["HH"])
+    expect(raw.experimentalModes).toEqual(["newContractFields", "newEmploymentTerms"])
+    expect(draft.title).toBe("Senior DevOps Engineer")
+  })
+
   test("parses the entity-escaped payload served to anonymous users", async () => {
     const escaped = JSON.stringify(rawVacancy).replace(/"/g, "&#34;")
     const html = `<template id="HH-Lux-InitialState">${escaped}</template>`

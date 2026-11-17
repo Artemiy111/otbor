@@ -27,14 +27,53 @@ const HhCompany = Schema.Struct({
   visibleName: Schema.optional(Schema.NullOr(Schema.String)),
   companySiteUrl: Schema.optional(Schema.NullOr(Schema.String)),
   logos: Schema.optional(Schema.NullOr(Schema.Array(HhLogo))),
+  // На live-странице industries больше нет, но старые страницы и тесты ещё могут его нести.
   industries: Schema.optional(Schema.NullOr(Schema.Array(HhIndustry))),
   trusted: Schema.optional(Schema.NullOr(Schema.Boolean)),
-  accreditedITEmployer: Schema.optional(Schema.NullOr(Schema.Boolean))
+  accreditedITEmployer: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  category: Schema.optional(Schema.NullOr(Schema.String)),
+  state: Schema.optional(Schema.NullOr(Schema.String)),
+  countryId: Schema.optional(Schema.NullOr(Schema.Number)),
+  showSimilarVacancies: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  employerOrganizationFormId: Schema.optional(Schema.NullOr(Schema.Number)),
+  showOrganizationForm: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  isIdentifiedByEsia: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  employerOnAdditionalCheck: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  badges: Schema.optional(Schema.Unknown)
 })
 
 const HhArea = Schema.Struct({
   id: Schema.optional(Schema.NullOr(Schema.Number)),
   name: Schema.optional(Schema.NullOr(Schema.String))
+})
+
+/** Адрес вакансии в новом SSR-состоянии страницы. */
+const HhAddress = Schema.Struct({
+  city: Schema.optional(Schema.NullOr(Schema.String)),
+  street: Schema.optional(Schema.NullOr(Schema.String)),
+  building: Schema.optional(Schema.NullOr(Schema.String)),
+  displayName: Schema.optional(Schema.NullOr(Schema.String)),
+  disabled: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  wrong: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  canEdit: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  // Формы метро и района различаются между страницами, поэтому оставляем их без разбора.
+  metroStations: Schema.optional(Schema.Unknown),
+  districtDto: Schema.optional(Schema.Unknown),
+  mapData: Schema.optional(Schema.NullOr(Schema.String)),
+  marker: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        lat: Schema.optional(Schema.NullOr(Schema.Number)),
+        lng: Schema.optional(Schema.NullOr(Schema.Number))
+      })
+    )
+  )
+})
+
+const HhEmployerManager = Schema.Struct({
+  hhid: Schema.optional(Schema.NullOr(Schema.Number)),
+  managerId: Schema.optional(Schema.NullOr(Schema.Number)),
+  userId: Schema.optional(Schema.NullOr(Schema.Number))
 })
 
 const HhCompensation = Schema.Struct({
@@ -71,16 +110,25 @@ const HhVacancy = Schema.Struct({
   workingHours: Schema.optional(Schema.NullOr(Schema.Unknown)),
   responseLetterRequired: Schema.optional(Schema.NullOr(Schema.Boolean)),
   status: Schema.optional(Schema.NullOr(HhStatus)),
-  professionalRoles: Schema.optional(
-    Schema.NullOr(
-      Schema.Array(
-        Schema.Struct({
-          id: Schema.optional(Schema.NullOr(HhId)),
-          name: Schema.optional(Schema.NullOr(Schema.String))
-        })
-      )
-    )
-  )
+  // Раньше приходил массив профессиональных ролей, теперь только их id.
+  professionalRoleIds: Schema.optional(Schema.NullOr(Schema.Array(Schema.Number))),
+  address: Schema.optional(Schema.NullOr(HhAddress)),
+  employerManager: Schema.optional(Schema.NullOr(HhEmployerManager)),
+  chatWritePossibility: Schema.optional(Schema.NullOr(Schema.String)),
+  closedForApplicants: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  acceptLaborContract: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  internship: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  nightShifts: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  showContact: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  showSkillsSurvey: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  vacancyPlatforms: Schema.optional(Schema.NullOr(Schema.Array(Schema.String))),
+  experimentalModes: Schema.optional(Schema.NullOr(Schema.Array(Schema.String))),
+  civilLawContracts: Schema.optional(Schema.Unknown),
+  driverLicenseTypes: Schema.optional(Schema.Unknown),
+  flyInFlyOutDurations: Schema.optional(Schema.Unknown),
+  inclusivenessTypes: Schema.optional(Schema.Unknown),
+  languages: Schema.optional(Schema.Unknown),
+  vacancyProperties: Schema.optional(Schema.Unknown)
 })
 
 const ExtraVacancyFields = Schema.Struct({
