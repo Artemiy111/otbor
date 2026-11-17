@@ -70,7 +70,12 @@ type Obj = Record<string, unknown>
 const objectOf = (value: unknown): Obj | null =>
   value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Obj) : null
 
-const plain = (value: string): string => htmlToText(value).replace(/\s+/g, " ").trim()
+/**
+ * Текст блока резюме. Переводы строк из `<br>` и закрывающих тегов должны
+ * сохраняться: страница резюме показывает эти поля через `whitespace-pre-wrap`,
+ * а полный текст — в `<pre>`. `htmlToText` сам нормализует лишние пробелы.
+ */
+const blockText = (value: string): string => htmlToText(value)
 
 const readString = (value: unknown): string | null => {
   if (typeof value === "string") {
@@ -206,7 +211,7 @@ const readExperience = (value: unknown): ReadonlyArray<ResumeExperienceItem> =>
       position: readString(item.position),
       startDate: readString(item.startDate),
       endDate: readString(item.endDate),
-      description: plain(readString(item.description) ?? "")
+      description: blockText(readString(item.description) ?? "")
     }))
     .filter((item) => item.companyName !== null || item.position !== null || item.description !== "")
 
@@ -313,7 +318,10 @@ export const parseResumePage = (html: string): ParsedResume | null => {
   if (hash === null || id === null) return null
 
   const title = readString(resume.title) ?? "Резюме"
-  const about = readStrings(resume.skills).map(plain).filter((line) => line !== "").join("\n\n")
+  const about = readStrings(resume.skills)
+    .map((item) => blockText(item))
+    .filter((line) => line !== "")
+    .join("\n\n")
   const experience = readExperience(resume.experience)
   const education = [
     ...readEducation(resume.primaryEducation),

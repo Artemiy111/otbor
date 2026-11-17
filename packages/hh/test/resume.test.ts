@@ -47,6 +47,25 @@ describe("parseResumePage", () => {
     expect(resume!.updatedAt).toBe("2023-11-14T22:13:20.000Z")
   })
 
+  test("keeps line breaks inside the about block and company descriptions", () => {
+    // `<br>` и закрывающие теги дают переводы строк, которые должна видеть страница.
+    const resume = parseResumePage(
+      resumeHtml({
+        skills: [{ string: "Строю платформы<br/>И поддерживаю CI" }],
+        experience: [
+          {
+            companyName: "Acme",
+            position: "SRE",
+            description: "<p>Вёл миграцию</p><p>Настроил мониторинг<br/>и алерты</p>"
+          }
+        ]
+      })
+    )
+    expect(resume!.about).toBe("Строю платформы\nИ поддерживаю CI")
+    expect(resume!.experience[0]?.description).toBe("Вёл миграцию\n\nНастроил мониторинг\nи алерты")
+    expect(resume!.text).toContain("О себе:\nСтрою платформы\nИ поддерживаю CI")
+  })
+
   test("reads the English level from the language block as hh sends it", () => {
     const level = (language: unknown) => parseResumePage(resumeHtml({ language }))?.englishLevel
     // Shape taken from a live resume page: language ids, no names; 34 is Russian, 57 English.
