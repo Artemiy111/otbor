@@ -241,7 +241,7 @@ export const judgePrepare = (exit: HarnessExit): PrepareVerdict => {
         case "responded":
           return { _tag: "skip", reason: "hh already holds a response to this vacancy" }
         case "archived":
-          return { _tag: "skip", reason: "the vacancy is archived" }
+          return { _tag: "skip", reason: "the vacancy is archived or unavailable on hh" }
         case "login":
           return { _tag: "human", reason: "hh session expired; log in again" }
         case "captcha":

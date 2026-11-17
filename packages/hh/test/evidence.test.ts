@@ -24,3 +24,20 @@ describe("evidenceHtml", () => {
     expect(classifyResponsePage(evidenceHtml(page), url)).toBe(classifyResponsePage(page, url))
   })
 })
+
+describe("classifyResponsePage", () => {
+  test("a 403 page saying the vacancy is unavailable to this user is an unavailable vacancy", () => {
+    const url = "https://hh.ru/vacancy/137048615"
+    const page =
+      `<html><body><h1>Вам недоступна эта вакансия. Войдите как пользователь, ` +
+      `у которого есть доступ на просмотр, либо как работодатель, создавший эту вакансию.</h1></body></html>`
+    expect(classifyResponsePage(page, url)).toBe("archived")
+    expect(classifyResponsePage(evidenceHtml(page), url)).toBe("archived")
+  })
+
+  test("the unavailability message wins over captcha markup on the same page", () => {
+    const page = `<html><body><div data-qa="captcha">проверка</div>` +
+      `<h1>Вам недоступна эта вакансия</h1></body></html>`
+    expect(classifyResponsePage(page, "https://hh.ru/vacancy/137048615")).toBe("archived")
+  })
+})

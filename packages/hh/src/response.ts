@@ -14,7 +14,7 @@ export type ResponsePageKind =
   /** Redirected to the login page: the session is gone. */
   | "login"
   | "captcha"
-  /** The vacancy is archived or closed; there is nothing to respond to. */
+  /** The vacancy is archived, closed or otherwise unavailable; there is nothing to respond to. */
   | "archived"
   /** hh already holds a response of this account (or the click just made one). */
   | "responded"
@@ -41,6 +41,13 @@ const RELOCATION_MARKUP_RE = /data-qa=["']relocation-warning-confirm["']/i
 
 const ARCHIVED_TEXT_RE =
   /вакансия\s+в\s+архиве|вакансия\s+закрыта|вакансия\s+не\s+найдена|страница\s+не\s+найдена/i
+/**
+ * hh отдаёт 403 со страницей «Вам недоступна эта вакансия», когда вакансию
+ * закрыли или она не доступна этому соискателю. Отклика на ней нет, и ждать
+ * человека здесь не нужно — как и у архивной вакансии.
+ */
+const UNAVAILABLE_TEXT_RE =
+  /вам\s+недоступна\s+эта\s+вакансия|вакансия\s+недоступна|вакансия\s+не\s+доступна|нет\s+доступа\s+к\s+вакансии/i
 const ARCHIVED_MARKUP_RE = /data-qa=["']vacancy-archived|data-qa=["']vacancy-response-archived/i
 
 /**
@@ -65,13 +72,18 @@ export const classifyResponsePage = (page: string, url: string): ResponsePageKin
   if (LOGIN_URL_RE.test(url)) return "login"
   if (CAPTCHA_URL_RE.test(url)) return "captcha"
 
+  // Явное сообщение hh о недоступности вакансии важнее капчи: на странице
+  // отказа может быть капча входа, но отклика на ней всё равно нет.
+  const text = htmlToText(html)
+  if (UNAVAILABLE_TEXT_RE.test(text)) return "archived"
+
   // A responded page keeps the submit button ("respond again"), so "responded"
   // must win over "form".
   if (hasRespondedMarker(html)) return "responded"
-  if (CAPTCHA_MARKUP_RE.test(html) || CAPTCHA_TEXT_RE.test(htmlToText(html))) return "captcha"
+  if (CAPTCHA_MARKUP_RE.test(html) || CAPTCHA_TEXT_RE.test(text)) return "captcha"
   if (SUBMIT_MARKUP_RE.test(html) || FORM_MARKUP_RE.test(html)) return "form"
   if (RELOCATION_MARKUP_RE.test(html)) return "relocation"
-  if (ARCHIVED_MARKUP_RE.test(html) || ARCHIVED_TEXT_RE.test(htmlToText(html))) return "archived"
+  if (ARCHIVED_MARKUP_RE.test(html) || ARCHIVED_TEXT_RE.test(text)) return "archived"
   return "unknown"
 }
 

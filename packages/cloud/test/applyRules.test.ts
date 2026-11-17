@@ -265,6 +265,7 @@ describe("judgePrepare", () => {
     })
     expect(judgePrepare(prepared("<div>Вы откликнулись</div>"))._tag).toBe("skip")
     expect(judgePrepare(prepared("<div>Вакансия в архиве</div>"))._tag).toBe("skip")
+    expect(judgePrepare(prepared("<div>Вам недоступна эта вакансия</div>"))._tag).toBe("skip")
     expect(judgePrepare(prepared("<html></html>"))._tag).toBe("human")
     expect(judgePrepare({ tag: "prepared" })._tag).toBe("human")
   })

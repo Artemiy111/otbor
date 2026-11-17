@@ -28,6 +28,12 @@ const URL_OK = "https://hh.ru/applicant/vacancy_response?vacancyId=100500"
 const html = fixture("hh-test-response.html")
 const form = parseResponseForm(html, URL_OK)
 
+test("prepareExit treats an unavailable-vacancy page as an archived one", () => {
+  expect(prepareExit("<html><body>Вам недоступна эта вакансия</body></html>", URL_OK)).toMatchObject({
+    tag: "vacancy_archived"
+  })
+})
+
 const answer = (questionId: string, extra: Partial<FormAnswer> = {}): FormAnswer => ({
   questionId,
   source: "human",
