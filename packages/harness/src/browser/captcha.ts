@@ -393,6 +393,7 @@ export const makeCaptchaSolve = (
             harness: config.harnessId,
             model: config.model,
             filter,
+            language: config.language,
             attempt,
             answer,
             outcome,

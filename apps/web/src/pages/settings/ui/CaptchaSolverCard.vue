@@ -217,6 +217,7 @@ const test = async () => {
             <li v-for="item in journal.solves" :key="item.jobId + item.model" class="flex flex-wrap items-center gap-x-3 gap-y-1 p-2">
               <span class="text-muted-foreground">{{ stamp(item.at) }}</span>
               <span :class="item.solved ? 'text-success' : 'text-destructive'">{{ item.solved ? "решена" : "не решена" }}</span>
+              <span class="text-muted-foreground">язык: {{ item.language === "en" ? "английский" : "русский" }}</span>
               <span>попыток: {{ item.attempts }}</span>
               <span class="text-muted-foreground">фильтр: {{ item.filter === "none" ? "нет" : "нормировка" }}</span>
               <code class="text-xs">{{ item.harness }}/{{ item.model }}</code>

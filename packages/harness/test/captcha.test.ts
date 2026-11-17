@@ -95,7 +95,7 @@ describe("captcha solver journal", () => {
     expect(await result).toEqual({ ok: true, value: true })
     expect(filled).toEqual(["раёк"])
     expect(recorder.attempts).toEqual([
-      { harness: "omlx", model: "gemma", filter: "none", attempt: 1, answer: "раёк", outcome: "solved", durationMs: 800, error: null }
+      { harness: "omlx", model: "gemma", filter: "none", language: "en", attempt: 1, answer: "раёк", outcome: "solved", durationMs: 800, error: null }
     ])
   }, 20_000)
 
@@ -217,7 +217,7 @@ describe("captcha language", () => {
   }, 20_000)
 
   test("русский выбран: жмём кнопку «Русский»", async () => {
-    const { result, languageClicks } = run({
+    const { result, languageClicks, recorder } = run({
       after: "<div>Вы откликнулись</div>",
       answers: [read("осторожно")],
       language: "ru",
@@ -225,6 +225,7 @@ describe("captcha language", () => {
     })
     expect(await result).toEqual({ ok: true, value: true })
     expect(languageClicks).toEqual(["Русский"])
+    expect(recorder.attempts[0]?.language).toBe("ru")
   }, 20_000)
 
   test("кнопки языка нет: решаем показанную капчу", async () => {
