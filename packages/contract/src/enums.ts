@@ -1,6 +1,20 @@
 import { Schema } from "effect"
 
-export const Seniority = Schema.Literals(["junior", "middle", "senior", "lead", "unknown"])
+/**
+ * Грейд вакансии. Шкала совпадает с уровнем модели (`AnalysisLevel`): скрипт и
+ * модель говорят одними словами, поэтому их можно сравнивать напрямую.
+ */
+export const Seniority = Schema.Literals([
+  "intern",
+  "junior",
+  "middle",
+  "senior",
+  "staff",
+  "tech_lead",
+  "team_lead",
+  "head",
+  "unknown"
+])
 
 export type Seniority = typeof Seniority.Type
 

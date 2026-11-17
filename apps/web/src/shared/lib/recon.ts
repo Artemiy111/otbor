@@ -70,10 +70,6 @@ const aiAsk = (fact: Fact<"required" | "preferred" | "not_mentioned"> | undefine
   return yes(v === "required" ? "обязательно" : "желательно")
 }
 
-const LEVEL_NORM: Record<string, string> = {
-  intern: "intern", junior: "junior", middle: "middle", senior: "senior",
-  staff: "lead", tech_lead: "lead", team_lead: "lead", head: "lead", lead: "lead"
-}
 const HH_YEARS: Record<string, number> = { noExperience: 0, between1And3: 1, between3And6: 3, moreThan6: 6 }
 const HH_YEARS_TEXT: Record<string, string> = {
   noExperience: "без опыта", between1And3: "1–3 года", between3And6: "3–6 лет", moreThan6: "более 6 лет"
@@ -143,15 +139,15 @@ export const buildRecon = (
   if (roleKey !== null) {
     add("role", "profile", "Роль", { ai: value(roleKey, ANALYSIS_ROLE_LABELS[roleKey] ?? roleKey) })
   }
-  // The regex source reads the level from the title, the model from the whole text.
+  // Обе шкалы совпадают: грейд из заголовка и уровень модели сравниваются напрямую.
   const titleSeniority = detail.vacancy.seniority
   const aiLevel = fv(a?.requiredLevel) ?? fv(a?.titleLevel)
   add("level", "profile", "Уровень", {
     text:
       titleSeniority === "unknown"
         ? NONE
-        : value(LEVEL_NORM[titleSeniority] ?? titleSeniority, seniorityLabel(titleSeniority)),
-    ai: aiLevel === null ? NONE : value(LEVEL_NORM[aiLevel] ?? aiLevel, ANALYSIS_LEVEL_LABELS[aiLevel] ?? aiLevel)
+        : value(titleSeniority, seniorityLabel(titleSeniority)),
+    ai: aiLevel === null ? NONE : value(aiLevel, ANALYSIS_LEVEL_LABELS[aiLevel] ?? aiLevel)
   })
   const code = detail.vacancy.experienceCode ?? null
   const aiYears = fv(a?.yearsMin)

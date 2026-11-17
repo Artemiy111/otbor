@@ -726,7 +726,7 @@ export const list = (tx: Executor, filter: VacancyFilter = {}) => {
     rating: sql`employer.rating`,
     salary: sql`coalesce(vacancy.salary_from, vacancy.salary_to)`,
     area: sql`lower(vacancy.area_name)`,
-    seniority: sql`case vacancy.seniority when 'junior' then 1 when 'middle' then 2 when 'senior' then 3 when 'lead' then 4 else null end`,
+    seniority: sql`case vacancy.seniority when 'intern' then 0 when 'junior' then 1 when 'middle' then 2 when 'senior' then 3 when 'staff' then 4 when 'tech_lead' then 5 when 'team_lead' then 6 when 'head' then 7 else null end`,
     experience: sql`case vacancy.experience_code when 'noExperience' then 0 when 'between1And3' then 1 when 'between3And6' then 2 when 'moreThan6' then 3 else null end`,
     employment: sql`vacancy.employment_form`,
     date: sql`coalesce(vacancy.published_at, vacancy.last_seen_at)`,

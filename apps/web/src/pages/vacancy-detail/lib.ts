@@ -313,7 +313,7 @@ export const filterRulesText = (detail: string): string => parseFilterFailures(d
 
 /**
  * Причина решения одной строкой для человека. Служебные коды и английские
- * детали (`title: k8s`, `fit 40 < 60`, `analysis: senior -> senior`) здесь
+ * детали (`title: k8s`, `fit 40 < 60`, `analysis: senior (0.95)`) здесь
  * превращаются в обычные фразы; неизвестное остаётся словами из словаря.
  */
 export const reasonLine = (reason: DecisionReason, now: Date = new Date()): ReasonLine => {
@@ -330,7 +330,7 @@ export const reasonLine = (reason: DecisionReason, now: Date = new Date()): Reas
       return { mark: "ok", text: terms === "" ? "совпали навыки" : `совпали навыки ${where}: ${terms}` }
     }
     case "seniority": {
-      const match = /->\s*([a-z_]+)/i.exec(detail)
+      const match = /^analysis:\s*([a-z_]+)/i.exec(detail)
       return {
         mark: "ok",
         text: match?.[1] ? `уровень: ${seniorityLabel(match[1]).toLowerCase()} (по разбору модели)` : "уровень подходит"

@@ -111,7 +111,7 @@ if (!enabled || serverUrl === null) {
       const after = await latest(tenant.userId, id)
       expect(after?.verdict).toBe("apply")
       expect(after?.reasons.find((reason) => reason.code === "seniority")?.detail).toBe(
-        "analysis: senior -> senior (0.90)"
+        "analysis: senior (0.90)"
       )
 
       // Settled: the same analysis does not re-run the evaluation on every pass.

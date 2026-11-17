@@ -400,7 +400,11 @@ if (!enabled || serverUrl === null) {
       const salaryBoost = { rule: { field: "salary", op: "gte", value: 250_000, currency: "RUB" }, weight: 8 } as const
       const remoteBoost = { rule: { field: "work_format", op: "in", value: ["remote"] }, weight: 5 } as const
       const seniorityBoost = {
-        rule: { field: "seniority", op: "in", value: ["middle", "senior", "lead", "unknown"] },
+        rule: {
+          field: "seniority",
+          op: "in",
+          value: ["middle", "senior", "staff", "tech_lead", "team_lead", "head", "unknown"]
+        },
         weight: 4
       } as const
 

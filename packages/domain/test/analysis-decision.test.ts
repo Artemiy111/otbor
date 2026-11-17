@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { Seniority } from "@otbor/contract"
-import { analysisSeniority, seniorityOfLevel, type DecisionAnalysis } from "../src/analysis/decision.ts"
+import { analysisSeniority, type DecisionAnalysis } from "../src/analysis/decision.ts"
 import { DEFAULT_APPLY_SETTINGS } from "../src/applyFilter.ts"
 import { decide } from "../src/decision.ts"
 import type { VacancySignal } from "../src/decision.ts"
@@ -41,20 +41,9 @@ const run = (a: DecisionAnalysis | null, options: { seniority?: Seniority } = {}
   })
 
 describe("seniority from the analysis", () => {
-  test("maps analysis levels onto the policy seniority", () => {
-    expect(seniorityOfLevel("intern")).toBe("junior")
-    expect(seniorityOfLevel("junior")).toBe("junior")
-    expect(seniorityOfLevel("middle")).toBe("middle")
-    expect(seniorityOfLevel("senior")).toBe("senior")
-    expect(seniorityOfLevel("staff")).toBe("senior")
-    expect(seniorityOfLevel("tech_lead")).toBe("lead")
-    expect(seniorityOfLevel("team_lead")).toBe("lead")
-    expect(seniorityOfLevel("head")).toBe("lead")
-  })
-
   test("only fills an unknown seniority and only when confident", () => {
     const a = analysis({ requiredLevel: { value: "staff", confidence: 0.9 } })
-    expect(analysisSeniority("unknown", a)?.seniority).toBe("senior")
+    expect(analysisSeniority("unknown", a)?.seniority).toBe("staff")
     expect(analysisSeniority("middle", a)).toBeNull()
     expect(analysisSeniority("unknown", analysis({ requiredLevel: { value: "staff", confidence: 0.5 } }))).toBeNull()
     expect(analysisSeniority("unknown", null)).toBeNull()
@@ -63,7 +52,7 @@ describe("seniority from the analysis", () => {
   test("an analysis level fills an unknown seniority and is reported", () => {
     const passed = run(analysis({ requiredLevel: { value: "senior", confidence: 0.95 } }))
     expect(passed.verdict).toBe("apply")
-    expect(passed.reasons.find((r) => r.code === "seniority")?.detail).toBe("analysis: senior -> senior (0.95)")
+    expect(passed.reasons.find((r) => r.code === "seniority")?.detail).toBe("analysis: senior (0.95)")
   })
 
   test("a stored seniority wins over the analysis", () => {

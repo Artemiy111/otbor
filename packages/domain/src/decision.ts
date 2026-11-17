@@ -72,7 +72,7 @@ export const formatAgeHours = (hours: number): string => {
   return rest === 0 ? `${days}д` : `${days}д ${rest}ч`
 }
 
-export const APPLY_POLICY_VERSION = 5
+export const APPLY_POLICY_VERSION = 6
 
 export interface DecideInput {
   readonly vacancy: VacancySignal
@@ -176,7 +176,7 @@ export const decide = (input: DecideInput): DecisionResult => {
     : { ...input.vacancy, seniority: levelFact.seniority }
   const levelDetail = levelFact === null
     ? null
-    : `analysis: ${levelFact.level} -> ${levelFact.seniority} (${levelFact.confidence.toFixed(2)})`
+    : `analysis: ${levelFact.seniority} (${levelFact.confidence.toFixed(2)})`
 
   const skip = (blocked: DecisionReason, fit = 0): DecisionResult => ({
     verdict: "skip",

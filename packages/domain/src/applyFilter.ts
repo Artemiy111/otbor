@@ -83,7 +83,7 @@ export const DEVOPS_TITLE_REJECT_STEMS: ReadonlyArray<string> = [
  */
 export const DEVOPS_APPLY_FILTER: PresetFilter = {
   rules: [
-    { field: "seniority", op: "in", value: ["middle", "senior", "lead", "unknown"] },
+    { field: "seniority", op: "in", value: ["middle", "senior", "staff", "tech_lead", "team_lead", "head", "unknown"] },
     // One rule with a list: "the title contains none of these".
     { field: "title", op: "not_contains_any", value: [...DEVOPS_TITLE_REJECT_STEMS] },
     // Nothing is hidden implicitly: archived vacancies and the app blacklist are plain rules.
@@ -148,7 +148,7 @@ export const FRONTEND_TITLE_REJECT_STEMS: ReadonlyArray<string> = [
  */
 export const FRONTEND_APPLY_FILTER: PresetFilter = {
   rules: [
-    { field: "seniority", op: "in", value: ["middle", "senior", "lead", "unknown"] },
+    { field: "seniority", op: "in", value: ["middle", "senior", "staff", "tech_lead", "team_lead", "head", "unknown"] },
     { field: "title", op: "not_contains_any", value: [...FRONTEND_TITLE_REJECT_STEMS] },
     { field: "archived", op: "is_false" },
     { field: "hidden", op: "not_in", value: ["app"] }
@@ -174,7 +174,7 @@ export const FRONTEND_PRESET_TITLE = "Frontend"
 export const DEFAULT_BOOSTS: ReadonlyArray<ApplyBoost> = [
   { rule: { field: "salary", op: "gte", value: 250_000, currency: "RUB" }, weight: 8 },
   { rule: { field: "work_format", op: "in", value: ["remote"] }, weight: 5 },
-  { rule: { field: "seniority", op: "in", value: ["middle", "senior", "lead", "unknown"] }, weight: 4 }
+  { rule: { field: "seniority", op: "in", value: ["middle", "senior", "staff", "tech_lead", "team_lead", "head", "unknown"] }, weight: 4 }
 ]
 
 export const DEFAULT_DAILY_LIMIT = 200

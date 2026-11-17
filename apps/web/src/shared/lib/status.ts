@@ -126,10 +126,14 @@ const LABELS: Record<string, string> = {
 
   explore: "Поиск",
 
+  intern: "Стажёр",
   junior: "Джун",
   middle: "Мидл",
   senior: "Сеньор",
-  lead: "Лид",
+  staff: "Стафф",
+  tech_lead: "Техлид",
+  team_lead: "Тимлид",
+  head: "Руководитель",
 
   devops: "DevOps",
   sre: "SRE",

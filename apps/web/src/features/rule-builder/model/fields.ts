@@ -84,10 +84,14 @@ const ANALYSIS_ROLE_OPTIONS = OPTIONS(...Object.entries(ANALYSIS_ROLE_LABELS))
 const ANALYSIS_LEVEL_OPTIONS = OPTIONS(...Object.entries(ANALYSIS_LEVEL_LABELS))
 
 const SENIORITY_OPTIONS = OPTIONS(
+  ["intern", seniorityLabel("intern")],
   ["junior", seniorityLabel("junior")],
   ["middle", seniorityLabel("middle")],
   ["senior", seniorityLabel("senior")],
-  ["lead", seniorityLabel("lead")],
+  ["staff", seniorityLabel("staff")],
+  ["tech_lead", seniorityLabel("tech_lead")],
+  ["team_lead", seniorityLabel("team_lead")],
+  ["head", seniorityLabel("head")],
   ["unknown", seniorityLabel("unknown")]
 )
 

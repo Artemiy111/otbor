@@ -128,7 +128,7 @@ export const TopItem = Schema.Struct({
   verdict: Schema.String,
   account: Schema.NullOr(AccountRef),
   reasons: Schema.Array(Schema.String),
-  /** Vacancy seniority: unknown, junior, middle, senior or lead. "unknown" means not stated, not "mid". */
+  /** Vacancy seniority: intern, junior, middle, senior, staff, tech_lead, team_lead, head or unknown. "unknown" means not stated. */
   seniority: NullableString,
   /** hh experience requirement: noExperience, between1And3, between3And6, moreThan6. */
   experience: NullableString,
@@ -184,13 +184,13 @@ RULE FIELDS, operators and value shapes
 - archived: is_true / is_false.
 - analysis_role, analysis_level (from the local vacancy analysis model, only where it was confident; otherwise empty, which matches nothing for eq/in): eq / neq / in / not_in. analysis_role: devops, sre, platform, sysadmin, security, backend, frontend, fullstack, mobile, qa, data, analyst, dba, support, manager, other. analysis_level (the level the text requires): intern, junior, middle, senior, staff, tech_lead, team_lead, head. Useful to see through an "unknown" seniority, e.g. {field:"analysis_level",op:"in",value:["middle","senior"]}.
 
-SENIORITY. vacancy.seniority is junior, middle, senior, lead or unknown. About two thirds of the corpus is "unknown" (the vacancy does not say), which is not the same as "not middle". For "around middle" use {field:"seniority", op:"in", value:["middle","unknown"]}; strict "middle" drops most of the corpus. A second, independent signal is experience (hh requirement): noExperience, between1And3 (junior to middle), between3And6 (middle to senior), moreThan6 (senior). For example add experience in ["between1And3","between3And6"], or seniority not_in ["senior","lead"]. Every result carries both, so say which signal you relied on.
+SENIORITY. vacancy.seniority uses the same scale as the analysis: intern, junior, middle, senior, staff, tech_lead, team_lead, head or unknown (not stated). About two thirds of the corpus is "unknown". For "around middle" use {field:"seniority", op:"in", value:["middle","unknown"]}; strict "middle" drops most of the corpus. A second, independent signal is experience (hh requirement): noExperience, between1And3 (junior to middle), between3And6 (middle to senior), moreThan6 (senior). For example add experience in ["between1And3","between3And6"], or seniority not_in ["senior","staff","tech_lead","team_lead","head"]. Every result carries both, so say which signal you relied on.
 
 COMPANY SIZE. There is no headcount column yet. Working proxies: employer_vacancies (open vacancies of that employer in the corpus: 1-5 usually a small company, 30+ a big one or a recruiter), employer_reviews (number of hh reviews: thousands is a well known big company) and employer_rating (0-5). Say honestly that these are proxies. For "not big companies": employer_vacancies lte 10, optionally employer_reviews lte 300 (an employer without reviews has a null count and is NOT matched, so that rule also drops unreviewed small companies; leave it out if they matter).
 
 EXAMPLES (value of the filter argument)
 1. Around middle, Kubernetes, not a big company: {"rules":[{"field":"seniority","op":"in","value":["middle","unknown"]},{"field":"skills","op":"contains","value":"kubernetes"},{"field":"employer_vacancies","op":"lte","value":10}]}
-2. Remote, at least 250000 RUB, not senior: {"rules":[{"field":"work_format","op":"in","value":["remote"]},{"field":"salary_from","op":"gte","value":250000},{"field":"salary_currency","op":"eq","value":"RUB"},{"field":"seniority","op":"not_in","value":["senior","lead"]}]}
+2. Remote, at least 250000 RUB, not senior: {"rules":[{"field":"work_format","op":"in","value":["remote"]},{"field":"salary_from","op":"gte","value":250000},{"field":"salary_currency","op":"eq","value":"RUB"},{"field":"seniority","op":"not_in","value":["senior","staff","tech_lead","team_lead","head"]}]}
 3. Go or Rust in the title or skills, published this week, in Moscow or Saint Petersburg: {"rules":[{"field":"keywords","op":"in","value":["go","rust"]},{"field":"published_days","op":"lte","value":7},{"field":"area","op":"in","value":["Москва","Санкт-Петербург"]}],"location":"text_or_skills"}
 4. Kubernetes in the description, decent employer rating, not a Yandex vacancy: {"rules":[{"field":"description","op":"contains","value":"kubernetes"},{"field":"employer_rating","op":"gte","value":3.5},{"field":"employer","op":"not_contains","value":"Яндекс"}]}`
 

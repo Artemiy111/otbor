@@ -56,13 +56,19 @@ export const thousands = (value: number): string =>
   value >= 1000 ? `${Math.round(value / 1000)}k` : String(Math.round(value))
 
 export const SENIORITY_LABELS: Record<string, string> = {
+  intern: "Стажёр",
   junior: "Junior",
   middle: "Middle",
   senior: "Senior",
-  lead: "Lead",
+  staff: "Staff",
+  tech_lead: "Техлид",
+  team_lead: "Тимлид",
+  head: "Руководитель",
   unknown: "Не указан"
 }
-export const SENIORITY_ORDER = ["junior", "middle", "senior", "lead", "unknown"] as const
+export const SENIORITY_ORDER = [
+  "intern", "junior", "middle", "senior", "staff", "tech_lead", "team_lead", "head", "unknown"
+] as const
 export const seniorityLabel = (key: string): string => SENIORITY_LABELS[key] ?? key
 
 export const WORK_FORMAT_LABELS: Record<string, string> = {

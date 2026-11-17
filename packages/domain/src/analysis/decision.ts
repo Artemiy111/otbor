@@ -1,9 +1,4 @@
-import type {
-  AnalysisLevel,
-  AnalysisRole,
-  Seniority,
-  VacancyAnalysisFacts
-} from "@otbor/contract"
+import type { AnalysisRole, Seniority, VacancyAnalysisFacts } from "@otbor/contract"
 import { ANALYSIS_THRESHOLD } from "./questions.ts"
 
 /**
@@ -44,33 +39,17 @@ export const analysisRoleMatch = (
     : null
 }
 
-export const seniorityOfLevel = (level: AnalysisLevel): Seniority => {
-  switch (level) {
-    case "intern":
-    case "junior":
-      return "junior"
-    case "middle":
-      return "middle"
-    case "senior":
-    case "staff":
-      return "senior"
-    case "tech_lead":
-    case "team_lead":
-    case "head":
-      return "lead"
-  }
-}
-
 /**
- * The required level as a seniority, but only to fill a gap: a seniority the
- * title or text already gave is never overridden.
+ * The required level fills an `unknown` seniority. The scales are the same, so
+ * the model's value is used as-is; a seniority the title already gave is never
+ * overridden.
  */
 export const analysisSeniority = (
   stored: Seniority,
   analysis: DecisionAnalysis | null | undefined
-): { readonly level: AnalysisLevel; readonly seniority: Seniority; readonly confidence: number } | null => {
+): { readonly seniority: Seniority; readonly confidence: number } | null => {
   if (stored !== "unknown" || analysis === null || analysis === undefined) return null
   const level = analysis.requiredLevel
   if (level === null || !confident(level)) return null
-  return { level: level.value, seniority: seniorityOfLevel(level.value), confidence: level.confidence }
+  return { seniority: level.value, confidence: level.confidence }
 }
