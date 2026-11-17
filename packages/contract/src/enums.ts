@@ -242,6 +242,9 @@ export type ProxySource = typeof ProxySource.Type
 /** Фильтр картинки капчи перед моделью: `none` - как есть, `normalize` - нормировка на локальный фон. */
 export const CaptchaFilter = Schema.Literals(["none", "normalize"])
 export type CaptchaFilter = typeof CaptchaFilter.Type
+/** Язык капчи hh: кнопка в окне переключает только эти два. */
+export const CaptchaLanguage = Schema.Literals(["en", "ru"])
+export type CaptchaLanguage = typeof CaptchaLanguage.Type
 
 export const ProxyRotate = Schema.Literals(["off", "captcha"])
 export type ProxyRotate = typeof ProxyRotate.Type

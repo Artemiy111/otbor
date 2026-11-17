@@ -9,7 +9,8 @@ const config = {
   model: "gemma",
   maxAttempts: 2,
   timeoutSeconds: 5,
-  filter: "none" as const
+  filter: "none" as const,
+  language: "en" as const
 }
 
 /** Ответ модели: прочитала картинку. */
@@ -23,24 +24,30 @@ const down = (error = "HTTP 507: memory ceiling") =>
   ({ ok: false, text: null, durationMs: 50, unavailable: true, error }) as const
 
 /** Страница-двойник: после «Отправить» показывает то, что задал `after`. */
-const fakePage = (after: string) => {
+const fakePage = (after: string, languageLabel: string | null = null) => {
   const filled: Array<string> = []
+  const languageClicks: Array<string> = []
   let submitted = false
   // `src` картинки меняется при каждом чтении: так проверяется ожидание
-  // подмены кадра после «Другой текст».
+  // подмены кадра после «Другой текст» и смены языка.
   let srcReads = 0
-  const locator = () => ({
+  const locator = (selector: string) => ({
     first: () => ({
       screenshot: async () => Buffer.alloc(5_000, 1),
       getAttribute: async () => `src-${++srcReads}`,
       isVisible: async () => true,
+      textContent: async () => languageLabel,
       fill: async (text: string) => void filled.push(text),
-      click: async () => void (submitted = true),
+      click: async () => {
+        if (selector.includes("captcha-language")) languageClicks.push(languageLabel ?? "")
+        else submitted = true
+      },
       press: async () => void (submitted = true)
     })
   })
   return {
     filled,
+    languageClicks,
     page: {
       locator,
       content: async () => (submitted ? after : "<div>Подтвердите, что вы не робот</div>"),
@@ -53,12 +60,18 @@ const run = (input: {
   after: string
   answers: ReadonlyArray<ReturnType<typeof read> | ReturnType<typeof nothing> | ReturnType<typeof down>>
   maxAttempts?: number
+  language?: "en" | "ru"
+  languageLabel?: string | null
 }) => {
-  const { page, filled } = fakePage(input.after)
+  const { page, filled, languageClicks } = fakePage(input.after, input.languageLabel ?? null)
   const recorder: { attempts: Array<CaptchaAttemptReport> } = { attempts: [] }
   let asked = 0
   const solve = makeCaptchaSolve(
-    () => (input.maxAttempts === undefined ? config : { ...config, maxAttempts: input.maxAttempts }),
+    () => ({
+      ...config,
+      language: input.language ?? "en",
+      ...(input.maxAttempts === undefined ? {} : { maxAttempts: input.maxAttempts })
+    }),
     () => {
       const answer = input.answers[Math.min(asked, input.answers.length - 1)]!
       asked += 1
@@ -73,7 +86,7 @@ const run = (input: {
       Effect.catch((error: Error) => Effect.succeed({ ok: false as const, message: error.message }))
     )
   )
-  return { result, recorder, filled, asked: () => asked }
+  return { result, recorder, filled, languageClicks, asked: () => asked }
 }
 
 describe("captcha solver journal", () => {
@@ -177,5 +190,51 @@ describe("blank picture", () => {
     )
     expect(await Effect.runPromise(solve(page))).toBe(false)
     expect(asked).toBe(false)
+  }, 20_000)
+})
+
+describe("captcha language", () => {
+  test("английский по умолчанию: жмём «English», попытка не тратится", async () => {
+    const { result, languageClicks, filled, recorder } = run({
+      after: "<div>Вы откликнулись</div>",
+      answers: [read("careful")],
+      languageLabel: "English"
+    })
+    expect(await result).toEqual({ ok: true, value: true })
+    expect(languageClicks).toEqual(["English"])
+    expect(filled).toEqual(["careful"])
+    expect(recorder.attempts[0]?.attempt).toBe(1)
+  }, 20_000)
+
+  test("английский уже показан: кнопка «Русский» не нажимается", async () => {
+    const { result, languageClicks } = run({
+      after: "<div>Вы откликнулись</div>",
+      answers: [read("careful")],
+      languageLabel: "Русский"
+    })
+    expect(await result).toEqual({ ok: true, value: true })
+    expect(languageClicks).toEqual([])
+  }, 20_000)
+
+  test("русский выбран: жмём кнопку «Русский»", async () => {
+    const { result, languageClicks } = run({
+      after: "<div>Вы откликнулись</div>",
+      answers: [read("осторожно")],
+      language: "ru",
+      languageLabel: "Русский"
+    })
+    expect(await result).toEqual({ ok: true, value: true })
+    expect(languageClicks).toEqual(["Русский"])
+  }, 20_000)
+
+  test("кнопки языка нет: решаем показанную капчу", async () => {
+    const { result, languageClicks, filled } = run({
+      after: "<div>Вы откликнулись</div>",
+      answers: [read("раёк")],
+      languageLabel: null
+    })
+    expect(await result).toEqual({ ok: true, value: true })
+    expect(languageClicks).toEqual([])
+    expect(filled).toEqual(["раёк"])
   }, 20_000)
 })

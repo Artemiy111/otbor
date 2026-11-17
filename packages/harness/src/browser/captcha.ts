@@ -8,6 +8,7 @@ import {
   prepareCaptchaImage,
   recognizeCaptcha,
   type CaptchaFilter,
+  type CaptchaLanguage,
   type CaptchaRecognition,
   type CaptchaSolverConfig
 } from "@otbor/local-models"
@@ -50,6 +51,21 @@ const CAPTCHA_REFRESH_SELECTORS = [
   '[data-qa="captcha-renew-text"]',
   `${CAPTCHA_PICTURE_SELECTOR} >> xpath=following::button[not(@type="submit")][1]`
 ]
+
+/** Кнопка смены языка в окне капчи hh (сверено по сохранённым trace страницы). */
+export const CAPTCHA_LANGUAGE_SELECTOR = '[data-qa="captcha-language"]'
+
+/**
+ * Подпись языковой кнопки называет язык, на который hh предлагает перейти:
+ * «English» на русской капче и «Русский» на английской. Клик нужен, только
+ * когда подпись совпадает с выбранным языком; неизвестную подпись не трогаем.
+ */
+const languageOfferedBy = (label: string): CaptchaLanguage | null => {
+  const text = label.trim()
+  if (/english|английск/i.test(text)) return "en"
+  if (/русск|russian/i.test(text)) return "ru"
+  return null
+}
 
 /**
  * Однотонный PNG такого размера весит сотни байт, настоящая капча - десятки
@@ -196,6 +212,26 @@ export const makeCaptchaSolve = (
     return null
   }
 
+  /** Ключ картинки: hh подменяет кадр, меняя `src`. */
+  const pictureSrc = (page: Page) =>
+    Effect.gen(function*() {
+      const picture = page.locator(CAPTCHA_PICTURE_SELECTOR).first()
+      return yield* Effect.tryPromise(() => picture.getAttribute("src", { timeout: 2_000 })).pipe(
+        Effect.orElseSucceed(() => null as string | null)
+      )
+    })
+
+  /** Ждём подмены кадра: снимок до смены `src` может попасть на старую картинку. */
+  const waitPictureChange = (page: Page, before: string | null) =>
+    Effect.gen(function*() {
+      for (let waited = 0; waited < 2_000; waited += 250) {
+        const now = yield* pictureSrc(page)
+        if (now !== null && now !== before) return true
+        yield* Effect.sleep("250 millis")
+      }
+      return false
+    })
+
   /**
    * Новая картинка у hh: о ту же капчу второй раз не бьёмся. После нажатия
    * ждём именно смены `src` (hh меняет ключ капчи), а не просто спим: иначе
@@ -203,12 +239,7 @@ export const makeCaptchaSolve = (
    */
   const refreshPicture = (page: Page) =>
     Effect.gen(function*() {
-      const picture = page.locator(CAPTCHA_PICTURE_SELECTOR).first()
-      const read = () =>
-        Effect.tryPromise(() => picture.getAttribute("src", { timeout: 2_000 })).pipe(
-          Effect.orElseSucceed(() => null as string | null)
-        )
-      const before = yield* read()
+      const before = yield* pictureSrc(page)
       const refreshed = yield* Effect.tryPromise(async () => {
         const button = await firstVisible(page, CAPTCHA_REFRESH_SELECTORS)
         if (button === null) return false
@@ -219,13 +250,54 @@ export const makeCaptchaSolve = (
         yield* Effect.logWarning("captcha: renew button not found, retrying on the same picture")
         return false
       }
-      for (let waited = 0; waited < 2_000; waited += 250) {
-        const now = yield* read()
-        if (now !== null && now !== before) return true
+      if (!(yield* waitPictureChange(page, before))) {
+        yield* Effect.logWarning("captcha: the picture did not change after renew, reading the same one")
+        return false
+      }
+      return true
+    })
+
+  /**
+   * Выбранный язык капчи: кнопка hh предлагает перейти на другой язык. Клик
+   * не отправляет ответ, попытка не тратится, но картинка меняется - ждём
+   * смены `src`. Нет кнопки или непонятная подпись - решаем то, что показано.
+   */
+  const ensureLanguage = (page: Page, language: CaptchaLanguage) =>
+    Effect.gen(function*() {
+      const before = yield* pictureSrc(page)
+      // Картинка ещё не отрисована - окно капчи не готово, кнопку искать рано.
+      if (before === null) return false
+      let button: Locator | null = null
+      for (let waited = 0; waited < CAPTCHA_FIELD_WAIT_MS; waited += 250) {
+        button = yield* Effect.tryPromise(() => firstVisible(page, [CAPTCHA_LANGUAGE_SELECTOR])).pipe(
+          Effect.orElseSucceed(() => null as Locator | null)
+        )
+        if (button !== null) break
         yield* Effect.sleep("250 millis")
       }
-      yield* Effect.logWarning("captcha: the picture did not change after renew, reading the same one")
-      return false
+      if (button === null) {
+        yield* Effect.logWarning("captcha: language button not found, solving as shown")
+        return false
+      }
+      const label = yield* Effect.tryPromise(async () => (await button!.textContent({ timeout: 2_000 })) ?? "").pipe(
+        Effect.orElseSucceed(() => "")
+      )
+      const offered = languageOfferedBy(label)
+      if (offered === null) {
+        yield* Effect.logWarning(`captcha: unknown language button label "${label}", solving as shown`)
+        return false
+      }
+      if (offered !== language) return false
+      const clicked = yield* Effect.tryPromise(async () => {
+        await button!.click({ timeout: 5_000 })
+        return true
+      }).pipe(Effect.orElseSucceed(() => false))
+      if (!clicked) {
+        yield* Effect.logWarning("captcha: language button click failed, solving as shown")
+        return false
+      }
+      yield* waitPictureChange(page, before)
+      return true
     })
 
   /** Картинка капчи; `null`, если она так и не отрисовалась. */
@@ -303,7 +375,8 @@ export const makeCaptchaSolve = (
         "captcha.harness": config.harnessId,
         "captcha.model": config.model,
         "captcha.max_attempts": config.maxAttempts,
-        "captcha.answered_before": answeredBefore
+        "captcha.answered_before": answeredBefore,
+        "captcha.language": config.language
       })
 
       const recorder = yield* Effect.serviceOption(CaptchaRecorder)
@@ -335,6 +408,11 @@ export const makeCaptchaSolve = (
       while (answered < config.maxAttempts && stalls < CAPTCHA_STALL_LIMIT) {
         // Повтор: и после неверного ответа, и после сбоя - картинка новая.
         if (answered > answeredBefore || stalls > 0) yield* refreshPicture(page)
+        // «Другой текст» может вернуть капчу исходного языка, поэтому язык
+        // проверяем перед каждым кадром. Кнопка не отправляет ответ hh.
+        if (yield* ensureLanguage(page, config.language)) {
+          yield* Effect.logInfo(`captcha: switched the captcha to ${config.language}`)
+        }
 
         const image = yield* capturePicture(page)
         if (image === null) {

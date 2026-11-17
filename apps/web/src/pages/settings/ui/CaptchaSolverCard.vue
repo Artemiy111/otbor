@@ -47,6 +47,7 @@ const model = ref("")
 const maxAttempts = ref(5)
 const timeoutSeconds = ref(60)
 const filter = ref<CaptchaSolverSettings["filter"]>("normalize")
+const language = ref<CaptchaSolverSettings["language"]>("en")
 const toast = useToast()
 const testResult = ref<CaptchaSolverTestResult | null>(null)
 
@@ -61,6 +62,7 @@ watch(
     maxAttempts.value = saved.maxAttempts
     timeoutSeconds.value = saved.timeoutSeconds
     filter.value = saved.filter
+    language.value = saved.language
   },
   { immediate: true }
 )
@@ -83,7 +85,8 @@ const current = computed<CaptchaSolverSettings>(() => ({
   model: model.value,
   maxAttempts: Number(maxAttempts.value),
   timeoutSeconds: Number(timeoutSeconds.value),
-  filter: filter.value
+  filter: filter.value,
+  language: language.value
 }))
 
 const saveMutation = useMutation<CaptchaSolverSettings, CaptchaSolverSettings>({
@@ -119,8 +122,9 @@ const test = async () => {
     <CardHeader>
       <CardTitle>Распознавание капчи</CardTitle>
       <CardDescription>
-        Когда hh показывает капчу, браузер харнеса снимает картинку и отдаёт её выбранной модели, затем
-        вводит ответ и жмёт «Отправить». Подойдёт любой харнес каталога с поддержкой изображений: локальный
+        Когда hh показывает капчу, браузер харнеса при необходимости переключает её язык кнопкой в окне,
+        снимает картинку и отдаёт её выбранной модели, затем вводит ответ и жмёт «Отправить». Подойдёт любой
+        харнес каталога с поддержкой изображений: локальный
         сервер (oMLX, LM Studio), <code>opencode</code>, <code>claude</code>. Если ответ не принят за
         указанное число попыток, аккаунт останавливается, как и без распознавания. Попытка — это введённый
         ответ: если модель не ответила, не отрисовалась картинка или не нашлось поле, попытка не тратится,
@@ -171,6 +175,16 @@ const test = async () => {
             <option value="normalize">Нормировка на фон (лучше по эксперименту)</option>
             <option value="none">Без фильтра (оригинал)</option>
           </select>
+        </div>
+        <div class="space-y-1.5 md:col-span-2">
+          <Label for="captcha-language" class="text-xs text-muted-foreground">Язык капчи</Label>
+          <select id="captcha-language" v-model="language" class="h-9 w-full rounded-md border bg-background px-2 text-sm">
+            <option value="en">Английский (по умолчанию)</option>
+            <option value="ru">Русский</option>
+          </select>
+          <p class="text-xs text-muted-foreground">
+            Перед чтением харнес нажмёт кнопку смены языка в окне капчи, если hh показывает другой язык.
+          </p>
         </div>
       </div>
 

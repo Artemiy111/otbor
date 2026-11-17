@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { CaptchaFilter } from "../enums.ts"
+import { CaptchaFilter, CaptchaLanguage } from "../enums.ts"
 
 /**
  * Локальный сервер моделей с OpenAI-совместимым API (oMLX, LM Studio, ...).
@@ -54,7 +54,9 @@ export const CaptchaSolverSettings = Schema.Struct({
   maxAttempts: Schema.Int,
   timeoutSeconds: Schema.Int,
   /** Фильтр картинки перед моделью; `none` отправляет оригинал. */
-  filter: CaptchaFilter
+  filter: CaptchaFilter,
+  /** Язык капчи: харнес нажимает кнопку переключения перед чтением; по умолчанию английский. */
+  language: CaptchaLanguage
 })
 export type CaptchaSolverSettings = typeof CaptchaSolverSettings.Type
 

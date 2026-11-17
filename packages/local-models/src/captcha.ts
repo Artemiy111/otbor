@@ -17,6 +17,11 @@ export const captchaStorePath = (
 export const DEFAULT_CAPTCHA_ATTEMPTS = 5
 export const DEFAULT_CAPTCHA_TIMEOUT_SECONDS = 60
 
+/** Кнопка капчи hh переключает только английский и русский; английский - по умолчанию. */
+export const CAPTCHA_LANGUAGES = ["en", "ru"] as const
+export type CaptchaLanguage = (typeof CAPTCHA_LANGUAGES)[number]
+export const DEFAULT_CAPTCHA_LANGUAGE: CaptchaLanguage = "en"
+
 export const CaptchaSettingsFile = Schema.Struct({
   /** Выключено: капча, как раньше, останавливает отправки аккаунта. */
   enabled: Schema.Boolean,
@@ -28,7 +33,9 @@ export const CaptchaSettingsFile = Schema.Struct({
   maxAttempts: Schema.Int,
   timeoutSeconds: Schema.Int,
   /** Фильтр картинки перед моделью: `none` - отправлять как есть. */
-  filter: Schema.Literals(CAPTCHA_FILTERS)
+  filter: Schema.Literals(CAPTCHA_FILTERS),
+  /** Язык, на который харнес переключит капчу кнопкой в окне hh. */
+  language: Schema.Literals(CAPTCHA_LANGUAGES)
 })
 export type CaptchaSettingsFile = typeof CaptchaSettingsFile.Type
 
@@ -39,7 +46,8 @@ const CaptchaSettingsPartial = Schema.Struct({
   model: Schema.optional(Schema.String),
   maxAttempts: Schema.optional(Schema.Int),
   timeoutSeconds: Schema.optional(Schema.Int),
-  filter: Schema.optional(Schema.Literals(CAPTCHA_FILTERS))
+  filter: Schema.optional(Schema.Literals(CAPTCHA_FILTERS)),
+  language: Schema.optional(Schema.Literals(CAPTCHA_LANGUAGES))
 })
 
 export const DEFAULT_CAPTCHA_SETTINGS: CaptchaSettingsFile = {
@@ -48,7 +56,8 @@ export const DEFAULT_CAPTCHA_SETTINGS: CaptchaSettingsFile = {
   model: "",
   maxAttempts: DEFAULT_CAPTCHA_ATTEMPTS,
   timeoutSeconds: DEFAULT_CAPTCHA_TIMEOUT_SECONDS,
-  filter: "normalize"
+  filter: "normalize",
+  language: DEFAULT_CAPTCHA_LANGUAGE
 }
 
 const isMissing = (error: unknown): boolean =>
@@ -92,6 +101,7 @@ export interface CaptchaSolverConfig {
   readonly maxAttempts: number
   readonly timeoutSeconds: number
   readonly filter: CaptchaFilter
+  readonly language: CaptchaLanguage
 }
 
 /**
@@ -113,7 +123,8 @@ export const loadCaptchaSolver = (
       model: settings.model.trim(),
       maxAttempts: Math.max(1, settings.maxAttempts),
       timeoutSeconds: Math.max(1, settings.timeoutSeconds),
-      filter: settings.filter
+      filter: settings.filter,
+      language: settings.language
     }
   } catch {
     return null

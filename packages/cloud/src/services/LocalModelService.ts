@@ -167,7 +167,8 @@ export class LocalModelService extends Context.Service<LocalModelService, LocalM
               model: input.model.trim(),
               maxAttempts: input.maxAttempts,
               timeoutSeconds: input.timeoutSeconds,
-              filter: input.filter
+              filter: input.filter,
+              language: input.language
             }
             if (next.maxAttempts < 1 || next.maxAttempts > 10) throw invalid("попыток от 1 до 10")
             if (next.timeoutSeconds < 5 || next.timeoutSeconds > 300) throw invalid("таймаут от 5 до 300 секунд")
