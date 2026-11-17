@@ -45,8 +45,10 @@ const card = computed(() => !props.showName)
 </script>
 
 <template>
-  <span v-if="props.accountId" class="group relative inline-flex items-center gap-1.5 whitespace-nowrap text-sm">
-    <!-- The circle continues into a capsule holding the resume code(s). -->
+  <!-- Именованная группа: карточка всплывает только при наведении на чип,
+       а не на всю строку вакансии, у которой тоже есть класс group. -->
+  <span v-if="props.accountId" class="group/account relative inline-flex items-center gap-1.5 whitespace-nowrap text-sm">
+    <!-- Круг переходит в капсулу с кодами резюме. -->
     <span
       class="inline-flex h-7 items-center rounded-full"
       :class="{ 'pr-1': items.length > 0 || unknownResume }"
@@ -69,8 +71,8 @@ const card = computed(() => !props.showName)
     </span>
     <span v-if="props.showName">{{ name }}</span>
 
-    <!-- Hovercard. pt-2 is an invisible bridge so the pointer can move into it. -->
-    <span v-if="card" class="absolute right-0 top-full z-20 hidden pt-2 group-hover:block">
+    <!-- Всплывающая карточка. pt-2 — невидимый мостик, чтобы курсор дошёл до неё. -->
+    <span v-if="card" class="absolute right-0 top-full z-20 hidden pt-2 group-hover/account:block">
       <span class="block w-72 whitespace-normal rounded-lg border bg-popover p-3 text-xs text-popover-foreground shadow-lg">
         <span class="flex items-center gap-2">
           <span class="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white" :style="{ backgroundColor: color }">{{ hhAccountInitials(name) }}</span>
