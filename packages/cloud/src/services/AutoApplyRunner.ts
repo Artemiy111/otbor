@@ -56,6 +56,8 @@ export interface AutoApplyResult {
   readonly accounts: number
   /** Decisions picked for a new application. */
   readonly selected: number
+  /** Stopped auto applications returned to the runner by themselves. */
+  readonly revived: number
   readonly created: number
   /** Writing jobs queued (one per application and form hash). */
   readonly writingEnqueued: number
@@ -97,6 +99,8 @@ const describeError = (error: ApiError): string =>
 
 /** Applications the runner looks at per account and pass. */
 const PROGRESS_LIMIT = 200
+/** Сколько остановленных заявок воскрешаем за один проход аккаунта. */
+const REVIVE_LIMIT = 50
 /** Сколько вакансий на область (аккаунт, резюме) пересчитывает раннер перед выбором. */
 const WARMUP_BATCH = 300
 
@@ -276,6 +280,7 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
           const counts = {
             accounts: 0,
             selected: 0,
+            revived: 0,
             created: 0,
             writingEnqueued: 0,
             kitsSet: 0,
@@ -722,6 +727,20 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
               }
             }
 
+            // Остановленные, но доказанно неотправленные автозаявки возвращаются
+            // раннеру сами: человеку не нужно нажимать «повторить» для каждой.
+            if (only === undefined) {
+              const revived = yield* database
+                .asUser(userId, (tx) =>
+                  ApplicationRepository.reviveStalledAuto(tx, userId, hhAccountId, REVIVE_LIMIT)
+                )
+                .pipe(Effect.mapError(toStorageError("autoApply.revive")))
+              if (revived > 0) {
+                counts.revived += revived
+                yield* Effect.logInfo(`autoapply ${hhAccountId}: ${revived} stopped applications set to retry`)
+              }
+            }
+
             const pairResumeIds = accountRows.flatMap((row) => (row.resumeId === null ? [] : [row.resumeId]))
             // A pair row decides for its resume; the account row for the rest.
             const modeOf: ModeOf = (resumeId) => {
@@ -835,9 +854,12 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
             )
           }
 
-          if (counts.created + counts.writingEnqueued + counts.kitsSet + counts.needsHuman > 0 || errors.length > 0) {
+          if (
+            counts.created + counts.revived + counts.writingEnqueued + counts.kitsSet + counts.needsHuman > 0 ||
+            errors.length > 0
+          ) {
             yield* Effect.logInfo(
-              `autoapply: ${counts.created} created, ${counts.writingEnqueued} writing, ` +
+              `autoapply: ${counts.revived} revived, ${counts.created} created, ${counts.writingEnqueued} writing, ` +
                 `${counts.kitsSet} kits, ${counts.submitQueued} submits, ${counts.needsHuman} need a human`
             )
           }
@@ -851,6 +873,7 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
           ? Effect.succeed({
               accounts: 0,
               selected: 0,
+              revived: 0,
               created: 0,
               writingEnqueued: 0,
               kitsSet: 0,

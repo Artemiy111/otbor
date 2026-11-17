@@ -645,6 +645,72 @@ export const promoteDraftsToAuto = (
     .pipe(Effect.map((result) => result.rows.length))
 
 /**
+ * Возвращает раннеру остановленные автозаявки, которые доказанно не ушли на hh.
+ * `skipped`, ручные, отправленные и неоднозначные (`reconcile_unclear`) не
+ * трогаем; повтор идёт по тому же бюджету (1 ч, 4 ч, 12 ч), что и обычный
+ * автоповтор. Причину сохраняем: раннер по ней знает, что перечитать.
+ */
+export const reviveStalledAuto = (
+  tx: Executor,
+  userId: string,
+  hhAccountId: string,
+  limit: number
+): RepoEffect<number> =>
+  tx
+    .execute(sql`
+      with picked as (
+        select a.id, coalesce(a.auto_retries, 0) as spent
+        from application a
+        where a.user_id = ${userId} and a.hh_account_id = ${hhAccountId}
+          and a.auto_run = 'auto'
+          and a.state in ('failed', 'needs_human')
+          and a.blocked_reason in ('submit_not_sent', 'form_read_failed', 'writing_failed')
+          and a.intent_at is null
+          and coalesce(a.auto_retries, 0) < ${MAX_AUTO_RETRIES}
+          and not exists (
+            select 1 from application s
+            where s.hh_account_id = a.hh_account_id and s.vacancy_id = a.vacancy_id and s.state = 'submitted'
+          )
+          and not exists (select 1 from vacancy v where v.id = a.vacancy_id and v.archived)
+          and not exists (
+            select 1 from hh_account h
+            where h.id = a.hh_account_id and h.submit_blocked_at is not null
+          )
+          and ${ApplyFilterRepository.governingAutoModeSql("a")} = 'auto'
+          and not exists (
+            select 1 from harness_jobs j
+            where j.application_id = a.id and j.status in ('pending', 'leased', 'running')
+          )
+          -- submit повторяем только когда харнесс доказал, что клика не было
+          and (
+            a.blocked_reason <> 'submit_not_sent'
+            or exists (
+              select 1 from harness_jobs j
+              where j.application_id = a.id and j.stage = 'submit'
+                and j.status in ('failed', 'needs_human')
+                and j.result->>'clicked' = 'false'
+            )
+          )
+        order by a.created_at asc
+        limit ${Math.max(0, Math.trunc(limit))}
+      )
+      update application a
+      set state = 'preparing',
+          retry_at = now() + case p.spent
+            when 0 then interval '1 hour'
+            when 1 then interval '4 hours'
+            else interval '12 hours'
+          end,
+          auto_retries = p.spent + 1,
+          last_error = null,
+          updated_at = now()
+      from picked p
+      where a.id = p.id
+      returning a.id
+    `)
+    .pipe(Effect.map((result) => result.rows.length))
+
+/**
  * Заявки на вакансии, которые hh перевёл в архив: отправлять некуда, ошибка
  * формы или отправки здесь вторична. Снимаем их (`skipped`) с понятной причиной.
  * `queued`/`submitting` не трогаем: у них идёт задача. Возвращает число заявок.

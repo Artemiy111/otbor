@@ -1647,4 +1647,101 @@ if (!enabled || serverUrl === null) {
       expect(view.summary.blocked).toBe(1)
     }, 120_000)
   })
+
+  describe("automatic retry of stopped auto applications", () => {
+    const stop = async (
+      ctx: Ctx,
+      label: string,
+      options: {
+        readonly state: "failed" | "needs_human" | "skipped"
+        readonly reason: string
+        readonly retries?: number
+        readonly autoRun?: "auto" | "drafts"
+        readonly clicked?: boolean | null
+      }
+    ) => {
+      const { vacancyId } = await decided(ctx, label, 90)
+      const id = await support.seedApplication({
+        userId: ctx.tenant.userId,
+        accountId: ctx.tenant.accountId,
+        vacancyId,
+        state: options.state === "skipped" ? "draft" : options.state,
+        autoRun: options.autoRun ?? "auto"
+      })
+      await owner((tx) =>
+        tx.execute(sql`
+          update application
+          set state = ${options.state},
+              blocked_reason = ${options.reason}, auto_retries = ${options.retries ?? 0}, last_error = 'старая ошибка'
+          where id = ${id}
+        `)
+      )
+      if (options.clicked !== undefined) {
+        await owner((tx) =>
+          tx.execute(sql`
+            insert into harness_jobs
+              (user_id, hh_account_id, application_id, stage, kind, status, result, max_attempts, idempotency_key)
+            values (${ctx.tenant.userId}, ${ctx.tenant.accountId}, ${id}, 'submit', 'browser', 'failed',
+                    ${JSON.stringify({ clicked: options.clicked })}::jsonb, 1, ${`test:submit:${id}`})
+          `)
+        )
+      }
+      return id
+    }
+
+    test("revives transient stops with a retry budget, never skipped or unclear ones", async () => {
+      const ctx = await setup("aa-revive-transient")
+      await configure(ctx, { autoMode: "auto" })
+      const formRead = await stop(ctx, "aa-revive-a", {
+        state: "needs_human",
+        reason: "form_read_failed"
+      })
+      const skipped = await stop(ctx, "aa-revive-b", {
+        state: "skipped",
+        reason: "form_read_failed"
+      })
+      const unclear = await stop(ctx, "aa-revive-c", {
+        state: "needs_human",
+        reason: "reconcile_unclear"
+      })
+      const exhausted = await stop(ctx, "aa-revive-d", {
+        state: "failed",
+        reason: "submit_not_sent",
+        retries: 3
+      })
+
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ revived: 1 })
+      const rows = new Map((await applicationsOf(ctx.tenant.accountId)).map((row) => [row.id, row]))
+      expect(rows.get(formRead)).toMatchObject({
+        state: "preparing",
+        blocked_reason: "form_read_failed",
+        auto_retries: 1
+      })
+      expect(rows.get(formRead)!.retry_at).not.toBeNull()
+      for (const id of [skipped, unclear, exhausted]) {
+        expect(rows.get(id)!.state).not.toBe("preparing")
+        expect(rows.get(id)!.auto_retries).toBe(id === exhausted ? 3 : 0)
+      }
+    }, 120_000)
+
+    test("a failed submit is revived only when the harness proved there was no click", async () => {
+      const ctx = await setup("aa-revive-submit")
+      await configure(ctx, { autoMode: "auto" })
+      const unsent = await stop(ctx, "aa-revive-submit-1", {
+        state: "failed",
+        reason: "submit_not_sent",
+        clicked: false
+      })
+      const ambiguous = await stop(ctx, "aa-revive-submit-2", {
+        state: "failed",
+        reason: "submit_not_sent",
+        clicked: null
+      })
+
+      expect(await tick(ctx.tenant.userId)).toMatchObject({ revived: 1 })
+      const rows = new Map((await applicationsOf(ctx.tenant.accountId)).map((row) => [row.id, row]))
+      expect(rows.get(unsent)!.state).toBe("preparing")
+      expect(rows.get(ambiguous)!.state).toBe("failed")
+    }, 120_000)
+  })
 }

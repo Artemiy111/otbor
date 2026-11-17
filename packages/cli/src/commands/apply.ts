@@ -253,7 +253,7 @@ const kit = Command.make(
   })
 ).pipe(Command.withDescription("Attach the prepared form kit to an application"))
 
-const RUN_COUNTS = ["selected", "created", "writingEnqueued", "kitsSet", "submitQueued", "needsHuman", "waiting"] as const
+const RUN_COUNTS = ["selected", "revived", "created", "writingEnqueued", "kitsSet", "submitQueued", "needsHuman", "waiting"] as const
 
 /** Runs the `apply` schedule once and prints the counts of that run. */
 const run = Command.make(
