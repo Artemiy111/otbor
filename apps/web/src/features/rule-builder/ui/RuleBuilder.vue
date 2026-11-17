@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue"
+import { computed, ref, watch } from "vue"
 import type { KeywordMatchLocation, PresetField } from "@otbor/contract"
 import { GripVertical, Plus, X } from "@lucide/vue"
 import { PRESET_LOCATION_OPTIONS, presetFieldMeta } from "../model/fields"
@@ -8,6 +8,7 @@ import {
   newBranch,
   newGroup,
   newRule,
+  orderedIdsOf,
   type EditableFilter,
   type EditableGroup,
   type EditableRule
@@ -44,11 +45,10 @@ const quickFields = computed(() => QUICK_FIELDS.map((field) => presetFieldMeta(f
 const freshId = ref<number | null>(null)
 
 /** Порядок из состояния плюс новые элементы и минус исчезнувшие. */
-const orderedIds = computed(() => {
-  const ids = [...state.value.rules.map((rule) => rule.id), ...state.value.groups.map((group) => group.id)]
-  const known = new Set(ids)
-  const saved = (state.value.order ?? []).filter((id) => known.has(id))
-  return [...saved, ...ids.filter((id) => !saved.includes(id))]
+const orderedIds = computed(() => orderedIdsOf(state.value))
+
+watch(orderedIds, (order) => {
+  if (order.join(",") !== (state.value.order ?? []).join(",")) state.value.order = order
 })
 
 const items = computed<ReadonlyArray<BlockItem>>(() => {

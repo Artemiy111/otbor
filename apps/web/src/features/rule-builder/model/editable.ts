@@ -84,6 +84,7 @@ export const usesList = (field: PresetField): boolean =>
 export const toEditableRule = (rule: PresetRule): EditableRule => {
   const base: EditableRule = {
     ...newRule(rule.field),
+    id: rule.id ?? sequence++,
     op: rule.op,
     currency: rule.currency ?? "",
     orMissing: rule.orMissing === true
@@ -118,7 +119,7 @@ export const toEditable = (filter: PresetFilter | undefined): EditableFilter => 
   if (filter === undefined) return emptyEditable()
   const rules = presetRules(filter).map(toEditableRule)
   const groups = (filter.groups ?? []).map((group) => ({
-    id: sequence++,
+    id: group.id ?? sequence++,
     branches: group.branches.map((branch) => ({
       id: sequence++,
       rules: branch.rules.map(toEditableRule)
@@ -127,7 +128,7 @@ export const toEditable = (filter: PresetFilter | undefined): EditableFilter => 
   return {
     rules,
     groups,
-    order: [...rules.map((rule) => rule.id), ...groups.map((group) => group.id)],
+    order: filter.order === undefined ? undefined : [...filter.order],
     location: filter.location ?? "any",
     keywordIds: filter.keywordIds
   }
@@ -154,9 +155,11 @@ const buildBase = (rule: EditableRule): PresetRule | null => {
 
 export const buildRule = (rule: EditableRule): PresetRule | null => {
   const base = buildBase(rule)
-  if (base === null || !presetFieldMeta(rule.field).salary) return base
+  if (base === null) return null
+  const withId = { ...base, id: rule.id }
+  if (!presetFieldMeta(rule.field).salary) return withId
   return {
-    ...base,
+    ...withId,
     ...(rule.currency === "" ? {} : { currency: rule.currency }),
     ...(rule.orMissing ? { orMissing: true } : {})
   }
@@ -196,15 +199,25 @@ export const changeField = (rule: EditableRule, field: PresetField): void => {
   }
 }
 
+/** Порядок блоков: сохранённый плюс новые элементы, без исчезнувших. */
+export const orderedIdsOf = (state: EditableFilter): Array<number> => {
+  const ids = [...state.rules.map((rule) => rule.id), ...state.groups.map((group) => group.id)]
+  const known = new Set(ids)
+  const saved = (state.order ?? []).filter((id) => known.has(id))
+  return [...saved, ...ids.filter((id) => !saved.includes(id))]
+}
+
 /** Only complete rules reach the filter, so a half-typed row never empties a list. */
 export const buildFilter = (state: EditableFilter): PresetFilter =>
   parsePresetFilter({
     rules: state.rules.map(buildRule).filter((rule): rule is PresetRule => rule !== null),
     groups: state.groups.map((group) => ({
+      id: group.id,
       branches: group.branches.map((branch) => ({
         rules: branch.rules.map(buildRule).filter((rule): rule is PresetRule => rule !== null)
       }))
     })),
+    order: orderedIdsOf(state),
     ...(state.location === "any" ? {} : { location: state.location }),
     ...(state.keywordIds === undefined ? {} : { keywordIds: state.keywordIds })
   })

@@ -117,6 +117,8 @@ export const PresetRuleValue = Schema.Union([
 export type PresetRuleValue = typeof PresetRuleValue.Type
 
 export const PresetRule = Schema.Struct({
+  /** Устойчивый id правила: нужен, чтобы сохранить порядок блоков в фильтре. */
+  id: Schema.optional(Schema.Number),
   field: PresetField,
   op: PresetOperator,
   value: Schema.optional(PresetRuleValue),
@@ -134,6 +136,8 @@ export type PresetRule = typeof PresetRule.Type
  * from 200k, or dollars from 3k.
  */
 export const PresetGroup = Schema.Struct({
+  /** Устойчивый id группы «или», как у правила. */
+  id: Schema.optional(Schema.Number),
   branches: Schema.Array(Schema.Struct({ rules: Schema.Array(PresetRule) }))
 })
 
@@ -144,6 +148,8 @@ export const PresetFilter = Schema.Struct({
   rules: Schema.optional(Schema.Array(PresetRule)),
   /** Additional AND clauses, each an OR over branches of rules. */
   groups: Schema.optional(Schema.Array(PresetGroup)),
+  /** Порядок правил и групп на экране: id в том порядке, в котором они идут. */
+  order: Schema.optional(Schema.Array(Schema.Number)),
   text: Schema.optional(Schema.String),
   keywordIds: Schema.optional(Schema.Array(KeywordId)),
   /** Where a keyword must appear: title, body, HH skills, or text+skills. */
@@ -212,15 +218,27 @@ export const parsePresetFilter = (input: unknown): PresetFilter => {
   const rules = (decoded.rules ?? []).filter(complete)
   const groups = (decoded.groups ?? [])
     .map((group) => ({
+      ...(group.id === undefined ? {} : { id: group.id }),
       branches: group.branches
         .map((branch) => ({ rules: branch.rules.filter(complete) }))
         .filter((branch) => branch.rules.length > 0)
     }))
     .filter((group) => group.branches.length > 0)
 
+  // Порядок сохраняется вместе с фильтром: убираем id удалённых правил и
+  // дописываем новые, чтобы список оставался полным.
+  const allIds = [
+    ...rules.map((rule) => rule.id),
+    ...groups.map((group) => group.id)
+  ].filter((id): id is number => id !== undefined)
+  const known = new Set(allIds)
+  const savedOrder = (decoded.order ?? []).filter((id) => known.has(id))
+  const order = [...savedOrder, ...allIds.filter((id) => !savedOrder.includes(id))]
+
   return {
     ...(rules.length === 0 ? {} : { rules }),
     ...(groups.length === 0 ? {} : { groups }),
+    ...(order.length === 0 ? {} : { order }),
     ...(text === "" ? {} : { text }),
     ...(keywordIds.length === 0 ? {} : { keywordIds }),
     ...(decoded.location === undefined || decoded.location === "any"

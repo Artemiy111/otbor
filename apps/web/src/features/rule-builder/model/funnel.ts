@@ -3,7 +3,7 @@ import { useDebounceFn } from "@vueuse/core"
 import type { PresetFilter, PresetRule } from "@otbor/contract"
 import { parsePresetFilter } from "@otbor/contract"
 import { presetApi } from "@/entities/preset"
-import { buildRule, type EditableFilter } from "./editable"
+import { buildRule, orderedIdsOf, type EditableFilter } from "./editable"
 import { describePresetRule, presetFieldMeta } from "./fields"
 
 /** Сколько шагов воронки считаем: каждый шаг это отдельный запрос предпросмотра. */
@@ -29,41 +29,42 @@ export const useRuleFunnel = (state: Ref<EditableFilter>, enabled: Ref<boolean> 
   let generation = 0
 
   const plan = computed(() => {
-    const rules: Array<{ id: number; rule: PresetRule }> = []
+    const byId = new Map<number, PresetRule | Array<{ rules: Array<PresetRule> }>>()
     for (const rule of state.value.rules) {
       const built = buildRule(rule)
-      if (built !== null) rules.push({ id: rule.id, rule: built })
+      if (built !== null) byId.set(rule.id, built)
     }
-    const steps: Array<{ id: number; filter: PresetFilter; base: PresetFilter }> = []
-    const base = {
-      ...(state.value.location === "any" ? {} : { location: state.value.location }),
-      ...(state.value.keywordIds === undefined ? {} : { keywordIds: state.value.keywordIds })
-    }
-    const baseFilter = parsePresetFilter({ ...base, rules: [] })
-    rules.forEach((entry, index) => {
-      steps.push({
-        id: entry.id,
-        base: baseFilter,
-        filter: parsePresetFilter({ ...base, rules: rules.slice(0, index + 1).map((item) => item.rule) })
-      })
-    })
-    const all = rules.map((item) => item.rule)
-    const groups: Array<{ id: number; branches: Array<{ rules: Array<PresetRule> }> }> = []
     for (const group of state.value.groups) {
       const branches = group.branches
         .map((branch) => ({
           rules: branch.rules.map(buildRule).filter((rule): rule is PresetRule => rule !== null)
         }))
         .filter((branch) => branch.rules.length > 0)
-      if (branches.length === 0) continue
-      groups.push({ id: group.id, branches })
+      if (branches.length > 0) byId.set(group.id, branches)
+    }
+
+    const base = {
+      ...(state.value.location === "any" ? {} : { location: state.value.location }),
+      ...(state.value.keywordIds === undefined ? {} : { keywordIds: state.value.keywordIds })
+    }
+    const baseFilter = parsePresetFilter({ ...base, rules: [] })
+    const steps: Array<{ id: number; filter: PresetFilter; base: PresetFilter }> = []
+    const rules: Array<PresetRule> = []
+    const groups: Array<{ id: number; branches: Array<{ rules: Array<PresetRule> }> }> = []
+
+    // Шаги идут в сохранённом порядке блоков, а не «все правила, потом группы».
+    for (const id of orderedIdsOf(state.value)) {
+      const item = byId.get(id)
+      if (item === undefined) continue
+      if (Array.isArray(item)) groups.push({ id, branches: item })
+      else rules.push(item)
       steps.push({
-        id: group.id,
+        id,
         base: baseFilter,
         filter: parsePresetFilter({
           ...base,
-          rules: all,
-          groups: groups.map(({ branches: kept }) => ({ branches: kept }))
+          rules,
+          groups: groups.map(({ id: groupId, branches }) => ({ id: groupId, branches }))
         })
       })
     }
@@ -130,15 +131,20 @@ export const funnelStages = (
 ): ReadonlyArray<FunnelStage> => {
   if (total === null) return []
   const stages: Array<FunnelStage> = [{ id: -1, label: "Корпус", title: "Весь корпус", count: total }]
-  for (const rule of state.rules) {
-    const count = counts.get(rule.id)
-    const built = buildRule(rule)
-    if (count === undefined || built === null) continue
-    stages.push({ id: rule.id, label: presetFieldMeta(rule.field).label, title: describePresetRule(built), count })
-  }
-  for (const group of state.groups) {
-    const count = counts.get(group.id)
-    if (count !== undefined) stages.push({ id: group.id, label: "Группа «или»", title: "Любой из вариантов", count })
+  const rules = new Map(state.rules.map((rule) => [rule.id, rule]))
+  const groups = new Map(state.groups.map((group) => [group.id, group]))
+  for (const id of orderedIdsOf(state)) {
+    const count = counts.get(id)
+    if (count === undefined) continue
+    const rule = rules.get(id)
+    const group = groups.get(id)
+    if (rule !== undefined) {
+      const built = buildRule(rule)
+      if (built === null) continue
+      stages.push({ id, label: presetFieldMeta(rule.field).label, title: describePresetRule(built), count })
+    } else if (group !== undefined) {
+      stages.push({ id, label: "Группа «или»", title: "Любой из вариантов", count })
+    }
   }
   return stages
 }
