@@ -129,6 +129,10 @@ export const conversationMessage = pgTable(
     kind: text("kind").notNull().default("text"),
     text: text("text"),
     readAt: timestamp("read_at", { withTimezone: true }),
+    /** Признак бота и id участника приходят только из чата hh. */
+    authorId: text("author_id"),
+    isBot: boolean("is_bot"),
+    replyOptions: jsonb("reply_options").$type<ReadonlyArray<string>>().notNull().default([]),
     createdAt: createdAt()
   },
   (table) => [

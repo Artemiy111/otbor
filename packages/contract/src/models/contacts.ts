@@ -111,7 +111,14 @@ export const ConversationMessageRecord = Schema.Struct({
    * чата hh есть лишь `direction`, поэтому там поля отсутствуют или `null`.
    */
   senderName: Schema.optional(Schema.NullOr(Schema.String)),
-  senderAddress: Schema.optional(Schema.NullOr(Schema.String))
+  senderAddress: Schema.optional(Schema.NullOr(Schema.String)),
+  /**
+   * Факты из чата hh. `isBot` и `authorId` для остальных каналов равны `null`,
+   * `replyOptions` — кнопки-варианты ответа, которые hh приложил к сообщению.
+   */
+  authorId: Schema.optional(Schema.NullOr(Schema.String)),
+  isBot: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  replyOptions: Schema.optional(Schema.Array(Schema.String))
 })
 
 export type ConversationMessageRecord = typeof ConversationMessageRecord.Type

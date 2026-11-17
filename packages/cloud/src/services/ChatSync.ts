@@ -61,7 +61,10 @@ export const importChat = (
         direction: message.direction,
         sentAt: message.sentAt,
         kind: message.kind,
-        text: message.text
+        text: message.text,
+        authorId: message.authorId,
+        isBot: message.isBot,
+        replyOptions: message.replyOptions
       }))
     )
     // Собеседник (имя из чата), контакты из входящих сообщений, человек и резюме

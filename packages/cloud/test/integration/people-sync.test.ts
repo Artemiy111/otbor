@@ -281,7 +281,7 @@ if (!integrationEnabled || serverUrl === null) {
             authorName: "Мария HR",
             authorId: "chat-participant-1",
             isBot: false,
-            replyOptions: []
+            replyOptions: ["Да", "Нет"]
           },
           {
             externalId: "2",
@@ -320,6 +320,23 @@ if (!integrationEnabled || serverUrl === null) {
         )
       )).rows[0] as { id: string }
       expect((await conversationRowOf(conversationId.id)).personId).toBe(people.items[0]!.id)
+
+      const saved = await runAs(
+        "owner",
+        ownerTx((tx) =>
+          tx.execute(sql`
+            select author_id, is_bot, reply_options
+            from conversation_message
+            where conversation_id = ${conversationId.id} and external_id = '1'
+          `)
+        )
+      )
+      expect(saved.rows[0]).toMatchObject({
+        author_id: "chat-participant-1",
+        is_bot: false,
+        reply_options: ["Да", "Нет"]
+      })
+
       const resumes = await resumeLinksOf(conversationId.id)
       expect(resumes).toHaveLength(1)
       expect(resumes[0]).toMatchObject({ resume_id: resumeId, confidence: 1, source: "hh_chat" })

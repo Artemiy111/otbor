@@ -285,6 +285,7 @@ export const markUnread = (
 
 const messageSelection = sql`
   select m.id, m.external_id, m.direction, m.sent_at, m.kind, m.text, m.read_at,
+         m.author_id, m.is_bot, m.reply_options,
          mm.from_json -> 0 ->> 'name' as sender_name,
          mm.from_json -> 0 ->> 'address' as sender_address
   from conversation_message m
@@ -300,6 +301,9 @@ interface StoredMessage {
   readonly kind: string
   readonly text: string | null
   readonly read_at: Date | string | null
+  readonly author_id?: string | null
+  readonly is_bot?: boolean | null
+  readonly reply_options?: ReadonlyArray<string> | null
   readonly sender_name?: string | null
   readonly sender_address?: string | null
 }
@@ -312,6 +316,9 @@ const toMessage = (row: StoredMessage): ConversationMessageRecord => ({
   kind: row.kind as MessageKind,
   text: row.text,
   readAt: iso(row.read_at),
+  authorId: row.author_id ?? null,
+  isBot: row.is_bot ?? null,
+  replyOptions: row.reply_options ?? [],
   senderName: row.sender_name ?? null,
   senderAddress: row.sender_address ?? null
 })
@@ -454,6 +461,9 @@ export interface MessageInput {
   readonly kind?: MessageKind
   readonly text?: string | null
   readonly readAt?: Date | null
+  readonly authorId?: string | null
+  readonly isBot?: boolean | null
+  readonly replyOptions?: ReadonlyArray<string>
 }
 
 /**
@@ -474,18 +484,23 @@ export const appendMessages = (
     for (const message of inputs) {
       const result = yield* tx.execute(sql`
         insert into conversation_message (
-          user_id, conversation_id, external_id, direction, sent_at, kind, text, read_at
+          user_id, conversation_id, external_id, direction, sent_at, kind, text, read_at,
+          author_id, is_bot, reply_options
         ) values (
           ${userId}, ${conversationId}, ${message.externalId}, ${message.direction},
           ${message.sentAt}, ${message.kind ?? "text"}, ${message.text ?? null},
-          ${message.readAt ?? null}
+          ${message.readAt ?? null}, ${message.authorId ?? null}, ${message.isBot ?? null},
+          ${JSON.stringify(message.replyOptions ?? [])}::jsonb
         )
         on conflict (conversation_id, external_id) do update set
           direction = excluded.direction,
           sent_at = excluded.sent_at,
           kind = excluded.kind,
           text = coalesce(excluded.text, conversation_message.text),
-          read_at = coalesce(conversation_message.read_at, excluded.read_at)
+          read_at = coalesce(conversation_message.read_at, excluded.read_at),
+          author_id = coalesce(excluded.author_id, conversation_message.author_id),
+          is_bot = coalesce(excluded.is_bot, conversation_message.is_bot),
+          reply_options = coalesce(excluded.reply_options, conversation_message.reply_options)
         returning (xmax = 0) as inserted
       `)
       const row = result.rows[0] as { inserted?: boolean } | undefined
