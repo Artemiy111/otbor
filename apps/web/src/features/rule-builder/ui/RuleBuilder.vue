@@ -92,7 +92,8 @@ const stepOf = (id: number): { count: number; dropped: number } | undefined => {
   return { count, dropped: previous === undefined ? 0 : Math.max(0, previous - count) }
 }
 const removeRule = (id: number) => {
-  state.value.rules = state.value.rules.filter((rule) => rule.id !== id)
+  if (state.value.rules.find((item) => item.id === id)?.locked === true) return
+  state.value.rules = state.value.rules.filter((item) => item.id !== id)
 }
 
 const addGroup = () => {
@@ -162,6 +163,7 @@ const onLocation = (value: unknown) => {
           :dropped="stepOf(rule.id)?.dropped"
           :show-count="props.counts !== undefined"
           :sortable="state.rules.length > 1"
+          :locked="rule.locked === true"
           :autofocus="rule.id === freshId"
           :class="dragId === rule.id ? 'opacity-40' : ''"
           @dragstart="onDragStart(rule.id, $event)"

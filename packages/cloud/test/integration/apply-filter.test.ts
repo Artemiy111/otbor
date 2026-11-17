@@ -6,7 +6,13 @@
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import type { PresetFilter, VacancyId } from "@otbor/contract"
-import { DEFAULT_BOOSTS, DEVOPS_APPLY_FILTER, DEVOPS_PRESET_TITLE } from "@otbor/domain"
+import {
+  DEFAULT_BOOSTS,
+  DEVOPS_APPLY_FILTER,
+  DEVOPS_PRESET_TITLE,
+  REQUIRED_APPLY_RULE,
+  withRequiredApplyRule
+} from "@otbor/domain"
 import { Effect } from "effect"
 import { ensureSystemPresets } from "../../src/services/bootstrap.ts"
 import { PresetService } from "../../src/services/PresetService.ts"
@@ -162,7 +168,12 @@ if (!enabled || serverUrl === null) {
         hhAccountId: tenant.accountId,
         resumeId: noRow.id
       })
-      expect(viaAccount).toMatchObject({ source: "account", resumeId: noRow.id, minFit: 30, filter: accountFilter })
+      expect(viaAccount).toMatchObject({
+        source: "account",
+        resumeId: noRow.id,
+        minFit: 30,
+        filter: withRequiredApplyRule(accountFilter)
+      })
       expect(
         (await support.applyFilterGet(tenant.userId, { hhAccountId: tenant.accountId })).source
       ).toBe("exact")
@@ -178,7 +189,7 @@ if (!enabled || serverUrl === null) {
         hhAccountId: tenant.accountId,
         resumeId: withRow.id
       })
-      expect(exact).toMatchObject({ source: "exact", filter: exactFilter, minFit: 45 })
+      expect(exact).toMatchObject({ source: "exact", filter: withRequiredApplyRule(exactFilter), minFit: 45 })
       expect(
         (await support.applyFilterGet(tenant.userId, { hhAccountId: tenant.accountId, resumeId: noRow.id })).source
       ).toBe("account")
@@ -190,6 +201,33 @@ if (!enabled || serverUrl === null) {
       ).toBe("apply")
       const viaAccountDecision = await evaluate(tenant.userId, { vacancyId, resumeId: noRow.id })
       expect(viaAccountDecision.reasons[0]).toMatchObject({ code: "blocked_filter", detail: "salary >= 500000" })
+    })
+
+    test("the mandatory not-archived rule is stored, restored and keeps its position", async () => {
+      const tenant = await support.seedTenant("af-required-archived")
+      const saved = await support.applyFilterSet(tenant.userId, {
+        hhAccountId: tenant.accountId,
+        filter: { rules: [{ field: "title", op: "contains", value: "devops" }] }
+      })
+      expect(saved.filter.rules?.[0]).toEqual(REQUIRED_APPLY_RULE)
+      const view = await support.applyFilterGet(tenant.userId, { hhAccountId: tenant.accountId })
+      expect(view.filter.rules?.[0]).toEqual(REQUIRED_APPLY_RULE)
+
+      // Прямая запись без правила не убирает его.
+      const without = await support.applyFilterSet(tenant.userId, {
+        hhAccountId: tenant.accountId,
+        filter: { rules: [{ field: "title", op: "contains", value: "sre" }] }
+      })
+      expect(without.filter.rules?.[0]).toEqual(REQUIRED_APPLY_RULE)
+
+      // Перетаскивание сохраняет позицию правила в фильтре.
+      const reordered = await support.applyFilterSet(tenant.userId, {
+        hhAccountId: tenant.accountId,
+        filter: {
+          rules: [{ field: "title", op: "contains", value: "sre" }, REQUIRED_APPLY_RULE]
+        }
+      })
+      expect(reordered.filter.rules?.[1]).toEqual(REQUIRED_APPLY_RULE)
     })
 
     test("saving the same pair twice keeps one row and unspecified settings", async () => {
@@ -306,7 +344,7 @@ if (!enabled || serverUrl === null) {
         hhAccountId: tenant.accountId,
         presetId
       })
-      expect(copied).toMatchObject({ filter: template, minFit: 33, templatePresetId: presetId })
+      expect(copied).toMatchObject({ filter: withRequiredApplyRule(template), minFit: 33, templatePresetId: presetId })
 
       // Editing the preset afterwards does not move the filter.
       await support.runAs(
@@ -318,7 +356,7 @@ if (!enabled || serverUrl === null) {
       )
       expect(
         (await support.applyFilterGet(tenant.userId, { hhAccountId: tenant.accountId })).filter
-      ).toEqual(template)
+      ).toEqual(withRequiredApplyRule(template))
     })
 
     test("unknown account, resume or preset are NotFound; bad settings are rejected", async () => {

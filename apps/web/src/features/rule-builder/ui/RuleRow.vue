@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from "vue"
 import { areaLabel } from "@/shared/lib"
 import { useQuery } from "@pinia/colada"
 import type { PresetField, PresetOperator } from "@otbor/contract"
-import { ChevronDown, GripVertical, Sparkles, X } from "@lucide/vue"
+import { ChevronDown, GripVertical, Lock, Sparkles, X } from "@lucide/vue"
 import { keywordApi, keywordKeys } from "@/entities/keyword"
 import { resumeApi, resumeKeys } from "@/entities/resume"
 import { hhAccountApi, hhAccountKeys, hhAccountName } from "@/entities/hh-account"
@@ -50,8 +50,18 @@ const props = withDefaults(
     showCount?: boolean
     /** Показывает ручку перетаскивания. */
     sortable?: boolean
+    /** Обязательное правило: показывается текстом, редактирование и удаление закрыты. */
+    locked?: boolean
   }>(),
-  { disabled: false, count: undefined, dropped: undefined, autofocus: false, showCount: false, sortable: false }
+  {
+    disabled: false,
+    count: undefined,
+    dropped: undefined,
+    autofocus: false,
+    showCount: false,
+    sortable: false,
+    locked: false
+  }
 )
 const emit = defineEmits<{ remove: []; dragstart: [event: DragEvent]; dragend: [] }>()
 
@@ -166,7 +176,15 @@ const onCurrency = (value: unknown) => {
     >
       <GripVertical class="h-3.5 w-3.5" />
     </button>
-    <div class="rule-pill flex min-w-0 flex-1 items-stretch overflow-hidden rounded-lg border border-input bg-card/40 transition-colors focus-within:border-ring/60">
+    <div
+      v-if="props.locked"
+      class="flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-lg border border-dashed border-border bg-muted/40 px-2 text-xs text-muted-foreground"
+      title="Обязательное правило фильтра откликов: его нельзя удалить или изменить"
+    >
+      <Lock class="size-3.5 shrink-0" />
+      <span class="truncate">Вакансия не архивная</span>
+    </div>
+    <div v-else class="rule-pill flex min-w-0 flex-1 items-stretch overflow-hidden rounded-lg border border-input bg-card/40 transition-colors focus-within:border-ring/60">
     <FieldPicker :current="rule.field" :disabled="props.disabled" @pick="onField" />
 
     <Select :model-value="rule.op" :disabled="props.disabled" @update:model-value="onOp">
@@ -327,6 +345,7 @@ const onCurrency = (value: unknown) => {
     </span>
 
     <button
+      v-if="!props.locked"
       type="button"
       class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
             title="Удалить правило"

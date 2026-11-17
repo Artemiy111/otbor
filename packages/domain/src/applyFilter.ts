@@ -104,6 +104,27 @@ export const DEVOPS_APPLY_FILTER: PresetFilter = {
   ]
 }
 
+/**
+ * Обязательное правило фильтра откликов: вакансия не в архиве.
+ * Хранится в самом фильтре, чтобы быть видимым, но пользователь не может его
+ * удалить или изменить — сервер добавляет его обратно при чтении и записи.
+ */
+export const REQUIRED_APPLY_RULE: PresetRule = { field: "archived", op: "is_false" }
+
+export const isRequiredApplyRule = (rule: PresetRule): boolean =>
+  rule.field === "archived" && rule.op === "is_false"
+
+/**
+ * Возвращает фильтр откликов с обязательным правилом «не в архиве». Уже
+ * существующее правило сохраняет свою позицию: порядок правил пользователь
+ * меняет перетаскиванием, и сервер его не сбрасывает.
+ */
+export const withRequiredApplyRule = (filter: PresetFilter): PresetFilter => {
+  const rules = filter.rules ?? []
+  if (rules.some(isRequiredApplyRule)) return filter
+  return { ...filter, rules: [REQUIRED_APPLY_RULE, ...rules] }
+}
+
 /** Основы названий frontend-вакансий: одно правило `title contains_any`. */
 export const FRONTEND_TITLE_STEMS: ReadonlyArray<string> = [
   "frontend",

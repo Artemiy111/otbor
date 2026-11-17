@@ -1,6 +1,6 @@
 import type { ApplyFilterRecord, ApplyFilterSettings, ApplyFilterSource, PresetFilter } from "@otbor/contract"
 import { parseBoosts, parsePresetFilter } from "@otbor/contract"
-import { DEFAULT_APPLY_FILTER } from "@otbor/domain"
+import { DEFAULT_APPLY_FILTER, withRequiredApplyRule } from "@otbor/domain"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
@@ -58,6 +58,12 @@ export const find = (
     .limit(1)
     .pipe(Effect.map((rows) => (rows[0] === undefined ? null : toRecord(rows[0]))))
 
+/** Обязательное правило «не в архиве» добавляется ко всем источникам фильтра. */
+const enforce = (resolved: ResolvedApplyFilter): ResolvedApplyFilter => ({
+  ...resolved,
+  filter: withRequiredApplyRule(resolved.filter)
+})
+
 /**
  * Цепочка наследования: строка ровно этой пары (аккаунт, резюме), иначе строка
  * аккаунта (резюме null), иначе встроенные значения по умолчанию. Без аккаунта
@@ -83,14 +89,14 @@ export const resolve = (
         const resolved = fromRecord(exact, "exact")
         if (!(writerIsSet(resolved))) {
           const account = yield* find(tx, userId, hhAccountId, null)
-          if (account !== null) return withWriter(resolved, account)
+          if (account !== null) return enforce(withWriter(resolved, account))
         }
-        return resolved
+        return enforce(resolved)
       }
       const account = yield* find(tx, userId, hhAccountId, null)
-      if (account !== null) return fromRecord(account, resumeId === null ? "exact" : "account")
+      if (account !== null) return enforce(fromRecord(account, resumeId === null ? "exact" : "account"))
     }
-    return {
+    return enforce({
       source: "default",
       id: null,
       filter: hhAccountId === null ? DEFAULT_APPLY_FILTER.filter : defaultFilterFor(hhAccountId),
@@ -110,7 +116,7 @@ export const resolve = (
       writingEffort: DEFAULT_APPLY_FILTER.writingEffort,
       templatePresetId: null,
       updatedAt: null
-    }
+    })
   })
 
 /**
@@ -204,7 +210,7 @@ export const upsert = (
 ): RepoEffect<ApplyFilterRecord> =>
   Effect.gen(function*() {
     const existing = yield* find(tx, input.userId, input.hhAccountId, input.resumeId)
-    const filter = input.filter as Record<string, unknown>
+    const filter = withRequiredApplyRule(input.filter) as Record<string, unknown>
 
     if (existing !== null) {
       const next = {

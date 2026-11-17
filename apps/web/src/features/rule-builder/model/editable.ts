@@ -25,6 +25,8 @@ export interface EditableRule {
   currency: string
   /** Salary rules: a vacancy without a salary passes too. */
   orMissing: boolean
+  /** Обязательное правило фильтра откликов: нельзя удалить или изменить, но можно перетащить. */
+  locked?: boolean
 }
 
 export interface EditableBranch {

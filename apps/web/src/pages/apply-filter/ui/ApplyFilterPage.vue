@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue"
 import { useDebounceFn } from "@vueuse/core"
 import { useMutation, useQuery, useQueryCache } from "@pinia/colada"
 import type { ApplyFilterView, PresetPreview, PresetRecord, TestsPolicy } from "@otbor/contract"
+import { isRequiredApplyRule, withRequiredApplyRule } from "@otbor/domain"
 import { ArrowRight, CircleAlert, Copy, Save } from "@lucide/vue"
 import {
   applyFilterApi,
@@ -22,7 +23,7 @@ import {
   type FilterTarget
 } from "@/features/filter-target"
 import { RefreshButton } from "@/features/refresh-button"
-import { RuleBuilder, allRules, buildFilter, isComplete, toEditable } from "@/features/rule-builder"
+import { RuleBuilder, allRules, buildFilter, buildRule, isComplete, toEditable } from "@/features/rule-builder"
 import { PresetPreviewPanel } from "@/pages/presets"
 import { applyFilterHelp } from "../model/help"
 import { describeError, formatDate } from "@/shared/lib"
@@ -89,7 +90,13 @@ let lastSource: LoadSource | null = null
 /** Форма следует за тем, что сервер считает действующим для выбранной пары. */
 const load = (value: LoadSource) => {
   lastSource = value
-  filter.value = reactive(toEditable(value.filter))
+  const editable = toEditable(withRequiredApplyRule(value.filter))
+  // Обязательное правило показываем как обычное, но с замком: его можно перетащить, не изменить.
+  for (const rule of editable.rules) {
+    const stored = buildRule(rule)
+    if (stored !== null && isRequiredApplyRule(stored)) rule.locked = true
+  }
+  filter.value = reactive(editable)
   minFit.value = value.minFit
   tests.value = value.tests
   halfLife.value = value.freshHalfLifeHours

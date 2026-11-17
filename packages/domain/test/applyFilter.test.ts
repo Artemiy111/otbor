@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import type { PresetFilter } from "@otbor/contract"
 import { parsePresetFilter } from "@otbor/contract"
 import {
   DEFAULT_APPLY_FILTER,
@@ -6,9 +7,30 @@ import {
   FRONTEND_APPLY_FILTER,
   FRONTEND_TITLE_REJECT_STEMS,
   FRONTEND_TITLE_STEMS,
+  REQUIRED_APPLY_RULE,
   describeGroup,
-  describeRule
+  describeRule,
+  isRequiredApplyRule,
+  withRequiredApplyRule
 } from "../src/applyFilter.ts"
+
+describe("обязательное правило «не в архиве»", () => {
+  const title: PresetFilter["rules"] = [{ field: "title", op: "contains", value: "devops" }]
+
+  test("добавляется при отсутствии и не мутирует исходный фильтр", () => {
+    const source: PresetFilter = { rules: [...title!] }
+    const enforced = withRequiredApplyRule(source)
+    expect(enforced.rules?.[0]).toEqual(REQUIRED_APPLY_RULE)
+    expect(source.rules).toEqual(title)
+  })
+
+  test("сохраняет позицию уже существующего правила", () => {
+    const reordered: PresetFilter = { rules: [...title!, REQUIRED_APPLY_RULE] }
+    expect(withRequiredApplyRule(reordered)).toBe(reordered)
+    expect(isRequiredApplyRule(REQUIRED_APPLY_RULE)).toBe(true)
+    expect(isRequiredApplyRule({ field: "archived", op: "is_true" })).toBe(false)
+  })
+})
 
 describe("apply filter template", () => {
   test("is a valid, complete preset filter", () => {
