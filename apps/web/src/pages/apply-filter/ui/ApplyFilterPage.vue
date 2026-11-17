@@ -23,7 +23,17 @@ import {
   type FilterTarget
 } from "@/features/filter-target"
 import { RefreshButton } from "@/features/refresh-button"
-import { RuleBuilder, allRules, buildFilter, buildRule, isComplete, toEditable } from "@/features/rule-builder"
+import {
+  FunnelSankey,
+  RuleBuilder,
+  allRules,
+  buildFilter,
+  buildRule,
+  funnelStages,
+  isComplete,
+  toEditable,
+  useRuleFunnel
+} from "@/features/rule-builder"
 import { PresetPreviewPanel } from "@/pages/presets"
 import { applyFilterHelp } from "../model/help"
 import { describeError, formatDate } from "@/shared/lib"
@@ -73,6 +83,8 @@ const applyPresets = computed(() => presets.value.filter((preset) => preset.kind
 const otherPresets = computed(() => presets.value.filter((preset) => preset.kind !== "apply"))
 
 const filter = ref(reactive(toEditable(undefined)))
+const { counts: funnel, total: corpusTotal } = useRuleFunnel(filter)
+const stages = computed(() => funnelStages(filter.value, funnel.value, corpusTotal.value))
 const minFit = ref(45)
 const tests = ref<TestsPolicy>("human")
 const halfLife = ref(72)
@@ -329,7 +341,14 @@ const targetReady = computed(() => accountId.value !== "")
             </p>
           </div>
 
-          <RuleBuilder v-model="filter" :disabled="busy" />
+          <RuleBuilder v-model="filter" :disabled="busy" :counts="funnel" />
+
+          <div v-if="stages.length > 1" class="space-y-1 border-t border-border pt-3">
+            <h3 class="text-xs font-bold uppercase tracking-[0.06em] text-muted-foreground">
+              Воронка: как правила сужают корпус
+            </h3>
+            <FunnelSankey :stages="stages" />
+          </div>
 
           <PresetPreviewPanel
             v-if="preview !== null || previewError !== null"
