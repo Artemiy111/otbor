@@ -11,8 +11,8 @@ import { PRESET_FIELD_GROUPS, presetFieldMeta } from "../model/fields"
  * the current field, so changing and adding a field share one list and one style.
  */
 const props = withDefaults(
-  defineProps<{ label?: string; disabled?: boolean; current?: PresetField }>(),
-  { label: "Правило", disabled: false, current: undefined }
+  defineProps<{ label?: string; disabled?: boolean; current?: PresetField; compact?: boolean }>(),
+  { label: "Правило", disabled: false, current: undefined, compact: false }
 )
 const currentMeta = computed(() => (props.current === undefined ? null : presetFieldMeta(props.current)))
 const emit = defineEmits<{ pick: [field: PresetField] }>()
@@ -48,7 +48,8 @@ const pick = (field: PresetField) => {
       <button
         v-if="currentMeta === null"
         type="button"
-        class="inline-flex h-7 items-center gap-1 rounded-md border border-dashed border-border px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+        class="inline-flex items-center gap-1 rounded-md border border-dashed border-border text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
+        :class="props.compact ? 'h-6 px-1.5 text-[11px]' : 'h-7 px-2 text-xs'"
         :disabled="props.disabled"
       >
         <Plus class="h-3.5 w-3.5" />
@@ -57,8 +58,11 @@ const pick = (field: PresetField) => {
       <button
         v-else
         type="button"
-        class="inline-flex h-8 w-[150px] shrink-0 items-center justify-between gap-1 whitespace-nowrap rounded-md border bg-transparent px-2 text-xs font-medium shadow-sm hover:bg-accent disabled:opacity-50"
-        :class="currentMeta.ai ? 'border-ai/50 bg-ai-muted text-ai' : 'border-input'"
+        class="inline-flex shrink-0 items-center justify-between gap-1 whitespace-nowrap rounded-md border bg-transparent px-2 text-xs font-medium shadow-sm hover:bg-accent disabled:opacity-50"
+        :class="[
+          currentMeta.ai ? 'border-ai/50 bg-ai-muted text-ai' : 'border-input',
+          props.compact ? 'h-7 w-[132px]' : 'h-8 w-[150px]'
+        ]"
         :title="currentMeta.hint"
         :disabled="props.disabled"
       >

@@ -43,6 +43,8 @@ export interface EditableGroup {
 export interface EditableFilter {
   rules: Array<EditableRule>
   groups: Array<EditableGroup>
+  /** Порядок блоков на экране: правила и группы «или» перемешаны. На фильтр не влияет. */
+  order?: Array<number>
   location: KeywordMatchLocation
   /** Legacy lexicon restriction. Carried through unchanged, never edited. */
   keywordIds: PresetFilter["keywordIds"]
@@ -99,6 +101,7 @@ export const toEditableRule = (rule: PresetRule): EditableRule => {
 export const emptyEditable = (): EditableFilter => ({
   rules: [],
   groups: [],
+  order: [],
   location: "any",
   keywordIds: undefined
 })
@@ -111,21 +114,24 @@ export const NEW_PRESET_FILTER: PresetFilter = {
   ]
 }
 
-export const toEditable = (filter: PresetFilter | undefined): EditableFilter =>
-  filter === undefined
-    ? emptyEditable()
-    : {
-        rules: presetRules(filter).map(toEditableRule),
-        groups: (filter.groups ?? []).map((group) => ({
-          id: sequence++,
-          branches: group.branches.map((branch) => ({
-            id: sequence++,
-            rules: branch.rules.map(toEditableRule)
-          }))
-        })),
-        location: filter.location ?? "any",
-        keywordIds: filter.keywordIds
-      }
+export const toEditable = (filter: PresetFilter | undefined): EditableFilter => {
+  if (filter === undefined) return emptyEditable()
+  const rules = presetRules(filter).map(toEditableRule)
+  const groups = (filter.groups ?? []).map((group) => ({
+    id: sequence++,
+    branches: group.branches.map((branch) => ({
+      id: sequence++,
+      rules: branch.rules.map(toEditableRule)
+    }))
+  }))
+  return {
+    rules,
+    groups,
+    order: [...rules.map((rule) => rule.id), ...groups.map((group) => group.id)],
+    location: filter.location ?? "any",
+    keywordIds: filter.keywordIds
+  }
+}
 
 /** The stored rule for an editable one, or null while its value is still empty. */
 const buildBase = (rule: EditableRule): PresetRule | null => {
