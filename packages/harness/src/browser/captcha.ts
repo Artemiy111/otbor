@@ -185,7 +185,7 @@ export type CaptchaSolve = (page: Page) => Effect.Effect<boolean, Error>
  *          ├────────── пустой ответ ──────► СБОЙ МОДЕЛИ: сбой +1, к началу
  *          ▼
  *   ┌─────────────┐  поля/кнопки нет      ┌───────────────────┐
- *   │ ПАУЗА 10-15 │───────────────────────►│ СБОЙ ВВОДА        │ сбой +1,
+ *   │ ПАУЗА 3-5   │───────────────────────►│ СБОЙ ВВОДА        │ сбой +1,
  *   │ ВВЕСТИ ОТВЕТ│                        └───────────────────┘ к началу
  *   └──────┬──────┘
  *          │ «Отправить» нажато
@@ -250,16 +250,19 @@ export const makeCaptchaSolve = (
         await button.click({ timeout: 5_000 })
         return true
       }).pipe(Effect.orElseSucceed(() => false))
+      yield* Effect.annotateCurrentSpan({ "captcha.renew.clicked": refreshed })
       if (!refreshed) {
         yield* Effect.logWarning("captcha: renew button not found, retrying on the same picture")
         return false
       }
-      if (!(yield* waitPictureChange(page, before))) {
+      const changed = yield* waitPictureChange(page, before)
+      yield* Effect.annotateCurrentSpan({ "captcha.renew.src_changed": changed })
+      if (!changed) {
         yield* Effect.logWarning("captcha: the picture did not change after renew, reading the same one")
         return false
       }
       return true
-    })
+    }).pipe(Effect.withSpan("captcha.renew"))
 
   /**
    * Язык, который реально показан на картинке. Кнопка hh предлагает перейти на
@@ -272,6 +275,7 @@ export const makeCaptchaSolve = (
       // hh по умолчанию показывает русскую капчу; если кнопки нет или подпись
       // непонятна, композиция промпта всё равно получит язык по умолчанию.
       const fallback: CaptchaLanguage = "ru"
+      yield* Effect.annotateCurrentSpan({ "captcha.language.clicked": false })
       const before = yield* pictureSrc(page)
       // Картинка ещё не отрисована - окно капчи не готово, кнопку искать рано.
       if (before === null) return fallback
@@ -295,7 +299,10 @@ export const makeCaptchaSolve = (
         yield* Effect.logWarning(`captcha: unknown language button label "${label}", solving as shown`)
         return fallback
       }
-      if (offered !== language) return offered === "en" ? ("ru" as const) : ("en" as const)
+      // Подпись называет язык перехода, так что текущий язык - наоборот.
+      const previous: CaptchaLanguage = offered === "en" ? "ru" : "en"
+      yield* Effect.annotateCurrentSpan({ "captcha.language.previous": previous })
+      if (offered !== language) return previous
       const clicked = yield* Effect.tryPromise(async () => {
         await button!.click({ timeout: 5_000 })
         return true
@@ -304,10 +311,13 @@ export const makeCaptchaSolve = (
         yield* Effect.logWarning("captcha: language button click failed, solving as shown")
         return fallback
       }
-      yield* waitPictureChange(page, before)
+      const changed = yield* waitPictureChange(page, before)
+      yield* Effect.annotateCurrentSpan({ "captcha.language.clicked": true, "captcha.language.src_changed": changed })
       yield* Effect.logInfo(`captcha: switched the captcha to ${language}`)
       return language
-    })
+    }).pipe(
+      Effect.withSpan("captcha.language", { attributes: { "captcha.language.target": language } })
+    )
 
   /** Картинка капчи; `null`, если она так и не отрисовалась. */
   const capturePicture = (page: Page) =>
@@ -335,11 +345,18 @@ export const makeCaptchaSolve = (
         const shot = yield* Effect.tryPromise(() => picture.screenshot({ type: "png", timeout: 5_000 })).pipe(
           Effect.orElseSucceed(() => null)
         )
-        if (shot !== null && !isBlankPicture(shot)) return shot
+        if (shot !== null && !isBlankPicture(shot)) {
+          yield* Effect.annotateCurrentSpan({
+            "captcha.capture.bytes": shot.byteLength,
+            "captcha.capture.blank_retries": tryNo
+          })
+          return shot
+        }
         if (tryNo < BLANK_RETRIES - 1) yield* Effect.sleep(`${BLANK_RETRY_MS} millis`)
       }
+      yield* Effect.annotateCurrentSpan({ "captcha.capture.bytes": 0, "captcha.capture.blank_retries": BLANK_RETRIES })
       return null
-    })
+    }).pipe(Effect.withSpan("captcha.capture"))
 
   /**
    * Ввод ответа. Сначала ждём поле: страница рисует окно капчи не мгновенно.
@@ -365,6 +382,24 @@ export const makeCaptchaSolve = (
         return true
       }).pipe(Effect.orElseSucceed(() => false))
     })
+
+  /**
+   * Пауза перед отправкой и сам ввод ответа отдельным спаном: по нему видно,
+   * сколько времени заняло ожидание и дошёл ли ответ до hh.
+   */
+  const submitAnswer = (page: Page, text: string, durationMs: number) =>
+    Effect.gen(function*() {
+      const target = CAPTCHA_SOLVE_MIN_DELAY_SECONDS +
+        Math.random() * (CAPTCHA_SOLVE_MAX_DELAY_SECONDS - CAPTCHA_SOLVE_MIN_DELAY_SECONDS)
+      const remaining = target - durationMs / 1000
+      if (remaining > 0) yield* pause(remaining)
+      const submitted = yield* typeAnswer(page, text)
+      yield* Effect.annotateCurrentSpan({
+        "captcha.answer.pause_seconds": Math.max(0, Math.round(remaining * 100) / 100),
+        "captcha.answer.submitted": submitted
+      })
+      return submitted
+    }).pipe(Effect.withSpan("captcha.answer"))
 
   /**
    * Один проход решателя по странице. Целиком оборачивается в спан
@@ -477,13 +512,9 @@ export const makeCaptchaSolve = (
         }
 
         const text = result.text
-        // Человек не отвечает мгновенно: добираем паузу до 10-15 секунд.
-        const target = CAPTCHA_SOLVE_MIN_DELAY_SECONDS +
-          Math.random() * (CAPTCHA_SOLVE_MAX_DELAY_SECONDS - CAPTCHA_SOLVE_MIN_DELAY_SECONDS)
-        const remaining = target - result.durationMs / 1000
-        if (remaining > 0) yield* pause(remaining)
-
-        if (!(yield* typeAnswer(page, text))) {
+        // Человек не отвечает мгновенно: добираем паузу до 3-5 секунд.
+        const submitted = yield* submitAnswer(page, text, result.durationMs)
+        if (!submitted) {
           stalls += 1
           const error = "поле ответа не найдено на странице"
           failures.set(page, error)

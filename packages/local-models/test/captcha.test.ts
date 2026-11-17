@@ -4,6 +4,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
   CAPTCHA_PROMPT,
+  CAPTCHA_SOLVE_MAX_DELAY_SECONDS,
+  CAPTCHA_SOLVE_MIN_DELAY_SECONDS,
   decodePng,
   encodeGrayPng,
   prepareCaptchaImage,
@@ -65,6 +67,11 @@ describe("captcha settings", () => {
 })
 
 describe("captchaPrompt", () => {
+  test("пауза перед отправкой ответа не длиннее пяти секунд", () => {
+    expect(CAPTCHA_SOLVE_MIN_DELAY_SECONDS).toBeGreaterThan(0)
+    expect(CAPTCHA_SOLVE_MAX_DELAY_SECONDS).toBeLessThanOrEqual(5)
+  })
+
   test("подсказка о языке добавляется по показанному языку капчи", () => {
     expect(captchaPrompt(null)).toBe(CAPTCHA_PROMPT)
     expect(captchaPrompt("en")).toContain("The CAPTCHA text is in English.")

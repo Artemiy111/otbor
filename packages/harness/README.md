@@ -104,6 +104,6 @@ language button before reading, without spending an attempt; if the button is
 missing, the captcha is solved as shown. The model also gets a language hint:
 English when the button was used, Russian when the page stayed as hh showed it. The
 picture is sent as an in-memory PNG (data URI for local servers, an ACP `image`
-block for agents). After the answer is typed the executor waits 10-15 s, like
+block for agents). After the answer is typed the executor waits 3-5 s, like
 a person, and retries up to `maxAttempts`; if hh still shows the captcha the
 job exits with `captcha` as before.

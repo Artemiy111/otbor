@@ -145,11 +145,11 @@ export const captchaPrompt = (language: CaptchaLanguage | null): string =>
   language === null ? CAPTCHA_PROMPT : `${CAPTCHA_PROMPT} The CAPTCHA text is in ${language === "en" ? "English" : "Russian"}.`
 
 /**
- * Пауза между появлением капчи и отправкой ответа (как в hh-applicant-tool:
- * мгновенный ответ выглядит как бот). Секунды, случайно в этом диапазоне.
+ * Пауза между появлением капчи и отправкой ответа: мгновенный ответ выглядит
+ * как бот, но ждать 10-15 секунд слишком долго. Секунды в этом диапазоне.
  */
-export const CAPTCHA_SOLVE_MIN_DELAY_SECONDS = 10
-export const CAPTCHA_SOLVE_MAX_DELAY_SECONDS = 15
+export const CAPTCHA_SOLVE_MIN_DELAY_SECONDS = 3
+export const CAPTCHA_SOLVE_MAX_DELAY_SECONDS = 5
 
 /** Ответ модели -> то, что вводят в поле: без размышлений, кавычек, переносов строк. */
 export const cleanCaptchaAnswer = (raw: string): string => {
