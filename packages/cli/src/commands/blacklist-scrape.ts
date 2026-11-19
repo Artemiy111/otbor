@@ -33,7 +33,8 @@ export const blacklistScrapeCommand = Command.make(
     })
 
     yield* Effect.tryPromise({
-      try: () => page.goto("https://hh.ru/applicant/blacklist/employer", { waitUntil: "networkidle" }),
+      // hh.ru не посылает `load`/`networkidle` на своих страницах: ждём готовности DOM.
+      try: () => page.goto("https://hh.ru/applicant/blacklist/employer", { waitUntil: "domcontentloaded", timeout: 60_000 }),
       catch: (error) => new Error(`blacklist goto failed: ${error}`)
     })
 

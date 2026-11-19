@@ -39,10 +39,17 @@ export const hhLoginCommand = Command.make(
       catch: (error) => new Error(`page failed: ${error}`)
     }))
 
+    // hh.ru/login не посылает `load`: на странице висит запрос, который никогда
+    // не завершается. Ждём только DOM — этого достаточно, чтобы форма входа
+    // стала доступна, и переход не отнимает 30 секунд у оператора.
     yield* Effect.tryPromise({
-      try: () => page.goto("https://hh.ru/login"),
+      try: () => page.goto("https://hh.ru/login", { waitUntil: "domcontentloaded", timeout: 60_000 }),
       catch: (error) => new Error(`goto failed: ${error}`)
-    })
+    }).pipe(
+      // Окно, оставшееся после не удавшегося перехода, выглядит как рабочий
+      // вход: оператор логинится в нём, а CLI уже завершился и не сохранил cookies.
+      Effect.tapError(() => Effect.promise(() => browser.close().catch(() => undefined)))
+    )
 
     yield* Console.log("Войдите в аккаунт hh.ru в открывшемся браузере. Автопроверка каждые 2 сек.")
 
