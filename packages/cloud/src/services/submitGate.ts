@@ -153,21 +153,22 @@ export const trySubmit = Effect.fnUntraced(function*(
     return refused("kit_refused", `kit refused: ${problems.map((problem) => problem.code).join(", ")}`, problems)
   }
 
-  // Настройка «только с письмом»: автоотправка без письма не уходит, заявка
-  // ждёт человека. Одобрение оператором письмо не требует.
+  // Настройка «только с письмом»: автоотклик без письма не уходит, заявка
+  // ждёт человека. Ручная отправка этой настройкой не блокируется. Правило
+  // читается из базы на каждую отправку, поэтому действует сразу.
   if (trigger === "auto" && (kit.letter ?? "").trim() === "") {
-    const settings = yield* ApplyFilterRepository.resolve(
+    const required = yield* ApplyFilterRepository.requireLetterFor(
       tx,
       input.userId,
       application.hhAccountId,
       application.resumeId ?? null
     )
-    if (settings.requireLetter) {
+    if (required) {
       return refused("kit_refused", "kit refused: letter_required", [
         {
           code: "letter_required",
           questionId: "",
-          message: "в настройках включено «только с сопроводительным письмом», а письма нет"
+          message: ApplyFilterRepository.LETTER_REQUIRED_MESSAGE
         }
       ])
     }

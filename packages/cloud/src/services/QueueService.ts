@@ -20,6 +20,7 @@ import { generateHarnessToken, hashHarnessToken } from "../auth/harnessToken.ts"
 import { Database } from "../db/Database.ts"
 import * as CaptchaAttemptRepository from "../repositories/CaptchaAttemptRepository.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
+import * as ApplyFilterRepository from "../repositories/ApplyFilterRepository.ts"
 import * as HhAccountRepository from "../repositories/HhAccountRepository.ts"
 import * as HarnessRepository from "../repositories/HarnessRepository.ts"
 import * as SettingsRepository from "../repositories/SettingsRepository.ts"
@@ -476,24 +477,48 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                     hashHarnessToken(input.token)
                   ))
                 ) {
-                  return null
+                  return { tag: "bad_token" } as const
                 }
                 yield* HarnessRepository.touch(tx, input.harnessId)
-                return yield* QueueRepository.heartbeat(tx, {
+                // Последний взгляд перед кликом: галочка могла включиться уже
+                // после того, как автоотправка встала в очередь или была взята
+                // харнессом. Ручные отправки проверка не трогает.
+                const blocked = yield* QueueRepository.letterBlockedSubmit(tx, input.jobId)
+                if (blocked !== null) {
+                  yield* ApplicationRepository.transition(
+                    tx,
+                    currentUser.userId,
+                    blocked.applicationId,
+                    "needs_human",
+                    {
+                      from: ["queued", "submitting"],
+                      patch: {
+                        lastError: ApplyFilterRepository.LETTER_REQUIRED_MESSAGE,
+                        blockedReason: "kit_refused"
+                      }
+                    }
+                  )
+                  yield* QueueRepository.cancelActiveSubmit(tx, blocked.applicationId)
+                  return { tag: "blocked" } as const
+                }
+                const alive = yield* QueueRepository.heartbeat(tx, {
                   jobId: input.jobId,
                   leaseId: input.leaseId,
                   epoch: input.epoch,
                   holder: input.harnessId
                 })
+                return { tag: "alive", alive } as const
               })
             )
             .pipe(Effect.mapError(toStorageError("harness.heartbeat")))
 
-          if (result === null) {
+          if (result.tag === "bad_token") {
             return yield* new HarnessRejected({ message: invalidToken })
           }
-
-          return result
+          if (result.tag === "blocked") {
+            return { ok: false, reason: ApplyFilterRepository.LETTER_REQUIRED_MESSAGE }
+          }
+          return result.alive
             ? { ok: true, reason: null }
             : { ok: false, reason: "lease expired or was superseded; stop working" }
         })

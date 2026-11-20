@@ -180,6 +180,14 @@ export class ApplyFilterService extends Context.Service<ApplyFilterService, Appl
                 // транзакции. Вызываем после любой записи: управляющая строка
                 // могла смениться и без явного autoMode (новая парная строка).
                 yield* ApplicationRepository.demoteUngovernedAuto(tx, userId, input.hhAccountId)
+                // Включённая галочка «только с письмом» действует сразу: уже
+                // поставленные в очередь автоотправки без письма снимаются,
+                // заявки уходят к человеку. Ручные отправки не трогаются.
+                // Читаем правило после записи, поэтому оно учитывает и строку
+                // аккаунта, если у резюме своей строки нет.
+                if (yield* ApplyFilterRepository.requireLetterFor(tx, userId, input.hhAccountId, input.resumeId ?? null)) {
+                  yield* ApplicationRepository.parkLetterlessQueued(tx, userId, input.hhAccountId)
+                }
                 return saved
               })
             )

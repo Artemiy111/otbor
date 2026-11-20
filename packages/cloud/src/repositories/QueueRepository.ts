@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
 import { harnessJob } from "../db/tables.ts"
+import * as ApplyFilterRepository from "./ApplyFilterRepository.ts"
 import * as SettingsRepository from "./SettingsRepository.ts"
 
 export interface JobRow {
@@ -929,6 +930,53 @@ export const cancelForApplication = (
       returning id
     `)
     .pipe(Effect.map((result) => result.rows.length))
+
+/**
+ * Отменяет submit-задачу, до клика по которой добралась смена настроек. Снятие
+ * аренды важнее смены статуса: харнесс перестанет слать heartbeat, а его
+ * завершение будет отвергнуто как устаревшее и не перезапишет причину остановки.
+ */
+export const cancelActiveSubmit = (tx: Executor, applicationId: string): RepoEffect<number> =>
+  tx
+    .execute(sql`
+      update harness_jobs
+      set status = 'cancelled',
+          lease_id = null,
+          lease_until = null,
+          last_error = 'stopped before the click: the letter is required by the current settings',
+          updated_at = now()
+      where application_id = ${applicationId}
+        and stage = 'submit'
+        and status in ('pending', 'leased', 'running')
+      returning id
+    `)
+    .pipe(Effect.map((result) => result.rows.length))
+
+/**
+ * Submit-задача, которую надо остановить прямо перед кликом: письма нет, а в
+ * текущих настройках включено «только с сопроводительным». Проверяется на
+ * каждом heartbeat, поэтому галочка действует и на задачи, которые уже лежали
+ * в очереди или были взяты в работу до её включения.
+ */
+export const letterBlockedSubmit = (
+  tx: Executor,
+  jobId: string
+): RepoEffect<{ readonly applicationId: string } | null> =>
+  tx
+    .execute(sql`
+      select a.id as application_id
+      from harness_jobs j
+      join application a on a.id = j.application_id
+      where j.id = ${jobId}
+        and j.stage = 'submit'
+        and a.auto_run = 'auto'
+        and coalesce(trim(j.payload->'kit'->>'letter'), '') = ''
+        and ${ApplyFilterRepository.governingRequireLetterSql("a")}
+    `)
+    .pipe(Effect.map((result) => {
+      const row = result.rows[0]
+      return row === undefined ? null : { applicationId: String(row.application_id) }
+    }))
 
 /**
  * Closes the submit job a reconcile has explained. Only a job parked in

@@ -377,3 +377,38 @@ export const governingAutoMode = (
     const account = yield* find(tx, userId, hhAccountId, null)
     return account?.autoMode ?? "off"
   })
+
+/** Причина остановки, которую видит оператор в карточке отклика. */
+export const LETTER_REQUIRED_MESSAGE =
+  "В настройках включено «только с сопроводительным письмом», а письма нет"
+
+/**
+ * SQL-скаляр для заявки `alias`: правило пары (аккаунт, резюме), если она есть,
+ * иначе строка аккаунта. Как и для `auto_mode`, своя строка резюме перекрывает
+ * аккаунт целиком: галочка аккаунта не действует на резюме со своими настройками.
+ */
+export const governingRequireLetterSql = (alias: string) => {
+  const a = sql.identifier(alias)
+  return sql`coalesce(
+    (select f.require_letter from apply_filter f
+      where f.user_id = ${a}.user_id and f.hh_account_id = ${a}.hh_account_id and f.resume_id = ${a}.resume_id
+      limit 1),
+    (select f.require_letter from apply_filter f
+      where f.user_id = ${a}.user_id and f.hh_account_id = ${a}.hh_account_id and f.resume_id is null
+      limit 1),
+    false)`
+}
+
+/** Та же проверка для пары (аккаунт, резюме) без заявки. */
+export const requireLetterFor = (
+  tx: Executor,
+  userId: string,
+  hhAccountId: string,
+  resumeId: string | null
+): RepoEffect<boolean> =>
+  Effect.gen(function*() {
+    const pair = resumeId === null ? null : yield* find(tx, userId, hhAccountId, resumeId)
+    if (pair !== null) return pair.requireLetter
+    const account = yield* find(tx, userId, hhAccountId, null)
+    return account?.requireLetter ?? false
+  })

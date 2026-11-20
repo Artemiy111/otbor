@@ -11,6 +11,7 @@ import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
 import { application, applicationAttempt, applicationKit } from "../db/tables.ts"
 import * as ApplyFilterRepository from "./ApplyFilterRepository.ts"
+import * as QueueRepository from "./QueueRepository.ts"
 
 export const APPLICABLE_STATES = ["draft", "needs_human", "failed"] as const
 
@@ -590,6 +591,51 @@ export const demoteUngovernedAuto = (
     `)
     .pipe(Effect.map((result) => result.rows.length))
 
+/**
+ * Галочка «только с письмом» включилась: автоотправки, уже поставленные в
+ * очередь без письма, отменяются, а заявки возвращаются человеку в той же
+ * транзакции. Ручные отправки не трогаются. Проверка по каждой заявке: правило
+ * может быть включено только для одного резюме.
+ */
+export const parkLetterlessQueued = (
+  tx: Executor,
+  userId: string,
+  hhAccountId: string
+): RepoEffect<number> =>
+  Effect.gen(function*() {
+    const rows = yield* tx.execute(sql`
+      select a.id
+      from application a
+      where a.user_id = ${userId}
+        and a.hh_account_id = ${hhAccountId}
+        and a.auto_run = 'auto'
+        and a.state in ('queued', 'submitting')
+        and ${ApplyFilterRepository.governingRequireLetterSql("a")}
+        and exists (
+          select 1 from harness_jobs j
+          where j.application_id = a.id
+            and j.stage = 'submit'
+            and j.status in ('pending', 'leased', 'running')
+            and coalesce(trim(j.payload->'kit'->>'letter'), '') = ''
+        )
+    `)
+    let parked = 0
+    for (const row of rows.rows) {
+      const id = String(row.id)
+      const updated = yield* transition(tx, userId, id, "needs_human", {
+        from: ["queued", "submitting"],
+        patch: {
+          lastError: ApplyFilterRepository.LETTER_REQUIRED_MESSAGE,
+          blockedReason: "kit_refused"
+        }
+      })
+      if (updated !== null) {
+        yield* QueueRepository.cancelActiveSubmit(tx, id)
+        parked += 1
+      }
+    }
+    return parked
+  })
 
 /** Заявка, которую раннер автооткликов ведёт дальше. */
 export interface RunnerApplicationRow {

@@ -283,6 +283,137 @@ if (!enabled || serverUrl === null) {
       expect((await rowOf(applicationId)).state).toBe("needs_human")
     }, 60_000)
 
+    test("require_letter: manual approval still sends a letterless draft", async () => {
+      const tenant = await support.seedTenant("gate-letter-manual")
+      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      await support.applyFilterSet(tenant.userId, {
+        hhAccountId: tenant.accountId, filter: {}, requireLetter: true
+      })
+      const vacancyId = await support.seedVacancy("gate-letter-manual")
+      const applicationId = await support.seedApplication({
+        userId: tenant.userId, accountId: tenant.accountId, vacancyId, state: "draft"
+      })
+      await readForm(tenant, harness, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
+      await support.applicationSetKit(tenant.userId, {
+        applicationId,
+        formHash: await formHashOf(vacancyId),
+        letter: null,
+        answers: fullAnswers()
+      })
+
+      const result = await support.runAs(
+        tenant.userId,
+        Effect.gen(function*() {
+          return yield* (yield* ApplicationService).approve(applicationId).pipe(Effect.result)
+        }).pipe(
+          Effect.provide(ApplicationService.layerWith({ dailyApplyLimit: 200 })),
+          Effect.provideService(CurrentUser, { userId: tenant.userId as UserId })
+        )
+      )
+      // Галочка — только про автоотклики: человек сам решает, отправлять ли без письма.
+      expect(result._tag).toBe("Success")
+      expect(await support.countJobs(applicationId, "submit")).toBe(1)
+      expect((await rowOf(applicationId)).state).toBe("queued")
+    }, 60_000)
+
+    test("require_letter: a resume's own settings override the account switch", async () => {
+      const tenant = await support.seedTenant("gate-letter-resume")
+      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const resumeId = await support.seedResume({ userId: tenant.userId, accountId: tenant.accountId, title: "gate-letter-resume" })
+      await support.applyFilterSet(tenant.userId, {
+        hhAccountId: tenant.accountId, filter: {}, autoMode: "auto", requireLetter: true
+      })
+      await support.applyFilterSet(tenant.userId, {
+        hhAccountId: tenant.accountId, resumeId, filter: {}, autoMode: "auto", requireLetter: false
+      })
+      const vacancyId = await support.seedVacancy("gate-letter-resume")
+      const applicationId = await support.seedApplication({
+        userId: tenant.userId, accountId: tenant.accountId, resumeId, vacancyId, state: "preparing", autoRun: "auto"
+      })
+      await support.applicationSetKit(tenant.userId, {
+        applicationId,
+        formHash: await formHashOf(vacancyId),
+        letter: null,
+        answers: fullAnswers()
+      })
+
+      await readForm(tenant, harness, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
+      expect(await support.countJobs(applicationId, "submit")).toBe(1)
+      expect((await rowOf(applicationId)).state).toBe("queued")
+    }, 60_000)
+
+    test("require_letter: turning the switch on unqueues letters already waiting to be sent", async () => {
+      const tenant = await support.seedTenant("gate-letter-backlog")
+      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      await autoOn(tenant)
+      const vacancyId = await support.seedVacancy("gate-letter-backlog")
+      const applicationId = await support.seedApplication({
+        userId: tenant.userId, accountId: tenant.accountId, vacancyId, state: "preparing", autoRun: "auto"
+      })
+      // Кит без письма сохраняем до чтения формы: тогда чтение поставит submit.
+      await support.applicationSetKit(tenant.userId, {
+        applicationId,
+        formHash: await formHashOf(vacancyId),
+        letter: null,
+        answers: fullAnswers()
+      })
+      await readForm(tenant, harness, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
+      expect(await support.countJobs(applicationId, "submit")).toBe(1)
+
+      await support.applyFilterSet(tenant.userId, {
+        hhAccountId: tenant.accountId, filter: {}, autoMode: "auto", requireLetter: true
+      })
+
+      expect((await rowOf(applicationId)).state).toBe("needs_human")
+      expect((await rowOf(applicationId)).last_error).toContain("только с сопроводительным")
+      const status = await support.runAs(
+        "owner",
+        support.ownerTx((tx) =>
+          tx.execute(sql`select status from harness_jobs where application_id = ${applicationId} and stage = 'submit'`)
+        )
+      )
+      expect(status.rows[0]?.status).toBe("cancelled")
+    }, 60_000)
+
+    test("require_letter: a submit job already leased stops before the click", async () => {
+      const tenant = await support.seedTenant("gate-letter-lease")
+      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      await autoOn(tenant)
+      const vacancyId = await support.seedVacancy("gate-letter-lease")
+      const applicationId = await support.seedApplication({
+        userId: tenant.userId, accountId: tenant.accountId, vacancyId, state: "preparing", autoRun: "auto"
+      })
+      await support.applicationSetKit(tenant.userId, {
+        applicationId,
+        formHash: await formHashOf(vacancyId),
+        letter: null,
+        answers: fullAnswers()
+      })
+      await readForm(tenant, harness, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
+      const leased = await support.leaseNext(tenant.userId, harness.id, harness.token!, [tenant.accountId])
+      expect(leased.job?.stage).toBe("submit")
+
+      // Переключаем галочку напрямую в базе: сценарий гонки, когда харнесс уже
+      // держит задачу, а смена настроек не прошла через сервис.
+      await support.runAs(
+        "owner",
+        support.ownerTx((tx) =>
+          tx.execute(sql`update apply_filter set require_letter = true where hh_account_id = ${tenant.accountId}`)
+        )
+      )
+
+      const heartbeat = await support.heartbeatJob(tenant.userId, {
+        harnessId: harness.id,
+        token: harness.token!,
+        jobId: leased.job!.id,
+        leaseId: leased.job!.leaseId!,
+        epoch: leased.job!.leaseEpoch
+      })
+      expect(heartbeat.ok).toBe(false)
+      expect(heartbeat.reason).toContain("только с сопроводительным")
+      expect((await rowOf(applicationId)).state).toBe("needs_human")
+    }, 60_000)
+
     test("a failed form read of account A does not park the application of account B", async () => {
       const tenant = await support.seedTenant("gate-park")
       const other = await support.addAccount(tenant.userId, "gate-park-b")
