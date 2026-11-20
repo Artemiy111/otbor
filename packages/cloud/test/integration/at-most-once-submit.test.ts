@@ -13,7 +13,7 @@ import {
   leaseNext,
   makeJobRunnable,
   migrateTestDatabase,
-  registerHarness,
+  registerRunner,
   seedApplication,
   seedKit,
   seedTenant,
@@ -82,7 +82,7 @@ if (!integrationEnabled || serverUrl === null) {
       expect(second.id).toBe(first.id)
       expect(await countJobs(appId, "submit")).toBe(1)
 
-      const h = await registerHarness(tenant.userId, [tenant.accountId])
+      const h = await registerRunner(tenant.userId, [tenant.accountId])
       const submitLease = await leaseNext(tenant.userId, h.id, h.token!, [tenant.accountId])
       expect(submitLease.job?.id).toBe(first.id)
       expect(submitLease.job?.stage).toBe("submit")
@@ -91,7 +91,7 @@ if (!integrationEnabled || serverUrl === null) {
       // The cloud does not trust "clicked": it parks the application in
       // reconcile instead of marking it submitted.
       const clicked = await completeJob(tenant.userId, {
-        harnessId: h.id,
+        runnerId: h.id,
         token: h.token!,
         jobId: submitLease.job!.id,
         leaseId: submitLease.job!.leaseId!,
@@ -119,7 +119,7 @@ if (!integrationEnabled || serverUrl === null) {
       expect(reconcileLease.job?.stage).toBe("reconcile")
 
       const confirmed = await completeJob(tenant.userId, {
-        harnessId: h.id,
+        runnerId: h.id,
         token: h.token!,
         jobId: reconcileLease.job!.id,
         leaseId: reconcileLease.job!.leaseId!,
@@ -147,7 +147,7 @@ if (!integrationEnabled || serverUrl === null) {
       expect(await countJobs(appId, "reconcile")).toBe(1)
     })
 
-    test("a harness-reported submitted is still parked in reconcile", async () => {
+    test("a runner-reported submitted is still parked in reconcile", async () => {
       const tenant = await seedTenant("submit-trust")
       const vacancyId = await seedVacancy("submit-trust")
       const appId = await seedApplication({
@@ -167,13 +167,13 @@ if (!integrationEnabled || serverUrl === null) {
         kit
       })
 
-      const h = await registerHarness(tenant.userId, [tenant.accountId])
+      const h = await registerRunner(tenant.userId, [tenant.accountId])
       const submitLease = await leaseNext(tenant.userId, h.id, h.token!, [tenant.accountId])
       expect(submitLease.job?.stage).toBe("submit")
 
-      // The harness is untrusted: "submitted" is not success.
+      // The runner is untrusted: "submitted" is not success.
       const trusted = await completeJob(tenant.userId, {
-        harnessId: h.id,
+        runnerId: h.id,
         token: h.token!,
         jobId: submitLease.job!.id,
         leaseId: submitLease.job!.leaseId!,

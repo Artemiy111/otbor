@@ -1,7 +1,7 @@
 import {
   type FormAnswer,
-  type HarnessExit,
-  type HarnessExitTag,
+  type RunnerExit,
+  type RunnerExitTag,
   ChatReadEvidence,
   type KitAnswer,
   LetterAttachEvidence,
@@ -34,7 +34,7 @@ import { Option, Schema } from "effect"
 
 /**
  * Pure apply rules: kit validation and the cloud's reading of what a browser
- * harness reports. No database, no clock. The harness is untrusted, so every
+ * runner reports. No database, no clock. The runner is untrusted, so every
  * function here treats its exit as a claim and decides from evidence.
  */
 
@@ -224,10 +224,10 @@ export type PrepareVerdict =
 
 /**
  * Reads a prepare exit. `prepared` is believed only after the cloud classified
- * the page it came with; the harness's own tags are used for the cases where
+ * the page it came with; the runner's own tags are used for the cases where
  * it could not deliver a page at all.
  */
-export const judgePrepare = (exit: HarnessExit): PrepareVerdict => {
+export const judgePrepare = (exit: RunnerExit): PrepareVerdict => {
   switch (exit.tag) {
     case "prepared": {
       const artifacts = Schema.decodeUnknownOption(PrepareArtifacts)(exit.artifacts)
@@ -284,7 +284,7 @@ export const judgePrepare = (exit: HarnessExit): PrepareVerdict => {
 /* -------------------------------------------------------------------------- */
 
 /** Tags that can only be reported before the submit button is pressed. */
-const PRE_CLICK_TAGS: ReadonlyArray<HarnessExitTag> = [
+const PRE_CLICK_TAGS: ReadonlyArray<RunnerExitTag> = [
   "form_changed",
   "session_expired",
   "captcha",
@@ -307,12 +307,12 @@ export type SubmitVerdict =
   /** Provably no click. Safe for a human to prepare again. */
   | {
       readonly _tag: "not_sent"
-      readonly tag: HarnessExitTag
+      readonly tag: RunnerExitTag
       readonly reason: string
       readonly app: "needs_human" | "failed"
     }
 
-export const readSubmitEvidence = (exit: HarnessExit): SubmitEvidence | null => {
+export const readSubmitEvidence = (exit: RunnerExit): SubmitEvidence | null => {
   const decoded = Schema.decodeUnknownOption(SubmitEvidence)(exit.artifacts)
   return Option.isSome(decoded) ? decoded.value : null
 }
@@ -328,7 +328,7 @@ export const readSubmitEvidence = (exit: HarnessExit): SubmitEvidence | null => 
  * 3. Everything else (timeouts, ambiguous pages, a missing or contradictory
  *    artifact, any exit that is not provably pre-click) is `needs_reconcile`.
  */
-export const judgeSubmit = (exit: HarnessExit): SubmitVerdict => {
+export const judgeSubmit = (exit: RunnerExit): SubmitVerdict => {
   const evidence = readSubmitEvidence(exit)
 
   if (evidence !== null && !evidence.clicked && PRE_CLICK_TAGS.includes(exit.tag)) {
@@ -362,7 +362,7 @@ export const judgeSubmit = (exit: HarnessExit): SubmitVerdict => {
 }
 
 /** Artifacts as stored on the attempt: evidence without the page body. */
-export const attemptArtifacts = (exit: HarnessExit): Record<string, unknown> | null => {
+export const attemptArtifacts = (exit: RunnerExit): Record<string, unknown> | null => {
   const artifacts = exit.artifacts
   if (artifacts === undefined) return null
   const { html, ...rest } = artifacts as Record<string, unknown>
@@ -413,9 +413,9 @@ export type ReconcileVerdict =
     }
 
 /**
- * Decides an ambiguous submit from the pages a reconcile harness read.
+ * Decides an ambiguous submit from the pages a reconcile runner read.
  *
- * The harness's tag is not a verdict: a bare `submitted` or `not_submitted` is
+ * The runner's tag is not a verdict: a bare `submitted` or `not_submitted` is
  * a claim without evidence and is read again. Only the cloud's own reading of
  * the pages settles anything. The vacancy page decides: "respond" control means
  * no response, "you responded" means a response; the negotiations list is read
@@ -423,7 +423,7 @@ export type ReconcileVerdict =
  * application in reconcile; no outcome of this function ever queues a second submit.
  */
 export const judgeReconcile = (
-  exit: HarnessExit,
+  exit: RunnerExit,
   externalId: string,
   /**
    * hh's id of the resume the application was made with. hh keeps one response
@@ -558,7 +558,7 @@ export const judgeReconcile = (
 
 /** The reconcile attempt keeps the cloud's reading and the verdict, not page bodies. */
 export const reconcileArtifacts = (
-  exit: HarnessExit,
+  exit: RunnerExit,
   verdict: ReconcileVerdict
 ): Record<string, unknown> => {
   const evidence = Schema.decodeUnknownOption(ReconcileEvidence)(exit.artifacts)
@@ -598,13 +598,13 @@ export type NegotiationsSyncVerdict =
   | { readonly _tag: "retry"; readonly reason: string }
 
 /**
- * Reads a `negotiations_sync` exit. The harness only delivers pages; whether a
+ * Reads a `negotiations_sync` exit. The runner only delivers pages; whether a
  * page holds responses is the cloud's reading. Pages are read in order and
  * reading stops at the first unreadable one: what was read before it is still
  * real evidence (an import only adds), but `complete` is then false. No page
  * readable at all is a retry, never an empty list.
  */
-export const judgeNegotiationsSync = (exit: HarnessExit): NegotiationsSyncVerdict => {
+export const judgeNegotiationsSync = (exit: RunnerExit): NegotiationsSyncVerdict => {
   if (exit.tag === "session_expired") {
     return { _tag: "human", reason: "hh session expired; log in again" }
   }
@@ -668,13 +668,13 @@ export type ResumeSyncVerdict =
   | { readonly _tag: "retry"; readonly reason: string }
 
 /**
- * Reads a `resume_sync` exit. The harness only delivers pages; the cloud finds
+ * Reads a `resume_sync` exit. The runner only delivers pages; the cloud finds
  * the cards on the profile page and reads each resume page. A card whose page
  * cannot be read is counted, never stored as an empty resume. A profile with
  * no cards is a retry: an unrendered page and an account without resumes look
  * the same, and storing nothing is the safe reading.
  */
-export const judgeResumeSync = (exit: HarnessExit): ResumeSyncVerdict => {
+export const judgeResumeSync = (exit: RunnerExit): ResumeSyncVerdict => {
   if (exit.tag === "session_expired") {
     return { _tag: "human", reason: "hh session expired; log in again" }
   }
@@ -724,11 +724,11 @@ export type LetterAttachVerdict =
   | { readonly _tag: "human"; readonly reason: string }
 
 /**
- * A letter is "sent" only when the harness clicked and the dialog closed. A
+ * A letter is "sent" only when the runner clicked and the dialog closed. A
  * missing or contradictory `clicked` is treated as a click that may have
  * happened, so an unknown outcome never turns into a second send.
  */
-export const judgeLetterAttach = (exit: HarnessExit): LetterAttachVerdict => {
+export const judgeLetterAttach = (exit: RunnerExit): LetterAttachVerdict => {
   const evidence = Schema.decodeUnknownOption(LetterAttachEvidence)(exit.artifacts)
   const clicked = Option.isSome(evidence) ? evidence.value.clicked : true
   if (exit.tag === "submitted" && Option.isSome(evidence) && evidence.value.clicked && evidence.value.closed) {
@@ -752,10 +752,10 @@ export type ChatReadVerdict =
   | { readonly _tag: "retry"; readonly reason: string }
 
 /**
- * Reads a `chat_read` exit. The harness delivers the response body; the cloud
+ * Reads a `chat_read` exit. The runner delivers the response body; the cloud
  * parses it. A body that is not a chat is a retry: nothing is stored.
  */
-export const judgeChatRead = (exit: HarnessExit, chatId: string): ChatReadVerdict => {
+export const judgeChatRead = (exit: RunnerExit, chatId: string): ChatReadVerdict => {
   if (exit.tag === "session_expired") {
     return { _tag: "human", reason: "hh session expired; log in again" }
   }
@@ -785,13 +785,13 @@ export type ResumeBumpVerdict =
   | { readonly _tag: "retry"; readonly reason: string }
 
 /**
- * Читает выход `resume_bump`. Харнесс не доверенный: подъём считается состоявшимся,
+ * Читает выход `resume_bump`. Раннер не доверенный: подъём считается состоявшимся,
  * только если в свидетельстве есть нажатие и страница после него изменилась
  * (строка «Последнее» другая или кнопка стала недоступной). Тег выхода сам по себе
  * ничего не решает. Нажатие без подтверждения - `unconfirmed`, а не повтор: второго
  * нажатия не будет.
  */
-export const judgeResumeBump = (exit: HarnessExit): ResumeBumpVerdict => {
+export const judgeResumeBump = (exit: RunnerExit): ResumeBumpVerdict => {
   if (exit.tag === "session_expired") return { _tag: "human", reason: "hh session expired; log in again" }
   if (exit.tag === "captcha") return { _tag: "human", reason: "hh asked for a captcha" }
 

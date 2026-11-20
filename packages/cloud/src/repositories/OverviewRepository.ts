@@ -206,7 +206,7 @@ export const snapshot = (
     const jobs = (yield* tx.execute(sql`
       select status, stage, count(*)::int as n, min(updated_at) as oldest_updated,
              extract(epoch from now() - min(run_at))::int as age
-      from harness_jobs
+      from runner_jobs
       where user_id = ${userId}
         and ((status in ('leased', 'running', 'needs_human', 'needs_reconcile'))
           or (status = 'pending' and run_at <= now())

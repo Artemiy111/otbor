@@ -1,4 +1,4 @@
-import { hhProfileDir } from "@otbor/harness"
+import { hhProfileDir } from "@otbor/runner"
 import { Console, Effect } from "effect"
 import { Command } from "effect/cli"
 import { chromium } from "playwright"

@@ -24,7 +24,7 @@ import { chooseDraft, isResumeHash, resumeHashOfId, resumeIdOfHash, resumeToSele
  *   responded", what was on the form is sent to the cloud, which checks the
  *   evidence and stores the application as submitted.
  *
- * Selectors are the harness's (`packages/harness/src/browser/core.ts`), plus a
+ * Selectors are the driver's (`packages/runner/src/browser/core.ts`), plus a
  * looser match for the letter field, whose markup differs between hh's forms.
  */
 
@@ -728,7 +728,7 @@ export const startResponseWatch = (
    * On a vacancy page with a draft of this page's account, opens hh's response
    * form once per tab. It goes to the address hh's "Откликнуться" link points
    * at instead of clicking it: the click responds at once on a vacancy without
-   * a form, the address only shows the form (the harness reads forms by it).
+   * a form, the address only shows the form (the driver reads forms by it).
    */
   const maybeOpen = async (settings: Settings): Promise<void> => {
     if (!settings.autoOpenResponse) return

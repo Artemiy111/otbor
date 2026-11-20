@@ -1,7 +1,7 @@
 import type {
   ApplicationRecord,
   DecisionRecord,
-  HarnessJob,
+  RunnerJob,
   VacancySummary
 } from "@otbor/contract"
 import { decisionReasonDetail } from "@otbor/contract"
@@ -59,7 +59,7 @@ export const formatApplication = (application: ApplicationRecord): Array<string>
   application.updatedAt.slice(0, 19).replace("T", " ")
 ]
 
-export const formatJob = (job: HarnessJob): Array<string> => [
+export const formatJob = (job: RunnerJob): Array<string> => [
   shortId(job.id),
   job.kind,
   job.stage,

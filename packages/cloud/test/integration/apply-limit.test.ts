@@ -62,7 +62,7 @@ if (!enabled || serverUrl === null) {
     const ready = async (
       tenant: support.Tenant,
       accountId: string,
-      harness: { id: string; token?: string | null },
+      runner: { id: string; token?: string | null },
       accounts: ReadonlyArray<string>,
       label: string
     ) => {
@@ -82,11 +82,11 @@ if (!enabled || serverUrl === null) {
         externalId,
         sequence: 1
       })
-      const leased = await support.leaseNext(tenant.userId, harness.id, harness.token!, accounts)
+      const leased = await support.leaseNext(tenant.userId, runner.id, runner.token!, accounts)
       expect(leased.job?.stage).toBe("form_read")
       await support.completeJob(tenant.userId, {
-        harnessId: harness.id,
-        token: harness.token!,
+        runnerId: runner.id,
+        token: runner.token!,
         jobId: leased.job!.id,
         leaseId: leased.job!.leaseId!,
         epoch: leased.job!.leaseEpoch,
@@ -145,12 +145,12 @@ if (!enabled || serverUrl === null) {
       const tenant = await support.seedTenant("limit")
       const other = await support.addAccount(tenant.userId, "limit-other")
       const accounts = [tenant.accountId, other]
-      const harness = await support.registerHarness(tenant.userId, accounts)
+      const runner = await support.registerRunner(tenant.userId, accounts)
 
-      const one = await ready(tenant, tenant.accountId, harness, accounts, "limit-1")
-      const two = await ready(tenant, tenant.accountId, harness, accounts, "limit-2")
-      const three = await ready(tenant, tenant.accountId, harness, accounts, "limit-3")
-      const elsewhere = await ready(tenant, other, harness, accounts, "limit-4")
+      const one = await ready(tenant, tenant.accountId, runner, accounts, "limit-1")
+      const two = await ready(tenant, tenant.accountId, runner, accounts, "limit-2")
+      const three = await ready(tenant, tenant.accountId, runner, accounts, "limit-3")
+      const elsewhere = await ready(tenant, other, runner, accounts, "limit-4")
 
       expect((await approve(tenant.userId, one)).state).toBe("queued")
       expect((await approve(tenant.userId, two)).state).toBe("queued")
@@ -180,11 +180,11 @@ if (!enabled || serverUrl === null) {
 
     test("a refused approve does not consume a slot and can be repeated later", async () => {
       const tenant = await support.seedTenant("limit-repeat")
-      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const runner = await support.registerRunner(tenant.userId, [tenant.accountId])
       const accounts = [tenant.accountId]
-      const a = await ready(tenant, tenant.accountId, harness, accounts, "limit-r1")
-      const b = await ready(tenant, tenant.accountId, harness, accounts, "limit-r2")
-      const c = await ready(tenant, tenant.accountId, harness, accounts, "limit-r3")
+      const a = await ready(tenant, tenant.accountId, runner, accounts, "limit-r1")
+      const b = await ready(tenant, tenant.accountId, runner, accounts, "limit-r2")
+      const c = await ready(tenant, tenant.accountId, runner, accounts, "limit-r3")
       await approve(tenant.userId, a)
       await approve(tenant.userId, b)
 
@@ -197,7 +197,7 @@ if (!enabled || serverUrl === null) {
 
     test("the default limit is 200 and usage reports used, remaining and oldest", async () => {
       const tenant = await support.seedTenant("limit-usage")
-      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const runner = await support.registerRunner(tenant.userId, [tenant.accountId])
       const accounts = [tenant.accountId]
       const layer = ApplicationService.layerWith({ dailyApplyLimit: DEFAULT_DAILY_APPLY_LIMIT })
       const usage = () =>
@@ -211,7 +211,7 @@ if (!enabled || serverUrl === null) {
       expect(DEFAULT_DAILY_APPLY_LIMIT).toBe(200)
       expect(await usage()).toMatchObject({ used: 0, limit: 200, remaining: 200, oldest: null })
 
-      const a = await ready(tenant, tenant.accountId, harness, accounts, "usage-1")
+      const a = await ready(tenant, tenant.accountId, runner, accounts, "usage-1")
       await approve(tenant.userId, a)
       const after = await usage()
       expect(after).toMatchObject({ used: 1, limit: 200, remaining: 199 })
@@ -220,10 +220,10 @@ if (!enabled || serverUrl === null) {
 
     test("the account-level apply filter row sets the limit; a resume row does not", async () => {
       const tenant = await support.seedTenant("limit-override")
-      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const runner = await support.registerRunner(tenant.userId, [tenant.accountId])
       const accounts = [tenant.accountId]
-      const a = await ready(tenant, tenant.accountId, harness, accounts, "override-1")
-      const b = await ready(tenant, tenant.accountId, harness, accounts, "override-2")
+      const a = await ready(tenant, tenant.accountId, runner, accounts, "override-1")
+      const b = await ready(tenant, tenant.accountId, runner, accounts, "override-2")
 
       // The pinned layer says 2, the row says 1: the row wins.
       await support.applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter: {}, dailyLimit: 1 })
@@ -250,7 +250,7 @@ if (!enabled || serverUrl === null) {
     const autoQueuedReread = async (tenant: support.Tenant, label: string) => {
       // Режим auto и текущий лимит: отправка автозаявки разрешена только при auto.
       await support.applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter: {}, autoMode: "auto" })
-      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const runner = await support.registerRunner(tenant.userId, [tenant.accountId])
       const vacancyId = await support.seedVacancy(label)
       const externalId = await support.vacancyExternalId(vacancyId)
       const applicationId = await support.seedApplication({
@@ -278,10 +278,10 @@ if (!enabled || serverUrl === null) {
         externalId,
         sequence: 1
       })
-      const leased = await support.leaseNext(tenant.userId, harness.id, harness.token!, [tenant.accountId])
+      const leased = await support.leaseNext(tenant.userId, runner.id, runner.token!, [tenant.accountId])
       await support.completeJob(tenant.userId, {
-        harnessId: harness.id,
-        token: harness.token!,
+        runnerId: runner.id,
+        token: runner.token!,
         jobId: leased.job!.id,
         leaseId: leased.job!.leaseId!,
         epoch: leased.job!.leaseEpoch,

@@ -13,7 +13,7 @@ import {
   leaseNext,
   migrateTestDatabase,
   recoverExpiredJobs,
-  registerHarness,
+  registerRunner,
   seedTenant,
   serverUrl,
   testDatabaseUrl
@@ -48,7 +48,7 @@ if (!integrationEnabled || serverUrl === null) {
   describe("queue fencing", () => {
     test("heartbeat extends, stale epoch is rejected, expired lease returns to pending", async () => {
       const tenant = await seedTenant("fence")
-      const h = await registerHarness(tenant.userId, [tenant.accountId])
+      const h = await registerRunner(tenant.userId, [tenant.accountId])
       const job = await enqueueJob({
         userId: tenant.userId,
         accountId: tenant.accountId,
@@ -62,7 +62,7 @@ if (!integrationEnabled || serverUrl === null) {
       const firstLeaseId = first.job!.leaseId!
 
       const beat = await heartbeatJob(tenant.userId, {
-        harnessId: h.id,
+        runnerId: h.id,
         token: h.token!,
         jobId: job.id,
         leaseId: firstLeaseId,
@@ -72,14 +72,14 @@ if (!integrationEnabled || serverUrl === null) {
 
       // A worker that lost the lease cannot complete with a newer epoch.
       const staleEpoch = await completeJobFailure(tenant.userId, {
-        harnessId: h.id,
+        runnerId: h.id,
         token: h.token!,
         jobId: job.id,
         leaseId: firstLeaseId,
         epoch: first.job!.leaseEpoch + 1,
         exit: { tag: "permanent" }
       })
-      expect(staleEpoch._tag).toBe("HarnessRejected")
+      expect(staleEpoch._tag).toBe("RunnerRejected")
 
       // Expire without sleeping: same effect as a worker that stopped polling.
       await expireJobLease(job.id)
@@ -94,17 +94,17 @@ if (!integrationEnabled || serverUrl === null) {
 
       // The previous holder's lease and epoch are now stale.
       const staleLease = await completeJobFailure(tenant.userId, {
-        harnessId: h.id,
+        runnerId: h.id,
         token: h.token!,
         jobId: job.id,
         leaseId: firstLeaseId,
         epoch: first.job!.leaseEpoch,
         exit: { tag: "permanent" }
       })
-      expect(staleLease._tag).toBe("HarnessRejected")
+      expect(staleLease._tag).toBe("RunnerRejected")
 
       const done = await completeJob(tenant.userId, {
-        harnessId: h.id,
+        runnerId: h.id,
         token: h.token!,
         jobId: job.id,
         leaseId: second.job!.leaseId!,
@@ -118,7 +118,7 @@ if (!integrationEnabled || serverUrl === null) {
 
     test("an expired lease that exhausted attempts is buried as dead", async () => {
       const tenant = await seedTenant("dead")
-      const h = await registerHarness(tenant.userId, [tenant.accountId])
+      const h = await registerRunner(tenant.userId, [tenant.accountId])
       const job = await enqueueJob({
         userId: tenant.userId,
         accountId: tenant.accountId,

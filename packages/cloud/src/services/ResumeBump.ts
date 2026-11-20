@@ -8,7 +8,7 @@ import { resumeBumpJob } from "./jobs.ts"
  * Подъём резюме в поиске («Поднять в поиске»).
  *
  * Расписание `resume_bump` только ставит задачи браузера, по одной на резюме:
- * нажимает кнопку харнесс, а облако по свидетельствам решает, поднялось ли
+ * нажимает кнопку раннер, а облако по свидетельствам решает, поднялось ли
  * резюме, и записывает исход в `resume`. hh даёт один подъём в 4 часа, поэтому
  * облако не ставит новую задачу, пока с удачного нажатия не прошёл срок отдыха.
  * Отдых считается по часам облака: строка «Последнее — ...» на странице без года
@@ -65,7 +65,7 @@ export const enqueueResumeBumps = (
         and (r.last_bumped_at is null or r.last_bumped_at <= ${rested})
         and (r.last_bump_attempt_at is null or r.last_bump_attempt_at <= ${gap})
         and not exists (
-          select 1 from harness_jobs j
+          select 1 from runner_jobs j
           where j.stage = ${STAGE}
             and j.payload->>'resumeId' = r.id::text
             and j.status in ('pending', 'leased', 'running')
@@ -83,7 +83,7 @@ export const enqueueResumeBumps = (
     let queued = 0
     for (const row of found.slice(0, limit)) {
       const count = yield* tx.execute(
-        sql`select count(*)::int as n from harness_jobs where stage = ${STAGE} and payload->>'resumeId' = ${row.id}`
+        sql`select count(*)::int as n from runner_jobs where stage = ${STAGE} and payload->>'resumeId' = ${row.id}`
       )
       const jitter = yield* Effect.sync(() => Math.random() * jitterMinutes * 60_000)
       yield* resumeBumpJob(tx, {

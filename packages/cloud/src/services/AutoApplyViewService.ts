@@ -220,7 +220,7 @@ const progressRows = (tx: Executor, userId: string, where: SQL) =>
         wj.max_attempts as write_max, wj.created_at as write_created,
         wj.updated_at as write_updated, wj.last_error as write_error,
         left(wj.result->>'text', 20000) as write_text,
-        (select count(*)::int from harness_jobs rj2
+        (select count(*)::int from runner_jobs rj2
           where rj2.idempotency_key like 'autoapply:writing:' || a.id::text || ':%:retried:%') as write_retries,
         sj.status as submit_status,
         rj.status as read_status
@@ -239,16 +239,16 @@ const progressRows = (tx: Executor, userId: string, where: SQL) =>
       -- (retried) job keeps its history under '<key>:retried:<n>'
       left join lateral (
         select j.id, j.status, j.attempts, j.max_attempts, j.created_at, j.updated_at, j.last_error, j.result
-        from harness_jobs j
+        from runner_jobs j
         where j.idempotency_key = 'autoapply:writing:' || a.id::text || ':' || ver.form_hash
       ) wj on true
       left join lateral (
-        select j.status from harness_jobs j
+        select j.status from runner_jobs j
         where j.application_id = a.id and j.stage = 'submit' and j.status <> 'cancelled'
         order by j.created_at desc limit 1
       ) sj on true
       left join lateral (
-        select j.status from harness_jobs j
+        select j.status from runner_jobs j
         where j.stage = 'form_read' and j.status <> 'cancelled'
           and j.payload->>'vacancyId' = a.vacancy_id::text
         order by j.created_at desc limit 1
@@ -462,7 +462,7 @@ export class AutoApplyViewService extends Context.Service<AutoApplyViewService, 
               if (blocked !== null) return blocked
               // Free the slot, keep the dead job and its error as history.
               const freed = yield* tx.execute(sql`
-                update harness_jobs
+                update runner_jobs
                 set idempotency_key = idempotency_key || ':retried:' || ${(row.write_retries ?? 0) + 1}::text,
                     updated_at = now()
                 where id = ${row.write_id} and status in ('failed', 'dead', 'cancelled')

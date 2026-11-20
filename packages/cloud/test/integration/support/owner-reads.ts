@@ -4,12 +4,12 @@ import { Effect } from "effect"
 import {
   accountLease,
   application,
-  harnessJob,
+  runnerJob,
   searchQuery,
   searchRun,
   vacancySearchHit
 } from "../../../src/db/tables.ts"
-import * as HarnessRepository from "../../../src/repositories/HarnessRepository.ts"
+import * as RunnerRepository from "../../../src/repositories/RunnerRepository.ts"
 import * as QueueRepository from "../../../src/repositories/QueueRepository.ts"
 import { ApplicationService } from "../../../src/services/ApplicationService.ts"
 import { recoverExpiredLeases } from "../../../src/services/recovery.ts"
@@ -22,15 +22,15 @@ export const findJob = async (jobId: string) =>
     ownerTx((tx) => QueueRepository.findById(tx, jobId))
   )
 
-/** The account a job is pinned to; `HarnessJob` itself does not expose it. */
+/** The account a job is pinned to; `RunnerJob` itself does not expose it. */
 export const jobAccountId = async (jobId: string) =>
   runAs(
     "owner",
     ownerTx((tx) =>
       tx
-        .select({ hhAccountId: harnessJob.hhAccountId })
-        .from(harnessJob)
-        .where(eq(harnessJob.id, jobId))
+        .select({ hhAccountId: runnerJob.hhAccountId })
+        .from(runnerJob)
+        .where(eq(runnerJob.id, jobId))
         .limit(1)
         .pipe(Effect.map((rows) => rows[0]?.hhAccountId ?? null))
     )
@@ -49,7 +49,7 @@ export const formReadJobsOf = async (vacancyId: string) =>
     ownerTx((tx) =>
       tx
         .execute(
-          sql`select id, status, payload, result from harness_jobs where stage = 'form_read' and payload->>'vacancyId' = ${vacancyId} order by created_at`
+          sql`select id, status, payload, result from runner_jobs where stage = 'form_read' and payload->>'vacancyId' = ${vacancyId} order by created_at`
         )
         .pipe(Effect.map((result) => result.rows as ReadonlyArray<Record<string, any>>))
     )
@@ -93,19 +93,19 @@ export const findApplication = async (applicationId: string) =>
     )
   )
 
-export const accountsFor = async (harnessId: string) =>
+export const accountsFor = async (runnerId: string) =>
   runAs(
     "owner",
-    ownerTx((tx) => HarnessRepository.accountsFor(tx, harnessId))
+    ownerTx((tx) => RunnerRepository.accountsFor(tx, runnerId))
   )
 
-export const harnessAccountRows = async (accountId: string) =>
+export const runnerAccountRows = async (accountId: string) =>
   runAs(
     "owner",
     ownerTx((tx) =>
       tx
         .execute(
-          sql`select harness_id, user_id from harness_account where hh_account_id = ${accountId}`
+          sql`select runner_id, user_id from runner_account where hh_account_id = ${accountId}`
         )
         .pipe(Effect.map((result) => result.rows))
     )
@@ -117,7 +117,7 @@ export const expireJobLease = async (jobId: string) => {
     "owner",
     ownerTx((tx) =>
       tx.execute(
-        sql`update harness_jobs set lease_until = now() - interval '1 minute' where id = ${jobId}`
+        sql`update runner_jobs set lease_until = now() - interval '1 minute' where id = ${jobId}`
       )
     )
   )
@@ -135,7 +135,7 @@ export const makeJobRunnable = async (jobId: string) => {
   await runAs(
     "owner",
     ownerTx((tx) =>
-      tx.execute(sql`update harness_jobs set run_at = now() where id = ${jobId}`)
+      tx.execute(sql`update runner_jobs set run_at = now() where id = ${jobId}`)
     )
   )
 }
@@ -200,13 +200,13 @@ export const jobRowsForApplication = async (applicationId: string) =>
     ownerTx((tx) =>
       tx
         .select({
-          id: harnessJob.id,
-          stage: harnessJob.stage,
-          status: harnessJob.status,
-          runAt: harnessJob.runAt
+          id: runnerJob.id,
+          stage: runnerJob.stage,
+          status: runnerJob.status,
+          runAt: runnerJob.runAt
         })
-        .from(harnessJob)
-        .where(eq(harnessJob.applicationId, applicationId))
+        .from(runnerJob)
+        .where(eq(runnerJob.applicationId, applicationId))
     )
   )
 

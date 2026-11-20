@@ -9,7 +9,7 @@ import { decodeEntities, htmlToText } from "./text.ts"
  * - a resume page (`/resume/<hash>`) ships the resume as
  *   `applicantResume` in the `HH-Lux-InitialState` template.
  *
- * The browser harness only fetches pages; the cloud runs these on the
+ * The browser driver only fetches pages; the cloud runs these on the
  * evidence. A page that cannot be read is `null`, never an empty resume.
  * hh uses Magritte: scalars arrive as `[{ string: "..." }]`, numbers as
  * numbers or numeric strings, so every reader accepts both forms.

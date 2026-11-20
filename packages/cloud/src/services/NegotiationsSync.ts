@@ -19,7 +19,7 @@ import { toStorageError } from "./support.ts"
 /**
  * Imports the responses an operator made by hand on hh.ru.
  *
- * `run` only enqueues a browser job: the harness reads `/applicant/negotiations`
+ * `run` only enqueues a browser job: the runner reads `/applicant/negotiations`
  * and returns page HTML, `QueueService.complete` parses it with
  * `judgeNegotiationsSync` and calls `importTopics` in the completing
  * transaction. An imported application is `state = 'submitted'` with
@@ -145,7 +145,7 @@ export const importTopics = (
               where own.hh_account_id = dup.hh_account_id and own.vacancy_id = dup.vacancy_id
                 and own.resume_id = ${resumeId}
             )
-            and not exists (select 1 from harness_jobs j where j.application_id = dup.id)
+            and not exists (select 1 from runner_jobs j where j.application_id = dup.id)
         `)
       }
       // An application otbor submitted itself follows hh's state too: an

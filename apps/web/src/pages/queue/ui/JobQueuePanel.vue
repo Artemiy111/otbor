@@ -28,7 +28,7 @@ import {
   StatusBadge,
   filterableHeader
 } from "@/shared/ui"
-import { ExecutorStartGuide } from "@/widgets/executor-start"
+import { RunnerStartGuide } from "@/widgets/runner-start"
 import { StatCard } from "@/widgets/stat-card"
 import { jobDetail, jobError, jobRawError, jobTiming, jobTitle } from "../model/job-view"
 
@@ -44,12 +44,12 @@ const emit = defineEmits<{ "update:filter": [value: { status?: ReadonlyArray<str
 
 const COPY = {
   browser: {
-    who: "Исполнитель браузера",
+    who: "Драйвер",
     what: "Работа на hh.ru под вашим аккаунтом: чтение формы отклика, подготовка, отправка и проверка результата, обновление входа.",
     empty: "Заданий для браузера нет. Они появятся, когда вы подготовите отклик или загрузите резюме."
   },
   inference: {
-    who: "Исполнитель генерации",
+    who: "Харнес",
     what: "Генерация текста: письма, ответы на вопросы работодателя, оценки вакансий. Сервер не вызывает модель сам, а ставит задание сюда.",
     empty: "Заданий на генерацию нет."
   }
@@ -75,7 +75,7 @@ watch([statusValue, stageValue], () => (pageIndex.value = 0))
 
 const healthQuery = useQuery({ key: healthKeys.current(), query: healthApi.get })
 const executorOnline = computed(() =>
-  (healthQuery.data.value?.harnesses ?? []).some((h) => h.online && h.kinds.includes(props.kind))
+  (healthQuery.data.value?.runners ?? []).some((h) => h.online && h.kinds.includes(props.kind))
 )
 
 const accountsQuery = useQuery({ key: () => hhAccountKeys.list(), query: () => hhAccountApi.list() })
@@ -290,8 +290,8 @@ defineExpose({ refetch, loading: computed(() => statsQuery.isLoading.value || jo
       </div>
       <p class="mt-1 text-muted-foreground">{{ copy.what }}</p>
       <div v-if="!executorOnline && !healthQuery.isPending.value" class="mt-3 border-t border-border pt-3">
-        <p class="mb-2" :class="toneClasses('danger').text">Исполнитель не запущен, задания будут ждать.</p>
-        <ExecutorStartGuide :target="kind" />
+        <p class="mb-2" :class="toneClasses('danger').text">Раннер не запущен, задания будут ждать.</p>
+        <RunnerStartGuide :target="kind" />
       </div>
     </div>
 

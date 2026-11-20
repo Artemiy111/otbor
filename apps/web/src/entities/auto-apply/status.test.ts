@@ -70,7 +70,7 @@ describe("humanizeError и режим", () => {
       "Резюме не появилось в списке на странице отклика hh."
     )
     expect(humanizeError("the form shows another resume")).toContain("другое резюме")
-    expect(humanizeError("the response page was not recognized: <div>")).toContain("исполнитель браузера")
+    expect(humanizeError("the response page was not recognized: <div>")).toContain("драйвер")
     expect(humanizeError("   ")).toBeNull()
     expect(humanizeError(null)).toBeNull()
     expect(humanizeError("xyzzy")).toContain("сбоем")

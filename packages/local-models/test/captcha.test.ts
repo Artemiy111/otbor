@@ -31,7 +31,7 @@ describe("captcha settings", () => {
   test("нет файла — распознавание выключено", () => {
     const dir = temp()
     expect(readCaptchaSettings(join(dir, "captcha.json")).enabled).toBe(false)
-    expect(loadCaptchaSolver({ OTBOR_HARNESS_DIR: dir })).toBeNull()
+    expect(loadCaptchaSolver({ OTBOR_RUNNER_DIR: dir })).toBeNull()
   })
 
   test("язык по умолчанию — английский, даже в старом конфиге без поля", () => {
@@ -42,12 +42,12 @@ describe("captcha settings", () => {
     writeFileSync(path, JSON.stringify({
       enabled: true, harnessId: "omlx", model: "gemma", maxAttempts: 5, timeoutSeconds: 60, filter: "normalize"
     }))
-    expect(loadCaptchaSolver({ OTBOR_HARNESS_DIR: dir })?.language).toBe("en")
+    expect(loadCaptchaSolver({ OTBOR_RUNNER_DIR: dir })?.language).toBe("en")
     writeCaptchaSettings({
       enabled: true, harnessId: "omlx", model: "gemma", maxAttempts: 5, timeoutSeconds: 60,
       filter: "normalize", language: "ru"
     }, path)
-    expect(loadCaptchaSolver({ OTBOR_HARNESS_DIR: dir })?.language).toBe("ru")
+    expect(loadCaptchaSolver({ OTBOR_RUNNER_DIR: dir })?.language).toBe("ru")
   })
 
   test("локальный сервер даёт endpoint, агент ACP — null", () => {
@@ -58,9 +58,9 @@ describe("captcha settings", () => {
     )
     const base = { enabled: true, model: "gemma", maxAttempts: 5, timeoutSeconds: 60, filter: "normalize" as const, language: "en" as const }
     writeCaptchaSettings({ ...base, harnessId: "omlx" }, join(dir, "captcha.json"))
-    expect(loadCaptchaSolver({ OTBOR_HARNESS_DIR: dir })?.endpoint?.id).toBe("omlx")
+    expect(loadCaptchaSolver({ OTBOR_RUNNER_DIR: dir })?.endpoint?.id).toBe("omlx")
     writeCaptchaSettings({ ...base, harnessId: "opencode" }, join(dir, "captcha.json"))
-    const agent = loadCaptchaSolver({ OTBOR_HARNESS_DIR: dir })
+    const agent = loadCaptchaSolver({ OTBOR_RUNNER_DIR: dir })
     expect(agent?.harnessId).toBe("opencode")
     expect(agent?.endpoint).toBeNull()
   })

@@ -20,7 +20,7 @@
     "@otbor/contract": "workspace:*",
     "@otbor/crawler": "workspace:*",
     "@otbor/domain": "workspace:*",
-    "@otbor/harness": "workspace:*",
+    "@otbor/runner": "workspace:*",
     "@otbor/hh": "workspace:*",
     "@otbor/mcp": "workspace:*",
     "dotenv": "^17.0.0",

@@ -363,7 +363,7 @@ export const applicationAttempt = pgTable(
     applicationId: uuid("application_id").notNull(),
     seq: integer("seq").notNull(),
     stage: text("stage").notNull(),
-    harnessId: uuid("harness_id"),
+    runnerId: uuid("runner_id"),
     exit: jsonb("exit").$type<Record<string, unknown>>(),
     artifacts: jsonb("artifacts").$type<Record<string, unknown>>(),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
@@ -417,7 +417,7 @@ export const fit = pgTable(
   ]
 )
 
-export const harness = pgTable("harness", {
+export const runner = pgTable("runner", {
   id: uuidPk(),
   userId: text("user_id")
     .notNull()
@@ -426,7 +426,7 @@ export const harness = pgTable("harness", {
   kinds: jsonb("kinds").$type<ReadonlyArray<string>>().notNull().default([]),
   tokenHash: text("token_hash"),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
-  /** Потоки харнесса; он сообщает их при каждом lease. */
+  /** Потоки раннера; он сообщает их при каждом lease. */
   concurrency: integer("concurrency"),
   /** Agents, models and efforts the harness probed (`AgentHarness[]`). */
   catalog: jsonb("catalog").$type<ReadonlyArray<AgentHarness>>(),
@@ -435,15 +435,15 @@ export const harness = pgTable("harness", {
   updatedAt: updatedAt()
 })
 
-export const harnessAccount = pgTable(
-  "harness_account",
+export const runnerAccount = pgTable(
+  "runner_account",
   {
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    harnessId: uuid("harness_id")
+    runnerId: uuid("runner_id")
       .notNull()
-      .references(() => harness.id, { onDelete: "cascade" }),
+      .references(() => runner.id, { onDelete: "cascade" }),
     hhAccountId: uuid("hh_account_id")
       .notNull()
       .references(() => hhAccount.id, { onDelete: "cascade" }),
@@ -451,15 +451,15 @@ export const harnessAccount = pgTable(
   },
   (table) => [
     primaryKey({
-      name: "harness_account_pkey",
-      columns: [table.harnessId, table.hhAccountId]
+      name: "runner_account_pkey",
+      columns: [table.runnerId, table.hhAccountId]
     }),
-    uniqueIndex("harness_account_single_idx").on(table.hhAccountId)
+    uniqueIndex("runner_account_single_idx").on(table.hhAccountId)
   ]
 )
 
-export const harnessJob = pgTable(
-  "harness_jobs",
+export const runnerJob = pgTable(
+  "runner_jobs",
   {
     id: uuidPk(),
     userId: text("user_id")
@@ -483,7 +483,7 @@ export const harnessJob = pgTable(
     leaseId: uuid("lease_id"),
     leaseEpoch: integer("lease_epoch").notNull().default(0),
     leaseUntil: timestamp("lease_until", { withTimezone: true }),
-    /** Когда задачу выдали харнессу в последний раз (часовой лимит отправок). */
+    /** Когда задачу выдали раннеру в последний раз (часовой лимит отправок). */
     leasedAt: timestamp("leased_at", { withTimezone: true }),
     lockedBy: text("locked_by"),
     lastError: text("last_error"),
@@ -491,9 +491,9 @@ export const harnessJob = pgTable(
     updatedAt: updatedAt()
   },
   (table) => [
-    index("harness_jobs_claim_idx").on(table.kind, table.status, table.runAt, table.priority),
-    index("harness_jobs_account_idx").on(table.hhAccountId, table.status),
-    index("harness_jobs_application_idx").on(table.applicationId),
+    index("runner_jobs_claim_idx").on(table.kind, table.status, table.runAt, table.priority),
+    index("runner_jobs_account_idx").on(table.hhAccountId, table.status),
+    index("runner_jobs_application_idx").on(table.applicationId),
     check("submit_is_single_attempt", sql`${table.stage} <> 'submit' or ${table.maxAttempts} <= 1`)
   ]
 )

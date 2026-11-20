@@ -13,7 +13,7 @@ import { ResumeId, VacancyId } from "../ids.ts"
 
 /**
  * Picks the highest-priority decisions that lack a current judgement and
- * enqueues one inference job each. The answer arrives through the harness
+ * enqueues one inference job each. The answer arrives through the runner
  * completion path, which stores the judgement and re-decides the vacancy.
  */
 export const FitJudgeEnqueue = Rpc.make("FitJudgeEnqueue", {

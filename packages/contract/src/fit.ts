@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { HarnessJobId, PresetId, ResumeId, VacancyId } from "./ids.ts"
+import { RunnerJobId, PresetId, ResumeId, VacancyId } from "./ids.ts"
 import { DecisionRecord } from "./models/index.ts"
 
 /**
@@ -48,7 +48,7 @@ export const FitJudgementRecord = Schema.Struct({
   /** Present once `status` is `done`. */
   judgement: Schema.NullOr(FitJudgement),
   model: Schema.NullOr(Schema.String),
-  inferenceJobId: Schema.NullOr(HarnessJobId),
+  inferenceJobId: Schema.NullOr(RunnerJobId),
   error: Schema.NullOr(Schema.String),
   /**
    * `true` when the vacancy content, the resume and the prompt version all
@@ -66,7 +66,7 @@ export const FitEnqueueResult = Schema.Struct({
   enqueued: Schema.Int,
   /** Eligible vacancies left after this call (bounded by `limit`). */
   remaining: Schema.Int,
-  jobs: Schema.Array(Schema.Struct({ vacancyId: VacancyId, jobId: HarnessJobId }))
+  jobs: Schema.Array(Schema.Struct({ vacancyId: VacancyId, jobId: RunnerJobId }))
 })
 export type FitEnqueueResult = typeof FitEnqueueResult.Type
 

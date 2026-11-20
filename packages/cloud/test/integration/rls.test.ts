@@ -3,14 +3,14 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { eq } from "drizzle-orm"
 import { Effect } from "effect"
 import { Database } from "../../src/db/Database.ts"
-import { application, harness, harnessAccount, harnessJob, hhAccount } from "../../src/db/tables.ts"
+import { application, runner, runnerAccount, runnerJob, hhAccount } from "../../src/db/tables.ts"
 import {
   createTestDatabase,
   dropTestDatabase,
   enqueueJob,
   integrationEnabled,
   migrateTestDatabase,
-  registerHarness,
+  registerRunner,
   runAs,
   seedApplication,
   seedTenant,
@@ -46,11 +46,11 @@ if (!integrationEnabled || serverUrl === null) {
   }, 60_000)
 
   describe("RLS", () => {
-    test("user A cannot read B's hh_account, harness, binding, application or job", async () => {
+    test("user A cannot read B's hh_account, runner, binding, application or job", async () => {
       const a = await seedTenant("rls-a")
       const b = await seedTenant("rls-b")
       const vacancyId = await seedVacancy("rls")
-      const bHarness = await registerHarness(b.userId, [b.accountId], "b-harness")
+      const bRunner = await registerRunner(b.userId, [b.accountId], "b-runner")
       const bApplication = await seedApplication({
         userId: b.userId,
         accountId: b.accountId,
@@ -74,26 +74,26 @@ if (!integrationEnabled || serverUrl === null) {
                 .select({ id: hhAccount.id })
                 .from(hhAccount)
                 .where(eq(hhAccount.id, b.accountId))
-              const harnesses = yield* tx
-                .select({ id: harness.id })
-                .from(harness)
-                .where(eq(harness.id, bHarness.id))
+              const runners = yield* tx
+                .select({ id: runner.id })
+                .from(runner)
+                .where(eq(runner.id, bRunner.id))
               const bindings = yield* tx
-                .select({ harnessId: harnessAccount.harnessId })
-                .from(harnessAccount)
-                .where(eq(harnessAccount.hhAccountId, b.accountId))
+                .select({ runnerId: runnerAccount.runnerId })
+                .from(runnerAccount)
+                .where(eq(runnerAccount.hhAccountId, b.accountId))
               const applications = yield* tx
                 .select({ id: application.id })
                 .from(application)
                 .where(eq(application.id, bApplication))
               const jobs = yield* tx
-                .select({ id: harnessJob.id })
-                .from(harnessJob)
-                .where(eq(harnessJob.id, bJob.id))
+                .select({ id: runnerJob.id })
+                .from(runnerJob)
+                .where(eq(runnerJob.id, bJob.id))
 
               return {
                 accounts: accounts.length,
-                harnesses: harnesses.length,
+                runners: runners.length,
                 bindings: bindings.length,
                 applications: applications.length,
                 jobs: jobs.length
@@ -105,7 +105,7 @@ if (!integrationEnabled || serverUrl === null) {
 
       expect(visibleToA).toEqual({
         accounts: 0,
-        harnesses: 0,
+        runners: 0,
         bindings: 0,
         applications: 0,
         jobs: 0
@@ -127,9 +127,9 @@ if (!integrationEnabled || serverUrl === null) {
                 .from(application)
                 .where(eq(application.id, bApplication))
               const jobs = yield* tx
-                .select({ id: harnessJob.id })
-                .from(harnessJob)
-                .where(eq(harnessJob.id, bJob.id))
+                .select({ id: runnerJob.id })
+                .from(runnerJob)
+                .where(eq(runnerJob.id, bJob.id))
               return {
                 accounts: accounts.length,
                 applications: applications.length,

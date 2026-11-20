@@ -382,7 +382,7 @@ export class AutoApplyRunner extends Context.Service<AutoApplyRunner, AutoApplyR
                       stored === null || kit !== null
                         ? null
                         : yield* QueueRepository.findByKey(tx, writingKey(app.id, stored.form.formHash))
-                    // Why a writing job failed (the harness message) goes into the human reason.
+                    // Why a writing job failed (the runner message) goes into the human reason.
                     const jobError =
                       job === null || job.status === "done"
                         ? null

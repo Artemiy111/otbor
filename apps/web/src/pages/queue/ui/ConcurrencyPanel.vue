@@ -56,7 +56,7 @@ defineExpose({ refetch, loading: computed(() => query.isLoading.value) })
         <p class="text-xs tabular-nums text-muted-foreground">
           Браузерных задач на аккаунт: до {{ data.browserCap }}, из них отправок до {{ data.actingCap }} · пауза между отправками
           {{ data.submitIntervalSeconds }} с + до {{ data.submitJitterPercent }}% · не больше
-          {{ data.submitHourlyLimit ?? "без ограничения" }} в час · потоков исполнителя: {{ data.harnessSlots }}
+          {{ data.submitHourlyLimit ?? "без ограничения" }} в час · потоков исполнителя: {{ data.runnerSlots }}
         </p>
         <p class="text-xs tabular-nums text-muted-foreground">
           Одновременных чтений формы на аккаунт: {{ data.formReadConcurrency }} · пауза между чтениями
@@ -65,11 +65,11 @@ defineExpose({ refetch, loading: computed(() => query.isLoading.value) })
         </p>
 
         <div class="space-y-1 text-sm">
-          <p v-for="h in data.harnesses" :key="h.id" class="tabular-nums">
-            Исполнитель {{ h.name }} · потоки {{ h.busy }} из {{ h.slots ?? "?" }}
+          <p v-for="h in data.runners" :key="h.id" class="tabular-nums">
+            Раннер {{ h.name }} · потоки {{ h.busy }} из {{ h.slots ?? "?" }}
             <span v-if="h.slots === null" class="text-muted-foreground">(число потоков ещё не сообщено)</span>
           </p>
-          <p v-if="data.harnesses.length === 0" class="text-muted-foreground">Исполнитель не зарегистрирован.</p>
+          <p v-if="data.runners.length === 0" class="text-muted-foreground">Раннер не зарегистрирован.</p>
           <p class="tabular-nums text-muted-foreground">
             Генерация: идёт {{ data.inference.running }}, ждут {{ data.inference.pending }}
           </p>
@@ -97,7 +97,7 @@ defineExpose({ refetch, loading: computed(() => query.isLoading.value) })
               </Badge>
               <span v-if="a.running.length === 0" class="text-xs text-muted-foreground">ничего не идёт</span>
               <span class="ml-auto text-xs text-muted-foreground">
-                {{ a.holderHarnessName ? `ведёт ${a.holderHarnessName}` : "никто не ведёт" }}
+                {{ a.holderRunnerName ? `ведёт ${a.holderRunnerName}` : "никто не ведёт" }}
               </span>
             </div>
           </li>

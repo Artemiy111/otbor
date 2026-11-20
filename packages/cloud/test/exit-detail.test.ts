@@ -2,12 +2,12 @@ import { describe, expect, test } from "bun:test"
 import { exitDetail } from "../src/services/QueueService.ts"
 
 describe("exitDetail", () => {
-  test("keeps only the tag when the harness gave no message", () => {
+  test("keeps only the tag when the runner gave no message", () => {
     expect(exitDetail({ tag: "inference_failed" })).toBe("inference_failed")
     expect(exitDetail({ tag: "inference_failed", message: "  " })).toBe("inference_failed")
   })
 
-  test("appends the harness message on one line", () => {
+  test("appends the runner message on one line", () => {
     expect(exitDetail({ tag: "inference_failed", message: "agent\nexited   1" })).toBe(
       "inference_failed: agent exited 1"
     )

@@ -1,4 +1,4 @@
-import type { HarnessExit } from "@otbor/contract"
+import type { RunnerExit } from "@otbor/contract"
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -25,8 +25,8 @@ const exit = (
     negotiations?: ReadonlyArray<ReturnType<typeof page>>
     externalId?: string
   },
-  tag: HarnessExit["tag"] = "reconciled"
-): HarnessExit => ({ tag, artifacts: { externalId: ID, ...evidence } })
+  tag: RunnerExit["tag"] = "reconciled"
+): RunnerExit => ({ tag, artifacts: { externalId: ID, ...evidence } })
 
 describe("judgeReconcile", () => {
   test("the vacancy page showing a response settles submitted", () => {
@@ -68,7 +68,7 @@ describe("judgeReconcile", () => {
   test("the vacancy page alone proves no response: no list is needed", () => {
     const verdict = judgeReconcile(exit({ vacancy: page(open, VACANCY_URL), negotiations: [] }), ID)
     expect(verdict._tag).toBe("unsent")
-    // Same without the field at all (the harness did not read the list).
+    // Same without the field at all (the runner did not read the list).
     expect(judgeReconcile(exit({ vacancy: page(open, VACANCY_URL) }), ID)._tag).toBe("unsent")
     // Even when the account has a response made with another resume.
     expect(judgeReconcile(exit({ vacancy: page(open, VACANCY_URL) }), ID, "42", true)._tag).toBe("unsent")
@@ -82,7 +82,7 @@ describe("judgeReconcile", () => {
 
   test("with another resume on the vacancy the list decides by resume", () => {
     const vacancyOnly = exit({ vacancy: page(responded, VACANCY_URL), negotiations: [] })
-    // Not read yet: the harness is asked again.
+    // Not read yet: the runner is asked again.
     expect(judgeReconcile(vacancyOnly, ID, "42", true)._tag).toBe("retry")
     // The first page holds a topic of the right resume.
     const mine = `<template id="HH-Lux-InitialState">{"applicantNegotiations":{"topicList":[{"vacancyId":${ID},"resumeId":42,"lastState":"RESPONSE"}]}}</template>`

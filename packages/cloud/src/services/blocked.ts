@@ -84,9 +84,9 @@ export const parkWithCode = (
 export const retireWritingJob = (tx: Executor, applicationId: string, jobId: string): RepoEffect<boolean> =>
   tx
     .execute(sql`
-      update harness_jobs
+      update runner_jobs
       set idempotency_key = idempotency_key || ':retried:' || (
-            select count(*) + 1 from harness_jobs rj
+            select count(*) + 1 from runner_jobs rj
             where rj.idempotency_key like ${`autoapply:writing:${applicationId}:%:retried:%`}
           )::text,
           updated_at = now()

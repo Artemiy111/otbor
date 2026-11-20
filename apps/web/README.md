@@ -32,7 +32,7 @@ server-side fallback:
 | `/decisions` | stored decisions with verdict/gate/priority |
 | `/applications` | application list |
 | `/applications/:id` | kit, attempts, linked decision |
-| `/queue` | queue stats and harness jobs |
+| `/queue` | queue stats and runner jobs |
 | `/inference` | enqueue one ACP inference job and poll its result |
 | `/presets` | saved explore/apply filters |
 | `/search` | primary vacancy search schedules: crawl hh.ru search URLs into corpus |

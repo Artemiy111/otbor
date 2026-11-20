@@ -1,15 +1,15 @@
-import { HarnessRejected, type AgentCatalog, type AgentHarness, type ApiError } from "@otbor/contract"
+import { RunnerRejected, type AgentCatalog, type AgentHarness, type ApiError } from "@otbor/contract"
 import { Context, Effect, Layer } from "effect"
-import { hashHarnessToken } from "../auth/harnessToken.ts"
+import { hashRunnerToken } from "../auth/runnerToken.ts"
 import { Database } from "../db/Database.ts"
-import * as HarnessRepository from "../repositories/HarnessRepository.ts"
+import * as RunnerRepository from "../repositories/RunnerRepository.ts"
 import { CurrentUser } from "./CurrentUser.ts"
 import { toStorageError } from "./support.ts"
 
 export interface AgentCatalogServiceShape {
-  /** Harness side: authenticated by the device token. */
+  /** Runner side: authenticated by the device token. */
   readonly report: (input: {
-    readonly harnessId: string
+    readonly runnerId: string
     readonly token: string
     readonly harnesses: ReadonlyArray<AgentHarness>
   }) => Effect.Effect<{ readonly ok: boolean }, ApiError>
@@ -36,25 +36,25 @@ export class AgentCatalogService extends Context.Service<AgentCatalogService, Ag
             .asUser(currentUser.userId, (tx) =>
               Effect.gen(function*() {
                 if (
-                  !(yield* HarnessRepository.authenticate(tx, input.harnessId, hashHarnessToken(input.token)))
+                  !(yield* RunnerRepository.authenticate(tx, input.runnerId, hashRunnerToken(input.token)))
                 ) {
                   return false
                 }
-                yield* HarnessRepository.saveCatalog(tx, input.harnessId, input.harnesses)
+                yield* RunnerRepository.saveCatalog(tx, input.runnerId, input.harnesses)
                 return true
               })
             )
-            .pipe(Effect.mapError(toStorageError("harness.reportCatalog")))
+            .pipe(Effect.mapError(toStorageError("runner.reportCatalog")))
           if (!accepted) {
-            return yield* new HarnessRejected({ message: "invalid harness id or token" })
+            return yield* new RunnerRejected({ message: "invalid runner id or token" })
           }
           return { ok: true }
         })
 
       const get: AgentCatalogServiceShape["get"] = () =>
         database
-          .asUser(currentUser.userId, (tx) => HarnessRepository.latestCatalog(tx, currentUser.userId))
-          .pipe(Effect.mapError(toStorageError("harness.catalog")))
+          .asUser(currentUser.userId, (tx) => RunnerRepository.latestCatalog(tx, currentUser.userId))
+          .pipe(Effect.mapError(toStorageError("runner.catalog")))
 
       return AgentCatalogService.of({ report, get })
     })

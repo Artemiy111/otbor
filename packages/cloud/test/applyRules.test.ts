@@ -1,4 +1,4 @@
-import type { FormAnswer, HarnessExit, ResponseForm, StoredHint } from "@otbor/contract"
+import type { FormAnswer, RunnerExit, ResponseForm, StoredHint } from "@otbor/contract"
 import { parseResponseForm } from "@otbor/hh"
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
@@ -188,7 +188,7 @@ describe("judgeSubmit", () => {
     expect(verdict._tag).toBe("submitted")
   })
 
-  test("the harness saying submitted without evidence is reconcile", () => {
+  test("the runner saying submitted without evidence is reconcile", () => {
     expect(judgeSubmit({ tag: "submitted" })._tag).toBe("reconcile")
     expect(judgeSubmit({ tag: "clicked" })._tag).toBe("reconcile")
   })
@@ -220,7 +220,7 @@ describe("judgeSubmit", () => {
   })
 
   test("form_changed with clicked: false is provably unsent", () => {
-    const exit: HarnessExit = {
+    const exit: RunnerExit = {
       tag: "form_changed",
       artifacts: { clicked: false, url: URL_OK, marker: "none" }
     }
@@ -250,7 +250,7 @@ describe("judgeSubmit", () => {
 })
 
 describe("judgePrepare", () => {
-  const prepared = (html: string, url = URL_OK): HarnessExit => ({
+  const prepared = (html: string, url = URL_OK): RunnerExit => ({
     tag: "prepared",
     artifacts: { url, html }
   })
@@ -285,7 +285,7 @@ describe("judgePrepare", () => {
 describe("judgeLetterAttach", () => {
   const artifacts = (clicked: boolean, closed: boolean) => ({ clicked, closed, url: URL_OK })
 
-  test("sent only when the harness clicked and the dialog closed", () => {
+  test("sent only when the runner clicked and the dialog closed", () => {
     expect(judgeLetterAttach({ tag: "submitted", artifacts: artifacts(true, true) })._tag).toBe("sent")
   })
 
@@ -320,7 +320,7 @@ describe("judgeNegotiationsSync", () => {
         pageCount: "1"
       }
     })
-    const exit: HarnessExit = {
+    const exit: RunnerExit = {
       tag: "reconciled",
       artifacts: {
         pages: [
@@ -355,7 +355,7 @@ describe("judgeReconcile with two resumes", () => {
     resumeId,
     lastState: "RESPONSE"
   })
-  const exitFor = (topics: ReadonlyArray<object>): HarnessExit => ({
+  const exitFor = (topics: ReadonlyArray<object>): RunnerExit => ({
     tag: "reconciled",
     artifacts: { externalId: "138177094", negotiations: [page(topics), page([])] }
   })

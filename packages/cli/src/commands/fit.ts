@@ -79,7 +79,7 @@ const enqueue = Command.make(
     yield* Console.log(
       `enqueued ${result.enqueued} fit job(s) for resume ${shortId(result.resumeId)}; ${result.remaining} more eligible`
     )
-    yield* Console.log("a harness with kind=inference answers them; `otbor fit show <vacancy>` reads the result")
+    yield* Console.log("a runner with kind=inference answers them; `otbor fit show <vacancy>` reads the result")
   })
 ).pipe(Command.withDescription("Queue LLM fit judgements for the best vacancies without a current one"))
 

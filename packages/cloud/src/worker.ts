@@ -27,7 +27,7 @@ import { TelegramSync } from "./services/TelegramSync.ts"
 
 /**
  * The worker is the only process that repairs leases and runs schedules.
- * It does not execute harness jobs: those belong to edge harnesses. It
+ * It does not execute runner jobs: those belong to edge runners. It
  * reclaims what a dead performer left behind, keeps the account leases honest,
  * and turns a due `schedule` row into one bounded crawl, hydration or source
  * sync.

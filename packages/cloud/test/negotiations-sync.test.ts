@@ -1,4 +1,4 @@
-import type { HarnessExit } from "@otbor/contract"
+import type { RunnerExit } from "@otbor/contract"
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -17,7 +17,7 @@ const page = (html: string, index = 0) => ({
   html
 })
 
-const exit = (pages: ReadonlyArray<ReturnType<typeof page>>, tag: HarnessExit["tag"] = "reconciled"): HarnessExit => ({
+const exit = (pages: ReadonlyArray<ReturnType<typeof page>>, tag: RunnerExit["tag"] = "reconciled"): RunnerExit => ({
   tag,
   artifacts: { pages }
 })

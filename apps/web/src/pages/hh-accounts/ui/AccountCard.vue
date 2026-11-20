@@ -180,7 +180,7 @@ const commitEdit = () => {
             {{ retryText }}
           </p>
           <template v-else>
-            <p class="text-sm">{{ pause.humanError ?? "Исполнитель браузера получал один и тот же отказ, причина не записана." }}</p>
+            <p class="text-sm">{{ pause.humanError ?? "Драйвер получал один и тот же отказ, причина не записана." }}</p>
             <p class="text-sm text-muted-foreground">
               Остановлено {{ formatDate(pausedSince) }}, чтение вакансий идёт как обычно. {{ retryClockText }}
             </p>

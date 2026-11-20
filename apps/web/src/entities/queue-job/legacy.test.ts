@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test"
-import type { HarnessJob } from "@otbor/contract"
+import type { RunnerJob } from "@otbor/contract"
 import { legacyPage } from "./api"
 
-const job = (id: string, status: string, stage: string, payload: unknown = {}, result: unknown = null): HarnessJob =>
+const job = (id: string, status: string, stage: string, payload: unknown = {}, result: unknown = null): RunnerJob =>
   ({
     id,
     kind: "browser",
@@ -17,7 +17,7 @@ const job = (id: string, status: string, stage: string, payload: unknown = {}, r
     leaseEpoch: 0,
     runAt: "2026-01-01T00:00:00.000Z",
     createdAt: "2026-01-01T00:00:00.000Z"
-  }) as unknown as HarnessJob
+  }) as unknown as RunnerJob
 
 describe("legacyPage (сервер без QueueJobsSearch)", () => {
   const jobs = [

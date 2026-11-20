@@ -22,7 +22,7 @@ const writeTool = <
     /** Sends a real application on hh.ru. */
     readonly destructive?: boolean
     readonly idempotent?: boolean
-    /** Reaches hh.ru (through the browser harness). */
+    /** Reaches hh.ru (through the browser driver). */
     readonly openWorld?: boolean
   }
 ) =>

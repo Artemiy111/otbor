@@ -1,8 +1,8 @@
 import { Schema } from "effect"
 import { Rpc } from "effect/rpc"
 import { ApiError } from "../errors.ts"
-import { HarnessId, HarnessJobId, HhAccountId, VacancyId } from "../ids.ts"
-import { AgentCatalog, AgentHarness, HarnessJob } from "../models/index.ts"
+import { RunnerId, RunnerJobId, HhAccountId, VacancyId } from "../ids.ts"
+import { AgentCatalog, AgentHarness, RunnerJob } from "../models/index.ts"
 
 export const InferenceEnqueue = Rpc.make("InferenceEnqueue", {
   payload: Schema.Struct({
@@ -12,14 +12,14 @@ export const InferenceEnqueue = Rpc.make("InferenceEnqueue", {
     jsonSchema: Schema.optional(Schema.Unknown),
     hhAccountId: Schema.optional(HhAccountId)
   }),
-  success: Schema.Struct({ job: HarnessJob }),
+  success: Schema.Struct({ job: RunnerJob }),
   error: ApiError
 })
 
 /** Harness side: the agents, models and efforts this harness found by probing. */
 export const HarnessReportCatalog = Rpc.make("HarnessReportCatalog", {
   payload: Schema.Struct({
-    harnessId: HarnessId,
+    runnerId: RunnerId,
     token: Schema.String,
     harnesses: Schema.Array(AgentHarness)
   }),
@@ -55,7 +55,7 @@ export const DraftGenerate = Rpc.make("DraftGenerate", {
     model: Schema.optional(Schema.String),
     effort: Schema.optional(Schema.String)
   }),
-  success: Schema.Struct({ job: HarnessJob }),
+  success: Schema.Struct({ job: RunnerJob }),
   error: ApiError
 })
 
@@ -76,7 +76,7 @@ export const DraftPromptPreview = Rpc.make("DraftPromptPreview", {
 })
 
 export const InferenceGet = Rpc.make("InferenceGet", {
-  payload: Schema.Struct({ id: HarnessJobId }),
-  success: HarnessJob,
+  payload: Schema.Struct({ id: RunnerJobId }),
+  success: RunnerJob,
   error: ApiError
 })

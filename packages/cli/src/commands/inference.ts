@@ -1,4 +1,4 @@
-import type { HarnessJob, HarnessJobId, HhAccountId } from "@otbor/contract"
+import type { RunnerJob, RunnerJobId, HhAccountId } from "@otbor/contract"
 import {
   InferencePayload as InferencePayloadSchema,
   InferenceResult as InferenceResultSchema
@@ -51,7 +51,7 @@ const requirePrompt = (text: string) =>
     ? Effect.fail(new Error("Prompt is empty: pass text or pipe it on stdin"))
     : Effect.succeed(text)
 
-const waitFor = (id: HarnessJobId, timeoutSeconds: number) =>
+const waitFor = (id: RunnerJobId, timeoutSeconds: number) =>
   Effect.gen(function*() {
     const api = yield* Api
     const deadline = Date.now() + timeoutSeconds * 1_000
@@ -63,7 +63,7 @@ const waitFor = (id: HarnessJobId, timeoutSeconds: number) =>
     }
   })
 
-const printSettled = (job: HarnessJob, timedOut: boolean) =>
+const printSettled = (job: RunnerJob, timedOut: boolean) =>
   Effect.gen(function*() {
     const text = resultText(job.result)
 
@@ -168,7 +168,7 @@ const get = Command.make(
   },
   Effect.fn(function*({ id, json }) {
     const api = yield* Api
-    const job = yield* api.InferenceGet({ id: id as HarnessJobId })
+    const job = yield* api.InferenceGet({ id: id as RunnerJobId })
 
     if (json) {
       yield* Console.log(JSON.stringify(job, null, 2))

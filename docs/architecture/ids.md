@@ -10,7 +10,7 @@
    UUIDv7. Двух представлений и маппинга нет.
 2. **В БД** — `uuid default uuidv7()`, внешние ключи тоже `uuid`.
 3. **В контракте** — брендированные схемы поверх UUIDv7: `VacancyId`,
-   `ApplicationId`, `HarnessJobId`. Тип ловится компилятором, формат — схемой.
+   `ApplicationId`, `RunnerJobId`. Тип ловится компилятором, формат — схемой.
 4. **Префиксов нет.** Ни в БД, ни в RPC, ни в URL.
 5. **Внешние ID вендоров** — отдельные branded-строки, не PK:
    `hh_id`, `telegram_chat_id`, `rfc_message_id`.
@@ -64,7 +64,7 @@ create table vacancies (
 ```
 
 Приложение тоже может генерировать UUIDv7 (Bun: `Bun.randomUUIDv7()`) — это
-нужно для тестов, офлайн-сценариев и edge-воркеров. Оба пути дают один формат.
+нужно для тестов, офлайн-сценариев и раннеров. Оба пути дают один формат.
 
 ## Effect Schema
 
@@ -75,7 +75,7 @@ export const UuidV7 = Schema.String.pipe(Schema.check(Schema.isUUID(7)))
 
 export const VacancyId = UuidV7.pipe(Schema.brand("VacancyId"))
 export const ApplicationId = UuidV7.pipe(Schema.brand("ApplicationId"))
-export const HarnessJobId = UuidV7.pipe(Schema.brand("HarnessJobId"))
+export const RunnerJobId = UuidV7.pipe(Schema.brand("RunnerJobId"))
 ```
 
 Внутри сервисов и репозиториев — брендированные типы. На границе (RPC, CLI,
@@ -150,7 +150,7 @@ export const RfcMessageId = Schema.String.pipe(Schema.brand("RfcMessageId"))
 
 ## Очередь и workflow
 
-- `harness_job.id` — UUIDv7;
+- `runner_job.id` — UUIDv7;
 - `lease_id` — UUIDv7, для fencing;
 - `application_id` — UUIDv7 FK;
 - `application_attempt.id` — UUIDv7;

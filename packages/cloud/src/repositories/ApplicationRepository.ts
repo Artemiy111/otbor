@@ -2,7 +2,7 @@ import type {
   ApplicationDetail,
   ApplicationRecord,
   AttemptRecord,
-  HarnessExit,
+  RunnerExit,
   KitAnswer,
   KitRecord,
 } from "@otbor/contract"
@@ -468,8 +468,8 @@ export const listAttempts = (
           applicationId: row.applicationId as AttemptRecord["applicationId"],
           seq: row.seq,
           stage: row.stage as AttemptRecord["stage"],
-          harnessId: row.harnessId as AttemptRecord["harnessId"],
-          exit: row.exit as HarnessExit | null,
+          runnerId: row.runnerId as AttemptRecord["runnerId"],
+          exit: row.exit as RunnerExit | null,
           startedAt: row.startedAt.toISOString(),
           finishedAt: row.finishedAt?.toISOString() ?? null
         }))
@@ -487,15 +487,15 @@ export const appendAttempt = (
     readonly userId: string
     readonly applicationId: string
     readonly stage: "prepare" | "submit" | "reconcile"
-    readonly harnessId: string | null
+    readonly runnerId: string | null
   }
 ): RepoEffect<AttemptRecord> =>
   Effect.gen(function*() {
     const [row] = (
       yield* tx.execute(sql`
-        insert into application_attempt (user_id, application_id, seq, stage, harness_id)
+        insert into application_attempt (user_id, application_id, seq, stage, runner_id)
         select ${input.userId}, ${input.applicationId},
-               coalesce(max(seq), 0) + 1, ${input.stage}, ${input.harnessId}
+               coalesce(max(seq), 0) + 1, ${input.stage}, ${input.runnerId}
         from application_attempt
         where application_id = ${input.applicationId}
         returning *
@@ -507,7 +507,7 @@ export const appendAttempt = (
       applicationId: row!.application_id as AttemptRecord["applicationId"],
       seq: row!.seq as number,
       stage: row!.stage as AttemptRecord["stage"],
-      harnessId: row!.harness_id as AttemptRecord["harnessId"],
+      runnerId: row!.runner_id as AttemptRecord["runnerId"],
       exit: null,
       startedAt: new Date(row!.started_at as string).toISOString(),
       finishedAt: null
@@ -517,7 +517,7 @@ export const appendAttempt = (
 export const finishAttempt = (
   tx: Executor,
   attemptId: string,
-  exit: HarnessExit,
+  exit: RunnerExit,
   artifacts: Record<string, unknown> | null
 ): RepoEffect<void> =>
   tx.execute(sql`
@@ -531,7 +531,7 @@ export const finishAttempt = (
 const snake = (key: string): string =>
   key.replace(/[A-Z]/g, (char) => `_${char.toLowerCase()}`)
 
-/** The attempt a completing harness should finish, if one is still open. */
+/** The attempt a completing runner should finish, if one is still open. */
 export const openAttempt = (
   tx: Executor,
   applicationId: string,
@@ -612,7 +612,7 @@ export const parkLetterlessQueued = (
         and a.state in ('queued', 'submitting')
         and ${ApplyFilterRepository.governingRequireLetterSql("a")}
         and exists (
-          select 1 from harness_jobs j
+          select 1 from runner_jobs j
           where j.application_id = a.id
             and j.stage = 'submit'
             and j.status in ('pending', 'leased', 'running')
@@ -724,14 +724,14 @@ export const reviveStalledAuto = (
           )
           and ${ApplyFilterRepository.governingAutoModeSql("a")} = 'auto'
           and not exists (
-            select 1 from harness_jobs j
+            select 1 from runner_jobs j
             where j.application_id = a.id and j.status in ('pending', 'leased', 'running')
           )
-          -- submit повторяем только когда харнесс доказал, что клика не было
+          -- submit повторяем только когда раннер доказал, что клика не было
           and (
             a.blocked_reason <> 'submit_not_sent'
             or exists (
-              select 1 from harness_jobs j
+              select 1 from runner_jobs j
               where j.application_id = a.id and j.stage = 'submit'
                 and j.status in ('failed', 'needs_human')
                 and j.result->>'clicked' = 'false'

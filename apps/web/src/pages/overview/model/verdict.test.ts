@@ -101,8 +101,8 @@ describe("buildVerdict", () => {
   })
 
   test("нет исполнителя браузера: отклики не отправляются", () => {
-    expect(verdictFor({ health: makeHealth({ harnesses: [] }) }).headline).toBe(
-      "Исполнитель браузера не подключён: отклики не отправляются."
+    expect(verdictFor({ health: makeHealth({ runners: [] }) }).headline).toBe(
+      "Драйвер не подключён: отклики не отправляются."
     )
   })
 

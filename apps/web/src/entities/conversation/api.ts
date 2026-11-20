@@ -41,7 +41,7 @@ export const conversationApi = {
         resumeId: key.resumeId === "" ? null : (key.resumeId as ResumeId)
       })
     ),
-  /** Queues a chat read on the harness and returns at once. */
+  /** Ставит чтение чата в очередь драйверу и возвращает управление сразу. */
   vacancyChatRefresh: (key: { vacancyId: string; accountId: string; resumeId: string }): Promise<VacancyChat> =>
     call((client) =>
       client.VacancyChatRefresh({

@@ -2,7 +2,7 @@ import type { ApiError, Health } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "../db/Database.ts"
-import * as HarnessRepository from "../repositories/HarnessRepository.ts"
+import * as RunnerRepository from "../repositories/RunnerRepository.ts"
 import * as HhAccountRepository from "../repositories/HhAccountRepository.ts"
 import { CurrentUser } from "./CurrentUser.ts"
 import { SystemOneClient } from "./SystemOneClient.ts"
@@ -47,23 +47,23 @@ export class SystemService extends Context.Service<
           Effect.orElseSucceed(() => [])
         )
 
-      const harnesses = database
-        .asUser(currentUser.userId, (tx) => HarnessRepository.statusList(tx))
+      const runners = database
+        .asUser(currentUser.userId, (tx) => RunnerRepository.statusList(tx))
         .pipe(Effect.orElseSucceed(() => []))
 
       const health: SystemService["Service"]["health"] = () =>
         database
           .asOwner((tx) => tx.execute(sql`select 1 as ok`))
           .pipe(
-            Effect.flatMap(() => Effect.all({ accounts, harnesses, systemOne }, { concurrency: "unbounded" })),
+            Effect.flatMap(() => Effect.all({ accounts, runners, systemOne }, { concurrency: "unbounded" })),
             Effect.map(
-              ({ accounts, harnesses, systemOne }): Health => ({
+              ({ accounts, runners, systemOne }): Health => ({
                 status: "ok",
                 version: VERSION,
                 database: true,
                 now: new Date().toISOString(),
                 accounts,
-                harnesses: harnesses.map((h) => ({ ...h, accounts: h.accounts as never })),
+                runners: runners.map((h) => ({ ...h, accounts: h.accounts as never })),
                 systemOne
               })
             ),

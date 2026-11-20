@@ -100,7 +100,7 @@ const busy = computed(() => saveMutation.isLoading.value || testMutation.isLoadi
 const save = async () => {
   try {
     await saveMutation.mutateAsync(current.value)
-    toast.success("Сохранено", { description: "Харнес читает настройки при каждой капче, перезапуск не нужен." })
+    toast.success("Сохранено", { description: "Драйвер читает настройки при каждой капче, перезапуск не нужен." })
     await queryCache.invalidateQueries({ key: localModelKeys.captcha() })
   } catch (cause) {
     toast.error("Не удалось сохранить", { description: describeError(cause) })
@@ -122,7 +122,7 @@ const test = async () => {
     <CardHeader>
       <CardTitle>Распознавание капчи</CardTitle>
       <CardDescription>
-        Когда hh показывает капчу, браузер харнеса при необходимости переключает её язык кнопкой в окне,
+        Когда hh показывает капчу, драйвер при необходимости переключает её язык кнопкой в окне,
         снимает картинку и отдаёт её выбранной модели, затем вводит ответ и жмёт «Отправить». Подойдёт любой
         харнес каталога с поддержкой изображений: локальный
         сервер (oMLX, LM Studio), <code>opencode</code>, <code>claude</code>. Если ответ не принят за
@@ -183,7 +183,7 @@ const test = async () => {
             <option value="ru">Русский</option>
           </select>
           <p class="text-xs text-muted-foreground">
-            Перед чтением харнес нажмёт кнопку смены языка в окне капчи, если hh показывает другой язык.
+            Перед чтением драйвер нажмёт кнопку смены языка в окне капчи, если hh показывает другой язык.
           </p>
         </div>
       </div>

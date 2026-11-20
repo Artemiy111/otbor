@@ -588,7 +588,7 @@ const subtitle = computed(() => application.value?.employerName ?? "Компан
                 <div class="min-w-0 text-xs text-muted-foreground">
                   <div class="truncate font-mono text-sm font-semibold text-foreground">{{ writer.model ?? "Модель не указана" }}</div>
                   <div>
-                    {{ writer.harnessName ?? "исполнитель не указан" }}
+                    {{ writer.harnessName ?? "харнес не указан" }}
                     <template v-if="writer.effort"> · {{ writer.effort }}</template>
                     · токенов {{ writer.tokens ?? "—" }} · {{ writer.duration ?? "—" }} · {{ cost(kit?.costUsd) }}
                   </div>
@@ -615,7 +615,7 @@ const subtitle = computed(() => application.value?.employerName ?? "Компан
                         <TableHead>№</TableHead>
                         <TableHead>Этап</TableHead>
                         <TableHead>Итог</TableHead>
-                        <TableHead>Исполнитель</TableHead>
+                        <TableHead>Харнес</TableHead>
                         <TableHead>Начата</TableHead>
                         <TableHead>Завершена</TableHead>
                       </TableRow>
@@ -629,7 +629,7 @@ const subtitle = computed(() => application.value?.employerName ?? "Компан
                           <span v-else class="text-muted-foreground">—</span>
                           <div v-if="attempt.exit?.message" class="mt-1 text-xs text-muted-foreground">{{ attempt.exit.message }}</div>
                         </TableCell>
-                        <TableCell class="font-mono text-xs">{{ attempt.harnessId ?? "—" }}</TableCell>
+                        <TableCell class="font-mono text-xs">{{ attempt.runnerId ?? "—" }}</TableCell>
                         <TableCell class="whitespace-nowrap text-muted-foreground">{{ formatDate(attempt.startedAt) }}</TableCell>
                         <TableCell class="whitespace-nowrap text-muted-foreground">{{ formatDate(attempt.finishedAt) }}</TableCell>
                       </TableRow>

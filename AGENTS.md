@@ -14,7 +14,7 @@ assumptions blindly.
 The crawler lives in `packages/crawler`. It fetches hh search and vacancy pages
 and emits `VacancyDraft` values. It never writes SQL. Persistence stays in
 `packages/cloud` (`CorpusService` / `VacancyRepository`), so the same drafts can
-come from a local CLI, a future edge harness or a fixture test.
+come from a local CLI, a future runner or a fixture test.
 
 Proxy settings are local secrets, not product data. They live outside the repo
 (`~/.otbor/proxy/config.json`, mode `0600`) or in `OTBOR_PROXY_*` environment
@@ -59,12 +59,12 @@ guide doesn't cover, search through the source code in `node_modules/effect/src`
   RLS, triggers, partial indexes and `uuidv7()` are part of the schema.
 - ACP is driven through the official `@agentclientprotocol/sdk` (v1 stable),
   never hand-rolled JSON-RPC. Protocol work lives in `packages/acp`; the agent
-  process is owned by `packages/harness`.
+  process is owned by `packages/runner`.
 - Never run `opencode acp` inside the repository checkout: a nested agent can
   discover the project config. Use `OTBOR_ACP_CWD` outside the repo (default
   `/tmp/otbor-acp`) and honor `OTBOR_ACP_CHILD=1`.
 - Inference is a queue job with `stage = "inference"` and `kind = "inference"`.
-  The prompt lives in `payload`, the answer in `HarnessJob.result`; the cloud
+  The prompt lives in `payload`, the answer in `RunnerJob.result`; the cloud
   never calls a model directly.
 - Use `Effect.fn` in services and `Effect.fnUntraced` in hot paths.
 - The operator CLI is also a binary: `packages/cli/bin/otbor` is the executable,
@@ -93,7 +93,7 @@ guide doesn't cover, search through the source code in `node_modules/effect/src`
 - Submit is at-most-once per application: an intent row is written before the
   click, ambiguity goes to reconcile, never to a second submit. One account may
   apply to the same vacancy with different resumes.
-- The harness is untrusted. It may fill and click, but it cannot decide what
+- The runner is untrusted. It may fill and click, but it cannot decide what
   counts as success. The cloud reconciles every result.
 
 ## Agent skills

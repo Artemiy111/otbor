@@ -114,7 +114,7 @@ export const jobsOf = async (applicationId: string) =>
     ownerTx((tx) =>
       tx
         .execute(
-          sql`select id, stage, status, payload, result, idempotency_key from harness_jobs where application_id = ${applicationId} order by created_at`
+          sql`select id, stage, status, payload, result, idempotency_key from runner_jobs where application_id = ${applicationId} order by created_at`
         )
         .pipe(Effect.map((result) => result.rows as ReadonlyArray<Record<string, any>>))
     )

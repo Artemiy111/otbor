@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue"
 import { useQuery } from "@pinia/colada"
 import { FileText, LoaderCircle, Sparkles } from "@lucide/vue"
-import type { DraftLetterLength, FormQuestion, HarnessJob } from "@otbor/contract"
+import type { DraftLetterLength, FormQuestion, RunnerJob } from "@otbor/contract"
 import { parseGeneratedDraft, type GeneratedDraft } from "@otbor/domain"
 import { applicationApi } from "@/entities/application"
 import { useHarnessCatalog } from "@/features/harness-catalog"
@@ -62,10 +62,10 @@ const healthQuery = useQuery({
   staleTime: 5_000
 })
 const healthTimer = setInterval(() => void healthQuery.refetch(), 10_000)
-const executorOffline = computed(
+const runnerOffline = computed(
   () =>
     healthQuery.data.value !== undefined &&
-    !(healthQuery.data.value.harnesses ?? []).some((h) => h.online && h.kinds.includes("inference"))
+    !(healthQuery.data.value.runners ?? []).some((h) => h.online && h.kinds.includes("inference"))
 )
 
 /* ---- the operator's last choice ------------------------------------------ */
@@ -230,7 +230,7 @@ const STATUS_TEXT: Record<string, string> = {
   cancelled: "задача отменена"
 }
 
-const reasonOf = (job: HarnessJob): string => {
+const reasonOf = (job: RunnerJob): string => {
   const base = STATUS_TEXT[job.status] ?? `статус ${job.status}`
   const result = job.result as { error?: unknown; message?: unknown } | null | undefined
   const detail = [result?.error, result?.message].find((item) => typeof item === "string")
@@ -255,10 +255,10 @@ const run = async () => {
       model: model.value,
       effort: effort.value || undefined
     })
-    let job: HarnessJob = queued
+    let job: RunnerJob = queued
     while (job.status !== "done" && !FAILED.has(job.status)) {
       if (Date.now() - startedAt > GIVE_UP_MS) {
-        throw new Error("Модель не ответила за 5 минут. Задача могла остаться в очереди: проверьте, что запущен `otbor harness run`.")
+        throw new Error("Модель не ответила за 5 минут. Задача могла остаться в очереди: проверьте, что запущен `otbor runner run`.")
       }
       await sleep(POLL_MS)
       if (cancelled) return
@@ -329,7 +329,7 @@ const run = async () => {
         <FileText class="size-4" />
         Промпт
       </Button>
-      <span v-if="running && !executorOffline" class="text-xs text-muted-foreground">Модель думает, {{ elapsed }} с…</span>
+      <span v-if="running && !runnerOffline" class="text-xs text-muted-foreground">Модель думает, {{ elapsed }} с…</span>
     </div>
 
     <Sheet v-model:open="promptOpen">
@@ -359,15 +359,15 @@ const run = async () => {
         </template>
       </SheetContent>
     </Sheet>
-    <p v-if="executorOffline" class="text-xs text-destructive">
-      Harness не запущен: задание встанет в очередь и будет ждать, пока вы не выполните
-      <code>otbor harness run</code> (или <code>otbor up</code>).
+    <p v-if="runnerOffline" class="text-xs text-destructive">
+      Раннер не запущен: задание встанет в очередь и будет ждать, пока вы не выполните
+      <code>otbor runner run</code> (или <code>otbor up</code>).
       <template v-if="running">Сейчас оно ждёт уже {{ elapsed }} с.</template>
     </p>
     <p v-else-if="catalogLoading" class="text-xs text-muted-foreground">Загружаю список моделей…</p>
     <p v-else-if="catalogError" class="text-xs text-warning">{{ catalogError }}</p>
     <p v-else-if="catalog !== null && (catalog.harnesses.length === 0 || catalogEmpty)" class="text-xs text-warning">
-      Ни один харнес пока не сообщил свои модели. Запустите `otbor harness run`.
+      Ни один харнес пока не сообщил свои модели. Запустите `otbor runner run`.
     </p>
     <p v-else-if="accountId === ''" class="text-xs text-muted-foreground">Выберите аккаунт, чтобы сгенерировать.</p>
   </div>

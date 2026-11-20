@@ -6,7 +6,7 @@ import type { FormAnswer, FormQuestion, ResponseForm } from "@otbor/contract"
  * Hints are input to the model, not final answers. A `hard` hint is a business
  * rule the model may not rewrite (remote is always "yes", the salary follows
  * the table below); a soft hint is context it may rephrase. Everything here is
- * pure: the same code runs in the cloud and in the harness.
+ * pure: the same code runs in the cloud and in the runner.
  */
 
 /* -------------------------------------------------------------------------- */

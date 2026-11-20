@@ -8,23 +8,23 @@ const base = {
   submitIntervalSeconds: 75,
   submitJitterPercent: 50,
   submitHourlyLimit: null,
-  harnessSlots: 6,
+  runnerSlots: 6,
   formReadConcurrency: 2,
   formReadIntervalSeconds: 4,
   formReadJitterPercent: 100,
   formReadBlockedFactor: 3,
   actingStages: ["submit", "letter_attach"],
-  harnesses: [],
+  runners: [],
   accounts: [],
   unassigned: { running: [], pending: [] },
   inference: { running: 1, pending: 2 }
 }
 
 describe("QueueConcurrency", () => {
-  test("decodes a snapshot; a harness may not have reported its slots yet", () => {
+  test("decodes a snapshot; a runner may not have reported its slots yet", () => {
     const decoded = Schema.decodeUnknownSync(QueueConcurrency)({
       ...base,
-      harnesses: [{
+      runners: [{
         id: "0190a0a0-0000-7000-8000-000000000001",
         name: "mac",
         slots: null,
@@ -32,7 +32,7 @@ describe("QueueConcurrency", () => {
         lastSeenAt: null
       }]
     })
-    expect(decoded.harnesses[0]?.slots).toBeNull()
+    expect(decoded.runners[0]?.slots).toBeNull()
     expect(QueueConcurrencyGet._tag).toBe("QueueConcurrencyGet")
   })
 
@@ -48,7 +48,7 @@ describe("UserSettings", () => {
     submitIntervalSeconds: 75,
     submitJitterPercent: 50,
     submitHourlyLimit: null,
-    harnessSlots: 6,
+    runnerSlots: 6,
     formReadConcurrency: 2,
     formReadIntervalSeconds: 4,
     formReadJitterPercent: 100,
@@ -62,8 +62,8 @@ describe("UserSettings", () => {
 
   test("rejects values outside the ranges", () => {
     for (const bad of [
-      { harnessSlots: 13 },
-      { harnessSlots: 0 },
+      { runnerSlots: 13 },
+      { runnerSlots: 0 },
       { accountBrowserConcurrency: 0 },
       { submitIntervalSeconds: -1 },
       { submitJitterPercent: 201 },

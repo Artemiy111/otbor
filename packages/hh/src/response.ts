@@ -2,7 +2,7 @@ import { htmlToText } from "./text.ts"
 
 /**
  * What the response page (`/applicant/vacancy_response?vacancyId=...`) shows.
- * Pure string checks on markup and URL, so the harness (which has the page) and
+ * Pure string checks on markup and URL, so the driver (which has the page) and
  * the cloud (which only has the evidence) reach the same verdict.
  *
  * Markers come from the previous project's browser submit code
@@ -96,7 +96,7 @@ export const classifyResponsePage = (page: string, url: string): ResponsePageKin
 export const isSubmitSuccess = (html: string, url: string): boolean =>
   classifyResponsePage(html, url) === "responded"
 
-/** Longest page the harness sends as an artifact. */
+/** Longest page the driver sends as an artifact. */
 export const MAX_ARTIFACT_HTML = 400_000
 
 /**

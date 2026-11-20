@@ -177,13 +177,13 @@ hh называется `applicant_profiles`, а в `applications`, `resumes`, `
 
 Внутри БД — `uuid` с UUIDv7, дефолт `uuidv7()` (Postgres 18). Это же значение
 уходит наружу, в RPC, CLI и URL. Префиксов нет: тип сущности ловится брендом
-в контракте (`VacancyId`, `ApplicationId`, `HarnessJobId`), а не строкой
+в контракте (`VacancyId`, `ApplicationId`, `RunnerJobId`), а не строкой
 `vac_...`. Полные правила в [ids.md](./ids.md).
 
 Почему v7:
 
 - вставки идут в конец индекса, без фрагментации, как у `bigint`;
-- id генерируется в приложении и на edge-харнесе без координации с БД;
+- id генерируется в приложении и на раннере без координации с БД;
 - не раскрывает количество записей, в отличие от `bigint identity`;
 - один формат на все таблицы, без «тут text, там uuid».
 
@@ -579,7 +579,7 @@ application_attempt (
   application_id uuid not null references application(id) on delete cascade,
   seq integer not null,
   stage text not null,               -- prepare | submit | reconcile
-  harness_id uuid,
+  runner_id uuid,
   exit jsonb,
   artifacts jsonb,
   started_at timestamptz not null,

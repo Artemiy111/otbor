@@ -5,7 +5,7 @@ import { sql } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
 import { Database, type Executor, type RepoEffect } from "../db/Database.ts"
 import * as ConversationRepository from "../repositories/ConversationRepository.ts"
-import * as HarnessRepository from "../repositories/HarnessRepository.ts"
+import * as RunnerRepository from "../repositories/RunnerRepository.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
 import { CurrentUser } from "./CurrentUser.ts"
 import { chatReadJob } from "./jobs.ts"
@@ -123,7 +123,7 @@ export const enqueueChatReads = (
         ${options.hhAccountId === undefined ? sql`` : sql`and a.hh_account_id = ${options.hhAccountId}::uuid`}
         and (c.id is null or c.updated_at < ${cutoff})
         and not exists (
-          select 1 from harness_jobs j
+          select 1 from runner_jobs j
           where j.hh_account_id = a.hh_account_id and j.stage = ${STAGE}
             and j.payload->>'chatId' = a.hh_chat_id
             and j.status <> 'cancelled'
@@ -265,7 +265,7 @@ export class ChatSync extends Context.Service<ChatSync, ChatSyncShape>()("otbor/
             Effect.gen(function*() {
               const chatId = yield* chatIdIn(tx, currentUser.userId, key)
               if (chatId === null) return { _tag: "nochat" } as const
-              const running = (yield* HarnessRepository.statusList(tx)).some(
+              const running = (yield* RunnerRepository.statusList(tx)).some(
                 (h) => h.online && h.kinds.includes("browser") && h.accounts.includes(key.hhAccountId)
               )
               if (!running) return { _tag: "offline" } as const
@@ -297,7 +297,7 @@ export class ChatSync extends Context.Service<ChatSync, ChatSyncShape>()("otbor/
                       message:
                         result._tag === "nochat"
                           ? "У этого отклика нет известного чата. Сначала синхронизируйте отклики (`otbor hh sync`)."
-                          : "Браузерный harness этого аккаунта не запущен. Запустите `otbor harness run` (или `otbor up --harness`) и повторите."
+                          : "Драйвер этого аккаунта не запущен. Запустите `otbor runner run` (или `otbor up --runner`) и повторите."
                     })
                   )
             )

@@ -24,7 +24,7 @@ export class Unauthorized extends Schema.TaggedError<Unauthorized>()("Unauthoriz
   message: Schema.String
 }) {}
 
-export class HarnessRejected extends Schema.TaggedError<HarnessRejected>()("HarnessRejected", {
+export class RunnerRejected extends Schema.TaggedError<RunnerRejected>()("RunnerRejected", {
   message: Schema.String
 }) {}
 
@@ -61,7 +61,7 @@ export const ApiError = Schema.Union([
   InvalidInput,
   StorageError,
   Unauthorized,
-  HarnessRejected,
+  RunnerRejected,
   AnswersInvalid,
   LimitExceeded
 ])

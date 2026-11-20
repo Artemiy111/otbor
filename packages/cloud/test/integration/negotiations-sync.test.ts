@@ -4,7 +4,7 @@
  * hh.ru: pages are built from the synthetic shapes of packages/hh.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import type { HarnessExit } from "@otbor/contract"
+import type { RunnerExit } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import * as support from "./support/index.ts"
 
@@ -18,7 +18,7 @@ const listHtml = (topics: ReadonlyArray<Record<string, unknown>>, pages?: number
 
 const emptyList = listHtml([])
 
-const syncExit = (...pages: ReadonlyArray<string>): HarnessExit => ({
+const syncExit = (...pages: ReadonlyArray<string>): RunnerExit => ({
   tag: "reconciled",
   artifacts: {
     pages: pages.map((html, index) => ({
@@ -51,23 +51,23 @@ if (!enabled || serverUrl === null) {
 
     const setup = async (label: string) => {
       const tenant = await support.seedTenant(label)
-      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const runner = await support.registerRunner(tenant.userId, [tenant.accountId])
       const lease = () =>
-        support.leaseNext(tenant.userId, harness.id, harness.token!, [tenant.accountId])
+        support.leaseNext(tenant.userId, runner.id, runner.token!, [tenant.accountId])
       /** Lease the pending sync job and complete it with the given exit. */
-      const finish = async (exit: HarnessExit) => {
+      const finish = async (exit: RunnerExit) => {
         const leased = await lease()
         expect(leased.job?.stage).toBe("negotiations_sync")
         return support.completeJob(tenant.userId, {
-          harnessId: harness.id,
-          token: harness.token!,
+          runnerId: runner.id,
+          token: runner.token!,
           jobId: leased.job!.id,
           leaseId: leased.job!.leaseId!,
           epoch: leased.job!.leaseEpoch,
           exit
         })
       }
-      return { tenant, harness, lease, finish }
+      return { tenant, runner, lease, finish }
     }
 
     test("run only enqueues, and a second run while one is waiting returns the same job", async () => {

@@ -9,7 +9,7 @@ const accountFlag = Flag.String("account").pipe(
 )
 
 const waitFlag = Flag.Int("wait").pipe(
-  Flag.withDescription("Seconds to wait for the harness to finish; 0 only queues the sync"),
+  Flag.withDescription("Seconds to wait for the driver to finish; 0 only queues the sync"),
   Flag.withDefault(180)
 )
 
@@ -55,7 +55,7 @@ export const hhSyncCommand = Command.make(
       const queued = yield* api.NegotiationsSyncRun({ hhAccountId })
       yield* Console.log(`negotiations sync queued for ${hhAccountId} (job ${queued.jobId ?? "?"})`)
       if (wait <= 0) return queued
-      yield* Console.log("waiting for the harness (is `otbor harness` running?)...")
+      yield* Console.log("waiting for the driver (is `otbor runner` running?)...")
       const deadline = Date.now() + wait * 1_000
       let status = queued
       while (!TERMINAL.includes(status.status) && Date.now() < deadline) {
@@ -92,4 +92,4 @@ export const hhSyncCommand = Command.make(
       yield* Console.log("not finished yet; run `otbor hh sync` again to keep waiting on the same job")
     }
   })
-).pipe(Command.withDescription("Import responses made by hand on hh.ru (reads /applicant/negotiations through the harness)"))
+).pipe(Command.withDescription("Import responses made by hand on hh.ru (reads /applicant/negotiations through the driver)"))

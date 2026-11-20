@@ -38,8 +38,8 @@ const summary = computed<{ tone: StatusTone; label: string; rows: ReadonlyArray<
     return { tone: "neutral", label: "Проверка…", rows: [] }
   }
 
-  const browserOnline = (data.harnesses ?? []).some(
-    (harness) => harness.online && harness.kinds.includes("browser")
+  const browserOnline = (data.runners ?? []).some(
+    (runner) => runner.online && runner.kinds.includes("browser")
   )
   const rows: ReadonlyArray<Row> = [
     {
@@ -53,7 +53,7 @@ const summary = computed<{ tone: StatusTone; label: string; rows: ReadonlyArray<
       tone: data.database ? "success" : "danger"
     },
     {
-      label: "Исполнитель браузера",
+      label: "Драйвер",
       value: browserOnline ? "онлайн" : "не запущен",
       tone: browserOnline ? "success" : "warning"
     },
@@ -73,12 +73,12 @@ const summary = computed<{ tone: StatusTone; label: string; rows: ReadonlyArray<
   if (data.status !== "ok" || !data.database) {
     return { tone: "danger", label: "Сервер недоступен", rows }
   }
-  if (!browserOnline) return { tone: "warning", label: "Нет исполнителя", rows }
+  if (!browserOnline) return { tone: "warning", label: "Нет раннера", rows }
   return { tone: "success", label: "Работает", rows }
 })
 
-/** Исполнитель не запущен: в подсказке показываем команду. */
-const executorMissing = computed(() => summary.value.label === "Нет исполнителя")
+/** Раннер не запущен: в подсказке показываем команду. */
+const runnerMissing = computed(() => summary.value.label === "Нет раннера")
 const classes = computed(() => toneClasses(summary.value.tone))
 </script>
 
@@ -115,9 +115,9 @@ const classes = computed(() => toneClasses(summary.value.tone))
           <span class="ml-auto pl-3 tabular-nums">{{ row.value }}</span>
         </li>
       </ul>
-      <div v-if="executorMissing" class="space-y-1 text-xs">
-        <p class="text-muted-foreground">Запустите исполнитель браузера:</p>
-        <CommandChip command="otbor harness run" />
+      <div v-if="runnerMissing" class="space-y-1 text-xs">
+        <p class="text-muted-foreground">Запустите драйвер:</p>
+        <CommandChip command="otbor runner run" />
       </div>
       <p class="text-xs text-muted-foreground">Подробнее на странице «Состояние»</p>
     </TooltipContent>

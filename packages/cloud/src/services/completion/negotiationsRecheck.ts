@@ -1,4 +1,4 @@
-import type { HarnessExit } from "@otbor/contract"
+import type { RunnerExit } from "@otbor/contract"
 import { Effect } from "effect"
 import type { Executor } from "../../db/Database.ts"
 import * as QueueRepository from "../../repositories/QueueRepository.ts"
@@ -19,7 +19,7 @@ export const requestNegotiationsRecheck = (
     readonly userId: string
     readonly hhAccountId: string | null
     readonly sessionProfile?: unknown
-    readonly exit?: HarnessExit | undefined
+    readonly exit?: RunnerExit | undefined
   }
 ) =>
   Effect.gen(function*() {

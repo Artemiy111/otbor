@@ -10,8 +10,8 @@ export const HealthAccount = Schema.Struct({
 })
 export type HealthAccount = typeof HealthAccount.Type
 
-/** A browser or inference harness and whether it has polled in the last two minutes. */
-export const HealthHarness = Schema.Struct({
+/** A browser driver or inference runner and whether it has polled in the last two minutes. */
+export const HealthRunner = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   kinds: Schema.Array(Schema.String),
@@ -19,7 +19,7 @@ export const HealthHarness = Schema.Struct({
   lastSeenAt: Schema.NullOr(Schema.String),
   online: Schema.Boolean
 })
-export type HealthHarness = typeof HealthHarness.Type
+export type HealthRunner = typeof HealthRunner.Type
 
 /** Локальная модель анализа вакансий (SystemOne): отвечает ли сервер прямо сейчас. */
 export const HealthSystemOne = Schema.Struct({
@@ -37,7 +37,7 @@ export const Health = Schema.Struct({
   database: Schema.Boolean,
   now: Schema.String,
   accounts: Schema.optional(Schema.Array(HealthAccount)),
-  harnesses: Schema.optional(Schema.Array(HealthHarness)),
+  runners: Schema.optional(Schema.Array(HealthRunner)),
   systemOne: Schema.optional(HealthSystemOne)
 })
 

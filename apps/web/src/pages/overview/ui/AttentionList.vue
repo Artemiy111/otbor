@@ -21,7 +21,7 @@ import {
   ChevronDown
 } from "@lucide/vue"
 import { cn, toneClasses } from "@/shared/lib"
-import { ExecutorStartGuide } from "@/widgets/executor-start"
+import { RunnerStartGuide } from "@/widgets/runner-start"
 import { Button, Skeleton } from "@/shared/ui"
 import type { AttentionIcon, AttentionItem, AttentionTone } from "../model/attention"
 import { agoText } from "../model/time"
@@ -184,7 +184,7 @@ const checked = computed(() => agoText(props.checkedAt, props.now))
                 <ChevronDown :class="cn('transition-transform motion-reduce:transition-none', guideOpen.has(item.id) && 'rotate-180')" aria-hidden="true" />
               </Button>
               <div v-if="guideOpen.has(item.id)" :id="`guide-${item.id}`" class="mt-2 rounded-md border bg-muted/30 p-3">
-                <ExecutorStartGuide target="browser" />
+                <RunnerStartGuide target="browser" />
               </div>
             </div>
           </li>

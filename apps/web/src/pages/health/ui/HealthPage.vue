@@ -18,7 +18,7 @@ import {
   Skeleton,
   StatusBadge
 } from "@/shared/ui"
-import { ExecutorStartGuide } from "@/widgets/executor-start"
+import { RunnerStartGuide } from "@/widgets/runner-start"
 import { PageHeader } from "@/widgets/page-header"
 import { StatCard } from "@/widgets/stat-card"
 
@@ -44,7 +44,7 @@ useIntervalFn(() => void query.refetch(), 15_000)
       <AlertTitle>Сервер не отвечает</AlertTitle>
       <AlertDescription>
         <p>{{ describeError(query.error.value) }}</p>
-        <ExecutorStartGuide target="stack" class="mt-3" />
+        <RunnerStartGuide target="stack" class="mt-3" />
       </AlertDescription>
     </Alert>
 
@@ -67,20 +67,20 @@ useIntervalFn(() => void query.refetch(), 15_000)
       <CardHeader>
         <CardTitle>Исполнители</CardTitle>
         <CardDescription>
-          Исполнитель браузера выполняет задачи на hh.ru: загрузку резюме, чтение форм, отправку. Он считается включённым, если обращался к серверу за последние 2 минуты.
+          Драйвер выполняет задачи на hh.ru: загрузку резюме, чтение форм, отправку. Он считается включённым, если обращался к серверу за последние 2 минуты.
         </CardDescription>
       </CardHeader>
       <CardContent class="space-y-2">
-        <Alert v-if="!(query.data.value.harnesses ?? []).some((h) => h.online && h.kinds.includes('browser'))" variant="destructive">
+        <Alert v-if="!(query.data.value.runners ?? []).some((h) => h.online && h.kinds.includes('browser'))" variant="destructive">
           <CircleAlert />
-          <AlertTitle>Исполнитель браузера не запущен</AlertTitle>
+          <AlertTitle>Драйвер не запущен</AlertTitle>
           <AlertDescription>
             <p>Загрузка резюме, чтение форм откликов и отправка не работают.</p>
-            <ExecutorStartGuide class="mt-3" />
+            <RunnerStartGuide class="mt-3" />
           </AlertDescription>
         </Alert>
         <div
-          v-for="h in query.data.value.harnesses ?? []"
+          v-for="h in query.data.value.runners ?? []"
           :key="h.id"
           class="flex flex-wrap items-center gap-3 rounded-md border p-3 text-sm"
         >
@@ -91,7 +91,7 @@ useIntervalFn(() => void query.refetch(), 15_000)
             {{ h.lastSeenAt ? `последний опрос ${formatDate(h.lastSeenAt)}` : "ещё не опрашивал" }}
           </span>
         </div>
-        <p v-if="!(query.data.value.harnesses ?? []).length" class="text-sm text-muted-foreground">
+        <p v-if="!(query.data.value.runners ?? []).length" class="text-sm text-muted-foreground">
           Ни один исполнитель не зарегистрирован.
         </p>
       </CardContent>

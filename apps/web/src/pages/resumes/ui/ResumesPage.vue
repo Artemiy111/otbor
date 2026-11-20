@@ -271,7 +271,7 @@ const syncMutation = useMutation({
     const accountId = selectedAccountId.value
     let status = await resumeApi.syncRun(accountId)
     const accountName = accounts.value.find((a) => a.id === accountId)?.label ?? "выбранного аккаунта"
-    syncMessage.value = `Загружаю резюме аккаунта «${accountName}». Задачу выполняет браузерный harness, жду его…`
+    syncMessage.value = `Загружаю резюме аккаунта «${accountName}». Задачу выполняет драйвер, жду его…`
     const deadline = Date.now() + 180_000
     while (!["done", "failed", "needs_human"].includes(status.status) && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 2_000))
@@ -282,7 +282,7 @@ const syncMutation = useMutation({
       status.status === "done" && c
         ? `Найдено ${c.found}: новых ${c.imported}, обновлено ${c.updated}, без изменений ${c.unchanged}, не прочитано ${c.unreadable}`
         : status.status === "pending"
-          ? "Harness не взял задачу за 3 минуты. Он, скорее всего, не запущен: выполните `otbor harness run` и нажмите кнопку ещё раз."
+          ? "Раннер не взял задачу за 3 минуты. Он, скорее всего, не запущен: выполните `otbor runner run` и нажмите кнопку ещё раз."
           : `Статус: ${status.status}${status.message ? ` — ${status.message}` : ""}`
     return status
   },

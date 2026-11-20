@@ -12,7 +12,7 @@ import { readOpenAiStore, type OpenAiEndpointDef } from "./index.ts"
  */
 export const captchaStorePath = (
   env: Readonly<Record<string, string | undefined>> = process.env
-): string => join(env.OTBOR_HARNESS_DIR?.trim() || join(homedir(), ".otbor"), "captcha.json")
+): string => join(env.OTBOR_RUNNER_DIR?.trim() || join(homedir(), ".otbor"), "captcha.json")
 
 export const DEFAULT_CAPTCHA_ATTEMPTS = 5
 export const DEFAULT_CAPTCHA_TIMEOUT_SECONDS = 60

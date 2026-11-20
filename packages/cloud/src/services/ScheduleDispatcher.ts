@@ -315,7 +315,7 @@ export class ScheduleDispatcher extends Context.Service<
 
             case "fit": {
               // Enqueues inference for the best decisions without a current
-              // judgement. The answers land through the harness completion
+              // judgement. The answers land through the runner completion
               // path, so this tick only fills the queue. The target is the
               // resume id, or `default`/`global` for the active resume.
               const target = schedule.targetId.trim()
@@ -475,7 +475,7 @@ export class ScheduleDispatcher extends Context.Service<
             }
 
             case "resume_sync": {
-              // Only enqueues browser jobs: the harness reads hh and the
+              // Only enqueues browser jobs: the runner reads hh and the
               // completion path stores the resumes. The target is an hh account
               // id, or `global` for every account of the user.
               const result = yield* resumeSync.enqueue(schedule.userId, schedule.targetId)
@@ -489,7 +489,7 @@ export class ScheduleDispatcher extends Context.Service<
             case "resume_bump": {
               // Только ставит `resume_bump` по одному на опубликованное резюме,
               // которому пора на подъём (срок отдыха 4 часа считает облако):
-              // нажимает кнопку браузерный harness. Цель - id аккаунта hh или
+              // нажимает кнопку драйвер. Цель - id аккаунта hh или
               // `global`/пусто для всех аккаунтов пользователя.
               const target = schedule.targetId.trim()
               const named = target !== "" && target !== "default" && target !== "global"
@@ -512,7 +512,7 @@ export class ScheduleDispatcher extends Context.Service<
 
             case "hh_chat_sync": {
               // Только ставит `chat_read` для откликов без свежей копии чата: читает
-              // hh браузерный harness, сохраняет `QueueService.complete`. Цель — id
+              // hh драйвер, сохраняет `QueueService.complete`. Цель — id
               // аккаунта hh или `global`/пусто для всех аккаунтов пользователя.
               const target = schedule.targetId.trim()
               const named = target !== "" && target !== "default" && target !== "global"

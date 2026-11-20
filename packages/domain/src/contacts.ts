@@ -76,7 +76,7 @@ const TELEGRAM_INVITE =
 
 const TELEGRAM_HANDLE = /(?<![\p{L}\p{N}_.%+@-])@([A-Za-z][A-Za-z0-9_]{3,31})\b/gu
 
-/** hh chat links; the hh chat itself is not scraped without the browser harness. */
+/** hh chat links; the hh chat itself is not scraped without the browser driver. */
 const HH_CHAT_LINK =
   /(?<![\w/])(?:https?:\/\/)?(?:www\.)?(?:hh\.ru|headhunter\.ru|chat\.hh\.ru)\/(?:chat|applicant\/negotiations)\/?([A-Za-z0-9_?=&%./-]*)/giu
 

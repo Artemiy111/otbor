@@ -59,7 +59,7 @@ if (!integrationEnabled || serverUrl === null) {
     )
 
   const patchJob = (jobId: string, set: ReturnType<typeof sql>) =>
-    runAs("owner", ownerTx((tx) => tx.execute(sql`update harness_jobs set ${set} where id = ${jobId}`)))
+    runAs("owner", ownerTx((tx) => tx.execute(sql`update runner_jobs set ${set} where id = ${jobId}`)))
 
   describe("QueueJobsSearch", () => {
     test("отдаёт аккаунт, вакансию, отклик и ошибку задачи без разбора payload", async () => {

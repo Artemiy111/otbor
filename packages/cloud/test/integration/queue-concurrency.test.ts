@@ -11,7 +11,7 @@ import {
   integrationEnabled,
   migrateTestDatabase,
   ownerTx,
-  registerHarness,
+  registerRunner,
   runAs,
   seedTenant,
   serverUrl,
@@ -47,14 +47,14 @@ if (!integrationEnabled || serverUrl === null) {
       })
     )
 
-  const lease = (userId: string, harness: { id: string; token: string | null }, accountId: string, slots?: number) =>
+  const lease = (userId: string, runner: { id: string; token: string | null }, accountId: string, slots?: number) =>
     runAs(
       userId,
       Effect.gen(function*() {
         const queue = yield* QueueService
         return yield* queue.leaseNext({
-          harnessId: harness.id,
-          token: harness.token!,
+          runnerId: runner.id,
+          token: runner.token!,
           kinds: ["browser"],
           accounts: [accountId],
           ...(slots === undefined ? {} : { concurrency: slots })
@@ -65,26 +65,26 @@ if (!integrationEnabled || serverUrl === null) {
   describe("QueueConcurrencyGet", () => {
     test("shows slots, running and pending stages per account and the lease holder", async () => {
       const tenant = await seedTenant("conc-view")
-      const harness = await registerHarness(tenant.userId, [tenant.accountId], "mac")
+      const runner = await registerRunner(tenant.userId, [tenant.accountId], "mac")
       for (const stage of ["form_read", "reconcile", "reconcile", "reconcile"] as const) {
         await enqueueJob({ userId: tenant.userId, accountId: tenant.accountId, stage })
       }
       await enqueueInference(tenant.userId, { prompt: "hi" })
 
       const before = await snapshot(tenant.userId)
-      expect(before.harnesses.map((h) => [h.name, h.slots, h.busy])).toEqual([["mac", null, 0]])
+      expect(before.runners.map((h) => [h.name, h.slots, h.busy])).toEqual([["mac", null, 0]])
 
       // The lease reports the slot count; two jobs are taken.
-      expect((await lease(tenant.userId, harness, tenant.accountId, 6)).job).not.toBeNull()
-      expect((await lease(tenant.userId, harness, tenant.accountId)).job).not.toBeNull()
+      expect((await lease(tenant.userId, runner, tenant.accountId, 6)).job).not.toBeNull()
+      expect((await lease(tenant.userId, runner, tenant.accountId)).job).not.toBeNull()
 
       const view = await snapshot(tenant.userId)
       expect(view.browserCap).toBe(4)
       expect(view.actingCap).toBe(1)
       expect(view.submitIntervalSeconds).toBe(0)
-      expect(view.harnesses[0]).toMatchObject({ name: "mac", slots: 6, busy: 2 })
+      expect(view.runners[0]).toMatchObject({ name: "mac", slots: 6, busy: 2 })
       const account = view.accounts.find((a) => a.id === tenant.accountId)!
-      expect(account.holderHarnessName).toBe("mac")
+      expect(account.holderRunnerName).toBe("mac")
       expect(account.browserRunning).toBe(2)
       expect(account.actingRunning).toBe(0)
       expect(account.pendingTotal).toBe(2)
@@ -116,12 +116,12 @@ if (!integrationEnabled || serverUrl === null) {
       expect(account.lastCaptchaAt).toBeNull()
     })
 
-    test("does not show another user's harnesses or accounts", async () => {
+    test("does not show another user's runners or accounts", async () => {
       const mine = await seedTenant("conc-mine")
       const other = await seedTenant("conc-other")
-      await registerHarness(other.userId, [other.accountId], "other-harness")
+      await registerRunner(other.userId, [other.accountId], "other-runner")
       const view = await snapshot(mine.userId)
-      expect(view.harnesses.find((h) => h.name === "other-harness")).toBeUndefined()
+      expect(view.runners.find((h) => h.name === "other-runner")).toBeUndefined()
       expect(view.accounts.find((a) => a.id === other.accountId)).toBeUndefined()
     })
   })

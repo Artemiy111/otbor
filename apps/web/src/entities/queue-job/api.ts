@@ -1,4 +1,4 @@
-import type { HarnessJob, JobStage, JobStatus, QueueConcurrency, QueueJob, QueueStats } from "@otbor/contract"
+import type { RunnerJob, JobStage, JobStatus, QueueConcurrency, QueueJob, QueueStats } from "@otbor/contract"
 import { call } from "@/shared/api"
 
 export interface QueueJobListInput {
@@ -28,7 +28,7 @@ const text = (source: unknown, key: string): string | null => {
 }
 
 /** Старый сервер: задача без полей, которые новый считает сам; берём их из payload и результата. */
-export const legacyJob = (job: HarnessJob): QueueJob => {
+export const legacyJob = (job: RunnerJob): QueueJob => {
   const result = job.result
   const exit = typeof result === "object" && result !== null ? (result as Record<string, unknown>).exit : null
   return {
@@ -43,7 +43,7 @@ export const legacyJob = (job: HarnessJob): QueueJob => {
 }
 
 /** Страница из полного списка старого сервера: те же фильтры, но по уже загруженным 200 задачам. */
-export const legacyPage = (jobs: ReadonlyArray<HarnessJob>, input: QueueJobSearchInput): QueueJobPage => {
+export const legacyPage = (jobs: ReadonlyArray<RunnerJob>, input: QueueJobSearchInput): QueueJobPage => {
   const query = input.query?.trim().toLowerCase() ?? ""
   const matching = jobs.flatMap((raw) => {
     const job = legacyJob(raw)
@@ -90,7 +90,7 @@ export const queueJobApi = {
     call((client) => client.QueueStatsGet({ kind })),
   concurrency: (): Promise<QueueConcurrency> => call((client) => client.QueueConcurrencyGet({})),
   /** Для CLI и MCP; страница очереди читает `search`. */
-  list: (input: QueueJobListInput): Promise<ReadonlyArray<HarnessJob>> =>
+  list: (input: QueueJobListInput): Promise<ReadonlyArray<RunnerJob>> =>
     call((client) => client.QueueJobsList(input)),
   search
 }

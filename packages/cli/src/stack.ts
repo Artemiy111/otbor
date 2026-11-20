@@ -10,7 +10,7 @@ import { join, resolve } from "node:path"
 /** Repo root, from `packages/cli/src`. */
 export const repoRoot = resolve(import.meta.dirname, "../../..")
 
-export type ServiceName = "server" | "worker" | "web" | "harness"
+export type ServiceName = "server" | "worker" | "web" | "runner"
 
 export interface ServiceSpec {
   readonly name: ServiceName
@@ -21,7 +21,7 @@ export interface ServiceSpec {
 
 export interface StackOptions {
   readonly web: boolean
-  readonly harness: boolean
+  readonly runner: boolean
 }
 
 export const serviceSpecs = (root: string, options: StackOptions): ReadonlyArray<ServiceSpec> => {
@@ -32,18 +32,18 @@ export const serviceSpecs = (root: string, options: StackOptions): ReadonlyArray
   if (options.web) {
     specs.push({ name: "web", command: "bun", args: ["run", "dev"], cwd: join(root, "apps/web") })
   }
-  if (options.harness) {
+  if (options.runner) {
     specs.push({
-      name: "harness",
+      name: "runner",
       command: "bun",
-      args: [join(root, "packages/cli/src/main.ts"), "harness", "run"],
+      args: [join(root, "packages/cli/src/main.ts"), "runner", "run"],
       cwd: root
     })
   }
   return specs
 }
 
-export const ALL_SERVICES: ReadonlyArray<ServiceName> = ["server", "worker", "web", "harness"]
+export const ALL_SERVICES: ReadonlyArray<ServiceName> = ["server", "worker", "web", "runner"]
 
 // ---------------------------------------------------------------- pid files
 

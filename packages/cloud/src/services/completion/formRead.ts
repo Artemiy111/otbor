@@ -14,7 +14,7 @@ import { outcome, type StageHandler } from "./types.ts"
 
 /**
  * The form belongs to the vacancy: every applicant sees the same questions. The
- * harness delivers the page, the cloud parses it and keeps one version per
+ * runner delivers the page, the cloud parses it and keeps one version per
  * distinct form.
  */
 /** Заявка ждёт сама: у неё код ожидания и срок ещё впереди (или это дневной лимит). */
@@ -35,7 +35,7 @@ export const completeFormRead: StageHandler = (tx, ctx, exit, options) =>
       const vacancy = typeof wanted === "string" ? yield* VacancyRepository.findById(tx, wanted) : null
       // Заявки этой вакансии, ждущие формы: `preparing` и без submit-задачи
       // (с задачей отправка уже идёт, форма ей не нужна). Форма у вакансии
-      // общая, а сбои чтения привязаны к аккаунту харнесса.
+      // общая, а сбои чтения привязаны к аккаунту раннера.
       const waiting =
         vacancy === null
           ? []
@@ -88,7 +88,7 @@ export const completeFormRead: StageHandler = (tx, ctx, exit, options) =>
       if (verdict._tag === "form") {
         const form = parseResponseForm(verdict.artifacts.html, verdict.artifacts.url)
         if (form.vacancyId !== "" && form.vacancyId !== vacancy.externalId) {
-          const message = "the harness returned the form of another vacancy"
+          const message = "the runner returned the form of another vacancy"
           yield* VacancyFormRepository.recordFailure(tx, { vacancyId: vacancy.id, message })
           yield* parkOwn("needs_human", message, "form_unreadable")
           return outcome("needs_human", message)

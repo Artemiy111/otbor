@@ -1,11 +1,11 @@
 import { Schema } from "effect"
-import { ApplicationOrigin, ApplicationState, BlockedReason, AttemptStage, HarnessExitTag } from "../enums.ts"
+import { ApplicationOrigin, ApplicationState, BlockedReason, AttemptStage, RunnerExitTag } from "../enums.ts"
 import { FormAnswer, ResponseForm, StoredForm } from "../form.ts"
 import {
   ApplicationId,
   AttemptId,
   DecisionId,
-  HarnessId,
+  RunnerId,
   HhAccountId,
   KitId,
   ResumeId,
@@ -143,23 +143,23 @@ export const KitRecord = Schema.Struct({
 
 export type KitRecord = typeof KitRecord.Type
 
-export const HarnessExit = Schema.Struct({
-  tag: HarnessExitTag,
+export const RunnerExit = Schema.Struct({
+  tag: RunnerExitTag,
   message: Schema.optional(Schema.String),
   retryAfterSeconds: Schema.optional(Schema.Int),
   formHash: Schema.optional(Schema.String),
   artifacts: Schema.optional(Schema.Record(Schema.String, Schema.Unknown))
 })
 
-export type HarnessExit = typeof HarnessExit.Type
+export type RunnerExit = typeof RunnerExit.Type
 
 export const AttemptRecord = Schema.Struct({
   id: AttemptId,
   applicationId: ApplicationId,
   seq: Schema.Int,
   stage: AttemptStage,
-  harnessId: Schema.optional(Schema.NullOr(HarnessId)),
-  exit: Schema.optional(Schema.NullOr(HarnessExit)),
+  runnerId: Schema.optional(Schema.NullOr(RunnerId)),
+  exit: Schema.optional(Schema.NullOr(RunnerExit)),
   startedAt: Schema.String,
   finishedAt: Schema.optional(Schema.NullOr(Schema.String))
 })

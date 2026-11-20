@@ -264,7 +264,7 @@ export class BrowserApply extends Context.Service<BrowserApply, BrowserApplyShap
 
       const recordSubmit: BrowserApplyShape["recordSubmit"] = Effect.fn("BrowserApply.recordSubmit")(
         function*(input) {
-          // The cloud's own reading of the page, as for the harness: no "responded", no record.
+          // The cloud's own reading of the page, as for the runner: no "responded", no record.
           if (!hasRespondedMarker(input.evidence)) {
             return result("unconfirmed", null, "the page after the click shows no response")
           }

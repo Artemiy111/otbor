@@ -205,7 +205,7 @@ const writingOf = (tx: Executor, applicationId: string, formHash: string) =>
     .execute(sql`
       select payload->>'harness' as harness, payload->>'model' as model, payload->>'effort' as effort,
         result, updated_at
-      from harness_jobs
+      from runner_jobs
       where idempotency_key = ${`autoapply:writing:${applicationId}:${formHash}`} and status = 'done'
       limit 1
     `)
@@ -531,7 +531,7 @@ export class ApplicationService extends Context.Service<ApplicationService, Appl
                 // A failed submit is never retried. The only safe recovery is
                 // a reconcile: the site may have accepted the click.
                 const submit = yield* QueueRepository.latestFor(tx, id, ["submit"])
-                // The exception is a submit the harness proved was never clicked:
+                // The exception is a submit the runner proved was never clicked:
                 // that one is prepared again from scratch.
                 const unsent =
                   submit !== null &&

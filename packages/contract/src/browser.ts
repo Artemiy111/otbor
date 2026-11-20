@@ -3,11 +3,11 @@ import { FormAnswer } from "./form.ts"
 
 /**
  * Browser job payloads and artifacts: the typed envelope between the cloud
- * and a browser harness. The harness is untrusted; everything it returns is
+ * and a browser driver. The driver is untrusted; everything it returns is
  * evidence the cloud re-checks, never a verdict.
  */
 
-/** Where the harness finds the account's browser profile. */
+/** Where the driver finds the account's browser profile. */
 const Target = {
   applicationId: Schema.String,
   vacancyId: Schema.String,
@@ -57,7 +57,7 @@ export const LetterAttachJobPayload = Schema.Struct({
 export type LetterAttachJobPayload = typeof LetterAttachJobPayload.Type
 
 /**
- * `letter_attach` artifacts. `clicked` is the harness's claim that the send
+ * `letter_attach` artifacts. `clicked` is the driver's claim that the send
  * button was pressed; `closed` says the letter dialog went away afterwards.
  */
 export const LetterAttachEvidence = Schema.Struct({
@@ -100,7 +100,7 @@ export const SubmitJobPayload = Schema.Struct({
 
 export type SubmitJobPayload = typeof SubmitJobPayload.Type
 
-/** `prepare` artifacts: the live response form as the harness saw it. */
+/** `prepare` artifacts: the live response form as the driver saw it. */
 export const PrepareArtifacts = Schema.Struct({
   url: Schema.String,
   /** Form fragment, or the page if no form was found. Size-capped. */
@@ -114,7 +114,7 @@ export const SubmitMarker = Schema.Literals(["success", "error", "captcha", "non
 export type SubmitMarker = typeof SubmitMarker.Type
 
 /**
- * `submit` artifacts. `clicked` is the harness's own claim about whether the
+ * `submit` artifacts. `clicked` is the driver's own claim about whether the
  * submit button was pressed: `false` is only believed together with a
  * pre-click exit tag, `true` or a missing field always means the click may have
  * reached hh. `html` is what the cloud re-checks for the success marker.
@@ -140,7 +140,7 @@ export const ReconcileJobPayload = Schema.Struct({
    * отклика на эту вакансию с этим резюме. Без подсказки список не читается.
    */
   needsResume: Schema.optional(Schema.Boolean),
-  /** hh-id резюме заявки: по нему харнесс узнаёт нужный отклик в списке. */
+  /** hh-id резюме заявки: по нему раннер узнаёт нужный отклик в списке. */
   resumeExternalId: Schema.optional(Schema.NullOr(Schema.String))
 })
 
@@ -155,7 +155,7 @@ export const ReconcilePage = Schema.Struct({
 export type ReconcilePage = typeof ReconcilePage.Type
 
 /**
- * `reconcile` artifacts: the pages the harness read, nothing more. The harness
+ * `reconcile` artifacts: the pages the driver read, nothing more. The driver
  * does not say whether a response exists; the cloud parses these pages and
  * decides. A missing part means "not read".
  */
@@ -178,7 +178,7 @@ export const NegotiationsSyncJobPayload = Schema.Struct({
   hhAccountId: Schema.String,
   /** Local profile name of the account's hh session. */
   sessionProfile: Schema.optional(Schema.NullOr(Schema.String)),
-  /** Pages to read at most; the harness also applies its own cap. */
+  /** Pages to read at most; the driver also applies its own cap. */
   maxPages: Schema.optional(Schema.Int)
 })
 
@@ -186,7 +186,7 @@ export type NegotiationsSyncJobPayload = typeof NegotiationsSyncJobPayload.Type
 
 /**
  * `negotiations_sync` artifacts: `/applicant/negotiations?page=0..n`, in order,
- * as many as were read. The harness does not parse or judge them.
+ * as many as were read. The driver does not parse or judge them.
  */
 export const NegotiationsSyncEvidence = Schema.Struct({
   pages: Schema.Array(ReconcilePage)
@@ -203,7 +203,7 @@ export const ResumeSyncJobPayload = Schema.Struct({
   hhAccountId: Schema.String,
   /** Local profile name of the account's hh session. */
   sessionProfile: Schema.optional(Schema.NullOr(Schema.String)),
-  /** Resumes to read at most; the harness also applies its own cap. */
+  /** Resumes to read at most; the driver also applies its own cap. */
   maxResumes: Schema.optional(Schema.Int)
 })
 
@@ -211,7 +211,7 @@ export type ResumeSyncJobPayload = typeof ResumeSyncJobPayload.Type
 
 /**
  * `resume_sync` artifacts: the profile page (the resume cards) and the resume
- * pages that were opened. The harness does not parse or judge them.
+ * pages that were opened. The driver does not parse or judge them.
  */
 export const ResumeSyncEvidence = Schema.Struct({
   profile: ReconcilePage,

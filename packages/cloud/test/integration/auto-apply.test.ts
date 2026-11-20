@@ -1,7 +1,7 @@
 /**
  * AutoApplyRunner against a real Postgres: the `apply` schedule kind turns an
  * apply filter's `auto_mode` into applications, writing jobs and kits. The
- * harness is faked (the test leases and completes the browser and inference
+ * runner is faked (the test leases and completes the browser and inference
  * jobs itself); pages are the local fixtures of packages/hh. Nothing reaches hh.ru.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
@@ -114,7 +114,7 @@ if (!enabled || serverUrl === null) {
     owner((tx) =>
       tx
         .execute(
-          sql`select id, status, idempotency_key from harness_jobs
+          sql`select id, status, idempotency_key from runner_jobs
               where stage = 'inference' and hh_account_id = ${accountId}
                 and idempotency_key like 'autoapply:writing:%'
               order by created_at`
@@ -137,10 +137,10 @@ if (!enabled || serverUrl === null) {
         )
     )
 
-  /** One tenant, one account, a harness that runs both browser and inference jobs. */
+  /** One tenant, one account, a runner that runs both browser and inference jobs. */
   const setup = async (label: string, options: { row?: boolean } = {}) => {
     const tenant = await support.seedTenant(label)
-    const harness = await support.registerHarness(tenant.userId, [tenant.accountId], `harness-${label}`, [
+    const runner = await support.registerRunner(tenant.userId, [tenant.accountId], `runner-${label}`, [
       "browser",
       "inference"
     ])
@@ -150,7 +150,7 @@ if (!enabled || serverUrl === null) {
     if (options.row !== false) {
       await support.applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter: {}, autoMode: "off" })
     }
-    return { tenant, harness, accounts: [tenant.accountId] }
+    return { tenant, runner, accounts: [tenant.accountId] }
   }
   type Ctx = Awaited<ReturnType<typeof setup>>
 
@@ -194,18 +194,18 @@ if (!enabled || serverUrl === null) {
     return { vacancyId, decision }
   }
 
-  /** Leases the next job of a kind as the fake harness and completes it. */
+  /** Leases the next job of a kind as the fake runner and completes it. */
   const leaseAndComplete = async (
     ctx: Ctx,
     kind: "browser" | "inference",
     exit: Parameters<typeof support.completeJob>[1]["exit"] | ((job: { stage: string; payload: any }) => Parameters<typeof support.completeJob>[1]["exit"])
   ) => {
-    const leased = await support.leaseNext(ctx.tenant.userId, ctx.harness.id, ctx.harness.token!, ctx.accounts, [kind])
+    const leased = await support.leaseNext(ctx.tenant.userId, ctx.runner.id, ctx.runner.token!, ctx.accounts, [kind])
     const job = leased.job
     if (job === null || job === undefined) return null
     await support.completeJob(ctx.tenant.userId, {
-      harnessId: ctx.harness.id,
-      token: ctx.harness.token!,
+      runnerId: ctx.runner.id,
+      token: ctx.runner.token!,
       jobId: job.id,
       leaseId: job.leaseId!,
       epoch: job.leaseEpoch,
@@ -347,7 +347,7 @@ if (!enabled || serverUrl === null) {
       expect(await tick(ctx.tenant.userId)).toMatchObject({ writingEnqueued: 0, waiting: 2, kitsSet: 0 })
       expect(await writingJobs(ctx.tenant.accountId)).toHaveLength(2)
 
-      // 5. the fake harness answers; the kits are stored
+      // 5. the fake runner answers; the kits are stored
       expect(await writeLetters(ctx, GOOD_DRAFT)).toBe(2)
       expect(await tick(ctx.tenant.userId)).toMatchObject({ writingEnqueued: 0, kitsSet: 2, needsHuman: 0, submitQueued: 0 })
 
@@ -411,10 +411,10 @@ if (!enabled || serverUrl === null) {
       await readForms(ctx, responseHtml)
       await tick(ctx.tenant.userId)
 
-      // the harness fails every attempt of the job
+      // the runner fails every attempt of the job
       for (let attempt = 0; attempt < 3; attempt++) {
         await leaseAndComplete(ctx, "inference", { tag: "inference_failed", message: "agent exited 1" })
-        await owner((tx) => tx.execute(sql`update harness_jobs set run_at = now() where stage = 'inference'`))
+        await owner((tx) => tx.execute(sql`update runner_jobs set run_at = now() where stage = 'inference'`))
       }
       const [job] = await writingJobs(ctx.tenant.accountId)
       expect(["failed", "dead"]).toContain(job!.status)
@@ -424,11 +424,11 @@ if (!enabled || serverUrl === null) {
       const [row] = await applicationsOf(ctx.tenant.accountId)
       expect(row!.state).toBe("needs_human")
       expect(row!.last_error).toContain("writing job")
-      // The harness message is not lost: the person sees WHY.
+      // The runner message is not lost: the person sees WHY.
       expect(row!.last_error).toContain("inference exhausted retries: inference_failed: agent exited 1")
       const [stored] = await owner((tx) =>
         tx
-          .execute(sql`select last_error from harness_jobs where stage = 'inference' and hh_account_id = ${ctx.tenant.accountId}`)
+          .execute(sql`select last_error from runner_jobs where stage = 'inference' and hh_account_id = ${ctx.tenant.accountId}`)
           .pipe(Effect.map((result) => result.rows as unknown as ReadonlyArray<{ last_error: string }>))
       )
       expect(stored!.last_error).toBe("inference exhausted retries: inference_failed: agent exited 1")
@@ -450,7 +450,7 @@ if (!enabled || serverUrl === null) {
       await tick(ctx.tenant.userId)
       const [job] = await owner((tx) =>
         tx
-          .execute(sql`select payload from harness_jobs where stage = 'inference' and hh_account_id = ${ctx.tenant.accountId}`)
+          .execute(sql`select payload from runner_jobs where stage = 'inference' and hh_account_id = ${ctx.tenant.accountId}`)
           .pipe(Effect.map((result) => result.rows as unknown as ReadonlyArray<{ payload: Record<string, unknown> }>))
       )
       expect(job!.payload).toMatchObject({ harness: "claude", model: "haiku", effort: "low" })
@@ -465,7 +465,7 @@ if (!enabled || serverUrl === null) {
       await tick(other.tenant.userId)
       const [plain] = await owner((tx) =>
         tx
-          .execute(sql`select payload from harness_jobs where stage = 'inference' and hh_account_id = ${other.tenant.accountId}`)
+          .execute(sql`select payload from runner_jobs where stage = 'inference' and hh_account_id = ${other.tenant.accountId}`)
           .pipe(Effect.map((result) => result.rows as unknown as ReadonlyArray<{ payload: Record<string, unknown> }>))
       )
       expect(plain!.payload.harness).toBeUndefined()
@@ -788,7 +788,7 @@ if (!enabled || serverUrl === null) {
     const jobPayloads = (accountId: string, stage: string) =>
       owner((tx) =>
         tx
-          .execute(sql`select payload from harness_jobs where hh_account_id = ${accountId} and stage = ${stage} order by created_at`)
+          .execute(sql`select payload from runner_jobs where hh_account_id = ${accountId} and stage = ${stage} order by created_at`)
           .pipe(Effect.map((r) => r.rows.map((row) => (row as { payload: Record<string, any> }).payload)))
       )
 
@@ -1059,7 +1059,7 @@ if (!enabled || serverUrl === null) {
       await tick(ctx.tenant.userId)
       for (let attempt = 0; attempt < 3; attempt++) {
         await leaseAndComplete(ctx, "inference", { tag: "inference_failed", message: "agent exited 1" })
-        await owner((tx) => tx.execute(sql`update harness_jobs set run_at = now() where stage = 'inference'`))
+        await owner((tx) => tx.execute(sql`update runner_jobs set run_at = now() where stage = 'inference'`))
       }
       // before the runner looks again the dead job is already visible
       let view = await progressOf(ctx)
@@ -1086,7 +1086,7 @@ if (!enabled || serverUrl === null) {
     const killWriting = (accountId: string) =>
       owner((tx) =>
         tx.execute(
-          sql`update harness_jobs set status = 'dead', last_error = 'quota is over'
+          sql`update runner_jobs set status = 'dead', last_error = 'quota is over'
               where stage = 'inference' and hh_account_id = ${accountId}
                 and idempotency_key like 'autoapply:writing:%' and idempotency_key not like '%:retried:%'`
         )
@@ -1119,7 +1119,7 @@ if (!enabled || serverUrl === null) {
       // the dead job stays as history under a retired key; no model call happened inline
       const jobs = (await owner((tx) =>
         tx
-          .execute(sql`select status, idempotency_key from harness_jobs
+          .execute(sql`select status, idempotency_key from runner_jobs
                        where stage = 'inference' and hh_account_id = ${ctx.tenant.accountId}`)
           .pipe(Effect.map((r) => r.rows as unknown as ReadonlyArray<{ status: string; idempotency_key: string }>))
       ))
@@ -1245,15 +1245,15 @@ if (!enabled || serverUrl === null) {
           const queue = yield* QueueService
           const database = yield* Database
           const leased = yield* queue.leaseNext({
-            harnessId: ctx.harness.id,
-            token: ctx.harness.token!,
+            runnerId: ctx.runner.id,
+            token: ctx.runner.token!,
             kinds: [kind],
             accounts: ctx.accounts
           })
           const job = leased.job!
           yield* queue.complete({
-            harnessId: ctx.harness.id,
-            token: ctx.harness.token!,
+            runnerId: ctx.runner.id,
+            token: ctx.runner.token!,
             jobId: job.id,
             leaseId: job.leaseId!,
             epoch: job.leaseEpoch,
@@ -1290,7 +1290,7 @@ if (!enabled || serverUrl === null) {
               html: responseHtml
             }
           }),
-          `select 1 from harness_jobs where stage = 'inference'
+          `select 1 from runner_jobs where stage = 'inference'
              and idempotency_key like 'autoapply:writing:${app.id}:%'`
         )
       ).toBe(true)
@@ -1303,7 +1303,7 @@ if (!enabled || serverUrl === null) {
           ctx,
           "inference",
           { tag: "prepared", artifacts: { text: GOOD_DRAFT, model: "test/model" } },
-          `select 1 from harness_jobs where stage = 'submit' and application_id = '${app.id}'`
+          `select 1 from runner_jobs where stage = 'submit' and application_id = '${app.id}'`
         )
       ).toBe(true)
       expect((await kitOf(app.id))?.model).toBe("test/model")
@@ -1349,7 +1349,7 @@ if (!enabled || serverUrl === null) {
     const killLatestWriting = (accountId: string) =>
       owner((tx) =>
         tx.execute(
-          sql`update harness_jobs set status = 'dead', last_error = 'harness offline'
+          sql`update runner_jobs set status = 'dead', last_error = 'runner offline'
               where stage = 'inference' and hh_account_id = ${accountId}
                 and idempotency_key like 'autoapply:writing:%' and idempotency_key not like '%:retried:%'`
         )
@@ -1463,7 +1463,7 @@ if (!enabled || serverUrl === null) {
         await tick(ctx.tenant.userId)
         const row = await rowOfApp(ctx.tenant.accountId)
         expect(row).toMatchObject({ state: "preparing", blocked_reason: "writing_failed", auto_retries: n + 1 })
-        expect(row.last_error).toContain("harness offline")
+        expect(row.last_error).toContain("runner offline")
         const wait = row.retry_at!.getTime() - before
         expect(wait).toBeGreaterThan((expectedWaits[n]! - 0.1) * HOUR)
         expect(wait).toBeLessThan((expectedWaits[n]! + 0.1) * HOUR)
@@ -1545,7 +1545,7 @@ if (!enabled || serverUrl === null) {
         for (let attempt = 0; attempt < 5; attempt++) {
           const job = await failRead()
           if (job === null) break
-          await owner((tx) => tx.execute(sql`update harness_jobs set run_at = now() where stage = 'form_read'`))
+          await owner((tx) => tx.execute(sql`update runner_jobs set run_at = now() where stage = 'form_read'`))
         }
       }
       await exhaust()
@@ -1679,7 +1679,7 @@ if (!enabled || serverUrl === null) {
       if (options.clicked !== undefined) {
         await owner((tx) =>
           tx.execute(sql`
-            insert into harness_jobs
+            insert into runner_jobs
               (user_id, hh_account_id, application_id, stage, kind, status, result, max_attempts, idempotency_key)
             values (${ctx.tenant.userId}, ${ctx.tenant.accountId}, ${id}, 'submit', 'browser', 'failed',
                     ${JSON.stringify({ clicked: options.clicked })}::jsonb, 1, ${`test:submit:${id}`})
@@ -1724,7 +1724,7 @@ if (!enabled || serverUrl === null) {
       }
     }, 120_000)
 
-    test("a failed submit is revived only when the harness proved there was no click", async () => {
+    test("a failed submit is revived only when the runner proved there was no click", async () => {
       const ctx = await setup("aa-revive-submit")
       await configure(ctx, { autoMode: "auto" })
       const unsent = await stop(ctx, "aa-revive-submit-1", {

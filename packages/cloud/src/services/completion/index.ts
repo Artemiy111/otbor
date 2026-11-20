@@ -3,7 +3,7 @@
  * Общая рамка (аренда, запись задачи, журнал, переход заявки) - в
  * `QueueService.complete`.
  */
-import type { HarnessJob } from "@otbor/contract"
+import type { RunnerJob } from "@otbor/contract"
 import { completeFormRead } from "./formRead.ts"
 import { completeInference } from "./inference.ts"
 import { completeReconcile } from "./reconcile.ts"
@@ -16,7 +16,7 @@ export { exitDetail, retryLater } from "./common.ts"
 export type { AppState, CompletionOptions, SettleSubmit, StageHandler, StageOutcome } from "./types.ts"
 export { outcome } from "./types.ts"
 
-export const stageHandlers: Record<HarnessJob["stage"], StageHandler> = {
+export const stageHandlers: Record<RunnerJob["stage"], StageHandler> = {
   prepare: completePrepare,
   form_read: completeFormRead,
   submit: completeSubmit,

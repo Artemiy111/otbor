@@ -123,7 +123,7 @@ export const submitJob = (
     readonly form?: { readonly questions: ReadonlyArray<FormQuestion> } | null
   }
 ) => {
-  // The kit crosses to the edge with the job. The harness can fill a form and
+  // The kit crosses to the edge with the job. The runner can fill a form and
   // click, but the cloud keeps the only copy of "what was sent" and refuses a
   // second submit for the same application.
   const answers: ReadonlyArray<FormAnswer> = toFormAnswers(input.form ?? null, input.kit.answers)

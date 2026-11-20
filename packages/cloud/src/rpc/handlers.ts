@@ -183,8 +183,8 @@ export const OtborHandlers = OtborRpcs.toLayer(
       HhAccountSessionSet: (payload) => hhAccounts.setSession(payload),
       HhAccountSessionStateGet: ({ id }) => hhAccounts.sessionStateGet(id),
       HhAccountSessionStatePut: (payload) => hhAccounts.sessionStatePut(payload),
-      HarnessSessionGet: (payload) => hhAccounts.harnessSessionGet(payload),
-      HarnessSessionPut: (payload) => hhAccounts.harnessSessionPut(payload),
+      RunnerSessionGet: (payload) => hhAccounts.runnerSessionGet(payload),
+      RunnerSessionPut: (payload) => hhAccounts.runnerSessionPut(payload),
       HhAccountRemove: ({ id }) => hhAccounts.remove(id),
       HhAccountSubmitResume: ({ hhAccountId }) =>
         hhAccounts.resumeSubmits(hhAccountId).pipe(
@@ -359,11 +359,11 @@ export const OtborHandlers = OtborRpcs.toLayer(
       QueueJobsList: (payload) => queue.jobs(payload),
       QueueJobsSearch: (payload) => queue.search(payload),
 
-      HarnessRegister: (payload) => queue.register(payload),
-      HarnessLeaseNext: (payload) => queue.leaseNext(payload),
-      HarnessHeartbeat: (payload) => queue.heartbeat(payload),
-      HarnessComplete: (payload) => queue.complete(payload),
-      HarnessRevoke: ({ harnessId }) => queue.revoke({ harnessId }),
+      RunnerRegister: (payload) => queue.register(payload),
+      RunnerLeaseNext: (payload) => queue.leaseNext(payload),
+      RunnerHeartbeat: (payload) => queue.heartbeat(payload),
+      RunnerComplete: (payload) => queue.complete(payload),
+      RunnerRevoke: ({ runnerId }) => queue.revoke({ runnerId }),
 
       InferenceEnqueue: (payload) => inference.enqueue(payload),
       InferenceGet: ({ id }) => inference.get(id),

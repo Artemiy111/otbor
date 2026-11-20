@@ -132,6 +132,8 @@ if (!enabled || serverUrl === null) {
         .split("\n")
         .filter((line) => !line.trimStart().startsWith("--"))
         .join("\n")
+        // Старая миграция читается как есть: в текущей схеме таблица уже `runner_jobs`.
+        .replaceAll("harness_jobs", "runner_jobs")
       const make = async (label: string, input: { autoRun?: "auto" | "drafts"; intentAt?: Date }) =>
         support.seedApplication({
           userId: tenant.userId,
@@ -254,7 +256,7 @@ if (!enabled || serverUrl === null) {
   describe("form read and the retry budget", () => {
     test("a failed read keeps other waits; a successful read frees form_read_failed and resets the budget", async () => {
       const tenant = await support.seedTenant("rf-read")
-      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const runner = await support.registerRunner(tenant.userId, [tenant.accountId])
       const vacancyId = await support.seedVacancy("rf-read")
       const externalId = await support.vacancyExternalId(vacancyId)
       const capped = await support.seedApplication({
@@ -280,20 +282,20 @@ if (!enabled || serverUrl === null) {
       )
       const before = await rowOf(capped)
 
-      // Харнесс сдаётся на всех попытках чтения.
+      // Раннер сдаётся на всех попытках чтения.
       await support.enqueuePrepareJob({ userId: tenant.userId, accountId: tenant.accountId, vacancyId, externalId })
       for (let attempt = 0; attempt < 6; attempt++) {
-        const leased = await support.leaseNext(tenant.userId, harness.id, harness.token!, [tenant.accountId])
+        const leased = await support.leaseNext(tenant.userId, runner.id, runner.token!, [tenant.accountId])
         if (leased.job === null || leased.job === undefined) break
         await support.completeJob(tenant.userId, {
-          harnessId: harness.id,
-          token: harness.token!,
+          runnerId: runner.id,
+          token: runner.token!,
           jobId: leased.job.id,
           leaseId: leased.job.leaseId!,
           epoch: leased.job.leaseEpoch,
           exit: { tag: "internal_error", message: "navigation timeout" } as never
         })
-        await owner((tx) => tx.execute(sql`update harness_jobs set run_at = now() where stage = 'form_read'`))
+        await owner((tx) => tx.execute(sql`update runner_jobs set run_at = now() where stage = 'form_read'`))
       }
 
       const afterFail = await rowOf(capped)
@@ -305,11 +307,11 @@ if (!enabled || serverUrl === null) {
 
       // Чтение удалось: ожидание form_read_failed снято, бюджет начат заново; чужое не тронуто.
       await support.enqueuePrepareJob({ userId: tenant.userId, accountId: tenant.accountId, vacancyId, externalId })
-      const leased = await support.leaseNext(tenant.userId, harness.id, harness.token!, [tenant.accountId])
+      const leased = await support.leaseNext(tenant.userId, runner.id, runner.token!, [tenant.accountId])
       expect(leased.job?.stage).toBe("form_read")
       await support.completeJob(tenant.userId, {
-        harnessId: harness.id,
-        token: harness.token!,
+        runnerId: runner.id,
+        token: runner.token!,
         jobId: leased.job!.id,
         leaseId: leased.job!.leaseId!,
         epoch: leased.job!.leaseEpoch,

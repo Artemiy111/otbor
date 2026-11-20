@@ -65,7 +65,7 @@ const readState = (tx: Executor, vacancyId: string): RepoEffect<StateRow | null>
 export const isReading = (tx: Executor, vacancyId: string): RepoEffect<boolean> =>
   tx
     .execute(sql`
-      select 1 from harness_jobs
+      select 1 from runner_jobs
       where stage = 'form_read'
         and status in ('pending', 'leased', 'running')
         and payload->>'vacancyId' = ${vacancyId}

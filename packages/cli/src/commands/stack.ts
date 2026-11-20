@@ -13,7 +13,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statS
 import { dirname } from "node:path"
 import { connect } from "node:net"
 import { Api } from "../client.ts"
-import { harnessStatePath } from "../harness-state.ts"
+import { runnerStatePath } from "../runner-state.ts"
 import {
   ALL_SERVICES,
   banner,
@@ -313,12 +313,12 @@ const up = Command.make(
       Flag.withDescription("Do not start the Vite dev server"),
       Flag.withDefault(false)
     ),
-    harness: Flag.Boolean("harness").pipe(
-      Flag.withDescription("Run `otbor harness run` (default: on when ~/.otbor/harness.json exists)"),
+    runner: Flag.Boolean("runner").pipe(
+      Flag.withDescription("Run `otbor runner run` (default: on when ~/.otbor/runner.json exists)"),
       Flag.withDefault(false)
     ),
-    noHarness: Flag.Boolean("no-harness").pipe(
-      Flag.withDescription("Do not run the harness even if it is registered"),
+    noRunner: Flag.Boolean("no-runner").pipe(
+      Flag.withDescription("Do not run the runner even if it is registered"),
       Flag.withDefault(false)
     ),
     proxy: Flag.Boolean("proxy").pipe(
@@ -331,14 +331,14 @@ const up = Command.make(
       Flag.withDefault(false)
     )
   },
-  Effect.fn(function*({ noWeb, harness, noHarness, proxy, detach }) {
+  Effect.fn(function*({ noWeb, runner, noRunner, proxy, detach }) {
     yield* ensurePostgres()
     yield* migrate()
     if (proxy) yield* startProxy()
 
     const specs = serviceSpecs(repoRoot, {
       web: !noWeb,
-      harness: !noHarness && (harness || existsSync(harnessStatePath()))
+      runner: !noRunner && (runner || existsSync(runnerStatePath()))
     })
     const names = specs.map((spec) => spec.name)
     yield* ensurePortsFree(specs)
@@ -461,12 +461,12 @@ const statusChecks = Effect.fn("stack.statusChecks")(function*() {
       )
     : null
 
-  const harnessSaved = existsSync(harnessStatePath())
-  const harnessPid = livePid("harness")
+  const runnerSaved = existsSync(runnerStatePath())
+  const runnerPid = livePid("runner")
   const serverPid = livePid("server")
   const webPid = livePid("web")
   const foreign = " (not started by otbor up)"
-  const harnessOnline = (rpc?.harnesses ?? []).some((h) => h.online)
+  const runnerOnline = (rpc?.runners ?? []).some((h) => h.online)
 
   const checks: Array<Check> = [
     {
@@ -490,13 +490,13 @@ const statusChecks = Effect.fn("stack.statusChecks")(function*() {
       detail: web ? `${urls.web}${webPid === null ? foreign : ""}` : `port ${urls.webPort} closed`
     },
     {
-      name: "harness",
-      // The API's heartbeat view wins: a harness started by hand in a terminal counts.
-      state: harnessOnline ? "ok" : harnessSaved ? "warn" : "skip",
-      detail: harnessOnline
-        ? `online${harnessPid !== null ? `, pid ${harnessPid}` : ""}`
-        : `not running, so inference and browser jobs wait in the queue; start: otbor harness run` +
-          (harnessSaved ? "" : " (not registered yet)")
+      name: "runner",
+      // The API's heartbeat view wins: a runner started by hand in a terminal counts.
+      state: runnerOnline ? "ok" : runnerSaved ? "warn" : "skip",
+      detail: runnerOnline
+        ? `online${runnerPid !== null ? `, pid ${runnerPid}` : ""}`
+        : `not running, so inference and browser jobs wait in the queue; start: otbor runner run` +
+          (runnerSaved ? "" : " (not registered yet)")
     }
   ]
   return checks
@@ -650,15 +650,15 @@ const doctorChecks = Effect.fn("stack.doctorChecks")(function*() {
     })
   }
 
-  const harnessPath = harnessStatePath()
+  const runnerPath = runnerStatePath()
   checks.push(
-    existsSync(harnessPath)
-      ? { name: "harness", state: "ok", detail: harnessPath, required: false }
+    existsSync(runnerPath)
+      ? { name: "runner", state: "ok", detail: runnerPath, required: false }
       : {
-          name: "harness",
+          name: "runner",
           state: "warn",
           detail: "not registered",
-          hint: "`otbor harness register --name <n> --save` (only for applying)",
+          hint: "`otbor runner register --name <n> --save` (only for applying)",
           required: false
         }
   )

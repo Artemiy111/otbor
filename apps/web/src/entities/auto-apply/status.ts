@@ -216,7 +216,7 @@ export const humanizeError = (raw: string | null | undefined): string | null => 
     return "Форма отклика показывает другое резюме, не то, что выбрано."
   }
   if (/response page was not recognized/i.test(text)) {
-    return "Страница отклика на hh выглядит не так, как ждёт исполнитель браузера."
+    return "Страница отклика на hh выглядит не так, как ждёт драйвер."
   }
   if (/[а-яё]/i.test(text)) return text
   if (/captcha/i.test(text)) return "hh попросил капчу."

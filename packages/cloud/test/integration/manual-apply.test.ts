@@ -255,16 +255,16 @@ if (!enabled || serverUrl === null) {
 
     test("approve still enforces the kit and the at-most-once submit for a manual application", async () => {
       const tenant = await support.seedTenant("manual-approve")
-      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const runner = await support.registerRunner(tenant.userId, [tenant.accountId])
       const vacancyId = await support.seedVacancy("manual-approve")
       const externalId = await support.vacancyExternalId(vacancyId)
       const { application } = await createManual(tenant.userId, vacancyId, tenant.accountId)
 
-      const leased = await support.leaseNext(tenant.userId, harness.id, harness.token!, [tenant.accountId])
+      const leased = await support.leaseNext(tenant.userId, runner.id, runner.token!, [tenant.accountId])
       expect(leased.job?.stage).toBe("form_read")
       await support.completeJob(tenant.userId, {
-        harnessId: harness.id,
-        token: harness.token!,
+        runnerId: runner.id,
+        token: runner.token!,
         jobId: leased.job!.id,
         leaseId: leased.job!.leaseId!,
         epoch: leased.job!.leaseEpoch,

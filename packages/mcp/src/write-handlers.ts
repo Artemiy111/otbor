@@ -224,7 +224,7 @@ export const OtborWriteHandlers = OtborWriteToolkit.toLayer(Effect.gen(function*
         existing,
         next: existing
           ? "already exists; call application_form to see its form and kit"
-          : "draft created; the browser harness is opening the form. Poll application_form until prepare.status is \"prepared\""
+          : "draft created; the browser driver is opening the form. Poll application_form until prepare.status is \"prepared\""
       }
     }),
 
@@ -249,7 +249,7 @@ export const OtborWriteHandlers = OtborWriteToolkit.toLayer(Effect.gen(function*
         vacancyFetched: fetched,
         resume: resume === undefined ? null : { id: resume.id, title: resume.title },
         next: !existing
-          ? "draft created without a decision; the browser harness is opening the form. Poll application_form until prepare.status is \"prepared\""
+          ? "draft created without a decision; the browser driver is opening the form. Poll application_form until prepare.status is \"prepared\""
           : state === "submitted"
           ? "already submitted for this vacancy and account; nothing to do"
           : state === "skipped"
@@ -348,7 +348,7 @@ export const OtborWriteHandlers = OtborWriteToolkit.toLayer(Effect.gen(function*
         application: applicationBrief(application, directory),
         queued: application.state === "queued",
         note:
-          "The submit is queued and will be sent once by the browser harness. Check progress with application_get " +
+          "The submit is queued and will be sent once by the browser driver. Check progress with application_get " +
           "(queued -> submitting -> submitted). Do not approve again."
       }
     }),

@@ -1,4 +1,4 @@
-import type { HarnessExit, JobKind } from "@otbor/contract"
+import type { RunnerExit, JobKind } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import {
@@ -9,10 +9,10 @@ import { QueueService } from "../../../src/services/QueueService.ts"
 import { runAs, runAsFailure } from "./layers.ts"
 import { ownerTx, unique } from "./seeds.ts"
 
-export const registerHarness = async (
+export const registerRunner = async (
   userId: string,
   accounts: ReadonlyArray<string>,
-  name = unique("harness"),
+  name = unique("runner"),
   kinds: ReadonlyArray<JobKind> = ["browser"]
 ) =>
   runAs(
@@ -25,7 +25,7 @@ export const registerHarness = async (
 
 export const leaseNext = async (
   userId: string,
-  harnessId: string,
+  runnerId: string,
   token: string,
   accounts: ReadonlyArray<string>,
   kinds: ReadonlyArray<JobKind> = ["browser"]
@@ -34,22 +34,22 @@ export const leaseNext = async (
     userId,
     Effect.gen(function*() {
       const queue = yield* QueueService
-      return yield* queue.leaseNext({ harnessId, token, kinds, accounts })
+      return yield* queue.leaseNext({ runnerId, token, kinds, accounts })
     })
   )
 
-export const revokeHarness = async (userId: string, harnessId: string) =>
+export const revokeRunner = async (userId: string, runnerId: string) =>
   runAs(
     userId,
     Effect.gen(function*() {
       const queue = yield* QueueService
-      return yield* queue.revoke({ harnessId })
+      return yield* queue.revoke({ runnerId })
     })
   )
 
 export const heartbeatJob = async (
   userId: string,
-  input: { harnessId: string; token: string; jobId: string; leaseId: string; epoch: number }
+  input: { runnerId: string; token: string; jobId: string; leaseId: string; epoch: number }
 ) =>
   runAs(
     userId,
@@ -62,12 +62,12 @@ export const heartbeatJob = async (
 export const completeJob = async (
   userId: string,
   input: {
-    harnessId: string
+    runnerId: string
     token: string
     jobId: string
     leaseId: string
     epoch: number
-    exit: HarnessExit
+    exit: RunnerExit
   }
 ) =>
   runAs(
@@ -81,12 +81,12 @@ export const completeJob = async (
 export const completeJobFailure = async (
   userId: string,
   input: {
-    harnessId: string
+    runnerId: string
     token: string
     jobId: string
     leaseId: string
     epoch: number
-    exit: HarnessExit
+    exit: RunnerExit
   }
 ) =>
   runAsFailure(
@@ -133,7 +133,7 @@ export interface RawJobInput {
 }
 
 /**
- * Inserts straight into `harness_jobs`, bypassing the repositories and their
+ * Inserts straight into `runner_jobs`, bypassing the repositories and their
  * defaults. This is how the migration's stage check and the `result` column are
  * exercised without a service in between.
  */
@@ -141,7 +141,7 @@ const rawJobInsert = (input: RawJobInput) =>
   ownerTx((tx) =>
     tx
       .execute(sql`
-        insert into harness_jobs (user_id, stage, kind, payload, result, idempotency_key)
+        insert into runner_jobs (user_id, stage, kind, payload, result, idempotency_key)
         values (
           ${input.userId},
           ${input.stage},

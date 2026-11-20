@@ -35,12 +35,12 @@ describe("pid files", () => {
 
 describe("services and endpoints", () => {
   test("serviceSpecs honours flags", () => {
-    const names = (web: boolean, harness: boolean) =>
-      serviceSpecs("/r", { web, harness }).map((spec) => spec.name)
+    const names = (web: boolean, runner: boolean) =>
+      serviceSpecs("/r", { web, runner }).map((spec) => spec.name)
     expect(names(true, false)).toEqual(["server", "worker", "web"])
     expect(names(false, false)).toEqual(["server", "worker"])
-    expect(names(true, true)).toEqual(["server", "worker", "web", "harness"])
-    expect(serviceSpecs("/r", { web: true, harness: false })[2]!.cwd).toBe("/r/apps/web")
+    expect(names(true, true)).toEqual(["server", "worker", "web", "runner"])
+    expect(serviceSpecs("/r", { web: true, runner: false })[2]!.cwd).toBe("/r/apps/web")
   })
 
   test("endpoints respect HOST and PORT", () => {

@@ -11,7 +11,7 @@ import { sql } from "drizzle-orm"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 import { Database, type Executor, type RepoEffect } from "../db/Database.ts"
 import * as HhAccountContactRepository from "../repositories/HhAccountContactRepository.ts"
-import * as HarnessRepository from "../repositories/HarnessRepository.ts"
+import * as RunnerRepository from "../repositories/RunnerRepository.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
 import * as ResumeRepository from "../repositories/ResumeRepository.ts"
 import { CurrentUser } from "./CurrentUser.ts"
@@ -21,7 +21,7 @@ import { toStorageError } from "./support.ts"
 /**
  * Loads the account's own resumes from hh.ru into the corpus.
  *
- * `run` only enqueues a browser job: the harness opens the profile page and
+ * `run` only enqueues a browser job: the runner opens the profile page and
  * each resume page and returns their HTML, `QueueService.complete` parses it
  * with `judgeResumeSync` and calls `importResumes` in the completing
  * transaction. The operator's enrichment hangs off the resume id, which an
@@ -324,14 +324,14 @@ export class ResumeSync extends Context.Service<ResumeSync, ResumeSyncShape>()(
           )
 
       /** Enqueues unless a sync is already waiting. `null` when the account is not the user's. */
-      const queueIn = (tx: Executor, userId: string, hhAccountId: string, requireHarness = false) =>
+      const queueIn = (tx: Executor, userId: string, hhAccountId: string, requireRunner = false) =>
         Effect.gen(function*() {
           const found = yield* account(tx, userId, hhAccountId)
           if (found === null) return null
-          // A manual sync with no running browser harness would wait forever; say so now.
-          // Scheduled syncs may queue anyway: the job waits for the harness.
-          if (requireHarness) {
-            const running = (yield* HarnessRepository.statusList(tx)).some(
+          // A manual sync with no running browser driver would wait forever; say so now.
+          // Scheduled syncs may queue anyway: the job waits for the runner.
+          if (requireRunner) {
+            const running = (yield* RunnerRepository.statusList(tx)).some(
               (h) => h.online && h.kinds.includes("browser") && h.accounts.includes(hhAccountId)
             )
             if (!running) return "offline" as const
@@ -364,9 +364,9 @@ export class ResumeSync extends Context.Service<ResumeSync, ResumeSyncShape>()(
                 if (status === null) return yield* new NotFound({ entity: "HhAccount", id: hhAccountId })
                 if (status === "offline") {
                   return yield* new Conflict({
-                    entity: "harness",
+                    entity: "runner",
                     message:
-                      "Браузерный harness этого аккаунта не запущен. Запустите `otbor harness run` (или `otbor up --harness`) и повторите."
+                      "Драйвер этого аккаунта не запущен. Запустите `otbor runner run` (или `otbor up --runner`) и повторите."
                   })
                 }
                 return status

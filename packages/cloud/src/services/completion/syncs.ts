@@ -1,4 +1,4 @@
-/** Стадии, где харнесс отдаёт страницы, а облако их читает и импортирует. */
+/** Стадии, где раннер отдаёт страницы, а облако их читает и импортирует. */
 import { Effect } from "effect"
 import { judgeChatRead, judgeNegotiationsSync, judgeResumeBump, judgeResumeSync } from "../applyRules.ts"
 import { importChat } from "../ChatSync.ts"
@@ -9,7 +9,7 @@ import { retryLater } from "./common.ts"
 import { outcome, type StageHandler } from "./types.ts"
 
 /**
- * The harness only delivers pages. The cloud reads them and imports; nothing
+ * The runner only delivers pages. The cloud reads them and imports; nothing
  * here touches an application of origin otbor.
  */
 export const completeNegotiationsSync: StageHandler = (tx, ctx, exit) =>
@@ -45,7 +45,7 @@ export const completeNegotiationsSync: StageHandler = (tx, ctx, exit) =>
   })
 
 /**
- * The harness only delivers pages. The cloud reads them and stores the resumes;
+ * The runner only delivers pages. The cloud reads them and stores the resumes;
  * the operator's enrichment is untouched.
  */
 export const completeResumeSync: StageHandler = (tx, ctx, exit) =>
@@ -83,7 +83,7 @@ export const completeResumeSync: StageHandler = (tx, ctx, exit) =>
   })
 
 /**
- * The harness only delivers the JSON; the cloud parses it and stores the
+ * The runner only delivers the JSON; the cloud parses it and stores the
  * messages. Read-only, so a retry is always safe.
  */
 export const completeChatRead: StageHandler = (tx, ctx, exit) =>
@@ -118,7 +118,7 @@ export const completeChatRead: StageHandler = (tx, ctx, exit) =>
   })
 
 /**
- * Подъём резюме. Харнесс только нажимает и сообщает, что видел; исход решает
+ * Подъём резюме. Раннер только нажимает и сообщает, что видел; исход решает
  * облако по свидетельству (`judgeResumeBump`) и записывает его в резюме.
  * «Кнопка недоступна» - обычный исход (hh даёт подъём раз в 4 часа), задача
  * при этом завершается как `done`. Нажатие без подтверждения не повторяется.

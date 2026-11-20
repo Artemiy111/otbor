@@ -1,10 +1,10 @@
 import type {
   ApiError,
   CaptchaAttemptReport,
-  HarnessExit,
-  HarnessId,
-  HarnessJob,
-  HarnessRegistration,
+  RunnerExit,
+  RunnerId,
+  RunnerJob,
+  RunnerRegistration,
   HeartbeatResult,
   JobKind,
   QueueConcurrency,
@@ -12,17 +12,17 @@ import type {
   QueueStats,
   UserSettings
 } from "@otbor/contract"
-import { HarnessRejected, NotFound } from "@otbor/contract"
+import { RunnerRejected, NotFound } from "@otbor/contract"
 import { REPEATED_FAILURE_TAGS } from "@otbor/domain"
 import { sql } from "drizzle-orm"
 import { Cause, Config, Context, Effect, Layer } from "effect"
-import { generateHarnessToken, hashHarnessToken } from "../auth/harnessToken.ts"
+import { generateRunnerToken, hashRunnerToken } from "../auth/runnerToken.ts"
 import { Database } from "../db/Database.ts"
 import * as CaptchaAttemptRepository from "../repositories/CaptchaAttemptRepository.ts"
 import * as ApplicationRepository from "../repositories/ApplicationRepository.ts"
 import * as ApplyFilterRepository from "../repositories/ApplyFilterRepository.ts"
 import * as HhAccountRepository from "../repositories/HhAccountRepository.ts"
-import * as HarnessRepository from "../repositories/HarnessRepository.ts"
+import * as RunnerRepository from "../repositories/RunnerRepository.ts"
 import * as SettingsRepository from "../repositories/SettingsRepository.ts"
 import * as SubmitPacingRepository from "../repositories/SubmitPacingRepository.ts"
 import * as QueueRepository from "../repositories/QueueRepository.ts"
@@ -56,7 +56,7 @@ const fail = (failure: Failure): Outcome<never> => ({ ok: false, failure })
 const raise = (failure: Failure): ApiError =>
   failure._tag === "not_found"
     ? new NotFound({ entity: failure.entity, id: failure.id })
-    : new HarnessRejected({ message: failure.message })
+    : new RunnerRejected({ message: failure.message })
 
 const unwrap = <A>(outcome: Outcome<A>): Effect.Effect<A, ApiError> =>
   outcome.ok ? Effect.succeed(outcome.value) : Effect.fail(raise(outcome.failure))
@@ -65,13 +65,13 @@ const unwrap = <A>(outcome: Outcome<A>): Effect.Effect<A, ApiError> =>
 /* Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
 
-/** One message for unknown, unregistered and revoked harnesses alike. */
-const invalidToken = "invalid harness token; register again to receive a new one"
+/** One message for unknown, unregistered and revoked runners alike. */
+const invalidToken = "invalid runner token; register again to receive a new one"
 
 /** Из каких состояний завершение задачи вправе перевести заявку в `to`. */
 const transitionFrom = (
   to: AppState,
-  stage: HarnessJob["stage"]
+  stage: RunnerJob["stage"]
 ): ReadonlyArray<AppState> =>
   to === "submitted"
     ? ["submitting", "needs_human", "failed"]
@@ -86,7 +86,7 @@ const transitionFrom = (
             : ["draft", "queued"]
 
 const asAttemptStage = (
-  stage: HarnessJob["stage"]
+  stage: RunnerJob["stage"]
 ): "prepare" | "submit" | "reconcile" | null =>
   stage === "prepare" || stage === "submit" || stage === "reconcile" ? stage : null
 
@@ -97,18 +97,18 @@ export interface RegisterInput {
 }
 
 export interface LeaseInput {
-  readonly harnessId: string
-  /** Device token from `register`; every harness request proves it. */
+  readonly runnerId: string
+  /** Device token from `register`; every runner request proves it. */
   readonly token: string
   readonly kinds: ReadonlyArray<JobKind>
   readonly accounts: ReadonlyArray<string>
   readonly waitSeconds?: number
-  /** Потоки харнесса, если он их сообщил. */
+  /** Потоки раннера, если он их сообщил. */
   readonly concurrency?: number
 }
 
 export interface HeartbeatInput {
-  readonly harnessId: string
+  readonly runnerId: string
   readonly token: string
   readonly jobId: string
   readonly leaseId: string
@@ -116,13 +116,13 @@ export interface HeartbeatInput {
 }
 
 export interface CompleteInput extends HeartbeatInput {
-  readonly exit: HarnessExit
+  readonly exit: RunnerExit
   /** Попытки распознать капчу за время задачи. */
   readonly captcha?: ReadonlyArray<CaptchaAttemptReport> | undefined
 }
 
 export interface RevokeResult {
-  readonly harnessId: HarnessId
+  readonly runnerId: RunnerId
   readonly revoked: boolean
 }
 
@@ -144,17 +144,17 @@ export interface QueueServiceShape {
     readonly status?: string
     readonly kind?: string
     readonly limit?: number
-  }) => Effect.Effect<ReadonlyArray<HarnessJob>, ApiError>
+  }) => Effect.Effect<ReadonlyArray<RunnerJob>, ApiError>
   readonly search: (
     options: QueueRepository.QueueSearchOptions
   ) => Effect.Effect<{ readonly items: ReadonlyArray<QueueJob>; readonly total: number }, ApiError>
-  readonly register: (input: RegisterInput) => Effect.Effect<HarnessRegistration, ApiError>
+  readonly register: (input: RegisterInput) => Effect.Effect<RunnerRegistration, ApiError>
   readonly leaseNext: (
     input: LeaseInput
-  ) => Effect.Effect<{ readonly job: HarnessJob | null; readonly harnessSlots: number }, ApiError>
+  ) => Effect.Effect<{ readonly job: RunnerJob | null; readonly runnerSlots: number }, ApiError>
   readonly heartbeat: (input: HeartbeatInput) => Effect.Effect<HeartbeatResult, ApiError>
   readonly complete: (input: CompleteInput) => Effect.Effect<CompleteResult, ApiError>
-  readonly revoke: (input: { readonly harnessId: string }) => Effect.Effect<RevokeResult, ApiError>
+  readonly revoke: (input: { readonly runnerId: string }) => Effect.Effect<RevokeResult, ApiError>
 }
 
 export interface QueueServiceOptions {
@@ -170,7 +170,7 @@ export interface QueueServiceOptions {
    * Ниже - значения по умолчанию для настроек пользователя: они действуют, пока
    * у него нет строки `user_settings`. Дальше решает база (см. `SettingsService`).
    */
-  /** Браузерных задач одного аккаунта у одного харнесса разом (`OTBOR_ACCOUNT_BROWSER_CONCURRENCY`, 4). */
+  /** Браузерных задач одного аккаунта у одного раннера разом (`OTBOR_ACCOUNT_BROWSER_CONCURRENCY`, 4). */
   readonly accountBrowserConcurrency?: number
   /** Из них действующих, submit и letter_attach (`OTBOR_ACCOUNT_SUBMIT_CONCURRENCY`, 1). */
   readonly accountSubmitConcurrency?: number
@@ -178,8 +178,8 @@ export interface QueueServiceOptions {
   readonly accountSubmitIntervalSeconds?: number
   /** Случайная надбавка к интервалу, процентов (`OTBOR_ACCOUNT_SUBMIT_JITTER_PERCENT`, 50). */
   readonly accountSubmitJitterPercent?: number
-  /** Потоки харнесса (`OTBOR_HARNESS_CONCURRENCY`, 6). */
-  readonly harnessSlots?: number
+  /** Потоки раннера (`OTBOR_RUNNER_CONCURRENCY`, 6). */
+  readonly runnerSlots?: number
   /** Пауза между чтениями формы аккаунта, секунд (по умолчанию 4). 0 - без темпа. */
   readonly accountFormReadIntervalSeconds?: number
 }
@@ -195,7 +195,7 @@ const defaultsOf = (options: QueueServiceOptions): UserSettings => ({
   submitJitterPercent:
     options.accountSubmitJitterPercent ?? SettingsRepository.BUILTIN_SETTINGS.submitJitterPercent,
   submitHourlyLimit: null,
-  harnessSlots: options.harnessSlots ?? SettingsRepository.BUILTIN_SETTINGS.harnessSlots,
+  runnerSlots: options.runnerSlots ?? SettingsRepository.BUILTIN_SETTINGS.runnerSlots,
   formReadConcurrency: SettingsRepository.BUILTIN_SETTINGS.formReadConcurrency,
   formReadIntervalSeconds:
     options.accountFormReadIntervalSeconds ?? SettingsRepository.BUILTIN_SETTINGS.formReadIntervalSeconds,
@@ -221,7 +221,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
           accountSubmitConcurrency: env.accountActingConcurrency,
           accountSubmitIntervalSeconds: env.submitIntervalSeconds,
           accountSubmitJitterPercent: env.submitJitterPercent,
-          harnessSlots: env.harnessSlots,
+          runnerSlots: env.runnerSlots,
           accountFormReadIntervalSeconds: env.formReadIntervalSeconds,
           ...overrides
         })
@@ -243,7 +243,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
       /**
        * После коммита завершения: раннер двигает автозаявки, которых ждала эта
        * задача (форма прочитана, письмо готово). Отдельный fiber: ответ
-       * харнессу не ждёт раннера, сбой только в лог, расписание остаётся
+       * раннеру не ждёт раннера, сбой только в лог, расписание остаётся
        * запасным путём.
        */
       const advanceLater = (userId: string, applicationIds: ReadonlyArray<string>) =>
@@ -272,7 +272,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                 submitIntervalSeconds: settings.submitIntervalSeconds,
                 submitJitterPercent: settings.submitJitterPercent,
                 submitHourlyLimit: settings.submitHourlyLimit,
-                harnessSlots: settings.harnessSlots,
+                runnerSlots: settings.runnerSlots,
                 formReadConcurrency: settings.formReadConcurrency,
                 formReadIntervalSeconds: settings.formReadIntervalSeconds,
                 formReadJitterPercent: settings.formReadJitterPercent,
@@ -296,14 +296,14 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
         Effect.gen(function*() {
           // Generated per registration, including a re-registration: the token
           // is shown once and only its hash is stored.
-          const token = generateHarnessToken()
-          const tokenHash = hashHarnessToken(token)
+          const token = generateRunnerToken()
+          const tokenHash = hashRunnerToken(token)
 
           const outcome = yield* database
             .asUser(currentUser.userId, (tx) =>
               Effect.gen(function*() {
                 if (input.name.trim() === "") {
-                  return fail({ _tag: "rejected", message: "harness name must not be empty" })
+                  return fail({ _tag: "rejected", message: "runner name must not be empty" })
                 }
 
                 if (input.accounts.length > 0) {
@@ -317,12 +317,12 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                   if (rows.rows.length !== input.accounts.length) {
                     return fail({
                       _tag: "rejected",
-                      message: "every harness account must belong to the current user"
+                      message: "every runner account must belong to the current user"
                     })
                   }
                 }
 
-                const registration = yield* HarnessRepository.register(tx, {
+                const registration = yield* RunnerRepository.register(tx, {
                   userId: currentUser.userId,
                   name: input.name,
                   kinds: input.kinds,
@@ -332,7 +332,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                 return ok({ ...registration, token })
               })
             )
-            .pipe(Effect.mapError(toStorageError("harness.register")))
+            .pipe(Effect.mapError(toStorageError("runner.register")))
 
           const registration = yield* unwrap(outcome)
 
@@ -351,7 +351,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                   where hh_account_id in (${accounts}) and holder <> ${registration.id}
                 `)
               )
-              .pipe(Effect.mapError(toStorageError("harness.register")))
+              .pipe(Effect.mapError(toStorageError("runner.register")))
           }
 
           return registration
@@ -362,7 +362,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
           .asOwner((tx) =>
             Effect.gen(function*() {
               const claimed = yield* QueueRepository.claim(tx, {
-                holder: input.harnessId,
+                holder: input.runnerId,
                 kinds: input.kinds,
                 accounts: input.accounts,
                 browserConcurrency: defaults.accountBrowserConcurrency,
@@ -393,7 +393,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                     jobId: job.id,
                     leaseId: job.leaseId!,
                     epoch: job.leaseEpoch,
-                    holder: input.harnessId,
+                    holder: input.runnerId,
                     status: "cancelled",
                     lastError: "application left the queued state before submit"
                   })
@@ -407,60 +407,60 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                   userId: claimed.userId,
                   applicationId: claimed.applicationId,
                   stage,
-                  harnessId: input.harnessId
+                  runnerId: input.runnerId
                 })
               }
 
               return job
             })
           )
-          .pipe(Effect.mapError(toStorageError("harness.lease")))
+          .pipe(Effect.mapError(toStorageError("runner.lease")))
 
       const leaseNext: QueueServiceShape["leaseNext"] = (input) =>
         Effect.gen(function*() {
           const authenticated = yield* database
             .asUser(currentUser.userId, (tx) =>
-              HarnessRepository.authenticate(tx, input.harnessId, hashHarnessToken(input.token))
+              RunnerRepository.authenticate(tx, input.runnerId, hashRunnerToken(input.token))
             )
-            .pipe(Effect.mapError(toStorageError("harness.lease")))
+            .pipe(Effect.mapError(toStorageError("runner.lease")))
           if (!authenticated) {
-            return yield* new HarnessRejected({ message: invalidToken })
+            return yield* new RunnerRejected({ message: invalidToken })
           }
 
           // Every poll is proof of life; the health page and the job queue read it.
           yield* database
-            .asUser(currentUser.userId, (tx) => HarnessRepository.touch(tx, input.harnessId, input.concurrency))
-            .pipe(Effect.mapError(toStorageError("harness.lease")))
+            .asUser(currentUser.userId, (tx) => RunnerRepository.touch(tx, input.runnerId, input.concurrency))
+            .pipe(Effect.mapError(toStorageError("runner.lease")))
 
           const registered = yield* database
             .asUser(currentUser.userId, (tx) =>
-              HarnessRepository.accountsFor(tx, input.harnessId)
+              RunnerRepository.accountsFor(tx, input.runnerId)
             )
-            .pipe(Effect.mapError(toStorageError("harness.lease")))
+            .pipe(Effect.mapError(toStorageError("runner.lease")))
 
-          // A harness may only pull work for accounts bound to it.
+          // A runner may only pull work for accounts bound to it.
           const accounts = input.accounts.length === 0 ? registered : input.accounts.filter(
             (account) => registered.includes(account)
           )
 
           const deadline = Date.now() + Math.min(Math.max(input.waitSeconds ?? 0, 0), 30) * 1_000
 
-          // Число потоков харнесса читаем на каждом ответе, в том числе пустом:
-          // так правка в настройках доходит до работающего харнесса без перезапуска.
+          // Число потоков раннера читаем на каждом ответе, в том числе пустом:
+          // так правка в настройках доходит до работающего раннера без перезапуска.
           const slots = () =>
             database
               .asUser(currentUser.userId, (tx) =>
                 SettingsRepository.effective(tx, currentUser.userId, defaults)
               )
               .pipe(
-                Effect.map((settings) => settings.harnessSlots),
-                Effect.mapError(toStorageError("harness.lease"))
+                Effect.map((settings) => settings.runnerSlots),
+                Effect.mapError(toStorageError("runner.lease"))
               )
 
           while (true) {
             const job = yield* claimOnce({ ...input, accounts })
-            if (job !== null) return { job, harnessSlots: yield* slots() }
-            if (Date.now() >= deadline) return { job: null, harnessSlots: yield* slots() }
+            if (job !== null) return { job, runnerSlots: yield* slots() }
+            if (Date.now() >= deadline) return { job: null, runnerSlots: yield* slots() }
             yield* Effect.sleep("750 millis")
           }
         })
@@ -471,18 +471,18 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
             .asUser(currentUser.userId, (tx) =>
               Effect.gen(function*() {
                 if (
-                  !(yield* HarnessRepository.authenticate(
+                  !(yield* RunnerRepository.authenticate(
                     tx,
-                    input.harnessId,
-                    hashHarnessToken(input.token)
+                    input.runnerId,
+                    hashRunnerToken(input.token)
                   ))
                 ) {
                   return { tag: "bad_token" } as const
                 }
-                yield* HarnessRepository.touch(tx, input.harnessId)
+                yield* RunnerRepository.touch(tx, input.runnerId)
                 // Последний взгляд перед кликом: галочка могла включиться уже
                 // после того, как автоотправка встала в очередь или была взята
-                // харнессом. Ручные отправки проверка не трогает.
+                // раннером. Ручные отправки проверка не трогает.
                 const blocked = yield* QueueRepository.letterBlockedSubmit(tx, input.jobId)
                 if (blocked !== null) {
                   yield* ApplicationRepository.transition(
@@ -505,15 +505,15 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                   jobId: input.jobId,
                   leaseId: input.leaseId,
                   epoch: input.epoch,
-                  holder: input.harnessId
+                  holder: input.runnerId
                 })
                 return { tag: "alive", alive } as const
               })
             )
-            .pipe(Effect.mapError(toStorageError("harness.heartbeat")))
+            .pipe(Effect.mapError(toStorageError("runner.heartbeat")))
 
           if (result.tag === "bad_token") {
-            return yield* new HarnessRejected({ message: invalidToken })
+            return yield* new RunnerRejected({ message: invalidToken })
           }
           if (result.tag === "blocked") {
             return { ok: false, reason: ApplyFilterRepository.LETTER_REQUIRED_MESSAGE }
@@ -529,10 +529,10 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
             .asUser(currentUser.userId, (tx) =>
               Effect.gen(function*() {
                 if (
-                  !(yield* HarnessRepository.authenticate(
+                  !(yield* RunnerRepository.authenticate(
                     tx,
-                    input.harnessId,
-                    hashHarnessToken(input.token)
+                    input.runnerId,
+                    hashRunnerToken(input.token)
                   ))
                 ) {
                   return fail({ _tag: "rejected", message: invalidToken })
@@ -540,14 +540,14 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
 
                 const ctx = yield* QueueRepository.context(tx, input.jobId)
                 if (ctx === null || ctx.userId !== currentUser.userId) {
-                  return fail({ _tag: "not_found", entity: "HarnessJob", id: input.jobId })
+                  return fail({ _tag: "not_found", entity: "RunnerJob", id: input.jobId })
                 }
 
                 const { job } = ctx
                 if (
                   job.leaseId !== input.leaseId ||
                   job.leaseEpoch !== input.epoch ||
-                  ctx.lockedBy !== input.harnessId
+                  ctx.lockedBy !== input.runnerId
                 ) {
                   return fail({
                     _tag: "rejected",
@@ -565,7 +565,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                   jobId: job.id,
                   leaseId: input.leaseId,
                   epoch: input.epoch,
-                  holder: input.harnessId,
+                  holder: input.runnerId,
                   status,
                   lastError: message,
                   result: jobResult,
@@ -701,7 +701,7 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                 return ok<Completed>({ status, accepted: true, message, advance: decided.advance })
               })
             )
-            .pipe(Effect.mapError(toStorageError("harness.complete")))
+            .pipe(Effect.mapError(toStorageError("runner.complete")))
 
           const { advance, ...result } = yield* unwrap(outcome)
           // Транзакция уже закоммичена: раннер увидит завершённую задачу.
@@ -713,19 +713,19 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
         Effect.gen(function*() {
           const revoked = yield* database
             .asUser(currentUser.userId, (tx) =>
-              HarnessRepository.revoke(tx, input.harnessId)
+              RunnerRepository.revoke(tx, input.runnerId)
             )
-            .pipe(Effect.mapError(toStorageError("harness.revoke")))
+            .pipe(Effect.mapError(toStorageError("runner.revoke")))
 
           if (revoked) {
             yield* database
               .asOwner((tx) =>
-                tx.execute(sql`delete from account_lease where holder = ${input.harnessId}`)
+                tx.execute(sql`delete from account_lease where holder = ${input.runnerId}`)
               )
-              .pipe(Effect.mapError(toStorageError("harness.revoke")))
+              .pipe(Effect.mapError(toStorageError("runner.revoke")))
           }
 
-          return { harnessId: input.harnessId as HarnessId, revoked }
+          return { runnerId: input.runnerId as RunnerId, revoked }
         })
 
       return QueueService.of({

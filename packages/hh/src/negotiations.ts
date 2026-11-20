@@ -11,7 +11,7 @@ import { hasRespondedMarker } from "./response.ts"
  * - the applicant negotiations list (`/applicant/negotiations?page=N`): the
  *   `applicantNegotiations.topicList` of the page's initial state.
  *
- * The browser harness only fetches pages; the cloud runs these on the
+ * The browser driver only fetches pages; the cloud runs these on the
  * evidence. Both readers say "unreadable" instead of guessing, because the
  * only dangerous mistake is a false "no response".
  *

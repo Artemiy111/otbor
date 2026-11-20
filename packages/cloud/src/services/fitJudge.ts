@@ -31,7 +31,7 @@ import { toStorageError } from "./support.ts"
 
 export const DEFAULT_FIT_LIMIT = 25
 export const MAX_FIT_LIMIT = 200
-/** Judgements waiting for a harness; a runaway enqueue cannot flood the queue. */
+/** Judgements waiting for a runner; a runaway enqueue cannot flood the queue. */
 export const MAX_PENDING_FIT = 200
 /** Below interactive writing (100) so a cover letter never waits behind a sweep. */
 const FIT_JOB_PRIORITY = 50
@@ -110,7 +110,7 @@ const resultModel = (result: unknown): string | null =>
   Predicate.isObject(result) && typeof result.model === "string" ? result.model : null
 
 /**
- * The completion hook for inference jobs, run inside the harness `complete`
+ * The completion hook for inference jobs, run inside the runner `complete`
  * transaction. If a pending judgement waits for this job it is finished
  * (parsed and stored) or marked failed, and a stored judgement immediately
  * re-decides its vacancy. Jobs that belong to something else (a cover

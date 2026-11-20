@@ -1,10 +1,10 @@
-import type { ApiError, HarnessId, CaptchaEpisode, CaptchaModelStat, CaptchaSolveRecord, HhAccountId, HhAccountRecord, HhSessionState } from "@otbor/contract"
-import { HarnessRejected, InvalidInput, NotFound } from "@otbor/contract"
+import type { ApiError, RunnerId, CaptchaEpisode, CaptchaModelStat, CaptchaSolveRecord, HhAccountId, HhAccountRecord, HhSessionState } from "@otbor/contract"
+import { RunnerRejected, InvalidInput, NotFound } from "@otbor/contract"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "../db/Database.ts"
-import { hashHarnessToken } from "../auth/harnessToken.ts"
+import { hashRunnerToken } from "../auth/runnerToken.ts"
 import { decryptSession, encryptSession, loadSessionKey } from "../auth/sessionVault.ts"
-import * as HarnessRepository from "../repositories/HarnessRepository.ts"
+import * as RunnerRepository from "../repositories/RunnerRepository.ts"
 import * as HhSessionStateRepository from "../repositories/HhSessionStateRepository.ts"
 import * as CaptchaAttemptRepository from "../repositories/CaptchaAttemptRepository.ts"
 import * as HhAccountRepository from "../repositories/HhAccountRepository.ts"
@@ -67,14 +67,14 @@ export interface HhAccountServiceShape {
     readonly id: string
     readonly state: string
   }) => Effect.Effect<{ readonly version: number }, ApiError>
-  /** То же для харнесса: аккаунт по `sessionProfile`, доступ по токену харнесса. */
-  readonly harnessSessionGet: (input: {
-    readonly harnessId: HarnessId
+  /** То же для раннера: аккаунт по `sessionProfile`, доступ по токену раннера. */
+  readonly runnerSessionGet: (input: {
+    readonly runnerId: RunnerId
     readonly token: string
     readonly sessionProfile: string
   }) => Effect.Effect<{ readonly state: string | null; readonly version: number | null }, ApiError>
-  readonly harnessSessionPut: (input: {
-    readonly harnessId: HarnessId
+  readonly runnerSessionPut: (input: {
+    readonly runnerId: RunnerId
     readonly token: string
     readonly sessionProfile: string
     readonly state: string
@@ -242,43 +242,43 @@ export class HhAccountService extends Context.Service<HhAccountService, HhAccoun
           return { version }
         })
 
-      const harnessAccountId = (input: {
-        readonly harnessId: HarnessId
+      const runnerAccountId = (input: {
+        readonly runnerId: RunnerId
         readonly token: string
         readonly sessionProfile: string
       }) =>
         Effect.gen(function*() {
           const authenticated = yield* database
             .asUser(currentUser.userId, (tx) =>
-              HarnessRepository.authenticate(tx, input.harnessId, hashHarnessToken(input.token))
+              RunnerRepository.authenticate(tx, input.runnerId, hashRunnerToken(input.token))
             )
-            .pipe(Effect.mapError(toStorageError("hhAccount.harnessSession")))
+            .pipe(Effect.mapError(toStorageError("hhAccount.runnerSession")))
           if (!authenticated) {
-            return yield* new HarnessRejected({ message: "invalid harness token; register again to receive a new one" })
+            return yield* new RunnerRejected({ message: "invalid runner token; register again to receive a new one" })
           }
           const account = yield* database
             .asUser(currentUser.userId, (tx) =>
               HhAccountRepository.findBySessionProfile(tx, currentUser.userId, input.sessionProfile)
             )
-            .pipe(Effect.mapError(toStorageError("hhAccount.harnessSession")))
+            .pipe(Effect.mapError(toStorageError("hhAccount.runnerSession")))
           return account?.id ?? null
         })
 
-      const harnessSessionGet: HhAccountServiceShape["harnessSessionGet"] = (input) =>
+      const runnerSessionGet: HhAccountServiceShape["runnerSessionGet"] = (input) =>
         Effect.gen(function*() {
-          const accountId = yield* harnessAccountId(input)
+          const accountId = yield* runnerAccountId(input)
           if (accountId === null) return { state: null, version: null }
           const row = yield* database
             .asUser(currentUser.userId, (tx) => HhSessionStateRepository.get(tx, accountId))
-            .pipe(Effect.mapError(toStorageError("hhAccount.harnessSessionGet")))
+            .pipe(Effect.mapError(toStorageError("hhAccount.runnerSessionGet")))
           return row === null
             ? { state: null, version: null }
             : { state: decryptSession(row.ciphertext, key), version: row.version }
         })
 
-      const harnessSessionPut: HhAccountServiceShape["harnessSessionPut"] = (input) =>
+      const runnerSessionPut: HhAccountServiceShape["runnerSessionPut"] = (input) =>
         Effect.gen(function*() {
-          const accountId = yield* harnessAccountId(input)
+          const accountId = yield* runnerAccountId(input)
           if (accountId === null) return { accepted: false, version: null }
           const version = yield* database
             .asUser(currentUser.userId, (tx) =>
@@ -289,13 +289,13 @@ export class HhAccountService extends Context.Service<HhAccountService, HhAccoun
                 baseVersion: input.baseVersion
               })
             )
-            .pipe(Effect.mapError(toStorageError("hhAccount.harnessSessionPut")))
+            .pipe(Effect.mapError(toStorageError("hhAccount.runnerSessionPut")))
           return { accepted: version !== null, version }
         })
 
       return HhAccountService.of({
         list, upsert, setSession, remove, findById, resumeSubmits, captchaEpisodes, captchaSolves,
-        sessionStateGet, sessionStatePut, harnessSessionGet, harnessSessionPut
+        sessionStateGet, sessionStatePut, runnerSessionGet, runnerSessionPut
       })
     })
   )

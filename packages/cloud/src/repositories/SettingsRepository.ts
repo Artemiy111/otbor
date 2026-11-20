@@ -17,7 +17,7 @@ export const BUILTIN_SETTINGS: UserSettings = {
   submitIntervalSeconds: 75,
   submitJitterPercent: 50,
   submitHourlyLimit: null,
-  harnessSlots: 6,
+  runnerSlots: 6,
   formReadConcurrency: 2,
   formReadIntervalSeconds: 4,
   formReadJitterPercent: 100,
@@ -31,7 +31,7 @@ interface SettingsRow {
   readonly submit_interval_seconds: number
   readonly submit_jitter_percent: number
   readonly submit_hourly_limit: number | null
-  readonly harness_slots: number
+  readonly runner_slots: number
   readonly form_read_concurrency: number
   readonly form_read_interval_seconds: number
   readonly form_read_jitter_percent: number
@@ -46,7 +46,7 @@ const fromRow = (row: SettingsRow): UserSettings => ({
   submitIntervalSeconds: Number(row.submit_interval_seconds),
   submitJitterPercent: Number(row.submit_jitter_percent),
   submitHourlyLimit: row.submit_hourly_limit === null ? null : Number(row.submit_hourly_limit),
-  harnessSlots: Number(row.harness_slots),
+  runnerSlots: Number(row.runner_slots),
   formReadConcurrency: Number(row.form_read_concurrency),
   formReadIntervalSeconds: Number(row.form_read_interval_seconds),
   formReadJitterPercent: Number(row.form_read_jitter_percent),
@@ -90,13 +90,13 @@ export const upsert = (
     .execute(sql`
       insert into user_settings (
         user_id, account_browser_concurrency, account_acting_concurrency,
-        submit_interval_seconds, submit_jitter_percent, submit_hourly_limit, harness_slots,
+        submit_interval_seconds, submit_jitter_percent, submit_hourly_limit, runner_slots,
         form_read_concurrency, form_read_interval_seconds, form_read_jitter_percent,
         form_read_blocked_factor, analysis_enabled
       ) values (
         ${userId}, ${value.accountBrowserConcurrency}, ${value.accountActingConcurrency},
         ${value.submitIntervalSeconds}, ${value.submitJitterPercent},
-        ${value.submitHourlyLimit}::int, ${value.harnessSlots},
+        ${value.submitHourlyLimit}::int, ${value.runnerSlots},
         ${value.formReadConcurrency}, ${value.formReadIntervalSeconds}, ${value.formReadJitterPercent},
         ${value.formReadBlockedFactor}, ${value.analysisEnabled}
       )
@@ -106,7 +106,7 @@ export const upsert = (
         submit_interval_seconds = excluded.submit_interval_seconds,
         submit_jitter_percent = excluded.submit_jitter_percent,
         submit_hourly_limit = excluded.submit_hourly_limit,
-        harness_slots = excluded.harness_slots,
+        runner_slots = excluded.runner_slots,
         form_read_concurrency = excluded.form_read_concurrency,
         form_read_interval_seconds = excluded.form_read_interval_seconds,
         form_read_jitter_percent = excluded.form_read_jitter_percent,

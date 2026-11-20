@@ -10,7 +10,7 @@ import { requestNegotiationsRecheck } from "./negotiationsRecheck.ts"
 import { outcome, type StageHandler } from "./types.ts"
 
 /**
- * The harness only reports the pages it read. The cloud parses them and
+ * The runner only reports the pages it read. The cloud parses them and
  * decides; a bare tag settles nothing, and no verdict here can queue a second
  * submit.
  */

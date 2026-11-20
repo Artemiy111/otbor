@@ -12,13 +12,13 @@
 1. **Да, движок — это очередь, но не один общий брокер.**
 2. **Workflow приложения** (подготовка → approval → submit → reconcile) живёт
    в `effect/workflow`; его состояние и реплей — не задача RabbitMQ.
-3. **Доставка работы** облачным воркерам и edge-харнесам — это lease/job
+3. **Доставка работы** облачным воркерам и раннерам — это lease/job
    конверт. На старте его storage — **Postgres**, не RabbitMQ.
 4. **RabbitMQ не берём сейчас.** Он появится только при переходе к нескольким
    независимым сервисам/потокам событий, и тогда — через transactional outbox,
    а не вместо Postgres.
 5. **Сериализация по аккаунту** — `AccountEntity` из `effect/cluster` плюс
-   уникальная привязка харнеса; `SKIP LOCKED` для этого недостаточно.
+   уникальная привязка раннера; `SKIP LOCKED` для этого недостаточно.
 
 ## Три разных слоя, которые нельзя смешивать
 
@@ -34,7 +34,7 @@
 state.
 
 Отдельный job-конверт нужен там, где работа уходит **за пределы workflow**:
-на edge-харнес, в браузерный пул, в inference-пул или в долгий внешний вызов,
+на раннер, в браузерный пул, в inference-пул или в долгий внешний вызов,
 который нельзя держать в памяти процесса.
 
 ## Почему Postgres, а не RabbitMQ
@@ -82,14 +82,14 @@ loadApplication → ensureKit → approval? → submit → reconcile → recordO
 
 Job-конверт нужен для:
 
-- edge-харнеса (браузер с cookies, inference на машине пользователя);
+- раннера (браузер с cookies, inference на машине пользователя);
 - облачного браузерного пула;
 - длинных внешних операций, где нужен отдельный lease и fencing.
 
 Минимальная таблица:
 
 ```sql
-create table harness_jobs (
+create table runner_jobs (
   id uuid primary key default uuidv7(),
   user_id text not null,                    -- FK на auth."user", text
   hh_account_id uuid,
@@ -112,23 +112,23 @@ create table harness_jobs (
   updated_at timestamptz not null default now()
 );
 
-create index harness_jobs_claim_idx
-  on harness_jobs (status, run_at, priority)
+create index runner_jobs_claim_idx
+  on runner_jobs (status, run_at, priority)
   where status = 'pending';
 ```
 
 Claim:
 
 ```sql
-update harness_jobs
+update runner_jobs
 set status = 'leased',
     lease_id = uuidv7(),
     lease_epoch = lease_epoch + 1,
     lease_until = now() + interval '2 minutes',
-    locked_by = $harness,
+    locked_by = $runner,
     attempts = attempts + 1
 where id = (
-  select id from harness_jobs
+  select id from runner_jobs
   where status = 'pending'
     and run_at <= now()
     and (hh_account_id is null or hh_account_id = any($accounts))
@@ -139,7 +139,7 @@ where id = (
 returning *;
 ```
 
-- `LeaseNext` в `HarnessRpcs` — long-poll на 30 секунд;
+- `LeaseNext` в `RunnerRpcs` — long-poll на 30 секунд;
 - lease короткий, heartbeat продлевает;
 - истёкший lease возвращает job в `pending` или в `dead` после `max_attempts`;
 - `lease_id`/`epoch` — fencing: старый исполнитель не может завершить job,
@@ -149,7 +149,7 @@ returning *;
 
 Не нужен отдельный брокер. Достаточно:
 
-- read model в Postgres: `application`, `application_attempt`, `harness_jobs`;
+- read model в Postgres: `application`, `application_attempt`, `runner_jobs`;
 - `LISTEN/NOTIFY` или периодический polling для SSE;
 - UI подписывается на `application.id` и показывает этапы.
 
@@ -176,7 +176,7 @@ returning *;
 
 Плюс мелочи (решено): id везде UUIDv7, см. [ids.md](./ids.md). Поле называется
 `hh_account_id`, а не `account_id`, потому что `account` — это таблица Better
-Auth. В `harness_jobs` было `account_id text`; теперь `hh_account_id uuid`, как
+Auth. В `runner_jobs` было `account_id text`; теперь `hh_account_id uuid`, как
 и `application_id`.
 
 ### 1. Роли, а не процессы
@@ -184,16 +184,16 @@ Auth. В `harness_jobs` было `account_id text`; теперь `hh_account_id 
 На старте один бинарь:
 
 ```
-otbor worker --roles=workflow,scheduler,jobs,inference,harness
+otbor worker --roles=workflow,scheduler,jobs,inference,runner
 ```
 
 | Роль | Что делает | Где живёт |
 |---|---|---|
 | `workflow` | исполняет `ApplicationWorkflow`, activity, approval | облако |
 | `scheduler` | ставит workflow/job по `schedule` | облако |
-| `jobs` | claim `harness_jobs`, облачный браузер | облако |
+| `jobs` | claim `runner_jobs`, облачный браузер | облако |
 | `inference` | LLM-вызовы, бюджет, кэш | облако или edge |
-| `harness` | long-poll для edge-харнесов | облако |
+| `runner` | long-poll для раннеров | облако |
 
 Один процесс с fibers — нормально до первых сотен задач. Разделение на
 процессы нужно, когда браузерный пул начнёт мешать API или когда появится
@@ -207,7 +207,7 @@ start
   spawn scheduler
   spawn claimLoop(kind=browser)
   spawn claimLoop(kind=inference)
-  spawn harnessGateway
+  spawn runnerGateway
 SIGTERM
   stop claiming
   wait in-flight <= grace
@@ -223,7 +223,7 @@ SIGTERM
 Короткая транзакция от `app`:
 
 ```sql
-select id from harness_jobs
+select id from runner_jobs
 where status = 'pending' and run_at <= now() and kind = $kind
 order by priority desc, run_at asc
 for update skip locked
@@ -236,7 +236,7 @@ limit 1;
 После claim:
 
 ```sql
-update harness_jobs
+update runner_jobs
 set status = 'leased',
     lease_id = uuidv7(),
     lease_epoch = lease_epoch + 1,
@@ -289,7 +289,7 @@ returning epoch;
 Раз в `lease_until / 3`:
 
 ```sql
-update harness_jobs
+update runner_jobs
 set lease_until = now() + interval '2 minutes'
 where id = $1 and lease_id = $2 and lease_epoch = $3
   and status in ('leased', 'running')
@@ -321,7 +321,7 @@ pending → leased → running → done
 | `form_changed` | пересобрать kit, `pending` один раз | да |
 | `ambiguous` | `needs_reconcile` | нет |
 | `permanent` | `dead` | нет |
-| `harness_disconnected` | `pending` | нет |
+| `runner_disconnected` | `pending` | нет |
 
 Политики ретраев у workflow и у job разные. Workflow ретраит activity;
 job ретраит доставку; бизнес-отказ hh — это результат, а не ретрай.
@@ -331,19 +331,19 @@ job ретраит доставку; бизнес-отказ hh — это ре�
 1. Перед выдачей submit пишется `application_attempt` (`stage=submit`,
    `started_at`) — это intent.
 2. Job получает `max_attempts = 1` после фазы клика.
-3. Харнес сообщает `Clicked`. Если соединение упало после `Clicked`, облако
+3. Раннер сообщает `Clicked`. Если соединение упало после `Clicked`, облако
    **не возвращает** submit в `pending`, а ставит `needs_reconcile`.
 4. Reconcile читает «Мои отклики». Нашёл — `submitted`; не нашёл — `failed`
    или `needs_human`, но не второй клик.
 
-   Реализация. Харнес открывает `/vacancy/<id>` и возвращает страницу как
+   Реализация. Драйвер открывает `/vacancy/<id>` и возвращает страницу как
    evidence (`tag = reconciled`, `ReconcileEvidence`). Список откликов
    `/applicant/negotiations?page=0..n` по умолчанию не читается: он нужен только
    чтобы узнать, с каким резюме сделан отклик. Облако ставит в payload сверки
    `needsResume` (у аккаунта есть другая заявка на эту вакансию с другим резюме,
    `ApplicationRepository.hasOtherResumeApplication`) и `resumeExternalId`; только
-   при `needsResume` и странице «вы откликнулись» харнесс читает список страница
-   за страницей, пока не найдёт отклик на эту вакансию с этим резюме (обычно это
+   при `needsResume` и странице «вы откликнулись» драйвер читает список страниц
+   постранично, пока не найдёт отклик на эту вакансию с этим резюме (обычно это
    первая страница, список идёт от новых к старым). Ничего не нажимает и ничего
    не решает. Облако разбирает страницы само (`judgeReconcile`,
    `readResponseStatus`, `parseNegotiations`), `needsResume` пересчитывает заново:
@@ -363,7 +363,7 @@ job ретраит доставку; бизнес-отказ hh — это ре�
    Ни один исход не ставит второй submit сам: после `unsent` его ставит только
    ручной `approve`.
 
-   `session`-job пока не выполняется харнесом (отвечает `blocked`): в облаке нет
+   `session`-job пока не выполняется драйвером (отвечает `blocked`): в облаке нет
    ни постановки таких job, ни поля состояния сессии у аккаунта.
 5. Повторный `Complete` с тем же `lease_epoch` идемпотентен и ничего не
    меняет.
@@ -373,7 +373,7 @@ job ретраит доставку; бизнес-отказ hh — это ре�
 `LeaseNext` держит запрос до 30 секунд. При постановке job:
 
 ```sql
-select pg_notify('harness_jobs', $job_id);
+select pg_notify('runner_jobs', $job_id);
 ```
 
 Все ожидающие просыпаются, каждая проверяет свои аккаунты, лишние снова
@@ -406,8 +406,8 @@ SIGTERM:
 - отдельные пулы соединений: `app` для claim, `otbor` для работы;
 - лимит параллелизма по kind: браузер 1 на аккаунт, inference 2–4 на воркер;
 - бюджет inference проверяется до claim, а не после;
-- edge-job выдаётся только харнесу, привязанному к аккаунту в
-  `harness_account`.
+- edge-job выдаётся только раннеру, привязанному к аккаунту в
+  `runner_account`.
 
 ### 12. Наблюдаемость
 
@@ -432,7 +432,7 @@ SIGTERM:
 1. Один процесс: scheduler + workflow + claim + облачный браузер.
 2. `account_lease`, heartbeat, fencing.
 3. Reconcile и `needs_human`.
-4. Edge-харнес и long-poll.
+4. Раннер и long-poll.
 5. Разделение ролей по процессам, если понадобится.
 
 ---
@@ -443,7 +443,7 @@ SIGTERM:
 
 - `jobId = hash(application.id, stage, kitHash)`; уникальный индекс.
 - `application_attempt` уникален по `(application_id, attempt_no)`.
-- Харнес хранит локально `jobId -> result`; повторный lease возвращает тот же
+- Раннер хранит локально `jobId -> result`; повторный lease возвращает тот же
   результат, а не отправляет форму заново.
 - Перед `submit` пишется intent; после — результат и `reconcile`.
 - Если ответ неоднозначный (`timeout`, `ambiguous`), job не считается
@@ -454,7 +454,7 @@ SIGTERM:
 Это не задача очереди, а инвариант домена:
 
 - `AccountEntity` из `effect/cluster` — единственная активация на `hh_account_id`;
-- `harness_account` — уникальная привязка аккаунта к харнесу;
+- `runner_account` — уникальная привязка аккаунта к раннеру;
 - для облачного браузера — `pg_try_advisory_lock(hashtext('hh:' || hh_account_id))`;
 - внутри аккаунта отправки строго последовательны, между аккаунтами — параллельны.
 
@@ -477,7 +477,7 @@ SIGTERM:
 У workflow и у job-конверта **разные** retry-политики:
 
 - activity workflow ретраится по своей политике;
-- lease job ретраится по доставке (воркер умер, харнес отключился);
+- lease job ретраится по доставке (воркер умер, раннер отключился);
 - бизнес-отказ hh — это результат, а не retry.
 
 ## Планировщик
@@ -539,15 +539,15 @@ consumers (idempotent)
 
 1. `ApplicationWorkflow` на `effect/workflow` с шагами из `auto-apply.md`.
 2. `AccountEntity` на одну активацию по аккаунту.
-3. `harness_jobs` + `LeaseNext` long-poll для edge-харнеса.
+3. `runner_jobs` + `LeaseNext` long-poll для раннера.
 4. Идемпотентность `(application, stage, kitHash)` и `application_attempt`.
 5. Read model и SSE для UI.
 6. RabbitMQ не подключать, пока не упрёмся в масштаб или декомпозицию.
 
 ## Открытые вопросы
 
-- Нужен ли edge-харнес в MVP или сначала только облачный браузерный пул?
-- Хранить ли `harness_jobs` в той же БД, что и `application`, или в отдельной
+- Нужен ли раннер в MVP или сначала только облачный браузерный пул?
+- Хранить ли `runner_jobs` в той же БД, что и `application`, или в отдельной
   схеме (при одном Postgres это всё равно одна транзакция)?
 - Делать ли `LeaseNext` через RPC long-poll или через `LISTEN/NOTIFY` +
   короткий poll?

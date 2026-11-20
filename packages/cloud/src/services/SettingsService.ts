@@ -30,14 +30,14 @@ export const settingsDefaultsFromEnv = (
       builtin.submitIntervalSeconds
     )
     const submitJitterPercent = yield* int("OTBOR_ACCOUNT_SUBMIT_JITTER_PERCENT", builtin.submitJitterPercent)
-    const harnessSlots = yield* int("OTBOR_HARNESS_CONCURRENCY", builtin.harnessSlots)
+    const runnerSlots = yield* int("OTBOR_RUNNER_CONCURRENCY", builtin.runnerSlots)
     return {
       accountBrowserConcurrency,
       accountActingConcurrency,
       submitIntervalSeconds,
       submitJitterPercent,
       submitHourlyLimit: builtin.submitHourlyLimit,
-      harnessSlots,
+      runnerSlots,
       formReadConcurrency: builtin.formReadConcurrency,
       formReadIntervalSeconds: builtin.formReadIntervalSeconds,
       formReadJitterPercent: builtin.formReadJitterPercent,
@@ -94,7 +94,7 @@ export class SettingsService extends Context.Service<SettingsService, SettingsSe
       })
     )
 
-  /** Production layer: defaults from `OTBOR_ACCOUNT_*` / `OTBOR_HARNESS_CONCURRENCY`. */
+  /** Production layer: defaults from `OTBOR_ACCOUNT_*` / `OTBOR_RUNNER_CONCURRENCY`. */
   static readonly layerConfigured = (overrides: Partial<UserSettings> = {}) =>
     Layer.unwrap(Effect.map(settingsDefaultsFromEnv(overrides), SettingsService.layerWith))
 

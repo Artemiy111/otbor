@@ -87,7 +87,7 @@ export const recoverInterruptedRuns = (
  * Reclaims jobs whose performer stopped heartbeating.
  *
  * A prepare or reconcile job simply returns to the queue. A submit job does
- * not: the harness may have clicked before it died, so the job becomes
+ * not: the runner may have clicked before it died, so the job becomes
  * `needs_reconcile`, its open attempt is closed as ambiguous, and a reconcile
  * job reads the site. The application stays `submitting`; nothing here can
  * cause a second click.

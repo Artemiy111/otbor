@@ -1,4 +1,4 @@
-import type { HarnessJob } from "@otbor/contract"
+import type { RunnerJob } from "@otbor/contract"
 import { humanizeError } from "@/entities/auto-apply/status"
 import { formatAge, jobStageLabel } from "@/shared/lib"
 
@@ -40,7 +40,7 @@ export interface JobRefs {
 }
 
 /** На кого и на что смотрит задание. */
-export const jobRefs = (job: Pick<HarnessJob, "payload">): JobRefs => {
+export const jobRefs = (job: Pick<RunnerJob, "payload">): JobRefs => {
   const payload = record(job.payload)
   return {
     accountId: text(payload, "hhAccountId"),
@@ -51,7 +51,7 @@ export const jobRefs = (job: Pick<HarnessJob, "payload">): JobRefs => {
 }
 
 /** Модель, которую просили для генерации (подпись под названием задачи). */
-export const jobDetail = (job: Pick<HarnessJob, "stage" | "payload">): string | null => {
+export const jobDetail = (job: Pick<RunnerJob, "stage" | "payload">): string | null => {
   if (job.stage !== "inference") return null
   const payload = record(job.payload)
   const model = text(payload, "model")
@@ -92,7 +92,7 @@ const seconds = (from: string, now: Date): number => {
 
 /** Где задание во времени: сколько ждёт, до какого часа аренда, когда создано. */
 export const jobTiming = (
-  job: Pick<HarnessJob, "status" | "runAt" | "createdAt" | "leaseUntil">,
+  job: Pick<RunnerJob, "status" | "runAt" | "createdAt" | "leaseUntil">,
   now: Date = new Date()
 ): string => {
   const clock = (iso: string) => new Date(iso).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })

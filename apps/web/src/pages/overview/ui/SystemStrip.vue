@@ -38,7 +38,7 @@ const pills = computed<ReadonlyArray<Pill>>(() => {
     { id: "db", label: "База", state: health.database ? "работает" : "недоступна", tone: health.database ? "success" : "danger" },
     {
       id: "browser",
-      label: "Исполнитель браузера",
+      label: "Драйвер",
       state: browser === null ? "неизвестно" : browser ? "онлайн" : "не подключён",
       tone: browser === null ? "neutral" : browser ? "success" : "warning"
     },

@@ -1,4 +1,4 @@
-import type { ApiError, HarnessJob, ResumeEnrichment } from "@otbor/contract"
+import type { ApiError, RunnerJob, ResumeEnrichment } from "@otbor/contract"
 import { InvalidInput, NotFound, RESUME_FAQ_TOPICS } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { randomUUID } from "node:crypto"
@@ -46,9 +46,9 @@ export interface ResumeInput {
 }
 
 export interface WritingServiceShape {
-  readonly resume: (input: ResumeInput) => Effect.Effect<{ readonly job: HarnessJob }, ApiError>
+  readonly resume: (input: ResumeInput) => Effect.Effect<{ readonly job: RunnerJob }, ApiError>
   /** Cover letter and employer-test answers of a vacancy in one model call. No application needed. */
-  readonly draft: (input: DraftInput) => Effect.Effect<{ readonly job: HarnessJob }, ApiError>
+  readonly draft: (input: DraftInput) => Effect.Effect<{ readonly job: RunnerJob }, ApiError>
   /** The exact prompt `draft` would send. Calls no model. */
   readonly draftPrompt: (input: {
     readonly vacancyId: string

@@ -4,28 +4,28 @@ const between = (minimum: number, maximum: number) =>
   Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum, maximum })))
 
 /** Предел потоков харнесса и параллельности аккаунта. */
-export const MAX_HARNESS_SLOTS = 12
+export const MAX_RUNNER_SLOTS = 12
 
 /**
  * Настройки откликов и браузера одного пользователя. Живут в базе и
  * применяются без перезапуска: claim читает их при каждой выдаче задачи, а
- * харнесс узнаёт число потоков из ответа на `HarnessLeaseNext`.
+ * раннер узнаёт число потоков из ответа на `RunnerLeaseNext`.
  */
 export const UserSettings = Schema.Struct({
   /** Браузерных задач одного аккаунта у одного харнесса разом, 1..12. */
-  accountBrowserConcurrency: between(1, MAX_HARNESS_SLOTS),
+  accountBrowserConcurrency: between(1, MAX_RUNNER_SLOTS),
   /** Из них действующих (отправка, письмо в чат), 1..12; не больше браузерных. */
-  accountActingConcurrency: between(1, MAX_HARNESS_SLOTS),
+  accountActingConcurrency: between(1, MAX_RUNNER_SLOTS),
   /** Минимум секунд между отправками одного аккаунта, 0..3600; 0 - без темпа. */
   submitIntervalSeconds: between(0, 3600),
   /** Случайная надбавка к интервалу, процентов от него, 0..200. */
   submitJitterPercent: between(0, 200),
   /** Не больше стольких отправок аккаунта за скользящий час, 1..1000; null - без лимита. */
   submitHourlyLimit: Schema.NullOr(between(1, 1000)),
-  /** Потоки харнесса, 1..12. */
-  harnessSlots: between(1, MAX_HARNESS_SLOTS),
+  /** Потоки раннера, 1..12. */
+  runnerSlots: between(1, MAX_RUNNER_SLOTS),
   /** Чтений формы отклика (`form_read`, `prepare`) одного аккаунта разом, 1..12. */
-  formReadConcurrency: between(1, MAX_HARNESS_SLOTS),
+  formReadConcurrency: between(1, MAX_RUNNER_SLOTS),
   /** Минимум секунд между стартами чтений формы одного аккаунта, 0..600; 0 - без темпа. */
   formReadIntervalSeconds: between(0, 600),
   /** Случайная надбавка к интервалу чтений, процентов от него, 0..200. */

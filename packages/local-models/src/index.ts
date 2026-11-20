@@ -5,12 +5,12 @@ import { Schema } from "effect"
 
 /**
  * Локальные модели, сохранённые оператором: `~/.otbor/openai.json` (0600),
- * рядом с `harness.json`. Это локальный секрет устройства, а не данные
+ * рядом с `runner.json`. Это локальный секрет устройства, а не данные
  * продукта: ключ API не попадает ни в Postgres, ни в репозиторий, ни в логи.
  */
 export const openAiStorePath = (
   env: Readonly<Record<string, string | undefined>> = process.env
-): string => join(env.OTBOR_HARNESS_DIR?.trim() || join(homedir(), ".otbor"), "openai.json")
+): string => join(env.OTBOR_RUNNER_DIR?.trim() || join(homedir(), ".otbor"), "openai.json")
 
 export const EndpointDef = Schema.Struct({
   id: Schema.String,
@@ -43,7 +43,7 @@ export const readOpenAiStore = (path = openAiStorePath()): ReadonlyArray<OpenAiE
   } catch (cause) {
     throw new Error(
       `${path}: invalid content (${cause instanceof Error ? cause.message.slice(0, 200) : String(cause)}). ` +
-        "Fix it or re-run `otbor harness model add`."
+        "Fix it or re-run `otbor runner model add`."
     )
   }
 }

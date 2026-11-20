@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from "vue"
 import { useQuery } from "@pinia/colada"
-import { InferenceResult, type HarnessJob } from "@otbor/contract"
+import { InferenceResult, type RunnerJob } from "@otbor/contract"
 import { Option, Schema } from "effect"
 import { CircleAlert } from "@lucide/vue"
 import { inferenceApi, inferenceKeys } from "@/entities/inference"
@@ -19,7 +19,7 @@ import {
   CardTitle,
   StatusBadge
 } from "@/shared/ui"
-import { ExecutorStartGuide } from "@/widgets/executor-start"
+import { RunnerStartGuide } from "@/widgets/runner-start"
 import { PageHeader } from "@/widgets/page-header"
 import { StatCard } from "@/widgets/stat-card"
 
@@ -41,12 +41,12 @@ const TERMINAL = new Set([
 ])
 
 const jobId = ref<string | null>(null)
-const lastJob = ref<HarnessJob | null>(null)
+const lastJob = ref<RunnerJob | null>(null)
 const polling = ref(false)
 const elapsedSeconds = ref(0)
 const notice = ref<string | null>(null)
-/** Задание так и не взято: исполнитель, скорее всего, не запущен. */
-const executorMissing = ref(false)
+/** Задание так и не взято: раннер, скорее всего, не запущен. */
+const runnerMissing = ref(false)
 
 let timer: ReturnType<typeof setTimeout> | null = null
 let startedAt = 0
@@ -80,7 +80,7 @@ const statusHint = computed(() => {
   switch (job.value?.status) {
     case "failed":
     case "dead":
-      return "Исполнитель сообщил окончательную ошибку. Задание и его результат остались на странице «Очередь»."
+      return "Раннер сообщил окончательную ошибку. Задание и его результат остались на странице «Очередь»."
     case "needs_human":
       return "Заданию нужен оператор. Проверьте страницу «Очередь», прежде чем повторять."
     case "needs_reconcile":
@@ -116,10 +116,10 @@ const tick = () => {
 
   if (waited >= POLL_TIMEOUT_MS) {
     stopPolling()
-    executorMissing.value = job.value?.status === "pending" || job.value?.status === "leased"
+    runnerMissing.value = job.value?.status === "pending" || job.value?.status === "leased"
     notice.value =
       `Ответа нет ${Math.round(POLL_TIMEOUT_MS / 1_000)} с. ` +
-      (executorMissing.value
+      (runnerMissing.value
         ? "Задание всё ещё ждёт исполнителя: похоже, он не запущен."
         : "Задание ещё не завершилось. Проверьте страницу «Очередь».")
     return
@@ -142,14 +142,14 @@ const tick = () => {
 const startPolling = () => {
   stopPolling()
   notice.value = null
-  executorMissing.value = false
+  runnerMissing.value = false
   startedAt = Date.now()
   elapsedSeconds.value = 0
   polling.value = true
   tick()
 }
 
-const onEnqueued = (enqueued: HarnessJob) => {
+const onEnqueued = (enqueued: RunnerJob) => {
   lastJob.value = enqueued
   jobId.value = enqueued.id
   if (TERMINAL.has(enqueued.status)) {
@@ -177,7 +177,7 @@ onUnmounted(stopPolling)
   <section>
     <PageHeader
       title="Генерация (для разработчика)"
-      description="Служебная страница: отправляет один произвольный запрос модели через очередь и показывает сырой ответ. Обычным откликам она не нужна: письма и оценки вакансий ставятся в очередь сами. Сервер никогда не вызывает модель напрямую, запрос выполняет исполнитель."
+      description="Служебная страница: отправляет один произвольный запрос модели через очередь и показывает сырой ответ. Обычным откликам она не нужна: письма и оценки вакансий ставятся в очередь сами. Сервер никогда не вызывает модель напрямую, запрос выполняет харнес."
     >
       <template #actions>
         <span v-if="polling" class="text-xs text-muted-foreground">
@@ -191,7 +191,7 @@ onUnmounted(stopPolling)
       <AlertTitle>Ожидание остановлено</AlertTitle>
       <AlertDescription>
         <p>{{ notice }}</p>
-        <ExecutorStartGuide v-if="executorMissing" target="inference" class="mt-3" />
+        <RunnerStartGuide v-if="runnerMissing" target="inference" class="mt-3" />
       </AlertDescription>
     </Alert>
 
@@ -200,7 +200,7 @@ onUnmounted(stopPolling)
       <AlertTitle>Генерация недоступна</AlertTitle>
       <AlertDescription>
         <p>{{ errorText }}</p>
-        <ExecutorStartGuide target="stack" class="mt-3" />
+        <RunnerStartGuide target="stack" class="mt-3" />
       </AlertDescription>
     </Alert>
 
@@ -225,7 +225,7 @@ onUnmounted(stopPolling)
       <Card v-if="result" class="mt-4">
         <CardHeader>
           <CardTitle>Ответ</CardTitle>
-          <CardDescription>Текст, который исполнитель записал в результат задания.</CardDescription>
+          <CardDescription>Текст, который харнес записал в результат задания.</CardDescription>
         </CardHeader>
         <CardContent>
           <div class="mb-3 flex flex-wrap gap-1.5">
@@ -252,7 +252,7 @@ onUnmounted(stopPolling)
       </Card>
 
       <p v-else-if="polling" class="mt-4 text-sm text-muted-foreground">
-        Ждём, когда исполнитель запишет результат…
+        Ждём, когда харнес запишет результат…
       </p>
     </template>
   </section>

@@ -1,5 +1,5 @@
 import type {
-  HarnessJob,
+  RunnerJob,
   JobKind,
   JobStage,
   JobStatus,
@@ -11,7 +11,7 @@ import type {
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
 import type { Executor, RepoEffect } from "../db/Database.ts"
-import { harnessJob } from "../db/tables.ts"
+import { runnerJob } from "../db/tables.ts"
 import * as ApplyFilterRepository from "./ApplyFilterRepository.ts"
 import * as SettingsRepository from "./SettingsRepository.ts"
 
@@ -35,8 +35,8 @@ export interface JobRow {
   readonly created_at: Date
 }
 
-export const toJob = (row: JobRow): HarnessJob => ({
-  id: row.id as HarnessJob["id"],
+export const toJob = (row: JobRow): RunnerJob => ({
+  id: row.id as RunnerJob["id"],
   kind: row.kind as JobKind,
   stage: row.stage as JobStage,
   status: row.status as JobStatus,
@@ -45,7 +45,7 @@ export const toJob = (row: JobRow): HarnessJob => ({
   result: row.result ?? null,
   attempts: row.attempts,
   maxAttempts: row.max_attempts,
-  leaseId: row.lease_id as HarnessJob["leaseId"],
+  leaseId: row.lease_id as RunnerJob["leaseId"],
   leaseEpoch: row.lease_epoch,
   leaseUntil: row.lease_until?.toISOString() ?? null,
   runAt: row.run_at.toISOString(),
@@ -57,7 +57,7 @@ export const toJob = (row: JobRow): HarnessJob => ({
  * with the column names. `toJob` speaks columns, so Drizzle rows are adapted
  * here instead of at five call sites.
  */
-const fromSelect = (row: typeof harnessJob.$inferSelect): JobRow => ({
+const fromSelect = (row: typeof runnerJob.$inferSelect): JobRow => ({
   id: row.id,
   user_id: row.userId,
   hh_account_id: row.hhAccountId,
@@ -90,10 +90,10 @@ export interface EnqueueInput {
   readonly idempotencyKey: string
 }
 
-export const enqueue = (tx: Executor, input: EnqueueInput): RepoEffect<HarnessJob> =>
+export const enqueue = (tx: Executor, input: EnqueueInput): RepoEffect<RunnerJob> =>
   Effect.gen(function*() {
     yield* tx
-      .insert(harnessJob)
+      .insert(runnerJob)
       .values({
         userId: input.userId,
         hhAccountId: input.hhAccountId,
@@ -106,12 +106,12 @@ export const enqueue = (tx: Executor, input: EnqueueInput): RepoEffect<HarnessJo
         maxAttempts: input.stage === "submit" || input.stage === "letter_attach" ? 1 : input.maxAttempts ?? 3,
         idempotencyKey: input.idempotencyKey
       })
-      .onConflictDoNothing({ target: harnessJob.idempotencyKey })
+      .onConflictDoNothing({ target: runnerJob.idempotencyKey })
 
     const [row] = yield* tx
       .select()
-      .from(harnessJob)
-      .where(sql`${harnessJob.idempotencyKey} = ${input.idempotencyKey}`)
+      .from(runnerJob)
+      .where(sql`${runnerJob.idempotencyKey} = ${input.idempotencyKey}`)
       .limit(1)
 
     return toJob(fromSelect(row!))
@@ -122,7 +122,7 @@ export interface ClaimInput {
   readonly kinds: ReadonlyArray<JobKind>
   readonly accounts: ReadonlyArray<string>
   readonly leaseSeconds?: number
-  /** Сколько браузерных задач одного аккаунта держит один харнесс разом. */
+  /** Сколько браузерных задач одного аккаунта держит один раннер разом. */
   readonly browserConcurrency?: number
   /** Из них задач, действующих от имени аккаунта (`ACTING_STAGES`). */
   readonly actingConcurrency?: number
@@ -151,7 +151,7 @@ export const DEFAULT_SUBMIT_JITTER_PERCENT = 50
 /**
  * Стадии, которые действуют от имени аккаунта (клик «откликнуться», письмо в
  * чате). Остальные браузерные стадии только читают. Зеркало
- * неэксклюзивных `withPage` в харнессе: читающие идут параллельно.
+ * неэксклюзивных `withPage` в раннере: читающие идут параллельно.
  */
 export const ACTING_STAGES: ReadonlyArray<JobStage> = ["submit", "letter_attach"]
 
@@ -163,7 +163,7 @@ export const ACTING_STAGES: ReadonlyArray<JobStage> = ["submit", "letter_attach"
 export const FORM_READ_STAGES: ReadonlyArray<JobStage> = ["form_read", "prepare"]
 
 export interface ClaimedJob {
-  readonly job: HarnessJob
+  readonly job: RunnerJob
   readonly userId: string
   readonly hhAccountId: string | null
   readonly applicationId: string | null
@@ -187,22 +187,22 @@ const formReadList = sql.join(FORM_READ_STAGES.map((stage) => sql`${stage}`), sq
 
 /**
  * Числовая настройка владельца задачи (`user_settings`) или `fallback`, пока
- * строки нет. Читается в самом запросе выбора кандидата, по `harness_jobs.user_id`.
+ * строки нет. Читается в самом запросе выбора кандидата, по `runner_jobs.user_id`.
  */
 const settingOf = (column: string, fallback: number) =>
-  sql`coalesce((select s.${sql.identifier(column)} from user_settings s where s.user_id = harness_jobs.user_id), ${fallback}::int)`
+  sql`coalesce((select s.${sql.identifier(column)} from user_settings s where s.user_id = runner_jobs.user_id), ${fallback}::int)`
 
 /** Сколько раз claim пробует другого кандидата, проиграв гонку за аккаунт. */
 const CLAIM_ATTEMPTS = 5
 
 /**
- * Занятость аккаунта для этого харнесса: сколько его браузерных задач уже
+ * Занятость аккаунта для этого раннера: сколько его браузерных задач уже
  * в `leased`/`running`, и сколько из них действующих. Один запрос на обе цифры.
  */
 const accountLoad = (holder: string, accountId: string) => sql`
   select count(*)::int as total,
          count(*) filter (where r.stage in (${actingList}))::int as acting
-  from harness_jobs r
+  from runner_jobs r
   where r.hh_account_id = ${accountId}
     and r.kind = 'browser'
     and r.status in ('leased', 'running')
@@ -214,7 +214,7 @@ const accountLoad = (holder: string, accountId: string) => sql`
  *
  * Выбор кандидата сам отсекает то, что взять нельзя: браузерную задачу
  * аккаунта, которым владеет другой неистёкший держатель, или аккаунта, где
- * этот харнесс уже на потолке (всего или по действующим стадиям). Поэтому
+ * этот раннер уже на потолке (всего или по действующим стадиям). Поэтому
  * занятый аккаунт не заслоняет inference и задачи других аккаунтов
  * (head-of-line blocking), и задачи не откладываются на 5 секунд.
  *
@@ -237,7 +237,7 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
       submitIntervalSeconds: Math.max(0, input.submitIntervalSeconds ?? DEFAULT_ACCOUNT_SUBMIT_INTERVAL_SECONDS),
       submitJitterPercent: Math.max(0, input.submitJitterPercent ?? DEFAULT_SUBMIT_JITTER_PERCENT),
       submitHourlyLimit: input.submitHourlyLimit ?? null,
-      harnessSlots: 6,
+      runnerSlots: 6,
       formReadConcurrency: Math.max(1, input.formReadConcurrency ?? SettingsRepository.BUILTIN_SETTINGS.formReadConcurrency),
       formReadIntervalSeconds: Math.max(
         0,
@@ -252,8 +252,8 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
     const actingCapSql = sql`least(${browserCapSql}, ${
       settingOf("account_acting_concurrency", defaults.accountActingConcurrency)
     })`
-    const hourlyLimitSql = sql`(case when exists (select 1 from user_settings s where s.user_id = harness_jobs.user_id)
-      then (select s.submit_hourly_limit from user_settings s where s.user_id = harness_jobs.user_id)
+    const hourlyLimitSql = sql`(case when exists (select 1 from user_settings s where s.user_id = runner_jobs.user_id)
+      then (select s.submit_hourly_limit from user_settings s where s.user_id = runner_jobs.user_id)
       else ${defaults.submitHourlyLimit}::int end)`
     const rejectedAccounts: Array<string> = []
 
@@ -268,7 +268,7 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
       const [candidate] = (
         yield* tx.execute(sql`
           select id, hh_account_id, user_id, kind, stage
-          from harness_jobs
+          from runner_jobs
           where status = 'pending'
             and run_at <= now()
             and ${kindClause(input.kinds)}
@@ -278,13 +278,13 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
               application_id is null
               or exists (
                 select 1 from application a
-                where a.id = harness_jobs.application_id
+                where a.id = runner_jobs.application_id
                   and (
-                    (harness_jobs.stage = 'prepare' and a.state in ('draft', 'queued', 'needs_human', 'failed'))
-                    or (harness_jobs.stage = 'submit' and a.state = 'queued')
-                    or (harness_jobs.stage = 'reconcile' and a.state in ('submitting', 'needs_human', 'failed'))
-                    or harness_jobs.stage = 'session'
-                    or harness_jobs.stage = 'inference'
+                    (runner_jobs.stage = 'prepare' and a.state in ('draft', 'queued', 'needs_human', 'failed'))
+                    or (runner_jobs.stage = 'submit' and a.state = 'queued')
+                    or (runner_jobs.stage = 'reconcile' and a.state in ('submitting', 'needs_human', 'failed'))
+                    or runner_jobs.stage = 'session'
+                    or runner_jobs.stage = 'inference'
                   )
               )
             )
@@ -294,35 +294,35 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
               or (
                 not exists (
                   select 1 from account_lease l
-                  where l.hh_account_id = harness_jobs.hh_account_id
+                  where l.hh_account_id = runner_jobs.hh_account_id
                     and l.expires_at >= now()
                     and l.holder <> ${input.holder}
                 )
                 and (
-                  select count(*) from harness_jobs r
-                  where r.hh_account_id = harness_jobs.hh_account_id
+                  select count(*) from runner_jobs r
+                  where r.hh_account_id = runner_jobs.hh_account_id
                     and r.kind = 'browser'
                     and r.status in ('leased', 'running')
                     and r.locked_by = ${input.holder}
                 ) < ${browserCapSql}
                 and (
-                  harness_jobs.stage not in (${actingList})
+                  runner_jobs.stage not in (${actingList})
                   or exists (
                     -- Темп и блокировка после капчи: действующую задачу аккаунт
                     -- принимает не раньше submit_next_at и пока оператор не снял блокировку.
                     select 1 from hh_account pa
-                    where pa.id = harness_jobs.hh_account_id
+                    where pa.id = runner_jobs.hh_account_id
                       and (pa.submit_next_at is null or pa.submit_next_at <= now())
                       and pa.submit_blocked_at is null
                   )
                 )
                 and (
                   -- Чтение формы: свой потолок параллельности и пауза между стартами.
-                  harness_jobs.stage not in (${formReadList})
+                  runner_jobs.stage not in (${formReadList})
                   or (
                     (
-                      select count(*) from harness_jobs r
-                      where r.hh_account_id = harness_jobs.hh_account_id
+                      select count(*) from runner_jobs r
+                      where r.hh_account_id = runner_jobs.hh_account_id
                         and r.kind = 'browser'
                         and r.status in ('leased', 'running')
                         and r.locked_by = ${input.holder}
@@ -330,27 +330,27 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
                     ) < ${formReadCapSql}
                     and exists (
                       select 1 from hh_account fa
-                      where fa.id = harness_jobs.hh_account_id
+                      where fa.id = runner_jobs.hh_account_id
                         and (fa.form_read_next_at is null or fa.form_read_next_at <= now())
                     )
                   )
                 )
                 and (
                   -- Часовой лимит отправок аккаунта (null - без лимита).
-                  harness_jobs.stage <> 'submit'
+                  runner_jobs.stage <> 'submit'
                   or ${hourlyLimitSql} is null
                   or (
-                    select count(*) from harness_jobs r
-                    where r.hh_account_id = harness_jobs.hh_account_id
+                    select count(*) from runner_jobs r
+                    where r.hh_account_id = runner_jobs.hh_account_id
                       and r.stage = 'submit'
                       and r.leased_at > now() - interval '1 hour'
                   ) < ${hourlyLimitSql}
                 )
                 and (
-                  harness_jobs.stage not in (${actingList})
+                  runner_jobs.stage not in (${actingList})
                   or (
-                    select count(*) from harness_jobs r
-                    where r.hh_account_id = harness_jobs.hh_account_id
+                    select count(*) from runner_jobs r
+                    where r.hh_account_id = runner_jobs.hh_account_id
                       and r.kind = 'browser'
                       and r.status in ('leased', 'running')
                       and r.locked_by = ${input.holder}
@@ -411,7 +411,7 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
         // растягивается в `formReadBlockedFactor` раз.
         if (FORM_READ_STAGES.includes(candidate.stage as JobStage)) {
           const reading = yield* tx.execute(sql`
-            select count(*)::int as n from harness_jobs r
+            select count(*)::int as n from runner_jobs r
             where r.hh_account_id = ${hhAccountId} and r.kind = 'browser'
               and r.status in ('leased', 'running') and r.locked_by = ${input.holder}
               and r.stage in (${formReadList})
@@ -440,7 +440,7 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
         // Часовой лимит перепроверяем под той же блокировкой: выбор кандидата - снимок.
         if (candidate.stage === "submit" && settings.submitHourlyLimit !== null) {
           const used = yield* tx.execute(sql`
-            select count(*)::int as n from harness_jobs
+            select count(*)::int as n from runner_jobs
             where hh_account_id = ${hhAccountId} and stage = 'submit'
               and leased_at > now() - interval '1 hour'
           `)
@@ -472,7 +472,7 @@ export const claim = (tx: Executor, input: ClaimInput): RepoEffect<ClaimedJob | 
 
       const [row] = (
         yield* tx.execute(sql`
-          update harness_jobs
+          update runner_jobs
           set status = 'leased',
               lease_id = uuidv7(),
               lease_epoch = lease_epoch + 1,
@@ -510,7 +510,7 @@ export const heartbeat = (
 ): RepoEffect<boolean> =>
   tx
     .execute(sql`
-      update harness_jobs
+      update runner_jobs
       set status = case when status = 'leased' then 'running' else status end,
           lease_until = now() + make_interval(secs => ${input.leaseSeconds ?? 120}),
           updated_at = now()
@@ -544,7 +544,7 @@ export const complete = (
 ): RepoEffect<boolean> =>
   tx
     .execute(sql`
-      update harness_jobs
+      update runner_jobs
       set status = ${input.status},
           lease_until = null,
           last_error = ${input.lastError},
@@ -581,7 +581,7 @@ export interface RecoveredJob {
 export const recoverExpired = (tx: Executor): RepoEffect<ReadonlyArray<RecoveredJob>> =>
   tx
     .execute(sql`
-      update harness_jobs
+      update runner_jobs
       set status = case
             when stage = 'submit' then 'needs_reconcile'
             when attempts >= max_attempts then 'dead'
@@ -626,7 +626,7 @@ export const stats = (tx: Executor, kind?: string): RepoEffect<QueueStats> =>
         count(*) filter (where status = 'needs_human')::int as needs_human,
         count(*) filter (where status = 'needs_reconcile')::int as needs_reconcile,
         coalesce(max(extract(epoch from (now() - created_at))) filter (where status = 'pending'), 0)::int as oldest
-      from harness_jobs
+      from runner_jobs
       where (status in ('pending', 'leased', 'running', 'needs_human', 'needs_reconcile')
         or created_at > now() - interval '1 day')
         ${kind === undefined ? sql`` : sql`and kind = ${kind}`}
@@ -654,7 +654,7 @@ interface ConcurrencyCaps {
   readonly submitIntervalSeconds: number
   readonly submitJitterPercent: number
   readonly submitHourlyLimit: number | null
-  readonly harnessSlots: number
+  readonly runnerSlots: number
   readonly formReadConcurrency: number
   readonly formReadIntervalSeconds: number
   readonly formReadJitterPercent: number
@@ -665,7 +665,7 @@ const stageCounts = (rows: ReadonlyArray<Record<string, unknown>>) =>
   rows.map((row) => ({ stage: String(row.stage) as JobStage, count: Number(row.n) }))
 
 /**
- * Параллельность одним снимком: потоки харнессов, занятость аккаунтов по
+ * Параллельность одним снимком: потоки раннеров, занятость аккаунтов по
  * стадиям, кто держит аккаунт. Идёт от владельца, потому что `account_lease`
  * закрыт RLS; всё остальное фильтруется по `user_id` вручную.
  */
@@ -675,18 +675,18 @@ export const concurrency = (
   caps: ConcurrencyCaps
 ): RepoEffect<QueueConcurrency> =>
   Effect.gen(function*() {
-    const harnesses = (yield* tx.execute(sql`
+    const runners = (yield* tx.execute(sql`
       select h.id, h.name, h.concurrency, h.last_seen_at,
-             (select count(*)::int from harness_jobs j
+             (select count(*)::int from runner_jobs j
                where j.user_id = ${userId} and j.locked_by = h.id::text
                  and j.status in ('leased', 'running')) as busy
-      from harness h
+      from runner h
       where h.user_id = ${userId}
         -- Только живые: не отозванные и выходившие на связь за 10 минут (или с
         -- задачами в работе). Старые и тестовые регистрации не показываются.
         and h.token_hash is not null
         and (h.last_seen_at > now() - interval '10 minutes'
-          or exists (select 1 from harness_jobs j
+          or exists (select 1 from runner_jobs j
                       where j.locked_by = h.id::text and j.status in ('leased', 'running')))
       order by h.name
     `)).rows as ReadonlyArray<Record<string, unknown>>
@@ -715,14 +715,14 @@ export const concurrency = (
                 )) as submits_since_captcha
       from hh_account a
       left join account_lease l on l.hh_account_id = a.id and l.expires_at > now()
-      left join harness h on h.id::text = l.holder and h.user_id = a.user_id
+      left join runner h on h.id::text = l.holder and h.user_id = a.user_id
       where a.user_id = ${userId}
       order by a.is_default desc, name
     `)).rows as ReadonlyArray<Record<string, unknown>>
 
     const running = (yield* tx.execute(sql`
       select hh_account_id, stage, count(*)::int as n
-      from harness_jobs
+      from runner_jobs
       where user_id = ${userId} and kind = 'browser' and status in ('leased', 'running')
       group by hh_account_id, stage
     `)).rows as ReadonlyArray<Record<string, unknown>>
@@ -730,7 +730,7 @@ export const concurrency = (
     const pending = (yield* tx.execute(sql`
       select hh_account_id, stage, count(*)::int as n,
              coalesce(max(extract(epoch from (now() - run_at))), 0)::int as age
-      from harness_jobs
+      from runner_jobs
       where user_id = ${userId} and kind = 'browser' and status = 'pending' and run_at <= now()
       group by hh_account_id, stage
     `)).rows as ReadonlyArray<Record<string, unknown>>
@@ -738,7 +738,7 @@ export const concurrency = (
     const inference = (yield* tx.execute(sql`
       select count(*) filter (where status in ('leased', 'running'))::int as running,
              count(*) filter (where status = 'pending' and run_at <= now())::int as pending
-      from harness_jobs
+      from runner_jobs
       where user_id = ${userId} and kind = 'inference'
     `)).rows[0] as Record<string, unknown> | undefined
 
@@ -752,13 +752,13 @@ export const concurrency = (
       submitIntervalSeconds: caps.submitIntervalSeconds,
       submitJitterPercent: caps.submitJitterPercent,
       submitHourlyLimit: caps.submitHourlyLimit,
-      harnessSlots: caps.harnessSlots,
+      runnerSlots: caps.runnerSlots,
       formReadConcurrency: caps.formReadConcurrency,
       formReadIntervalSeconds: caps.formReadIntervalSeconds,
       formReadJitterPercent: caps.formReadJitterPercent,
       formReadBlockedFactor: caps.formReadBlockedFactor,
       actingStages: ACTING_STAGES,
-      harnesses: harnesses.map((row) => ({
+      runners: runners.map((row) => ({
         id: String(row.id),
         name: String(row.name),
         slots: row.concurrency === null ? null : Number(row.concurrency),
@@ -772,8 +772,8 @@ export const concurrency = (
         return {
           id,
           name: String(row.name),
-          holderHarnessId: row.holder === null ? null : String(row.holder),
-          holderHarnessName: row.holder_name === null ? null : String(row.holder_name),
+          holderRunnerId: row.holder === null ? null : String(row.holder),
+          holderRunnerName: row.holder_name === null ? null : String(row.holder_name),
           nextSubmitAt: row.next_submit_at == null ? null : new Date(String(row.next_submit_at)).toISOString(),
           submitBlockedAt: row.blocked_at == null ? null : new Date(String(row.blocked_at)).toISOString(),
           submitBlockReason: row.block_reason == null ? null : String(row.block_reason),
@@ -802,7 +802,7 @@ export const oldestPendingAge = (tx: Executor): RepoEffect<number> =>
   tx
     .execute(sql`
       select coalesce(extract(epoch from (now() - min(run_at))), 0)::int as age
-      from harness_jobs where status = 'pending' and run_at <= now()
+      from runner_jobs where status = 'pending' and run_at <= now()
     `)
     .pipe(
       Effect.map((result) => Number((result.rows[0] as { age?: number } | undefined)?.age ?? 0))
@@ -811,17 +811,17 @@ export const oldestPendingAge = (tx: Executor): RepoEffect<number> =>
 export const list = (
   tx: Executor,
   options: { readonly status?: string; readonly kind?: string; readonly limit?: number } = {}
-): RepoEffect<ReadonlyArray<HarnessJob>> =>
+): RepoEffect<ReadonlyArray<RunnerJob>> =>
   tx
     .select()
-    .from(harnessJob)
+    .from(runnerJob)
     .where(
       sql`${options.status === undefined || options.status === ""
         ? sql`true`
-        : sql`${harnessJob.status} = ${options.status}`}
-        and ${options.kind === undefined ? sql`true` : sql`${harnessJob.kind} = ${options.kind}`}`
+        : sql`${runnerJob.status} = ${options.status}`}
+        and ${options.kind === undefined ? sql`true` : sql`${runnerJob.kind} = ${options.kind}`}`
     )
-    .orderBy(sql`${harnessJob.createdAt} desc`)
+    .orderBy(sql`${runnerJob.createdAt} desc`)
     .limit(Math.min(Math.max(options.limit ?? 50, 1), 200))
     .pipe(Effect.map((rows) => rows.map((row) => toJob(fromSelect(row)))))
 
@@ -837,7 +837,7 @@ export interface QueueSearchOptions {
 const UUID_TEXT = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 
 /**
- * Страница задач с готовыми ссылками. Аккаунт берётся из `harness_jobs.hh_account_id`,
+ * Страница задач с готовыми ссылками. Аккаунт берётся из `runner_jobs.hh_account_id`,
  * а если его нет - из отклика задачи. Вакансия - из отклика, а у задач без отклика
  * (чтение формы) из `payload.vacancyId`. Всё одним запросом, без N+1.
  */
@@ -858,7 +858,7 @@ export const search = (
       acc.id::text
     )`
     const from = sql`
-      from harness_jobs j
+      from runner_jobs j
       left join application ap on ap.id = j.application_id
       left join hh_account acc on acc.id = coalesce(j.hh_account_id, ap.hh_account_id)
       left join vacancy v on v.id = coalesce(
@@ -920,7 +920,7 @@ export const cancelForApplication = (
 ): RepoEffect<number> =>
   tx
     .execute(sql`
-      update harness_jobs
+      update runner_jobs
       set status = 'cancelled', updated_at = now()
       where application_id = ${applicationId}
         and status = 'pending'
@@ -933,13 +933,13 @@ export const cancelForApplication = (
 
 /**
  * Отменяет submit-задачу, до клика по которой добралась смена настроек. Снятие
- * аренды важнее смены статуса: харнесс перестанет слать heartbeat, а его
+ * аренды важнее смены статуса: раннер перестанет слать heartbeat, а его
  * завершение будет отвергнуто как устаревшее и не перезапишет причину остановки.
  */
 export const cancelActiveSubmit = (tx: Executor, applicationId: string): RepoEffect<number> =>
   tx
     .execute(sql`
-      update harness_jobs
+      update runner_jobs
       set status = 'cancelled',
           lease_id = null,
           lease_until = null,
@@ -965,7 +965,7 @@ export const letterBlockedSubmit = (
   tx
     .execute(sql`
       select a.id as application_id
-      from harness_jobs j
+      from runner_jobs j
       join application a on a.id = j.application_id
       where j.id = ${jobId}
         and j.stage = 'submit'
@@ -992,13 +992,13 @@ export const settleSubmit = (
 ): RepoEffect<boolean> =>
   tx
     .execute(sql`
-      update harness_jobs
+      update runner_jobs
       set status = ${input.status},
           result = ${JSON.stringify(input.result)}::jsonb,
           last_error = ${input.message},
           updated_at = now()
       where id = (
-        select id from harness_jobs
+        select id from runner_jobs
         where application_id = ${applicationId}
           and stage = 'submit'
           and status = 'needs_reconcile'
@@ -1009,11 +1009,11 @@ export const settleSubmit = (
     `)
     .pipe(Effect.map((result) => result.rows.length > 0))
 
-export const findById = (tx: Executor, id: string): RepoEffect<HarnessJob | null> =>
+export const findById = (tx: Executor, id: string): RepoEffect<RunnerJob | null> =>
   tx
     .select()
-    .from(harnessJob)
-    .where(sql`${harnessJob.id} = ${id}`)
+    .from(runnerJob)
+    .where(sql`${runnerJob.id} = ${id}`)
     .limit(1)
     .pipe(
       Effect.map((rows) =>
@@ -1022,11 +1022,11 @@ export const findById = (tx: Executor, id: string): RepoEffect<HarnessJob | null
     )
 
 /** The job stored under an idempotency key, if any. */
-export const findByKey = (tx: Executor, idempotencyKey: string): RepoEffect<HarnessJob | null> =>
+export const findByKey = (tx: Executor, idempotencyKey: string): RepoEffect<RunnerJob | null> =>
   tx
     .select()
-    .from(harnessJob)
-    .where(sql`${harnessJob.idempotencyKey} = ${idempotencyKey}`)
+    .from(runnerJob)
+    .where(sql`${runnerJob.idempotencyKey} = ${idempotencyKey}`)
     .limit(1)
     .pipe(
       Effect.map((rows) =>
@@ -1043,7 +1043,7 @@ export const countFor = (
   tx
     .execute(sql`
       select count(*)::int as count
-      from harness_jobs
+      from runner_jobs
       where application_id = ${applicationId} and stage = ${stage}
     `)
     .pipe(
@@ -1055,19 +1055,19 @@ export const latestFor = (
   tx: Executor,
   applicationId: string,
   stages: ReadonlyArray<JobStage>
-): RepoEffect<HarnessJob | null> =>
+): RepoEffect<RunnerJob | null> =>
   tx
     .select()
-    .from(harnessJob)
+    .from(runnerJob)
     .where(
-      sql`${harnessJob.applicationId} = ${applicationId}
-        and ${harnessJob.status} <> 'cancelled'
-        and ${harnessJob.stage} in (${sql.join(
+      sql`${runnerJob.applicationId} = ${applicationId}
+        and ${runnerJob.status} <> 'cancelled'
+        and ${runnerJob.stage} in (${sql.join(
           stages.map((stage) => sql`${stage}`),
           sql`, `
         )})`
     )
-    .orderBy(sql`${harnessJob.createdAt} desc`)
+    .orderBy(sql`${runnerJob.createdAt} desc`)
     .limit(1)
     .pipe(
       Effect.map((rows) =>
@@ -1080,7 +1080,7 @@ export const latestFor = (
  * from the DTO (owner, application, account).
  */
 export interface JobContext {
-  readonly job: HarnessJob
+  readonly job: RunnerJob
   readonly userId: string
   readonly hhAccountId: string | null
   readonly applicationId: string | null
@@ -1092,8 +1092,8 @@ export interface JobContext {
 export const context = (tx: Executor, id: string): RepoEffect<JobContext | null> =>
   tx
     .select()
-    .from(harnessJob)
-    .where(sql`${harnessJob.id} = ${id}`)
+    .from(runnerJob)
+    .where(sql`${runnerJob.id} = ${id}`)
     .limit(1)
     .pipe(
       Effect.map((rows) => {
@@ -1116,19 +1116,19 @@ export const latestForAccount = (
   hhAccountId: string,
   stage: JobStage
 ): RepoEffect<{
-  readonly job: HarnessJob
+  readonly job: RunnerJob
   readonly lastError: string | null
   readonly updatedAt: Date
 } | null> =>
   tx
     .select()
-    .from(harnessJob)
+    .from(runnerJob)
     .where(
-      sql`${harnessJob.hhAccountId} = ${hhAccountId}
-        and ${harnessJob.stage} = ${stage}
-        and ${harnessJob.status} <> 'cancelled'`
+      sql`${runnerJob.hhAccountId} = ${hhAccountId}
+        and ${runnerJob.stage} = ${stage}
+        and ${runnerJob.status} <> 'cancelled'`
     )
-    .orderBy(sql`${harnessJob.createdAt} desc`)
+    .orderBy(sql`${runnerJob.createdAt} desc`)
     .limit(1)
     .pipe(
       Effect.map((rows) =>
@@ -1150,7 +1150,7 @@ export const countForAccount = (
 ): RepoEffect<number> =>
   tx
     .execute(
-      sql`select count(*)::int as n from harness_jobs where hh_account_id = ${hhAccountId} and stage = ${stage}`
+      sql`select count(*)::int as n from runner_jobs where hh_account_id = ${hhAccountId} and stage = ${stage}`
     )
     .pipe(Effect.map((result) => Number((result.rows[0] as { n?: number } | undefined)?.n ?? 0)))
 
@@ -1162,21 +1162,21 @@ export const latestForVacancy = (
   stage: JobStage,
   chatId: string | null = null
 ): RepoEffect<{
-  readonly job: HarnessJob
+  readonly job: RunnerJob
   readonly lastError: string | null
   readonly updatedAt: Date
 } | null> =>
   tx
     .select()
-    .from(harnessJob)
+    .from(runnerJob)
     .where(
-      sql`${harnessJob.hhAccountId} = ${hhAccountId}
-        and ${harnessJob.stage} = ${stage}
-        and ${harnessJob.payload}->>'vacancyId' = ${vacancyId}
-        and (${chatId}::text is null or ${harnessJob.payload}->>'chatId' = ${chatId})
-        and ${harnessJob.status} <> 'cancelled'`
+      sql`${runnerJob.hhAccountId} = ${hhAccountId}
+        and ${runnerJob.stage} = ${stage}
+        and ${runnerJob.payload}->>'vacancyId' = ${vacancyId}
+        and (${chatId}::text is null or ${runnerJob.payload}->>'chatId' = ${chatId})
+        and ${runnerJob.status} <> 'cancelled'`
     )
-    .orderBy(sql`${harnessJob.createdAt} desc`)
+    .orderBy(sql`${runnerJob.createdAt} desc`)
     .limit(1)
     .pipe(
       Effect.map((rows) =>
@@ -1200,17 +1200,17 @@ export const countForVacancy = (
 ): RepoEffect<number> =>
   tx
     .execute(
-      sql`select count(*)::int as n from harness_jobs
+      sql`select count(*)::int as n from runner_jobs
           where hh_account_id = ${hhAccountId} and stage = ${stage} and payload->>'vacancyId' = ${vacancyId}
             and (${chatId}::text is null or payload->>'chatId' = ${chatId})`
     )
     .pipe(Effect.map((result) => Number((result.rows[0] as { n?: number } | undefined)?.n ?? 0)))
 
 
-/** Последняя ошибка задачи (`last_error`): почему харнесс не справился. */
+/** Последняя ошибка задачи (`last_error`): почему раннер не справился. */
 export const lastErrorOf = (tx: Executor, jobId: string): RepoEffect<string | null> =>
   tx
-    .execute(sql`select last_error from harness_jobs where id = ${jobId}`)
+    .execute(sql`select last_error from runner_jobs where id = ${jobId}`)
     .pipe(
       Effect.map((result) => (result.rows[0] as { last_error?: string | null } | undefined)?.last_error ?? null)
     )

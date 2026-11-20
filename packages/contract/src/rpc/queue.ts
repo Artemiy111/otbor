@@ -2,12 +2,12 @@ import { Schema } from "effect"
 import { Rpc } from "effect/rpc"
 import { JobKind, JobStage, JobStatus } from "../enums.ts"
 import { ApiError } from "../errors.ts"
-import { HarnessId, HarnessJobId, HhAccountId, LeaseId } from "../ids.ts"
+import { RunnerId, RunnerJobId, HhAccountId, LeaseId } from "../ids.ts"
 import {
   CaptchaAttemptReport,
-  HarnessExit,
-  HarnessJob,
-  HarnessRegistration,
+  RunnerExit,
+  RunnerJob,
+  RunnerRegistration,
   HeartbeatResult,
   QueueConcurrency,
   QueueJob,
@@ -33,7 +33,7 @@ export const QueueJobsList = Rpc.make("QueueJobsList", {
     kind: Schema.optional(JobKind),
     limit: Schema.optional(Schema.Int)
   }),
-  success: Schema.Array(HarnessJob),
+  success: Schema.Array(RunnerJob),
   error: ApiError
 })
 
@@ -63,44 +63,44 @@ export const QueueJobsSearch = Rpc.make("QueueJobsSearch", {
   error: ApiError
 })
 
-export const HarnessRegister = Rpc.make("HarnessRegister", {
+export const RunnerRegister = Rpc.make("RunnerRegister", {
   payload: Schema.Struct({
     name: Schema.String,
     kinds: Schema.Array(JobKind),
     accounts: Schema.Array(HhAccountId)
   }),
-  success: HarnessRegistration,
+  success: RunnerRegistration,
   error: ApiError
 })
 
-export const HarnessLeaseNext = Rpc.make("HarnessLeaseNext", {
+export const RunnerLeaseNext = Rpc.make("RunnerLeaseNext", {
   payload: Schema.Struct({
-    harnessId: HarnessId,
-    /** Device token from `HarnessRegister`; the only credential a harness has. */
+    runnerId: RunnerId,
+    /** Device token from `RunnerRegister`; the only credential a runner has. */
     token: Schema.String,
     kinds: Schema.Array(JobKind),
     accounts: Schema.Array(HhAccountId),
     waitSeconds: Schema.optional(Schema.Int),
-    /** Потоки харнесса (`OTBOR_HARNESS_CONCURRENCY`); облако показывает их на странице очереди. */
+    /** Потоки раннера (`OTBOR_RUNNER_CONCURRENCY`); облако показывает их на странице очереди. */
     concurrency: Schema.optional(Schema.Int)
   }),
   success: Schema.Struct({
-    job: Schema.NullOr(HarnessJob),
+    job: Schema.NullOr(RunnerJob),
     /**
      * Сколько потоков харнесс должен держать по настройкам пользователя.
      * Харнесс подстраивает пул на лету; нет поля - остаётся его собственное
-     * значение (`OTBOR_HARNESS_CONCURRENCY`).
+     * значение (`OTBOR_RUNNER_CONCURRENCY`).
      */
-    harnessSlots: Schema.optional(Schema.Int)
+    runnerSlots: Schema.optional(Schema.Int)
   }),
   error: ApiError
 })
 
-export const HarnessHeartbeat = Rpc.make("HarnessHeartbeat", {
+export const RunnerHeartbeat = Rpc.make("RunnerHeartbeat", {
   payload: Schema.Struct({
-    harnessId: HarnessId,
+    runnerId: RunnerId,
     token: Schema.String,
-    jobId: HarnessJobId,
+    jobId: RunnerJobId,
     leaseId: LeaseId,
     epoch: Schema.Int
   }),
@@ -108,14 +108,14 @@ export const HarnessHeartbeat = Rpc.make("HarnessHeartbeat", {
   error: ApiError
 })
 
-export const HarnessComplete = Rpc.make("HarnessComplete", {
+export const RunnerComplete = Rpc.make("RunnerComplete", {
   payload: Schema.Struct({
-    harnessId: HarnessId,
+    runnerId: RunnerId,
     token: Schema.String,
-    jobId: HarnessJobId,
+    jobId: RunnerJobId,
     leaseId: LeaseId,
     epoch: Schema.Int,
-    exit: HarnessExit,
+    exit: RunnerExit,
     /** Попытки распознать капчу, пока шла задача (пусто, если капчи не было). */
     captcha: Schema.optional(Schema.Array(CaptchaAttemptReport))
   }),
@@ -128,13 +128,13 @@ export const HarnessComplete = Rpc.make("HarnessComplete", {
 })
 
 /**
- * Clears the harness token so the device can no longer lease, heartbeat or
- * complete work. Re-registering the harness issues a new token.
+ * Clears the runner token so the device can no longer lease, heartbeat or
+ * complete work. Re-registering the runner issues a new token.
  */
-export const HarnessRevoke = Rpc.make("HarnessRevoke", {
-  payload: Schema.Struct({ harnessId: HarnessId }),
+export const RunnerRevoke = Rpc.make("RunnerRevoke", {
+  payload: Schema.Struct({ runnerId: RunnerId }),
   success: Schema.Struct({
-    harnessId: HarnessId,
+    runnerId: RunnerId,
     revoked: Schema.Boolean
   }),
   error: ApiError
@@ -145,9 +145,9 @@ export const HarnessRevoke = Rpc.make("HarnessRevoke", {
  * Аккаунт определяется по `sessionProfile` из задачи. Запись принимается, только
  * если `baseVersion` совпадает с текущей: более свежие cookies не затираются.
  */
-export const HarnessSessionGet = Rpc.make("HarnessSessionGet", {
+export const RunnerSessionGet = Rpc.make("RunnerSessionGet", {
   payload: Schema.Struct({
-    harnessId: HarnessId,
+    runnerId: RunnerId,
     token: Schema.String,
     sessionProfile: Schema.String
   }),
@@ -158,9 +158,9 @@ export const HarnessSessionGet = Rpc.make("HarnessSessionGet", {
   error: ApiError
 })
 
-export const HarnessSessionPut = Rpc.make("HarnessSessionPut", {
+export const RunnerSessionPut = Rpc.make("RunnerSessionPut", {
   payload: Schema.Struct({
-    harnessId: HarnessId,
+    runnerId: RunnerId,
     token: Schema.String,
     sessionProfile: Schema.String,
     state: Schema.String,

@@ -2,7 +2,7 @@ import { Schema } from "effect"
 import { Rpc } from "effect/rpc"
 import { WritingLanguage } from "../enums.ts"
 import { ApiError } from "../errors.ts"
-import { HarnessJob } from "../models/index.ts"
+import { RunnerJob } from "../models/index.ts"
 
 /**
  * A resume rewrite is inference with context: the cloud enqueues one prompt and
@@ -15,6 +15,6 @@ export const WritingResume = Rpc.make("WritingResume", {
     language: Schema.optional(WritingLanguage),
     model: Schema.optional(Schema.String)
   }),
-  success: Schema.Struct({ job: HarnessJob }),
+  success: Schema.Struct({ job: RunnerJob }),
   error: ApiError
 })

@@ -4,7 +4,7 @@
  * repeated. No hh.ru: pages are the local fixtures of packages/hh.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { AnswersInvalid, Conflict, type FormAnswer, type HarnessExit } from "@otbor/contract"
+import { AnswersInvalid, Conflict, type FormAnswer, type RunnerExit } from "@otbor/contract"
 import { parseResponseForm } from "@otbor/hh"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -79,7 +79,7 @@ if (!enabled || serverUrl === null) {
       await support.dropTestDatabase(base)
     }, 60_000)
 
-    /** A tenant with one account, a registered browser harness and one application. */
+    /** A tenant with one account, a registered browser driver and one application. */
     const setup = async (
       label: string,
       state: "draft" | "preparing" | "queued" = "draft",
@@ -126,22 +126,22 @@ if (!enabled || serverUrl === null) {
         ...(resumeId === undefined ? {} : { resumeId }),
         ...(autoRun === undefined ? {} : { autoRun })
       })
-      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const runner = await support.registerRunner(tenant.userId, [tenant.accountId])
       const lease = () =>
-        support.leaseNext(tenant.userId, harness.id, harness.token!, [tenant.accountId])
+        support.leaseNext(tenant.userId, runner.id, runner.token!, [tenant.accountId])
       const complete = (
         job: NonNullable<Awaited<ReturnType<typeof lease>>["job"]>,
-        exit: HarnessExit
+        exit: RunnerExit
       ) =>
         support.completeJob(tenant.userId, {
-          harnessId: harness.id,
-          token: harness.token!,
+          runnerId: runner.id,
+          token: runner.token!,
           jobId: job.id,
           leaseId: job.leaseId!,
           epoch: job.leaseEpoch,
           exit
         })
-      return { tenant, vacancyId, externalId, applicationId, harness, lease, complete, resumeA, resumeB }
+      return { tenant, vacancyId, externalId, applicationId, runner, lease, complete, resumeA, resumeB }
     }
 
     type Ctx = Awaited<ReturnType<typeof setup>>
@@ -374,7 +374,7 @@ if (!enabled || serverUrl === null) {
       expect(payload.kit.answers).toHaveLength(5)
       expect(payload.kit.answers[0]).toHaveProperty("questionId")
 
-      // The intent exists before the harness did anything: the application is
+      // The intent exists before the runner did anything: the application is
       // submitting and the attempt journal has an open submit row.
       expect(await stateOf(ctx)).toBe("submitting")
       const view = await detail(ctx)
@@ -468,7 +468,7 @@ if (!enabled || serverUrl === null) {
         vacancy?: { url: string; html: string }
         negotiations: ReadonlyArray<string>
       }
-    ): HarnessExit => ({
+    ): RunnerExit => ({
       tag: "reconciled",
       artifacts: {
         externalId: ctx.externalId,
@@ -870,8 +870,8 @@ if (!enabled || serverUrl === null) {
       let late: unknown
       try {
         late = await support.completeJobFailure(ctx.tenant.userId, {
-          harnessId: ctx.harness.id,
-          token: ctx.harness.token!,
+          runnerId: ctx.runner.id,
+          token: ctx.runner.token!,
           jobId: job.id,
           leaseId: job.leaseId!,
           epoch: job.leaseEpoch,
@@ -884,7 +884,7 @@ if (!enabled || serverUrl === null) {
       expect(late).toBeDefined()
     })
 
-    test("browser jobs of one account run side by side for one harness", async () => {
+    test("browser jobs of one account run side by side for one runner", async () => {
       const ctx = await setup("serial")
       const otherVacancy = await support.seedVacancy("serial-2")
       const otherApp = await support.seedApplication({
@@ -911,7 +911,7 @@ if (!enabled || serverUrl === null) {
 
       const first = await ctx.lease()
       expect(first.job).not.toBeNull()
-      // The same harness asks again while the first job is in flight: reads
+      // The same runner asks again while the first job is in flight: reads
       // of one account go in parallel up to the cloud cap.
       const second = await ctx.lease()
       expect(second.job).not.toBeNull()

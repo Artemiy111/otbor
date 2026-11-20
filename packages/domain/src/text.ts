@@ -2,7 +2,7 @@
  * Text primitives for the lexicon.
  *
  * Everything here is pure and synchronous: the same functions run in the
- * browser harness and in the cloud, and there is no locale-dependent casing.
+ * browser driver and in the cloud, and there is no locale-dependent casing.
  */
 
 const QUOTES = /[«»""''`]/g

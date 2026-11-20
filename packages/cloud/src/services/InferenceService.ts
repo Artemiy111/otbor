@@ -1,4 +1,4 @@
-import type { ApiError, HarnessJob, InferencePayload, HhAccountId } from "@otbor/contract"
+import type { ApiError, RunnerJob, InferencePayload, HhAccountId } from "@otbor/contract"
 import { InvalidInput, NotFound } from "@otbor/contract"
 import { sql } from "drizzle-orm"
 import { randomUUID } from "node:crypto"
@@ -20,8 +20,8 @@ export interface EnqueueInferenceInput {
 export interface InferenceServiceShape {
   readonly enqueue: (
     input: EnqueueInferenceInput
-  ) => Effect.Effect<{ readonly job: HarnessJob }, ApiError>
-  readonly get: (id: string) => Effect.Effect<HarnessJob, ApiError>
+  ) => Effect.Effect<{ readonly job: RunnerJob }, ApiError>
+  readonly get: (id: string) => Effect.Effect<RunnerJob, ApiError>
 }
 
 const accountFor = (tx: Executor, userId: string) =>

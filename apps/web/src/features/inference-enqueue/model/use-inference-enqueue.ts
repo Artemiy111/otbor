@@ -1,5 +1,5 @@
 import { useMutation, useQueryCache } from "@pinia/colada"
-import type { HarnessJob } from "@otbor/contract"
+import type { RunnerJob } from "@otbor/contract"
 import { inferenceApi, inferenceKeys, type InferenceEnqueueInput } from "@/entities/inference"
 import { queueJobKeys } from "@/entities/queue-job"
 
@@ -11,7 +11,7 @@ import { queueJobKeys } from "@/entities/queue-job"
 export const useInferenceEnqueue = () => {
   const queryCache = useQueryCache()
 
-  return useMutation<{ job: HarnessJob }, InferenceEnqueueInput>({
+  return useMutation<{ job: RunnerJob }, InferenceEnqueueInput>({
     mutation: (input) => inferenceApi.enqueue(input),
     async onSuccess() {
       await Promise.all([

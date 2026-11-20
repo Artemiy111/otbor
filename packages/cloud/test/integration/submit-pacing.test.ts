@@ -23,7 +23,7 @@ import {
   leaseNext,
   migrateTestDatabase,
   ownerTx,
-  registerHarness,
+  registerRunner,
   runAs,
   runAsFailure,
   seedApplication,
@@ -173,11 +173,11 @@ if (!integrationEnabled || serverUrl === null) {
   describe("captcha block", () => {
     const setup = async (label: string) => {
       const tenant = await seedTenant(label)
-      const harness = await registerHarness(tenant.userId, [tenant.accountId])
+      const runner = await registerRunner(tenant.userId, [tenant.accountId])
       return {
         tenant,
-        harness,
-        lease: () => leaseNext(tenant.userId, harness.id, harness.token!, [tenant.accountId])
+        runner,
+        lease: () => leaseNext(tenant.userId, runner.id, runner.token!, [tenant.accountId])
       }
     }
 
@@ -186,8 +186,8 @@ if (!integrationEnabled || serverUrl === null) {
       job: { id: string; leaseId: string | null; leaseEpoch: number }
     ) =>
       completeJob(ctx.tenant.userId, {
-        harnessId: ctx.harness.id,
-        token: ctx.harness.token!,
+        runnerId: ctx.runner.id,
+        token: ctx.runner.token!,
         jobId: job.id,
         leaseId: job.leaseId!,
         epoch: job.leaseEpoch,
@@ -374,7 +374,7 @@ if (!integrationEnabled || serverUrl === null) {
             submitIntervalSeconds: 0,
             submitJitterPercent: 0,
             submitHourlyLimit: limit,
-            harnessSlots: 6,
+            runnerSlots: 6,
             formReadConcurrency: 2,
             formReadIntervalSeconds: 4,
             formReadJitterPercent: 100,
@@ -404,7 +404,7 @@ if (!integrationEnabled || serverUrl === null) {
       await runAs(
         "owner",
         ownerTx((tx) =>
-          tx.execute(sql`update harness_jobs set leased_at = now() - interval '61 minutes' where hh_account_id = ${tenant.accountId} and stage = 'submit'`)
+          tx.execute(sql`update runner_jobs set leased_at = now() - interval '61 minutes' where hh_account_id = ${tenant.accountId} and stage = 'submit'`)
         )
       )
       expect((await claim())?.job.stage).toBe("submit")
@@ -501,7 +501,7 @@ if (!integrationEnabled || serverUrl === null) {
         accountActingConcurrency: 1,
         submitJitterPercent: 50,
         submitHourlyLimit: null,
-        harnessSlots: 6
+        runnerSlots: 6
       })
     })
 
@@ -556,10 +556,10 @@ if (!integrationEnabled || serverUrl === null) {
     test("settings are per user", async () => {
       const one = await seedTenant("settings-a")
       const two = await seedTenant("settings-b")
-      await update(one.userId, { harnessSlots: 2 })
+      await update(one.userId, { runnerSlots: 2 })
       const view = await runAs(two.userId, Effect.gen(function*() { return yield* (yield* SettingsService).get() }))
       expect(view.stored).toBe(false)
-      expect(view.settings.harnessSlots).toBe(6)
+      expect(view.settings.runnerSlots).toBe(6)
     })
 
     test("values outside the ranges, or more acting than browser jobs, are refused", async () => {
@@ -573,25 +573,25 @@ if (!integrationEnabled || serverUrl === null) {
             return yield* settings.update({ ...current, ...patch })
           })
         )
-      expect((await failure({ harnessSlots: 13 }))._tag).toBe("InvalidInput")
+      expect((await failure({ runnerSlots: 13 }))._tag).toBe("InvalidInput")
       expect((await failure({ submitHourlyLimit: 0 }))._tag).toBe("InvalidInput")
       expect((await failure({ accountBrowserConcurrency: 2, accountActingConcurrency: 3 }))._tag).toBe("InvalidInput")
     })
 
-    test("the lease answer carries the harness slot count and follows the setting", async () => {
+    test("the lease answer carries the runner slot count and follows the setting", async () => {
       const tenant = await seedTenant("settings-lease")
-      const harness = await registerHarness(tenant.userId, [tenant.accountId])
-      const lease = () => leaseNext(tenant.userId, harness.id, harness.token!, [tenant.accountId])
-      expect((await lease()).harnessSlots).toBe(6)
-      await update(tenant.userId, { harnessSlots: 3 })
-      expect((await lease()).harnessSlots).toBe(3)
+      const runner = await registerRunner(tenant.userId, [tenant.accountId])
+      const lease = () => leaseNext(tenant.userId, runner.id, runner.token!, [tenant.accountId])
+      expect((await lease()).runnerSlots).toBe(6)
+      await update(tenant.userId, { runnerSlots: 3 })
+      expect((await lease()).runnerSlots).toBe(3)
     })
 
     test("the concurrency view reports the stored values", async () => {
       const tenant = await seedTenant("settings-view")
-      await update(tenant.userId, { accountBrowserConcurrency: 5, submitHourlyLimit: 40, harnessSlots: 8 })
+      await update(tenant.userId, { accountBrowserConcurrency: 5, submitHourlyLimit: 40, runnerSlots: 8 })
       const view = await runAs(tenant.userId, Effect.gen(function*() { return yield* (yield* QueueService).concurrency() }))
-      expect(view).toMatchObject({ browserCap: 5, submitHourlyLimit: 40, harnessSlots: 8 })
+      expect(view).toMatchObject({ browserCap: 5, submitHourlyLimit: 40, runnerSlots: 8 })
     })
   })
 }

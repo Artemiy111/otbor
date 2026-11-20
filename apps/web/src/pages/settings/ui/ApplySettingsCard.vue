@@ -20,7 +20,7 @@ import {
 } from "@/shared/ui"
 
 /**
- * Темп откликов и чтения форм, параллельность и потоки харнесса. Лежат в базе и действуют
+ * Темп откликов и чтения форм, параллельность и потоки раннера. Лежат в базе и действуют
  * со следующей выдачи задачи, без перезапуска.
  */
 const queryCache = useQueryCache()
@@ -34,7 +34,7 @@ const form = ref({
   submitIntervalSeconds: "",
   submitJitterPercent: "",
   submitHourlyLimit: "",
-  harnessSlots: "",
+  runnerSlots: "",
   formReadConcurrency: "",
   formReadIntervalSeconds: "",
   formReadJitterPercent: "",
@@ -48,7 +48,7 @@ const fill = (settings: UserSettings) => {
     submitIntervalSeconds: String(settings.submitIntervalSeconds),
     submitJitterPercent: String(settings.submitJitterPercent),
     submitHourlyLimit: settings.submitHourlyLimit === null ? "" : String(settings.submitHourlyLimit),
-    harnessSlots: String(settings.harnessSlots),
+    runnerSlots: String(settings.runnerSlots),
     formReadConcurrency: String(settings.formReadConcurrency),
     formReadIntervalSeconds: String(settings.formReadIntervalSeconds),
     formReadJitterPercent: String(settings.formReadJitterPercent),
@@ -104,9 +104,9 @@ const fields: ReadonlyArray<Field> = [
     optional: true
   },
   {
-    key: "harnessSlots",
-    label: "Потоки харнесса",
-    hint: "Сколько задач харнесс держит разом (1–12). Работающий харнесс подхватывает число сам, переменная OTBOR_HARNESS_CONCURRENCY остаётся запасной.",
+    key: "runnerSlots",
+    label: "Потоки раннера",
+    hint: "Сколько задач раннер держит разом (1–12). Работающий раннер подхватывает число сам, переменная OTBOR_RUNNER_CONCURRENCY остаётся запасной.",
     min: 1,
     max: 12
   },
@@ -189,7 +189,7 @@ const save = async () => {
     <CardHeader>
       <CardTitle>Отклики и браузер</CardTitle>
       <CardDescription>
-        Темп отправок, параллельность по аккаунту и потоки харнесса. Хранятся в базе; пока вы ничего не
+        Темп отправок, параллельность по аккаунту и потоки раннера. Хранятся в базе; пока вы ничего не
         сохранили, действуют значения по умолчанию из окружения.
       </CardDescription>
     </CardHeader>

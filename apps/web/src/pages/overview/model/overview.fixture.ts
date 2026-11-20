@@ -63,7 +63,7 @@ export const makeHealth = (patch: Partial<Health> = {}): Health =>
     version: "0.1.0",
     database: true,
     now: new Date(NOW).toISOString(),
-    harnesses: [{ id: "h1", name: "browser", kinds: ["browser"], accounts: [], lastSeenAt: null, online: true }],
+    runners: [{ id: "h1", name: "browser", kinds: ["browser"], accounts: [], lastSeenAt: null, online: true }],
     ...patch
   }) as unknown as Health
 

@@ -55,9 +55,9 @@ const jobs = Command.make(
       table(["id", "kind", "stage", "status", "attempts", "lease", "run at"], items.map(formatJob))
     )
   })
-).pipe(Command.withDescription("List harness jobs"))
+).pipe(Command.withDescription("List runner jobs"))
 
 export const queueCommand = Command.make("queue").pipe(
   Command.withSubcommands([stats, jobs]),
-  Command.withDescription("Harness queue state")
+  Command.withDescription("Runner queue state")
 )

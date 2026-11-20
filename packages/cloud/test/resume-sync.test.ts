@@ -1,4 +1,4 @@
-import type { HarnessExit } from "@otbor/contract"
+import type { RunnerExit } from "@otbor/contract"
 import { describe, expect, test } from "bun:test"
 import { judgeResumeSync } from "../src/services/applyRules.ts"
 
@@ -13,7 +13,7 @@ const resume = `<template id="HH-Lux-InitialState">${JSON.stringify({
   }
 })}</template>`
 
-const exit = (profileHtml: string, resumes: ReadonlyArray<string>, tag: HarnessExit["tag"] = "reconciled"): HarnessExit => ({
+const exit = (profileHtml: string, resumes: ReadonlyArray<string>, tag: RunnerExit["tag"] = "reconciled"): RunnerExit => ({
   tag,
   artifacts: {
     profile: { url: "https://hh.ru/applicant/profile/me", html: profileHtml },
@@ -45,7 +45,7 @@ describe("judgeResumeSync", () => {
 
   test("текст блока «Контакты» доходит до вердикта; у старых заданий его нет", () => {
     const base = exit(profile, [resume])
-    const withText: HarnessExit = {
+    const withText: RunnerExit = {
       ...base,
       artifacts: { ...(base.artifacts as object), profileContactsText: "Контакты\nТелефон\n+7 995 260-41-35" }
     }

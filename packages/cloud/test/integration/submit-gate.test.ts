@@ -65,7 +65,7 @@ if (!enabled || serverUrl === null) {
     /** Читает форму вакансии сеансом аккаунта: prepare-задача, lease, complete. */
     const readForm = async (
       tenant: support.Tenant,
-      harness: { id: string; token?: string | null },
+      runner: { id: string; token?: string | null },
       accounts: ReadonlyArray<string>,
       input: { accountId: string; vacancyId: string; exit?: "form" | "session_expired" }
     ) => {
@@ -76,11 +76,11 @@ if (!enabled || serverUrl === null) {
         vacancyId: input.vacancyId,
         externalId
       })
-      const leased = await support.leaseNext(tenant.userId, harness.id, harness.token!, accounts)
+      const leased = await support.leaseNext(tenant.userId, runner.id, runner.token!, accounts)
       expect(leased.job?.stage).toBe("form_read")
       await support.completeJob(tenant.userId, {
-        harnessId: harness.id,
-        token: harness.token!,
+        runnerId: runner.id,
+        token: runner.token!,
         jobId: leased.job!.id,
         leaseId: leased.job!.leaseId!,
         epoch: leased.job!.leaseEpoch,
@@ -137,7 +137,7 @@ if (!enabled || serverUrl === null) {
     /** Черновик с прочитанной формой и полным китом, готовый к approve. */
     const readyDraft = async (
       tenant: support.Tenant,
-      harness: { id: string; token?: string | null },
+      runner: { id: string; token?: string | null },
       label: string
     ) => {
       const vacancyId = await support.seedVacancy(label)
@@ -147,14 +147,14 @@ if (!enabled || serverUrl === null) {
         vacancyId,
         state: "draft"
       })
-      await readForm(tenant, harness, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
+      await readForm(tenant, runner, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
       await setFullKit(tenant.userId, applicationId, vacancyId)
       return applicationId
     }
 
     test("turning auto off demotes waiting auto applications and a form read then submits nothing", async () => {
       const tenant = await support.seedTenant("gate-off")
-      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const runner = await support.registerRunner(tenant.userId, [tenant.accountId])
       await autoOn(tenant)
       const vacancyId = await support.seedVacancy("gate-off")
       const id = await support.seedApplication({
@@ -173,7 +173,7 @@ if (!enabled || serverUrl === null) {
       expect(demoted.state).toBe("draft")
       expect(demoted.last_error).toBe("auto mode was turned off; nothing was sent")
 
-      await readForm(tenant, harness, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
+      await readForm(tenant, runner, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
       expect((await rowOf(id)).state).toBe("draft")
       expect(await support.countJobs(id, "submit")).toBe(0)
     }, 60_000)
@@ -223,7 +223,7 @@ if (!enabled || serverUrl === null) {
 
     test("a manual application in queued with a kit is not submitted by a form read", async () => {
       const tenant = await support.seedTenant("gate-manual")
-      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const runner = await support.registerRunner(tenant.userId, [tenant.accountId])
       await autoOn(tenant)
       const vacancyId = await support.seedVacancy("gate-manual")
       const id = await support.seedApplication({
@@ -233,7 +233,7 @@ if (!enabled || serverUrl === null) {
         state: "queued"
       })
       await setFullKit(tenant.userId, id, vacancyId)
-      await readForm(tenant, harness, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
+      await readForm(tenant, runner, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
       expect(await support.countJobs(id, "submit")).toBe(0)
       expect((await rowOf(id)).intent_at).toBeNull()
     }, 60_000)
@@ -242,7 +242,7 @@ if (!enabled || serverUrl === null) {
       const tenant = await support.seedTenant("gate-any")
       const other = await support.addAccount(tenant.userId, "gate-any-b")
       const accounts = [tenant.accountId, other]
-      const harness = await support.registerHarness(tenant.userId, accounts)
+      const runner = await support.registerRunner(tenant.userId, accounts)
       await autoOn(tenant)
       await autoOn(tenant, other)
       const vacancyId = await support.seedVacancy("gate-any")
@@ -255,7 +255,7 @@ if (!enabled || serverUrl === null) {
       await setFullKit(tenant.userId, mine, vacancyId)
       await setFullKit(tenant.userId, theirs, vacancyId)
 
-      await readForm(tenant, harness, accounts, { accountId: tenant.accountId, vacancyId })
+      await readForm(tenant, runner, accounts, { accountId: tenant.accountId, vacancyId })
       expect(await support.countJobs(mine, "submit")).toBe(1)
       expect(await support.countJobs(theirs, "submit")).toBe(1)
       expect((await rowOf(theirs)).intent_at).not.toBeNull()
@@ -263,7 +263,7 @@ if (!enabled || serverUrl === null) {
 
     test("require_letter: an auto application without a letter is not sent, with the switch off it is", async () => {
       const tenant = await support.seedTenant("gate-letter")
-      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const runner = await support.registerRunner(tenant.userId, [tenant.accountId])
       await support.applyFilterSet(tenant.userId, {
         hhAccountId: tenant.accountId, filter: {}, autoMode: "auto", requireLetter: true
       })
@@ -278,14 +278,14 @@ if (!enabled || serverUrl === null) {
         answers: fullAnswers()
       })
 
-      await readForm(tenant, harness, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
+      await readForm(tenant, runner, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
       expect(await support.countJobs(applicationId, "submit")).toBe(0)
       expect((await rowOf(applicationId)).state).toBe("needs_human")
     }, 60_000)
 
     test("require_letter: manual approval still sends a letterless draft", async () => {
       const tenant = await support.seedTenant("gate-letter-manual")
-      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const runner = await support.registerRunner(tenant.userId, [tenant.accountId])
       await support.applyFilterSet(tenant.userId, {
         hhAccountId: tenant.accountId, filter: {}, requireLetter: true
       })
@@ -293,7 +293,7 @@ if (!enabled || serverUrl === null) {
       const applicationId = await support.seedApplication({
         userId: tenant.userId, accountId: tenant.accountId, vacancyId, state: "draft"
       })
-      await readForm(tenant, harness, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
+      await readForm(tenant, runner, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
       await support.applicationSetKit(tenant.userId, {
         applicationId,
         formHash: await formHashOf(vacancyId),
@@ -318,7 +318,7 @@ if (!enabled || serverUrl === null) {
 
     test("require_letter: a resume's own settings override the account switch", async () => {
       const tenant = await support.seedTenant("gate-letter-resume")
-      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const runner = await support.registerRunner(tenant.userId, [tenant.accountId])
       const resumeId = await support.seedResume({ userId: tenant.userId, accountId: tenant.accountId, title: "gate-letter-resume" })
       await support.applyFilterSet(tenant.userId, {
         hhAccountId: tenant.accountId, filter: {}, autoMode: "auto", requireLetter: true
@@ -337,14 +337,14 @@ if (!enabled || serverUrl === null) {
         answers: fullAnswers()
       })
 
-      await readForm(tenant, harness, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
+      await readForm(tenant, runner, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
       expect(await support.countJobs(applicationId, "submit")).toBe(1)
       expect((await rowOf(applicationId)).state).toBe("queued")
     }, 60_000)
 
     test("require_letter: turning the switch on unqueues letters already waiting to be sent", async () => {
       const tenant = await support.seedTenant("gate-letter-backlog")
-      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const runner = await support.registerRunner(tenant.userId, [tenant.accountId])
       await autoOn(tenant)
       const vacancyId = await support.seedVacancy("gate-letter-backlog")
       const applicationId = await support.seedApplication({
@@ -357,7 +357,7 @@ if (!enabled || serverUrl === null) {
         letter: null,
         answers: fullAnswers()
       })
-      await readForm(tenant, harness, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
+      await readForm(tenant, runner, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
       expect(await support.countJobs(applicationId, "submit")).toBe(1)
 
       await support.applyFilterSet(tenant.userId, {
@@ -369,7 +369,7 @@ if (!enabled || serverUrl === null) {
       const status = await support.runAs(
         "owner",
         support.ownerTx((tx) =>
-          tx.execute(sql`select status from harness_jobs where application_id = ${applicationId} and stage = 'submit'`)
+          tx.execute(sql`select status from runner_jobs where application_id = ${applicationId} and stage = 'submit'`)
         )
       )
       expect(status.rows[0]?.status).toBe("cancelled")
@@ -377,7 +377,7 @@ if (!enabled || serverUrl === null) {
 
     test("require_letter: a submit job already leased stops before the click", async () => {
       const tenant = await support.seedTenant("gate-letter-lease")
-      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const runner = await support.registerRunner(tenant.userId, [tenant.accountId])
       await autoOn(tenant)
       const vacancyId = await support.seedVacancy("gate-letter-lease")
       const applicationId = await support.seedApplication({
@@ -389,11 +389,11 @@ if (!enabled || serverUrl === null) {
         letter: null,
         answers: fullAnswers()
       })
-      await readForm(tenant, harness, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
-      const leased = await support.leaseNext(tenant.userId, harness.id, harness.token!, [tenant.accountId])
+      await readForm(tenant, runner, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
+      const leased = await support.leaseNext(tenant.userId, runner.id, runner.token!, [tenant.accountId])
       expect(leased.job?.stage).toBe("submit")
 
-      // Переключаем галочку напрямую в базе: сценарий гонки, когда харнесс уже
+      // Переключаем галочку напрямую в базе: сценарий гонки, когда раннер уже
       // держит задачу, а смена настроек не прошла через сервис.
       await support.runAs(
         "owner",
@@ -403,8 +403,8 @@ if (!enabled || serverUrl === null) {
       )
 
       const heartbeat = await support.heartbeatJob(tenant.userId, {
-        harnessId: harness.id,
-        token: harness.token!,
+        runnerId: runner.id,
+        token: runner.token!,
         jobId: leased.job!.id,
         leaseId: leased.job!.leaseId!,
         epoch: leased.job!.leaseEpoch
@@ -418,7 +418,7 @@ if (!enabled || serverUrl === null) {
       const tenant = await support.seedTenant("gate-park")
       const other = await support.addAccount(tenant.userId, "gate-park-b")
       const accounts = [tenant.accountId, other]
-      const harness = await support.registerHarness(tenant.userId, accounts)
+      const runner = await support.registerRunner(tenant.userId, accounts)
       await autoOn(tenant)
       await autoOn(tenant, other)
       const vacancyId = await support.seedVacancy("gate-park")
@@ -429,7 +429,7 @@ if (!enabled || serverUrl === null) {
         userId: tenant.userId, accountId: other, vacancyId, state: "preparing", autoRun: "auto"
       })
 
-      await readForm(tenant, harness, accounts, { accountId: tenant.accountId, vacancyId, exit: "session_expired" })
+      await readForm(tenant, runner, accounts, { accountId: tenant.accountId, vacancyId, exit: "session_expired" })
       expect((await rowOf(a)).state).toBe("needs_human")
       expect((await rowOf(b)).state).toBe("preparing")
       expect((await rowOf(b)).last_error).toBeNull()
@@ -437,13 +437,13 @@ if (!enabled || serverUrl === null) {
 
     test("a stale stored form blocks an auto send until it is read again", async () => {
       const tenant = await support.seedTenant("gate-stale")
-      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const runner = await support.registerRunner(tenant.userId, [tenant.accountId])
       await autoOn(tenant)
       const vacancyId = await support.seedVacancy("gate-stale")
       const id = await support.seedApplication({
         userId: tenant.userId, accountId: tenant.accountId, vacancyId, state: "preparing", autoRun: "auto"
       })
-      await readForm(tenant, harness, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
+      await readForm(tenant, runner, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
       await support.ageVacancyForm(vacancyId, 25)
 
       await setFullKit(tenant.userId, id, vacancyId)
@@ -453,13 +453,13 @@ if (!enabled || serverUrl === null) {
       expect(waiting.intent_at).toBeNull()
 
       // Форму перечитали: заявка, ждавшая в preparing, уходит.
-      await readForm(tenant, harness, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
+      await readForm(tenant, runner, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
       expect(await support.countJobs(id, "submit")).toBe(1)
     }, 60_000)
 
     test("responses imported in the last 24 hours reduce the budget, old ones do not", async () => {
       const tenant = await support.seedTenant("gate-imported")
-      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const runner = await support.registerRunner(tenant.userId, [tenant.accountId])
       await support.applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter: {}, dailyLimit: 3 })
 
       // Расширение браузера: submitted_at и hh_responded_at - сейчас.
@@ -485,8 +485,8 @@ if (!enabled || serverUrl === null) {
 
       expect(await usage(tenant)).toMatchObject({ used: 2, limit: 3, remaining: 1 })
 
-      const first = await readyDraft(tenant, harness, "imp-ready-1")
-      const second = await readyDraft(tenant, harness, "imp-ready-2")
+      const first = await readyDraft(tenant, runner, "imp-ready-1")
+      const second = await readyDraft(tenant, runner, "imp-ready-2")
       expect(
         (await asUser(tenant.userId, Effect.gen(function*() { return yield* (yield* ApplicationService).approve(first) })))
           .state
@@ -506,12 +506,12 @@ if (!enabled || serverUrl === null) {
 
     test("concurrent approvals cannot both take the last slot", async () => {
       const tenant = await support.seedTenant("gate-race")
-      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const runner = await support.registerRunner(tenant.userId, [tenant.accountId])
       await support.applyFilterSet(tenant.userId, { hhAccountId: tenant.accountId, filter: {}, dailyLimit: 1 })
       const ids = [
-        await readyDraft(tenant, harness, "race-1"),
-        await readyDraft(tenant, harness, "race-2"),
-        await readyDraft(tenant, harness, "race-3")
+        await readyDraft(tenant, runner, "race-1"),
+        await readyDraft(tenant, runner, "race-2"),
+        await readyDraft(tenant, runner, "race-3")
       ]
       const results = await Promise.all(
         ids.map((id) =>
@@ -533,7 +533,7 @@ if (!enabled || serverUrl === null) {
 
     test("retry of a manual application lands in draft, not in an implicit approval", async () => {
       const tenant = await support.seedTenant("gate-retry")
-      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
+      const runner = await support.registerRunner(tenant.userId, [tenant.accountId])
       await autoOn(tenant)
       const vacancyId = await support.seedVacancy("gate-retry")
       const id = await support.seedApplication({
@@ -545,7 +545,7 @@ if (!enabled || serverUrl === null) {
       expect(retried.state).toBe("draft")
 
       // Новое чтение формы ничего не отправляет: решает оператор.
-      await readForm(tenant, harness, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
+      await readForm(tenant, runner, [tenant.accountId], { accountId: tenant.accountId, vacancyId })
       expect((await rowOf(id)).state).toBe("draft")
       expect(await support.countJobs(id, "submit")).toBe(0)
     }, 60_000)

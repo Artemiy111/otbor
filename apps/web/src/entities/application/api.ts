@@ -1,7 +1,7 @@
 import type {
   AgentCatalog,
-  HarnessJob,
-  HarnessJobId,
+  RunnerJob,
+  RunnerJobId,
   NegotiationsSyncStatus,
   ApplicationDetail,
   ApplicationId,
@@ -121,7 +121,7 @@ export const applicationApi = {
     readonly harness: string
     readonly model?: string
     readonly effort?: string
-  }): Promise<{ readonly job: HarnessJob }> =>
+  }): Promise<{ readonly job: RunnerJob }> =>
     call((client) =>
       client.DraftGenerate({
         vacancyId: input.vacancyId as VacancyId,
@@ -133,8 +133,8 @@ export const applicationApi = {
         effort: input.effort
       })
     ),
-  inferenceGet: (id: string): Promise<HarnessJob> =>
-    call((client) => client.InferenceGet({ id: id as HarnessJobId })),
+  inferenceGet: (id: string): Promise<RunnerJob> =>
+    call((client) => client.InferenceGet({ id: id as RunnerJobId })),
   setKit: (input: ApplicationSetKitInput): Promise<KitRecord> =>
     call((client) =>
       client.ApplicationsSetKit({

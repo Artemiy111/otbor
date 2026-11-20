@@ -148,21 +148,21 @@ if (!enabled || serverUrl === null) {
     return { tenant, resume, vacancies, suffix }
   }
 
-  /** Leases the next inference job as a harness and completes it with `exit`. */
-  const runHarness = async (
+  /** Leases the next inference job as a runner and completes it with `exit`. */
+  const runRunner = async (
     tenant: support.Tenant,
     exit: Parameters<typeof support.completeJob>[1]["exit"]
   ) => {
-    const harness = await support.registerHarness(tenant.userId, [tenant.accountId], `fit-${randomUUID().slice(0, 6)}`, [
+    const runner = await support.registerRunner(tenant.userId, [tenant.accountId], `fit-${randomUUID().slice(0, 6)}`, [
       "inference"
     ])
-    const leased = await support.leaseNext(tenant.userId, harness.id, harness.token!, [tenant.accountId], [
+    const leased = await support.leaseNext(tenant.userId, runner.id, runner.token!, [tenant.accountId], [
       "inference"
     ])
     const job = leased.job!
     const done = await support.completeJob(tenant.userId, {
-      harnessId: harness.id,
-      token: harness.token!,
+      runnerId: runner.id,
+      token: runner.token!,
       jobId: job.id,
       leaseId: job.leaseId!,
       epoch: job.leaseEpoch,
@@ -282,7 +282,7 @@ if (!enabled || serverUrl === null) {
       const { jobs } = await fit(tenant.userId, (s) => s.enqueue({ force: true }))
       expect(jobs).toHaveLength(1)
 
-      const { job, done } = await runHarness(tenant, {
+      const { job, done } = await runRunner(tenant, {
         tag: "prepared",
         artifacts: { text: answer(judgement({ fit: 63, verdict: "ok" })), model: "test/model" }
       })
@@ -315,7 +315,7 @@ if (!enabled || serverUrl === null) {
       const { tenant, vacancies } = await setup("fit-lowers", [90])
       const [v] = vacancies as [string]
       await fit(tenant.userId, (s) => s.enqueue({}))
-      await runHarness(tenant, {
+      await runRunner(tenant, {
         tag: "prepared",
         artifacts: {
           text: JSON.stringify(judgement({ fit: 20, verdict: "no", disqualifiers: ["нет опыта с AWS"] })),
@@ -334,7 +334,7 @@ if (!enabled || serverUrl === null) {
       const decisionBefore = await latestDecision(tenant.userId, v)
       const first = await fit(tenant.userId, (s) => s.enqueue({}))
 
-      const { done } = await runHarness(tenant, {
+      const { done } = await runRunner(tenant, {
         tag: "prepared",
         artifacts: { text: "Я думаю, это хорошее совпадение!" }
       })
@@ -356,7 +356,7 @@ if (!enabled || serverUrl === null) {
     test("an out-of-range fit is rejected, not clamped", async () => {
       const { tenant, vacancies } = await setup("fit-range", [90])
       await fit(tenant.userId, (s) => s.enqueue({}))
-      await runHarness(tenant, {
+      await runRunner(tenant, {
         tag: "prepared",
         artifacts: { text: JSON.stringify({ ...judgement(), fit: 140 }) }
       })
@@ -365,17 +365,17 @@ if (!enabled || serverUrl === null) {
       expect(stored?.error).toContain("invalid judgement")
     })
 
-    test("a retryable harness failure keeps the judgement pending; a terminal one fails it", async () => {
+    test("a retryable runner failure keeps the judgement pending; a terminal one fails it", async () => {
       const { tenant, vacancies } = await setup("fit-fail", [90, 80])
       const [first, second] = vacancies as [string, string]
       await fit(tenant.userId, (s) => s.enqueue({}))
 
       // The first leased job is the highest priority one (v90); retry later.
-      await runHarness(tenant, { tag: "inference_failed", message: "agent exited 1" })
+      await runRunner(tenant, { tag: "inference_failed", message: "agent exited 1" })
       expect((await fit(tenant.userId, (s) => s.get({ vacancyId: first as VacancyId })))?.status).toBe("pending")
 
       // The retry is scheduled in the future, so the next lease gets the other job.
-      await runHarness(tenant, { tag: "permanent", message: "bad request" })
+      await runRunner(tenant, { tag: "permanent", message: "bad request" })
       const failed = await fit(tenant.userId, (s) => s.get({ vacancyId: second as VacancyId }))
       expect(failed?.status).toBe("failed")
       expect(failed?.error).toContain("permanent")
@@ -388,7 +388,7 @@ if (!enabled || serverUrl === null) {
       await fit(tenant.userId, (s) => s.enqueue({}))
 
       await ownerSql(sql`update vacancy set content_hash = ${`race-${randomUUID()}`} where id = ${v}`)
-      await runHarness(tenant, { tag: "prepared", artifacts: { text: JSON.stringify(judgement({ fit: 55 })) } })
+      await runRunner(tenant, { tag: "prepared", artifacts: { text: JSON.stringify(judgement({ fit: 55 })) } })
 
       const stored = await fit(tenant.userId, (s) => s.get({ vacancyId: v as VacancyId }))
       expect(stored).toMatchObject({ status: "done", current: false })
@@ -496,7 +496,7 @@ if (!enabled || serverUrl === null) {
       await fit(tenant.userId, (s) => s.enqueue({}))
       await fit(tenant.userId, (s) => s.save({ vacancyId: v as VacancyId, judgement: judgement({ fit: 91 }) }))
 
-      await runHarness(tenant, { tag: "prepared", artifacts: { text: JSON.stringify(judgement({ fit: 12 })) } })
+      await runRunner(tenant, { tag: "prepared", artifacts: { text: JSON.stringify(judgement({ fit: 12 })) } })
 
       const stored = await fit(tenant.userId, (s) => s.get({ vacancyId: v as VacancyId }))
       expect(stored).toMatchObject({ source: "external", current: true })

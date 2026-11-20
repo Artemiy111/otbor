@@ -1,4 +1,4 @@
-import type { ApplicationId, FormQuestion, HarnessJob, HarnessJobId } from "@otbor/contract"
+import type { ApplicationId, FormQuestion, RunnerJob, RunnerJobId } from "@otbor/contract"
 import { InferenceResult as InferenceResultSchema } from "@otbor/contract"
 import { Console, Effect, FileSystem, Option, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
@@ -30,7 +30,7 @@ const readStdin = Effect.tryPromise({
     )
 })
 
-const waitFor = (id: HarnessJobId, timeoutSeconds: number) =>
+const waitFor = (id: RunnerJobId, timeoutSeconds: number) =>
   Effect.gen(function*() {
     const api = yield* Api
     const deadline = Date.now() + timeoutSeconds * 1_000
@@ -42,7 +42,7 @@ const waitFor = (id: HarnessJobId, timeoutSeconds: number) =>
     }
   })
 
-const printSettled = (job: HarnessJob, timedOut: boolean) =>
+const printSettled = (job: RunnerJob, timedOut: boolean) =>
   Effect.gen(function*() {
     const text = resultText(job.result)
 
@@ -68,12 +68,12 @@ const printSettled = (job: HarnessJob, timedOut: boolean) =>
     process.exitCode = 1
   })
 
-const describeJob = (job: HarnessJob, json: boolean) =>
+const describeJob = (job: RunnerJob, json: boolean) =>
   json ? Console.log(JSON.stringify(job, null, 2)) : Console.log(job.id)
 
 /** Wait, print in the selected format, and hand the settled job back. */
 const settle = (
-  job: HarnessJob,
+  job: RunnerJob,
   options: { readonly timeout: number; readonly json: boolean }
 ) =>
   Effect.gen(function*() {
@@ -94,7 +94,7 @@ const settle = (
   })
 
 const usableText = (outcome: {
-  readonly job: HarnessJob
+  readonly job: RunnerJob
   readonly timedOut: boolean
 }): string | null => {
   if (outcome.timedOut || outcome.job.status !== "done") return null

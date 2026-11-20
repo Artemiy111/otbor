@@ -48,7 +48,7 @@ export const FormQuestionView = Schema.Struct({
 })
 
 export const PrepareStatus = Schema.Struct({
-  /** prepared: form stored. pending: waiting for the browser harness. blocked: needs a human. skipped. */
+  /** prepared: form stored. pending: waiting for the browser driver. blocked: needs a human. skipped. */
   status: Schema.Literals(["prepared", "unreadable", "pending", "blocked", "skipped"]),
   detail: NullableString
 })
@@ -175,7 +175,7 @@ const prepareStatus = (detail: ApplicationDetail): typeof PrepareStatus.Type => 
   if (detail.application.state === "needs_human" || detail.application.state === "failed") {
     return { status: "blocked", detail: `application is ${detail.application.state}; see application_get attempts` }
   }
-  return { status: "pending", detail: "waiting for the browser harness to open the response form; poll again in a few seconds" }
+  return { status: "pending", detail: "waiting for the browser driver to open the response form; poll again in a few seconds" }
 }
 
 export const formView = (detail: ApplicationDetail): FormView => {

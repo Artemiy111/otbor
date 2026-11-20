@@ -4,7 +4,7 @@ import { requestNegotiationsRecheck } from "./negotiationsRecheck.ts"
 import { outcome, type StageHandler } from "./types.ts"
 
 /**
- * The harness reports a claim, the cloud decides from the evidence. Only a page
+ * The runner reports a claim, the cloud decides from the evidence. Only a page
  * the cloud itself reads as "you responded" settles a submit; anything that
  * might have reached hh goes to reconcile and is never sent again.
  */

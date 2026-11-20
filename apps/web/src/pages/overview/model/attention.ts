@@ -111,9 +111,9 @@ const isPaused = (account: Overview["accounts"][number], now: number): boolean =
   (account.submitRetryAt === null || Date.parse(account.submitRetryAt) > now - 60_000)
 
 export const browserOnline = (health: Health | undefined): boolean | null =>
-  health?.harnesses === undefined
+  health?.runners === undefined
     ? null
-    : health.harnesses.some((harness) => harness.online && harness.kinds.includes("browser"))
+    : health.runners.some((runner) => runner.online && runner.kinds.includes("browser"))
 
 const searchName = (schedule: CrawlSchedule): string => {
   const base = scheduleKindLabel(schedule.kind)
@@ -162,7 +162,7 @@ export const buildAttention = (input: AttentionInput): ReadonlyArray<AttentionIt
         id: "no-executor",
         tone: pending > 0 ? "danger" : "warning",
         icon: "browser",
-        title: "Исполнитель браузера не подключён",
+        title: "Драйвер не подключён",
         detail:
           pending > 0
             ? `Отклики не отправляются: в очереди ${countWord(pending, TASK_FORMS)}.`

@@ -206,10 +206,10 @@ export const DecisionReasonCode = Schema.Literals([
 export type DecisionReasonCode = typeof DecisionReasonCode.Type
 
 /**
- * What the harness reports after an attempt. The cloud does not trust it for
+ * What the runner reports after an attempt. The cloud does not trust it for
  * "submitted": only reconcile against the site can set that.
  */
-export const HarnessExitTag = Schema.Literals([
+export const RunnerExitTag = Schema.Literals([
   "prepared",
   "reconciled",
   "clicked",
@@ -232,7 +232,7 @@ export const HarnessExitTag = Schema.Literals([
   "relocation_warning"
 ])
 
-export type HarnessExitTag = typeof HarnessExitTag.Type
+export type RunnerExitTag = typeof RunnerExitTag.Type
 
 /** How hh requests choose between configured proxy and going direct. */
 export const ProxyMode = Schema.Literals(["auto", "direct", "proxy"])
@@ -268,7 +268,7 @@ export type CrawlFinishStatus = typeof CrawlFinishStatus.Type
 /**
  * What a schedule points at. `search` crawls an hh search URL; the source
  * kinds run one bounded sync of their own: hydration passes, a mail or
- * Telegram account, or an hh chat (which needs the browser harness).
+ * Telegram account, or an hh chat (which needs the browser driver).
  */
 export const ScheduleKind = Schema.Literals([
   "search",

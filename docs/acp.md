@@ -82,22 +82,22 @@ inference`, payload `InferencePayload`:
    локальный конфиг CLI:
 
 ```bash
-otbor harness register --name inference-mac --kind inference --save
+otbor runner register --name inference-mac --kind inference --save
 ```
 
-2. Запустить воркер из CLI:
+2. Запустить раннер из CLI:
 
 ```bash
-otbor harness run
-otbor harness run --once
+otbor runner run
+otbor runner run --once
 ```
 
-`otbor harness run` сам делает long-poll, heartbeat и complete. Ручные
-`otbor harness lease/heartbeat/complete` остаются для отладки протокола.
+`otbor runner run` сам делает long-poll, heartbeat и complete. Ручные
+`otbor runner lease/heartbeat/complete` остаются для отладки протокола.
 
-3. Воркер выполняет `payload.prompt` через ACP-клиент и отчитывается
-   `HarnessComplete` с `exit.tag = "prepared"`. Результат кладётся в
-   `exit.artifacts` и сохраняется в `HarnessJob.result`:
+3. Раннер выполняет `payload.prompt` через ACP-клиент и отчитывается
+   `RunnerComplete` с `exit.tag = "prepared"`. Результат кладётся в
+   `exit.artifacts` и сохраняется в `RunnerJob.result`:
 
 ```json
 {
@@ -111,10 +111,10 @@ otbor harness run --once
 
 Без `artifacts` job завершится как `done`, но без результата. Ошибка агента —
 не `prepared`: retryable-теги возвращают job в очередь, терминальные переводят
-её в `failed`/`needs_human` (решение принимает облако, не харнес).
+её в `failed`/`needs_human` (решение принимает облако, не раннер).
 
 Токен нужен на каждый `lease`, `heartbeat` и `complete`. `--token` важнее
-`OTBOR_HARNESS_TOKEN`.
+`OTBOR_RUNNER_TOKEN`.
 
 ## Inference через CLI
 
@@ -148,7 +148,7 @@ otbor inference get <id> --json
 
 `get` показывает статус, попытки, payload (prompt/system/model) и результат.
 
-Если ни один харнес с `kind = inference` не подключён, job останется
+Если ни один раннер с `kind = inference` не подключён, job останется
 `pending`, а `run` завершится по таймауту с кодом 1 и тем же id — его можно
 забрать позже через `get`.
 

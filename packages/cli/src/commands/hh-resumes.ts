@@ -9,7 +9,7 @@ const accountFlag = Flag.String("account").pipe(
 )
 
 const waitFlag = Flag.Int("wait").pipe(
-  Flag.withDescription("Seconds to wait for the harness to finish; 0 only queues the sync"),
+  Flag.withDescription("Seconds to wait for the driver to finish; 0 only queues the sync"),
   Flag.withDefault(180)
 )
 
@@ -50,7 +50,7 @@ export const hhResumesCommand = Command.make(
     yield* Console.log(`resume sync queued for ${hhAccountId} (job ${queued.jobId ?? "?"})`)
     if (wait <= 0) return
 
-    yield* Console.log("waiting for the harness (is `otbor harness` running?)...")
+    yield* Console.log("waiting for the driver (is `otbor runner` running?)...")
     const deadline = Date.now() + wait * 1_000
     let status = queued
     while (!TERMINAL.includes(status.status) && Date.now() < deadline) {
@@ -62,4 +62,4 @@ export const hhResumesCommand = Command.make(
       yield* Console.log("not finished yet; run `otbor hh resumes` again to keep waiting on the same job")
     }
   })
-).pipe(Command.withDescription("Load the account's resumes from hh.ru (reads the profile and resume pages through the harness)"))
+).pipe(Command.withDescription("Load the account's resumes from hh.ru (reads the profile and resume pages through the driver)"))

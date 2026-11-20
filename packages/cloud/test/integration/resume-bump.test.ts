@@ -1,9 +1,9 @@
 /**
  * Подъём резюме против настоящего Postgres: расписание ставит задачи по одной на
- * резюме, харнесс присылает свидетельство, облако решает исход и держит отдых
- * в 4 часа. hh.ru не нужен: харнесс изображён вызовами completeJob.
+ * резюме, раннер присылает свидетельство, облако решает исход и держит отдых
+ * в 4 часа. hh.ru не нужен: раннер изображён вызовами completeJob.
  */
-import type { HarnessExit } from "@otbor/contract"
+import type { RunnerExit } from "@otbor/contract"
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { sql } from "drizzle-orm"
 import { Effect } from "effect"
@@ -13,7 +13,7 @@ import * as support from "./support/index.ts"
 
 const { integrationEnabled, serverUrl } = support
 
-const clickedExit = (before: string | null, after: string | null): HarnessExit => ({
+const clickedExit = (before: string | null, after: string | null): RunnerExit => ({
   tag: "submitted",
   message: "resume bumped",
   artifacts: {
@@ -80,14 +80,14 @@ if (!integrationEnabled || serverUrl === null) {
         accountId: tenant.accountId,
         title: "Backend"
       })
-      const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
-      const finish = async (exit: HarnessExit) => {
-        const leased = await support.leaseNext(tenant.userId, harness.id, harness.token!, [tenant.accountId])
+      const runner = await support.registerRunner(tenant.userId, [tenant.accountId])
+      const finish = async (exit: RunnerExit) => {
+        const leased = await support.leaseNext(tenant.userId, runner.id, runner.token!, [tenant.accountId])
         expect(leased.job?.stage).toBe("resume_bump")
         expect((leased.job!.payload as { resumeId?: string }).resumeId).toBe(resumeId)
         await support.completeJob(tenant.userId, {
-          harnessId: harness.id,
-          token: harness.token!,
+          runnerId: runner.id,
+          token: runner.token!,
           jobId: leased.job!.id,
           leaseId: leased.job!.leaseId!,
           epoch: leased.job!.leaseEpoch,
@@ -155,14 +155,14 @@ if (!integrationEnabled || serverUrl === null) {
         "owner",
         support.ownerTx((tx) =>
           tx
-            .execute(sql`select status from harness_jobs where id = ${job.id}::uuid`)
+            .execute(sql`select status from runner_jobs where id = ${job.id}::uuid`)
             .pipe(Effect.map((result) => result.rows as ReadonlyArray<Record<string, any>>))
         )
       )
       expect(jobs[0]!.status).toBe("done")
     })
 
-    test("харнесс заявил submitted без свидетельства о нажатии: подъёма нет", async () => {
+    test("раннер заявил submitted без свидетельства о нажатии: подъёма нет", async () => {
       const ctx = await setup("bump-liar")
       await enqueue(ctx.tenant.userId)
       await ctx.finish({

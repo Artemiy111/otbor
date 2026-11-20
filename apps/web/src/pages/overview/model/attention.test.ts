@@ -126,7 +126,7 @@ describe("buildAttention", () => {
   })
 
   test("нет исполнителя браузера: срочно, если очередь не пуста", () => {
-    const health = makeHealth({ harnesses: [] })
+    const health = makeHealth({ runners: [] })
     const overview = makeOverview({
       jobs: { stuck: [], running: [], pending: [{ stage: "submit", count: 4 }], oldestPendingAgeSeconds: 60 }
     })

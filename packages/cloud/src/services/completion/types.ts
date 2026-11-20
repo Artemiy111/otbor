@@ -7,7 +7,7 @@
  * обработчик. Обработчик работает в той же транзакции и возвращает
  * `StageOutcome`; сам итог задачи и переход заявки применяет рамка.
  */
-import type { HarnessExit, JobStatus } from "@otbor/contract"
+import type { RunnerExit, JobStatus } from "@otbor/contract"
 import type { DatabaseError, Executor } from "../../db/Database.ts"
 import type { JobContext } from "../../repositories/QueueRepository.ts"
 import type { Effect } from "effect"
@@ -78,6 +78,6 @@ export interface CompletionOptions {
 export type StageHandler = (
   tx: Executor,
   ctx: JobContext,
-  exit: HarnessExit,
+  exit: RunnerExit,
   options: CompletionOptions
 ) => Effect.Effect<StageOutcome, DatabaseError>

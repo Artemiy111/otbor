@@ -1,4 +1,4 @@
-import type { HarnessExit, HarnessJob } from "@otbor/contract"
+import type { RunnerExit, RunnerJob } from "@otbor/contract"
 import { Effect } from "effect"
 import { writingApplicationId } from "../AutoApplyRunner.ts"
 import { exitDetail, retryLater } from "./common.ts"
@@ -16,7 +16,7 @@ const needsHuman: ReadonlyArray<string> = ["captcha", "session_expired"]
 
 const retryable: ReadonlyArray<string> = ["transport", "rate_limited", "inference_failed", "ambiguous"]
 
-const decide = (job: HarnessJob, exit: HarnessExit): StageOutcome => {
+const decide = (job: RunnerJob, exit: RunnerExit): StageOutcome => {
   if (exit.tag === "prepared") {
     return outcome("done", "inference completed", { jobResult: exit.artifacts ?? null })
   }

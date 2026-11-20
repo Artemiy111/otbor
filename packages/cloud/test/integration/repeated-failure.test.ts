@@ -39,13 +39,13 @@ if (!support.integrationEnabled || support.serverUrl === null) {
 
   interface Ctx {
     readonly tenant: support.Tenant
-    readonly harness: { id: string; token?: string | null }
+    readonly runner: { id: string; token?: string | null }
   }
 
   const setup = async (label: string): Promise<Ctx> => {
     const tenant = await support.seedTenant(label)
-    const harness = await support.registerHarness(tenant.userId, [tenant.accountId])
-    return { tenant, harness }
+    const runner = await support.registerRunner(tenant.userId, [tenant.accountId])
+    return { tenant, runner }
   }
 
   /** Одна попытка submit: новая заявка, lease, ответ исполнителя. Темп сбрасывается, чтобы не ждать. */
@@ -70,11 +70,11 @@ if (!support.integrationEnabled || support.serverUrl === null) {
       "owner",
       support.ownerTx((tx) => tx.execute(sql`update hh_account set submit_next_at = null where id = ${ctx.tenant.accountId}`))
     )
-    const leased = await support.leaseNext(ctx.tenant.userId, ctx.harness.id, ctx.harness.token!, [ctx.tenant.accountId])
+    const leased = await support.leaseNext(ctx.tenant.userId, ctx.runner.id, ctx.runner.token!, [ctx.tenant.accountId])
     expect(leased.job?.stage).toBe("submit")
     await support.completeJob(ctx.tenant.userId, {
-      harnessId: ctx.harness.id,
-      token: ctx.harness.token!,
+      runnerId: ctx.runner.id,
+      token: ctx.runner.token!,
       jobId: leased.job!.id,
       leaseId: leased.job!.leaseId!,
       epoch: leased.job!.leaseEpoch,
@@ -224,7 +224,7 @@ if (!support.integrationEnabled || support.serverUrl === null) {
         await support.enqueueJob({ userId: tenant.userId, accountId: tenant.accountId, stage: "submit" })
       }
       // Держатель - зарегистрированный исполнитель: аккаунт уже за ним (account_lease), чужому claim не выдаст.
-      const claim = (c: Ctx) => support.claimAsHolder({ holder: c.harness.id, accounts: [c.tenant.accountId] })
+      const claim = (c: Ctx) => support.claimAsHolder({ holder: c.runner.id, accounts: [c.tenant.accountId] })
       expect(await claim(ctx)).toBeNull()
       expect((await claim(other))?.job.stage).toBe("submit")
       expect((await pauseOf(other.tenant.accountId)).at).toBeNull()

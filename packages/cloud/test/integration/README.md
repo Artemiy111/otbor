@@ -1,7 +1,7 @@
 # Cloud integration tests
 
 These tests exercise `packages/cloud` against a **real Postgres** instance: RLS,
-harness/account binding, queue fencing, at-most-once submit and the account
+runner/account binding, queue fencing, at-most-once submit and the account
 lease. They are opt-in so plain `bun test` stays green without Docker.
 
 ## Run
@@ -27,10 +27,10 @@ the first run creates it, exactly as `bun run db:migrate` does.
 
 ## What is covered
 
-1. **RLS** — user A cannot select user B's `hh_account`, `harness`,
-   `harness_account`, `application` or `harness_jobs` rows.
-2. **Multi-account binding** — one harness serves two accounts; an account can
-   belong to one harness only; rebinding moves the row; leases only return jobs
+1. **RLS** — user A cannot select user B's `hh_account`, `runner`,
+   `runner_account`, `application` or `runner_jobs` rows.
+2. **Multi-account binding** — one runner serves two accounts; an account can
+   belong to one runner only; rebinding moves the row; leases only return jobs
    of bound accounts.
 3. **Queue fencing** — heartbeat extends the lease, a stale epoch/lease is
    rejected on completion, and an expired lease is recovered to `pending` or
@@ -41,9 +41,9 @@ the first run creates it, exactly as `bun run db:migrate` does.
    `submitted`.
 5. **Account lease** — two holders cannot serve the same account at once; after
    the lease expires a different holder takes over and the epoch increments;
-   rebinding or revoking a harness releases the old runtime lease.
+   rebinding or revoking a runner releases the old runtime lease.
 6. **Inference** — enqueue attaches the default hh account, a token-authenticated
-   harness leases and completes with artifacts, `inference_failed` retries to
+   runner leases and completes with artifacts, `inference_failed` retries to
    `dead`, `result` round-trips, another user cannot read the job, and migration
    0006 accepts the `inference` stage.
 7. **Crawl bookkeeping** — `CrawlStart` reuses `search_query` by normalized URL

@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm"
 import { Effect } from "effect"
 import { randomUUID } from "node:crypto"
 import { Database } from "../../src/db/Database.ts"
-import { harnessJob } from "../../src/db/tables.ts"
+import { runnerJob } from "../../src/db/tables.ts"
 import {
   addAccount,
   completeJob,
@@ -21,7 +21,7 @@ import {
   leaseNext,
   makeJobRunnable,
   migrateTestDatabase,
-  registerHarness,
+  registerRunner,
   runAs,
   seedTenant,
   serverUrl,
@@ -87,16 +87,16 @@ if (!integrationEnabled || serverUrl === null) {
       expect(fetched.payload).toEqual(job.payload)
     })
 
-    test("an inference harness leases, completes and the artifacts round-trip", async () => {
+    test("an inference runner leases, completes and the artifacts round-trip", async () => {
       const tenant = await seedTenant("inference-run")
       const { job } = await enqueueInference(tenant.userId, {
         prompt: "Rate this vacancy",
         model: "opencode/big-pickle"
       })
-      const h = await registerHarness(
+      const h = await registerRunner(
         tenant.userId,
         [tenant.accountId],
-        "inference-harness",
+        "inference-runner",
         ["inference"]
       )
 
@@ -115,7 +115,7 @@ if (!integrationEnabled || serverUrl === null) {
       }
 
       const done = await completeJob(tenant.userId, {
-        harnessId: h.id,
+        runnerId: h.id,
         token: h.token!,
         jobId: job.id,
         leaseId: leased.job!.leaseId!,
@@ -138,10 +138,10 @@ if (!integrationEnabled || serverUrl === null) {
     test("inference_failed retries while attempts remain, then goes dead", async () => {
       const tenant = await seedTenant("inference-retry")
       const { job } = await enqueueInference(tenant.userId, { prompt: "retry me" })
-      const h = await registerHarness(
+      const h = await registerRunner(
         tenant.userId,
         [tenant.accountId],
-        "inference-retry-harness",
+        "inference-retry-runner",
         ["inference"]
       )
 
@@ -151,7 +151,7 @@ if (!integrationEnabled || serverUrl === null) {
         ])
         expect(leased.job?.id).toBe(job.id)
         return completeJob(tenant.userId, {
-          harnessId: h.id,
+          runnerId: h.id,
           token: h.token!,
           jobId: job.id,
           leaseId: leased.job!.leaseId!,
@@ -193,7 +193,7 @@ if (!integrationEnabled || serverUrl === null) {
         Effect.gen(function*() {
           const database = yield* Database
           return yield* database.asUser(a.userId, (tx) =>
-            tx.select({ id: harnessJob.id }).from(harnessJob).where(eq(harnessJob.id, job.id))
+            tx.select({ id: runnerJob.id }).from(runnerJob).where(eq(runnerJob.id, job.id))
           )
         })
       )
@@ -205,7 +205,7 @@ if (!integrationEnabled || serverUrl === null) {
         Effect.gen(function*() {
           const database = yield* Database
           return yield* database.asUser(b.userId, (tx) =>
-            tx.select({ id: harnessJob.id }).from(harnessJob).where(eq(harnessJob.id, job.id))
+            tx.select({ id: runnerJob.id }).from(runnerJob).where(eq(runnerJob.id, job.id))
           )
         })
       )
@@ -240,7 +240,7 @@ if (!integrationEnabled || serverUrl === null) {
       })
       // The Postgres constraint name survives inside the driver's cause chain.
       const reason = String((rejected as unknown as { cause?: unknown }).cause)
-      expect(reason).toContain("harness_jobs_stage_check")
+      expect(reason).toContain("runner_jobs_stage_check")
     })
   })
 }

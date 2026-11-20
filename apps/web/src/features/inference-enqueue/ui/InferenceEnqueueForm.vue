@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue"
-import type { HarnessJob } from "@otbor/contract"
+import type { RunnerJob } from "@otbor/contract"
 import { CircleAlert } from "@lucide/vue"
 import { describeError } from "@/shared/lib"
 import {
@@ -20,7 +20,7 @@ import {
 import { useInferenceEnqueue } from "../model/use-inference-enqueue"
 
 const props = defineProps<{ busy?: boolean }>()
-const emit = defineEmits<{ enqueued: [job: HarnessJob] }>()
+const emit = defineEmits<{ enqueued: [job: RunnerJob] }>()
 
 const prompt = ref("")
 const system = ref("")
@@ -70,7 +70,7 @@ defineExpose({ reset })
     <CardHeader>
       <CardTitle>Запрос</CardTitle>
       <CardDescription>
-        Задание уйдёт в очередь harness. Модель вызовет ACP-агент, а не облако.
+        Задание уйдёт в очередь раннеров. Модель вызовет ACP-агент, а не облако.
       </CardDescription>
     </CardHeader>
     <CardContent>
