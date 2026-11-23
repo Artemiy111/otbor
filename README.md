@@ -214,6 +214,9 @@ otbor runner register \
   --save
 ```
 
+Без `--kind` и `--account` регистрация означает «все типы задач и все
+аккаунты hh», как и написано в ответе `otbor runner register`.
+
 Токен и runner id лежат в `~/.otbor/runner.json` (0600). Дальше раннер
 запускается из того же CLI, без shell-обёрток:
 

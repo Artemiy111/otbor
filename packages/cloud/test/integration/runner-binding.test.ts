@@ -102,5 +102,24 @@ if (!integrationEnabled || serverUrl === null) {
       expect(unbound.job).toBeNull()
       expect((await findJob(jobThird.id))?.status).toBe("pending")
     })
+
+    test("an empty account list binds every account of the user", async () => {
+      const tenant = await seedTenant("bind-all")
+      const second = await addAccount(tenant.userId, "bind-all-second")
+
+      const all = await registerRunner(tenant.userId, [], "all-accounts")
+      expect([...all.accounts].map(String).sort()).toEqual(
+        [tenant.accountId, second].sort()
+      )
+
+      const job = await enqueueJob({
+        userId: tenant.userId,
+        accountId: second,
+        stage: "form_read"
+      })
+      const lease = await leaseNext(tenant.userId, all.id, all.token!, [])
+      expect(lease.job?.id).toBe(job.id)
+      expect((await findJob(job.id))?.status).toBe("leased")
+    })
   })
 }

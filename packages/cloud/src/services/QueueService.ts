@@ -322,11 +322,20 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
                   }
                 }
 
+                // Пустой список в CLI означает «все аккаунты», как и пустой
+                // список типов задач. Привязываем их явно: иначе раннеру не
+                // достаётся ни одной задачи с hh_account_id, и он простаивает.
+                const accounts = input.accounts.length > 0
+                  ? input.accounts
+                  : (yield* tx.execute(sql`select id from hh_account`)).rows.map(
+                    (row) => row.id as string
+                  )
+
                 const registration = yield* RunnerRepository.register(tx, {
                   userId: currentUser.userId,
                   name: input.name,
                   kinds: input.kinds,
-                  accounts: input.accounts,
+                  accounts,
                   tokenHash
                 })
                 return ok({ ...registration, token })
@@ -339,9 +348,9 @@ export class QueueService extends Context.Service<QueueService, QueueServiceShap
           // A rebind must drop the old runtime lease too. account_lease is
           // owner-only under RLS, so cleanup happens after the user-scoped
           // registration transaction commits.
-          if (input.accounts.length > 0) {
+          if (registration.accounts.length > 0) {
             const accounts = sql.join(
-              input.accounts.map((account) => sql`${account}`),
+              registration.accounts.map((account) => sql`${account}`),
               sql`, `
             )
             yield* database

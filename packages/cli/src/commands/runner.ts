@@ -17,6 +17,19 @@ import { Command, Flag } from "effect/cli"
 import { Api } from "../client.ts"
 import { readRunnerState, writeRunnerState } from "../runner-state.ts"
 
+/**
+ * Пустой список типов в сохранённой регистрации означает «все», как и при
+ * выводе `otbor runner register`. Без этого парсер счел бы пустую строку
+ * не заданной и оставил бы только inference.
+ */
+export const resolveRunnerKinds = (
+  flags: ReadonlyArray<JobKind>,
+  saved: ReadonlyArray<JobKind> | undefined
+): ReadonlyArray<JobKind> => {
+  const resolved = flags.length > 0 ? flags : (saved ?? [])
+  return resolved.length > 0 ? resolved : JobKindSchema.literals
+}
+
 const kindFlag = Flag.Literals("kind", JobKindSchema.literals).pipe(
   Flag.withDescription("Job kind the runner handles (repeatable, default: all)"),
   Flag.between(0, 2)
@@ -136,7 +149,10 @@ const run = Command.make(
       OTBOR_API_URL: url,
       OTBOR_RUNNER_ID: runnerId,
       OTBOR_RUNNER_TOKEN: deviceToken,
-      OTBOR_RUNNER_KINDS: (kinds.length > 0 ? kinds : (saved?.kinds ?? [])).join(","),
+      OTBOR_RUNNER_KINDS: resolveRunnerKinds(
+        kinds as ReadonlyArray<JobKind>,
+        saved?.kinds as ReadonlyArray<JobKind> | undefined
+      ).join(","),
       OTBOR_RUNNER_ACCOUNTS: accountIds.join(","),
       OTBOR_RUNNER_WAIT_SECONDS: String(waitSeconds),
       ...(Option.isSome(concurrency)
